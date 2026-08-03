@@ -36,7 +36,9 @@ try:
             encoded = _orjson.dumps(obj, default=default)
         return encoded.decode("utf-8")
 
-    JSONDecodeError = _orjson.JSONDecodeError
+    # Both branches assign a distinct concrete subclass of ValueError; annotate
+    # explicitly so mypy sees the two branches as compatible.
+    JSONDecodeError: type[ValueError] = _orjson.JSONDecodeError
     BACKEND = "orjson"
 except ImportError:
     import json as _json

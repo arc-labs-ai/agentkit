@@ -72,10 +72,36 @@ strict = true
 
 # Optional third-party integrations are imported behind `try/except ImportError`.
 # When the extra isn't installed there's no stub to load — that's the whole
-# point of the guard, not a real type error.
+# point of the guard, not a real type error. When the extra IS installed but
+# ships no py.typed marker (asyncpg, orjson, older opentelemetry), mypy would
+# otherwise refuse; same treatment applies.
 [[tool.mypy.overrides]]
-module = ["pydantic", "pydantic.*"]
+module = [
+    "pydantic",
+    "pydantic.*",
+    "asyncpg",
+    "asyncpg.*",
+    "orjson",
+    "redis",
+    "redis.*",
+    "opentelemetry",
+    "opentelemetry.*",
+    "pgvector",
+    "pgvector.*",
+]
 ignore_missing_imports = true
+
+# The adapter modules carry `# type: ignore[import-not-found]` on their
+# guarded optional imports. Whether those ignores are "used" depends on
+# which extras are installed at typecheck time — CI installs everything
+# (so they read as unused), a bare install has none (so they're needed).
+# Disable warn_unused_ignores here to make the check pass in both worlds.
+[[tool.mypy.overrides]]
+module = [
+    "agentkit.adapters.*",
+    "agentkit.kernel._json",
+]
+warn_unused_ignores = false
 
 [build-system]
 requires = ["hatchling"]
