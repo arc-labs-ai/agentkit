@@ -1276,10 +1276,11 @@
 <p><strong>What this is.</strong> <code>agentkit.agents</code> is where a <em>thing that talks to a
 model</em> becomes <em>a thing you can plan, cancel, coordinate, and hand off
 between</em>. It provides <code>Agent</code> and <code>Workflow</code>, the <code>Cognition</code> protocol
-(<code>SingleCall</code>, <code>ReAct</code>, <code>Coordinator</code>), the control primitives that
-make multi-agent flows safe (<code>SignalChannel</code>, <code>Handoff</code>,
-<code>ActorBudget</code>, <code>RunPolicy</code>), and the policies (<code>RoundRobin</code>,
-<code>Selector</code>, <code>Plan</code>, <code>Ledger</code>) that decide which agent runs next.</p>
+(<code>SingleCallCognition</code>, <code>ReActCognition</code>, <code>CoordinatorCognition</code>),
+the control primitives that make multi-agent flows safe
+(<code>SignalChannel</code>, <code>Handoff</code>, <code>ActorBudget</code>, <code>RunPolicy</code>), and the
+policies (<code>RoundRobinPolicy</code>, <code>SelectorPolicy</code>, <code>PlanPolicy</code>,
+<code>LedgerPolicy</code>) that decide which agent runs next.</p>
 <p><strong>Why it exists.</strong> "An agent" is a loaded word. In agentkit it means
 something very specific: a wired composition of a prompt, a cognition,
 a tool set, and (optionally) a memory + capabilities — with a
@@ -1292,26 +1293,31 @@ any of them subclassing a common base.</p>
 <p>A single wired composition:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Agent</span><span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;researcher&quot;</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(),</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">search</span><span class="p">,</span> <span class="n">fetch</span><span class="p">]),</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">prompt</span><span class="o">=</span><span class="n">my_prompt</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">search</span><span class="p">,</span> <span class="n">fetch</span><span class="p">],</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">memory</span><span class="o">=</span><span class="n">composite_memory</span><span class="p">,</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="c1"># + optional: compactor, guardrail, checkpointer, evaluator</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">memory</span><span class="o">=</span><span class="n">composite_memory</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 </span></code></pre></div>
-<p>Calling <code>await agent.run(ctx, task)</code> streams <code>AgentResult</code> events until
-completion.</p>
+<p>Tools live on the cognition, not on <code>Agent</code>. Cross-cutting
+capabilities — <code>Compactor</code>, <code>Guardrail</code>, <code>Checkpointer</code>, <code>Evaluator</code> —
+are not <code>Agent</code> constructor kwargs; they plug in via a
+<code>RequestBuilder</code>, the middleware chain, or a policy (see
+<a href="../capabilities/">Capabilities</a>).</p>
+<p>Calling <code>await agent.run(task, ctx)</code> returns an <code>AgentResult</code> when the
+cognition completes.</p>
 <h3 id="cognition"><code>Cognition</code><a class="headerlink" href="#cognition" title="Anchor link">&para;</a></h3>
-<p>The Protocol that owns the loop. Ships three implementations:</p>
+<p>The Protocol that owns the loop. Lives in <code>agentkit.agents.cognition</code>
+and ships three implementations:</p>
 <ul>
-<li><strong><code>SingleCall</code></strong> — one LLM call, one result. The right default for
-  narrow, single-shot skills.</li>
-<li><strong><code>ReActCognition</code></strong> — thought → action → observation loop, with tool
-  calling and cooperative cancellation between steps.</li>
-<li><strong><code>Coordinator</code></strong> — drives many child agents according to a <code>Policy</code>,
-  merges their signals through a <code>SignalChannel</code>.</li>
+<li><strong><code>SingleCallCognition</code></strong> — one LLM call, one result. The right
+  default for narrow, single-shot skills.</li>
+<li><strong><code>ReActCognition</code></strong> — thought → action → observation loop, with
+  tool calling and cooperative cancellation between steps.</li>
+<li><strong><code>CoordinatorCognition</code></strong> — drives many child agents according to a
+  <code>Policy</code>, merges their signals through a <code>SignalChannel</code>.</li>
 </ul>
-<p>You can add your own — a cognition is a small async iterator over a
+<p>Import path: <code>from agentkit.agents.cognition import ReActCognition</code>.
+You can add your own — a cognition is a small async iterator over a
 <code>RunContext</code> and a task.</p>
 <h3 id="workflow"><code>Workflow</code><a class="headerlink" href="#workflow" title="Anchor link">&para;</a></h3>
 <p>A <code>Workflow</code> composes multiple <code>Agent</code>s under a <code>Policy</code>. It's the
@@ -1321,14 +1327,16 @@ about the others.</p>
 <h3 id="control-primitives">Control primitives<a class="headerlink" href="#control-primitives" title="Anchor link">&para;</a></h3>
 <ul>
 <li><strong><code>SignalChannel</code></strong> — the frozen envelope multi-agent signals travel
-  in (<code>ProgressSignal</code>, <code>DoneSignal</code>, <code>CancelSignal</code>, <code>EscalateSignal</code>,
-  <code>Handoff</code>, …).</li>
+  in (<code>ProgressSignal</code>, <code>DoneSignal</code>, <code>CancelSignal</code>,
+  <code>EscalateSignal</code>, …). <code>Handoff</code> is separate: it's a routing verb
+  consumed by <code>SelectorPolicy</code> / handoff-routing, not a member of the
+  progress/done data-signal family.</li>
 <li><strong><code>RunPolicy</code></strong> — global lethal-trifecta gate (no tool can <em>both</em>
   read external content, write it, and send network calls without
   explicit approval).</li>
 <li><strong><code>ActorBudget</code></strong> — per-agent slice of the run budget.</li>
-<li><strong><code>Autonomy</code></strong> — the tier the run is executing at: <code>suggest</code>,
-  <code>confirm</code>, or <code>auto</code>.</li>
+<li><strong><code>Autonomy</code></strong> — the tier the run is executing at: <code>auto</code>, <code>gated</code>,
+  or <code>manual</code>.</li>
 </ul>
 <h2 id="the-invariants-it-enforces">The invariants it enforces<a class="headerlink" href="#the-invariants-it-enforces" title="Anchor link">&para;</a></h2>
 <ol>
@@ -1344,7 +1352,7 @@ about the others.</p>
 </ol>
 <h2 id="related-deep-dive">Related deep dive<a class="headerlink" href="#related-deep-dive" title="Anchor link">&para;</a></h2>
 <p>The
-<a href="https://github.com/arc-labs/agentkit/blob/main/docs/mental-models/04-multi-agent-coordinated-research.md">multi-agent mental model</a>
+<a href="https://github.com/arc-labs-ai/agentkit/blob/main/docs/mental-models/04-multi-agent-coordinated-research.md">multi-agent mental model</a>
 walks through coordination end to end and lists the invariants that
 make it correct.</p>
 <h2 id="api">API<a class="headerlink" href="#api" title="Anchor link">&para;</a></h2>
@@ -1370,7 +1378,7 @@ make it correct.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 19:43:40 UTC">August 3, 2026</span>
   </span>
 
     
