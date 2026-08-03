@@ -55,7 +55,7 @@ coordinate a shorter embargo with the reporter.
 
 In scope:
 
-- The `agentkit` Python package published to PyPI.
+- The `arc-agentkit` Python package published to PyPI (imported as `agentkit`).
 - Source in this repository, including build tooling (`pyproject.toml`,
   workflows under `.github/workflows/`).
 
@@ -63,8 +63,8 @@ Out of scope:
 
 - Vulnerabilities in third-party dependencies (report those upstream — we will
   update our pins once a fix is released).
-- Downstream applications that use agentkit (e.g. research·io) — report to the
-  application's own security channel.
+- Downstream applications that consume agentkit as a dependency — report to
+  that application's own security channel.
 - Social engineering of maintainers, physical attacks, or issues in test-only
   code paths.
 

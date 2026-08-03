@@ -1,6 +1,6 @@
 """Fast JSON shim — orjson if installed, stdlib json otherwise.
 
-orjson is gated behind the ``agentkit[fast]`` extra. The two
+orjson is gated behind the ``arc-agentkit[fast]`` extra. The two
 functions here have the EXACT signature the call sites use:
 
 - ``loads(s: str | bytes) -> Any``

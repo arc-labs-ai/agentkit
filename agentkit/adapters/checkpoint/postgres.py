@@ -1,5 +1,5 @@
 """`PostgresCheckpointStore` — durable `CheckpointPort` over Postgres (extra:
-`agentkit[postgres]`, asyncpg).
+`arc-agentkit[postgres]`, asyncpg).
 
 One `agentkit_checkpoints` table keyed by `(run_id, version)`. `state` and `metadata` are JSONB
 (opaque to the port — the producer's snapshot shape is its own concern). An index on

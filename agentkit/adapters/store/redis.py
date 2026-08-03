@@ -1,4 +1,4 @@
-"""`RedisStore` — durable `StorePort` over Redis (extra: `agentkit[redis]`)."""
+"""`RedisStore` — durable `StorePort` over Redis (extra: `arc-agentkit[redis]`)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 
 class RedisStore:
-    """Durable `StorePort` over Redis (extra: `agentkit[redis]`). KV via GET/SET(EX), append-logs via
+    """Durable `StorePort` over Redis (extra: `arc-agentkit[redis]`). KV via GET/SET(EX), append-logs via
     RPUSH/LRANGE, values JSON-encoded. Single-flight is in-process (an `asyncio.Lock` per key); TTL is honored
     natively (SETEX). Inject a `client` (e.g. a fake) for tests; else built from `url`.
     """

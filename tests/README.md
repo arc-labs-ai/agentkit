@@ -61,4 +61,5 @@ kernel + agents + capabilities carry most of the invariants.
 - `docs/mental-models/` — narrative use cases with invariant tables. Each
   invariant names the test file that locks it in. Read these first
   when auditing a subsystem for correctness.
-- `ARCHITECTURE.md` — the framework's shape at 10,000 ft.
+- The top-level docstring in `agentkit/__init__.py` sketches the
+  peer-package discipline at 10,000 ft.

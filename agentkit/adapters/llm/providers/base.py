@@ -11,7 +11,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
-import httpx  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]  — the optional [http] extra (agentkit[http])
+import httpx  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]  — the optional [http] extra (arc-agentkit[http])
 
 from agentkit.kernel._json import JSONDecodeError
 from agentkit.kernel._json import loads as _json_loads
@@ -24,7 +24,7 @@ def _make_client(timeout: float) -> httpx.AsyncClient:
     HTTP/2 multiplexes concurrent streaming requests over one TCP
     connection — meaningful when the Planner fans out to N
     Researchers all hitting the same provider host. Requires the
-    ``h2`` package via the ``agentkit[http]`` extra; we probe and
+    ``h2`` package via the ``arc-agentkit[http]`` extra; we probe and
     silently fall back to HTTP/1.1 when absent.
 
     Explicit Limits prevent a runaway fan-out from exhausting file

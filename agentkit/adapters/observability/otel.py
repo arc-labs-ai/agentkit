@@ -41,7 +41,7 @@ def otel_tracer(tracer_provider: Any = None) -> OtelTracePort:
     except ImportError as exc:
         raise ImportError(
             "OTel observability requires the [observability] extra: "
-            "pip install agentkit[observability]"
+            "pip install arc-agentkit[observability]"
         ) from exc
     if tracer_provider is not None:
         return OtelTracePort(tracer_provider.get_tracer("agentkit"))
@@ -159,7 +159,7 @@ def otel_exporter_otlp_http(*, endpoint: str | None = None) -> None:
     except ImportError as exc:
         raise ImportError(
             "OTLP-HTTP exporter requires the [observability] extra: "
-            "pip install agentkit[observability]"
+            "pip install arc-agentkit[observability]"
         ) from exc
     provider = TracerProvider()
     exporter = OTLPSpanExporter(endpoint=endpoint) if endpoint else OTLPSpanExporter()
@@ -183,7 +183,7 @@ def otel_meter(meter_provider: Any = None, *, instrument_name: str = "agentkit")
         from opentelemetry import metrics as otm
     except ImportError as exc:
         raise ImportError(
-            "OTel metrics requires the [observability] extra: pip install agentkit[observability]"
+            "OTel metrics requires the [observability] extra: pip install arc-agentkit[observability]"
         ) from exc
     if meter_provider is not None:
         return OtelMetricsPort(meter_provider.get_meter(instrument_name))
@@ -284,7 +284,7 @@ def otel_metrics_exporter_otlp_http(
     except ImportError as exc:
         raise ImportError(
             "OTLP-HTTP metrics exporter requires the [observability] extra: "
-            "pip install agentkit[observability]"
+            "pip install arc-agentkit[observability]"
         ) from exc
     exporter = OTLPMetricExporter(endpoint=endpoint) if endpoint else OTLPMetricExporter()
     reader = PeriodicExportingMetricReader(exporter, export_interval_millis=interval_ms)

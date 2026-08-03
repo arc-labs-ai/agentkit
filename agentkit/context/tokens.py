@@ -5,7 +5,7 @@ The counter is the seam that lets ``WorkingContext.tokens()`` answer
 on ``tiktoken`` or a provider-side SDK. The default
 ``ApproxTokenCounter`` is the chars/4 heuristic the rest of agentkit
 already uses; ``TiktokenCounter`` opt-in upgrades to provider-accurate
-counts when ``tiktoken`` is installed (extras: ``agentkit[fast]``).
+counts when ``tiktoken`` is installed (extras: ``arc-agentkit[fast]``).
 
 The counter is intentionally async — a real counter might call a remote
 counting endpoint (provider-side) or warm up an encoder lazily. The
@@ -59,7 +59,7 @@ class ApproxTokenCounter:
 class TiktokenCounter:
     """Provider-accurate when ``tiktoken`` is installed.
 
-    Opt-in dep under ``agentkit[fast]``. Falls back to
+    Opt-in dep under ``arc-agentkit[fast]``. Falls back to
     ``ApproxTokenCounter`` when ``tiktoken`` is absent or fails to load
     (no import error — just less accurate). The encoding name keys
     into tiktoken's registry; ``cl100k_base`` matches GPT-4/3.5 and

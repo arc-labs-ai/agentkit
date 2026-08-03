@@ -626,7 +626,8 @@ snapshots periodically.
 - **The `StorePort.get_or_set` "producer that raises is NOT stored"
   contract holds.** A transient error on row N must not poison the
   cache; the next attempt should re-run. Verified by
-  `test_get_or_set_does_not_cache_failure` in `tests/test_stores.py`.
+  `test_inmemory_get_or_set_raising_fn_does_not_cache_and_next_call_retries`
+  in `tests/adapters/test_stores.py`.
 - **Concurrent snapshots of the same run_id assign distinct versions.**
   `test_concurrent_snapshots_of_same_run_id_produce_distinct_versions`
   locks this; if that ever breaks, resume becomes non-deterministic.

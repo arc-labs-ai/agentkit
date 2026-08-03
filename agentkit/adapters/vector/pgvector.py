@@ -1,4 +1,4 @@
-"""`PgVectorStore` — durable `VectorPort` over Postgres + pgvector (extra: `agentkit[postgres]`).
+"""`PgVectorStore` — durable `VectorPort` over Postgres + pgvector (extra: `arc-agentkit[postgres]`).
 
 The production counterpart to `InMemoryVector`, with the same `upsert`/`search` contract and the same
 dependency-free, deterministic embedding (a feature-hashed, L2-normalized term-frequency vector) — so RAG

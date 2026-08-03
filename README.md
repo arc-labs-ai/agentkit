@@ -130,9 +130,9 @@ stays legible and unit-testable, and swapping a backend never edits the loop.
 
 ## What makes agentkit distinct
 
-- **Zero runtime dependencies in the core.** Install `agentkit` alone and
-  you have a working framework — no `pydantic`, no `httpx`, no vendor SDK.
-  Extras (`http`, `postgres`, `redis`, `observability`) are opt-in.
+- **Zero runtime dependencies in the core.** Install `arc-agentkit` alone
+  and you have a working framework — no `pydantic`, no `httpx`, no vendor
+  SDK. Extras (`http`, `postgres`, `redis`, `observability`) are opt-in.
 - **Ports and adapters, all the way down.** Every I/O seam is a `Protocol`.
   Swap the LLM, the store, the vector DB, the checkpointer, the tracer,
   the metrics port — the loop doesn't move.

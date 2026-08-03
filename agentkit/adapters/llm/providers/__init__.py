@@ -3,7 +3,7 @@
 Two HTTP shapes cover the field: `OpenAICompatibleLLM` (OpenAI · DeepSeek · OpenRouter · Together · Groq ·
 vLLM, via `base_url`) and `AnthropicLLM` (Messages API). Presets — `openai`/`deepseek`/`openrouter`/`claude`
 — wire base_url/auth. Resilience, observability, and result-caching are the middleware chain's job; these
-clients only do the call + parse + cache-aware cost. Requires the extra: `pip install 'agentkit[http]'`.
+clients only do the call + parse + cache-aware cost. Requires the extra: `pip install 'arc-agentkit[http]'`.
 """
 
 try:
@@ -21,7 +21,7 @@ try:
     )
 except ImportError as exc:  # pragma: no cover — friendly nudge to install the transport
     raise ImportError(
-        "agentkit provider clients need httpx — install the extra: pip install 'agentkit[http]'"
+        "agentkit provider clients need httpx — install the extra: pip install 'arc-agentkit[http]'"
     ) from exc
 
 __all__ = [

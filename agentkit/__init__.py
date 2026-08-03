@@ -2,8 +2,7 @@
 
 The framework is organised into peer top-level packages, each owning ONE
 architectural concept. Adding a new concept means adding a new peer
-package, not bloating an existing one. See ARCHITECTURE.md for the full
-discipline.
+package, not bloating an existing one.
 
   kernel/       opinion-free primitives — value types, ports, middleware
                 contract, resilience, concurrency, observation

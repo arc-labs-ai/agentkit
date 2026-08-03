@@ -1,4 +1,4 @@
-"""`PostgresStore` — durable `StorePort` over Postgres (extra: `agentkit[postgres]`, asyncpg)."""
+"""`PostgresStore` — durable `StorePort` over Postgres (extra: `arc-agentkit[postgres]`, asyncpg)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 
 class PostgresStore:
-    """Durable `StorePort` over Postgres (extra: `agentkit[postgres]`, via asyncpg). One KV table +
+    """Durable `StorePort` over Postgres (extra: `arc-agentkit[postgres]`, via asyncpg). One KV table +
     one append-log table, JSON-text values. Call `await init()` once to create the tables. Single-flight is
     in-process; durability/atomicity is Postgres's. TTL is not enforced (no sweeper — use `RedisStore` for TTL).
     Inject a `pool` for tests; else an asyncpg pool is created from `dsn`.

@@ -1,8 +1,9 @@
 # `agentkit.kernel`
 
-Value types (`ChatRequest`, `LLMResult`, `Message`, `Scope`, `Usage`,
-`Budget`), the `Port` protocols, the middleware contract, and the
-concurrency + resilience primitives.
+Value types (`ChatRequest`, `LLMResult`, `Message`, `Scope`, `Usage`),
+the `Port` protocols, the middleware contract, and the concurrency +
+resilience primitives. (`Budget` is a runtime concern — see
+[`api-reference/runtime`](runtime.md).)
 
 See the [Kernel concept](../concepts/kernel.md) for the mental model.
 

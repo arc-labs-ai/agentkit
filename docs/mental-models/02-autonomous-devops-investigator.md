@@ -696,7 +696,7 @@ full trifecta up front.
 - **`Suspended.pending` is a frozen `tuple`, not a mutable `list`.**
   Two doors both locked: the frozen dataclass blocks rebinding, the
   tuple itself blocks item mutation. Verified by
-  `test_suspended_pending_is_a_frozen_tuple` in `tests/test_agents.py`.
+  `test_suspended_pending_is_a_frozen_tuple` in `tests/agents/test_agents.py`.
 - **`Autonomy` values are `AutonomyLiteral` — a typo doesn't silently
   drop to AUTO.** mypy catches this at the seam.
 
