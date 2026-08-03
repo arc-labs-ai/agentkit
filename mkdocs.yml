@@ -114,6 +114,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Tutorial: tutorial.md
   - Concepts:
       - Kernel: concepts/kernel.md
       - Runtime: concepts/runtime.md
@@ -121,6 +122,14 @@ nav:
       - Agents: concepts/agents.md
       - Prompts: concepts/prompts.md
       - Middlewares: concepts/middlewares.md
+  - Recipes:
+      - Overview: recipes/index.md
+      - Human-in-the-loop tool approval: recipes/hitl-tool-approval.md
+      - Resume from a checkpoint after a crash: recipes/resume-after-crash.md
+      - Cap spend with Budget and Quota: recipes/spend-budget-and-quota.md
+      - Parallel agents with cooperative cancellation: recipes/parallel-agents-with-cancellation.md
+      - Write a custom middleware: recipes/custom-middleware.md
+      - Wire OpenTelemetry: recipes/otel-tracing-and-metrics.md
   - API reference:
       - agents: api-reference/agents.md
       - runtime: api-reference/runtime.md
