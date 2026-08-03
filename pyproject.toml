@@ -50,6 +50,33 @@ redis = [
 [tool.hatch.build.targets.wheel]
 packages = ["agentkit"]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["UP046", "UP047"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests idiomatically use in-body imports (module patching), lambdas,
+# broad exception assertions, and mutable defaults for factory shorthand.
+"tests/**" = ["E402", "E501", "E731", "E741", "B008", "B011", "B015", "B017", "ASYNC109"]
+# Package __init__.py files re-export the public surface — flake8 rules
+# that assume every import is used-inline don't fit.
+"agentkit/**/__init__.py" = ["F401", "E402"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+# Optional third-party integrations are imported behind `try/except ImportError`.
+# When the extra isn't installed there's no stub to load — that's the whole
+# point of the guard, not a real type error.
+[[tool.mypy.overrides]]
+module = ["pydantic", "pydantic.*"]
+ignore_missing_imports = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -59,4 +86,13 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "hypothesis>=6.100",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocs-git-revision-date-localized-plugin>=1.2",
+    "mkdocstrings[python]>=0.26",
+    "pymdown-extensions>=10.9",
 ]

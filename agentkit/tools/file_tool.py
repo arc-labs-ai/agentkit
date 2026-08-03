@@ -70,9 +70,7 @@ class InMemoryFiles:
         return f"edited {path}"
 
     async def insert(self, path: str, insert_line: int, insert_text: str) -> str:
-        lines = self._read(path).split(
-            "\n"
-        )  # split (not splitlines): preserves a trailing "" / \r\n
+        lines = self._read(path).split("\n")  # split (not splitlines): preserves a trailing "" / \r\n
         if not 0 <= insert_line <= len(lines):
             raise ValueError(f"insert_line {insert_line} out of range (0..{len(lines)}) for {path}")
         lines.insert(insert_line, insert_text.rstrip("\n"))
@@ -80,9 +78,7 @@ class InMemoryFiles:
         return f"inserted into {path} at line {insert_line}"
 
     async def delete(self, path: str) -> str:
-        removed = [
-            p for p in list(self._files) if p == path or p.startswith(path.rstrip("/") + "/")
-        ]
+        removed = [p for p in list(self._files) if p == path or p.startswith(path.rstrip("/") + "/")]
         if not removed:
             raise FileNotFoundError(path)
         for p in removed:
@@ -100,7 +96,10 @@ class InMemoryFiles:
 def _schema() -> ToolSchema:
     return ToolSchema(
         name="memory",
-        description="Persistent note memory the agent manages itself: view/create/str_replace/insert/delete/rename files under a path.",
+        description=(
+            "Persistent note memory the agent manages itself: "
+            "view/create/str_replace/insert/delete/rename files under a path."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -187,8 +186,7 @@ class FileTool:
             # specific subpath or file.
             if path == self.root:
                 raise PermissionError(
-                    f"memory delete: refuses to wipe root path {self.root!r}; "
-                    "delete a specific subpath or file"
+                    f"memory delete: refuses to wipe root path {self.root!r}; delete a specific subpath or file"
                 )
             return await self._fs.delete(path)
         self._require(args, cmd, "new_path")  # rename

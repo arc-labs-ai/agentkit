@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentkit.kernel.observation import TraceContext
-from agentkit.kernel.replay import ReplayRecord, ReplayStore, NoopReplayStore
+from agentkit.kernel.replay import NoopReplayStore, ReplayRecord, ReplayStore
 from agentkit.kernel.types import ChatRequest, Message
 from agentkit.middlewares import tracing
 from agentkit.runtime import Invoker, RunContext, Services

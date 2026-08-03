@@ -8,12 +8,12 @@ share, so tool approval (the loop), node gates (the graph), and step gates all d
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from agentkit.agents.result import Suspended  # re-exported: the suspend/resume value
 
 
-class Autonomy(str, Enum):
+class Autonomy(StrEnum):
     """Run-wide autonomy tier. Carried on ``RunContext.autonomy`` and consulted by
     :func:`should_gate` to decide which actions pause for a human.
 
@@ -27,9 +27,7 @@ class Autonomy(str, Enum):
     MANUAL = "manual"
 
 
-def should_gate(
-    autonomy: Autonomy | str, *, requires_approval: bool = False, key_step: bool = False
-) -> bool:
+def should_gate(autonomy: Autonomy | str, *, requires_approval: bool = False, key_step: bool = False) -> bool:
     """Decide whether an action pauses for a human, given the run autonomy + per-action flags.
 
     - **MANUAL** → gate everything.

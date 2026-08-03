@@ -1,8 +1,8 @@
 site_name: agentkit
 site_description: A low-level, composable framework for agentic-AI features in Python.
-site_url: https://arc-labs.github.io/agentkit/
-repo_url: https://github.com/arc-labs/agentkit
-repo_name: arc-labs/agentkit
+site_url: https://arc-labs-ai.github.io/agentkit/
+repo_url: https://github.com/arc-labs-ai/agentkit
+repo_name: arc-labs-ai/agentkit
 edit_uri: edit/main/docs/
 copyright: Copyright &copy; Arc Labs
 
@@ -140,5 +140,5 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/arc-labs/agentkit
+      link: https://github.com/arc-labs-ai/agentkit
   generator: false

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agentkit.kernel.observation import Observation
 
@@ -21,7 +22,7 @@ class Hooks:
         self._handlers: dict[str, list[Callable[[Observation], Any]]] = {}
         self._inner = inner
 
-    def on(self, stage: str, handler: Callable[[Observation], Any]) -> "Hooks":
+    def on(self, stage: str, handler: Callable[[Observation], Any]) -> Hooks:
         self._handlers.setdefault(stage, []).append(handler)
         return self
 

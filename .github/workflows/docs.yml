@@ -46,11 +46,13 @@ jobs:
         if: steps.mkdocs-config.outputs.present == 'true'
         run: uv python install 3.12
 
+      - name: Install docs dependencies
+        if: steps.mkdocs-config.outputs.present == 'true'
+        run: uv sync --group docs
+
       - name: Build site (strict)
         if: steps.mkdocs-config.outputs.present == 'true'
-        run: |
-          uv run --with mkdocs --with mkdocs-material \
-            mkdocs build --strict
+        run: uv run mkdocs build --strict
 
       - name: Deploy to gh-pages
         if: steps.mkdocs-config.outputs.present == 'true'

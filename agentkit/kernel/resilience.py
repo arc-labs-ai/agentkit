@@ -31,7 +31,7 @@ from typing import Any, Literal
 BreakerState = Literal["closed", "open", "half_open"]
 
 
-class ErrorClass(str, enum.Enum):
+class ErrorClass(enum.StrEnum):
     TRANSIENT = "transient"  # retry
     PERMANENT = "permanent"  # fail fast
     UNKNOWN = "unknown"  # conservative
@@ -93,9 +93,7 @@ def classify(exc: BaseException) -> ErrorClass:
     return ErrorClass.UNKNOWN
 
 
-def backoff_delay(
-    attempt: int, *, base: float = 0.5, cap: float = 30.0, rng: Any = random
-) -> float:
+def backoff_delay(attempt: int, *, base: float = 0.5, cap: float = 30.0, rng: Any = random) -> float:
     """Full-jitter exponential backoff (prevents retry storms across workers)."""
     ceiling = min(cap, base * (2 ** (attempt - 1)))
     delay: float = rng.uniform(0, ceiling)
@@ -128,9 +126,7 @@ class CircuitBreaker:
             return True
         if self.state == "half_open":
             return False  # a probe is already in flight → admit no others
-        if (
-            self.clock() - self._opened_at >= self.cooldown
-        ):  # open + cooled down → admit exactly ONE probe
+        if self.clock() - self._opened_at >= self.cooldown:  # open + cooled down → admit exactly ONE probe
             self.state = "half_open"
             return True
         return False  # open, still cooling down
@@ -183,9 +179,7 @@ def _stable_default(o: Any) -> Any:
     # Mappings that ``json`` can't natively encode (``MappingProxyType``
     # from ``ToolCall.arguments`` is the load-bearing case — the type
     # is used as a read-only view over the caller-supplied dict).
-    if isinstance(o, _types.MappingProxyType) or (
-        isinstance(o, _Mapping) and not isinstance(o, dict)
-    ):
+    if isinstance(o, _types.MappingProxyType) or (isinstance(o, _Mapping) and not isinstance(o, dict)):
         return dict(o)
     # Enums — value (already JSON-friendly if str/int).
     if isinstance(o, enum.Enum):
@@ -244,9 +238,7 @@ def stable_hash(obj: Any, *, length: int = 16) -> str:
     type-name + sorted-vars rather than ``str(o)`` so two semantically
     identical instances always hash to the same value across processes,
     avoiding silent cache-key drift."""
-    return hashlib.sha256(
-        json.dumps(obj, sort_keys=True, default=_stable_default).encode()
-    ).hexdigest()[:length]
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, default=_stable_default).encode()).hexdigest()[:length]
 
 
 def idempotency_key(*parts: Any) -> str:
@@ -298,6 +290,4 @@ async def run_with_resilience(
             if cls is ErrorClass.PERMANENT or attempt == max_attempts:
                 raise
             await asleep(backoff_delay(attempt, rng=rng))
-    raise (
-        last if last is not None else RuntimeError("run_with_resilience: no attempt ran")
-    )  # pragma: no cover
+    raise (last if last is not None else RuntimeError("run_with_resilience: no attempt ran"))  # pragma: no cover

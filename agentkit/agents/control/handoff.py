@@ -179,7 +179,7 @@ def handoff_tool(
 
 
 def route_by_handoff(default: str = "", *, marker: str = HANDOFF_MARKER) -> Selector:
-    """Build a coordinator Agent + SelectorPolicy selector (a `Selector` per `agents/control/selector.py`) that routes by `Handoff`.
+    """Build a coordinator selector (a `Selector` per `agents/control/selector.py`) that routes by `Handoff`.
 
     Reads the LAST assistant-or-tool message in the transcript. If it carries a Handoff
     (parsed via `parse_handoff`), routes to the named target. Otherwise returns `default` —

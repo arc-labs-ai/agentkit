@@ -7,7 +7,7 @@ work the `Invoker` runs through a middleware chain.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Literal
 
@@ -16,7 +16,7 @@ from typing import Any, Literal
 StreamEventType = Literal["message_delta", "tool_call", "tool_result", "step", "interrupt", "final"]
 
 
-class Operation(str, Enum):
+class Operation(StrEnum):
     """The kind of unit of work a middleware is intercepting — match on it in a middleware
     (`if ctx.operation == Operation.MODEL_CALL: …`). A `str` enum, so `== "model_call"` also holds."""
 
@@ -86,9 +86,7 @@ class ToolCall:
     def __deepcopy__(self, memo: dict[int, Any]) -> ToolCall:
         import copy as _copy
 
-        return ToolCall(
-            id=self.id, name=self.name, arguments=_copy.deepcopy(dict(self.arguments), memo)
-        )
+        return ToolCall(id=self.id, name=self.name, arguments=_copy.deepcopy(dict(self.arguments), memo))
 
     def __copy__(self) -> ToolCall:
         return ToolCall(id=self.id, name=self.name, arguments=dict(self.arguments))
@@ -155,9 +153,7 @@ class Delta:
     usage: Usage | None = None  # set on the terminal delta
     provider: str | None = None
     finish_reason: str | None = None  # set on the terminal delta
-    tool_calls: tuple[
-        ToolCall, ...
-    ] = ()  # tool calls revealed this delta (providers send them whole)
+    tool_calls: tuple[ToolCall, ...] = ()  # tool calls revealed this delta (providers send them whole)
     parsed: Any = None  # set by the response-coerce middleware on a synthetic post-terminal
     # delta when an output schema adapter is wired; carries the typed
     # object so ``assemble_deltas`` can lift it onto ``LLMResult.parsed``.

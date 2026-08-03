@@ -57,7 +57,8 @@ publish-dry: build ## Build + validate distributions with twine (no upload)
 # ── Docs ────────────────────────────────────────────────────────────────────
 
 docs-serve: ## Serve the mkdocs site locally with live reload
-	uv run --with mkdocs --with mkdocs-material mkdocs serve
+	uv sync --group docs
+	uv run mkdocs serve
 
 # ── Housekeeping ────────────────────────────────────────────────────────────
 
