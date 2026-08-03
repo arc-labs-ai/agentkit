@@ -1,0 +1,1962 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/mental-models/01-multi-tenant-chat-with-docs/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Mental Model: Multi-Tenant "Chat with Docs" SaaS - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mental-model-multi-tenant-chat-with-docs-saas" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mental Model: Multi-Tenant "Chat with Docs" SaaS
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User experience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-actually-works-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it actually works end-to-end
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composition-sketch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composition sketch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-it-can-fail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where it can fail
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where it can fail">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#framework-level-failures-the-frameworks-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Framework-level failures (the framework's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-level-failures-the-wirings-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration-level failures (the wiring's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-level-failures-the-apps-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application-level failures (the app's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-output-on-a-successful-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected output on a successful run
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Expected output on a successful run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-final-agentresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The final AgentResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-streamevent-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The StreamEvent sequence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observer-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observer stream
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#meter-state-after-the-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Meter state after the run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedmemory-state-after-the-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CachedMemory state after the run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-automated-run-the-tests-locked-to-the-invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Automated: run the tests locked to the invariants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-structural-grep-for-load-bearing-scope-threading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Structural: grep for load-bearing scope threading
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-adversarial-two-tenant-smoke-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Adversarial: two-tenant smoke test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-failing-would-look-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What "failing" would look like
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correctness-checklist-for-future-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correctness checklist (for future changes)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-primitives-it-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The primitives it exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-deliberately-doesnt-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it deliberately doesn't use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tensions-to-hold-in-mind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tensions to hold in mind
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-use-case-tests-about-agentkit-reverse-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this use case tests about agentkit (reverse view)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mental-model-multi-tenant-chat-with-docs-saas">Mental Model: Multi-Tenant "Chat with Docs" SaaS<a class="headerlink" href="#mental-model-multi-tenant-chat-with-docs-saas" title="Anchor link">&para;</a></h1>
+<p>The tenant-isolation story. This use case exists to prove that the framework
+can safely serve many customers from one process without one tenant's data ever
+leaking into another's context — even under concurrent load, even when the
+in-process cache is warm, even when a stray retry middleware retries a request
+that a different tenant is also making.</p>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Anchor link">&para;</a></h2>
+<p>Multi-tenant SaaS is the archetypal cross-cutting-concern challenge. Data
+isolation cannot be a promise the application layer remembers to enforce; it
+has to be a property the framework enforces <strong>structurally</strong>. The threat
+model isn't primarily malice — the more common failure is a well-meaning
+optimization (a shared cache, a shared memoize middleware, a "helpful"
+global rate limiter) that reads or writes across the tenant axis by accident.</p>
+<p>A tenant is identified by <code>Scope(org_id, domain_id)</code>. Every layer that
+touches persistent state (memory, cache, quota meter, audit log) must key
+its state on that scope. The framework's job is to make that keying:</p>
+<ul>
+<li><strong>Explicit</strong> — no primitive silently unpartitions across tenants.</li>
+<li><strong>Ergonomic</strong> — the app doesn't thread scope by hand through every call;
+  it lives on <code>RunContext.scope</code> and every consumer reads from there.</li>
+<li><strong>Verifiable</strong> — a grep or a test can prove tenant isolation across
+  every hop.</li>
+</ul>
+<h2 id="user-experience">User experience<a class="headerlink" href="#user-experience" title="Anchor link">&para;</a></h2>
+<p>Company A signs up. Their SOC 2 evidence PDFs get uploaded and indexed under
+<code>Scope(org_id=1, domain_id=1)</code>. Company B does the same under <code>Scope(2, 1)</code>.</p>
+<p>At <code>t=0</code>, Ellen (org 1) asks <em>"What's our incident-response protocol?"</em> At
+<code>t=3ms</code>, Priya (org 2) asks the exact same question. Both requests hit the
+same server process, the same LLM adapter, the same <code>InMemoryStore</code>, the
+same warm CachedMemory.</p>
+<p>Ellen sees her company's real protocol, cited to her SOC 2 doc. Priya sees
+her company's protocol, cited to her SOC 2 doc. Neither sees a hint the
+other exists. Their token counts accrue to their own tenant Quota, not to
+each other's.</p>
+<p>Ellen finishes her chat, refreshes, asks the same question again. This time
+CachedMemory has her result — instant reply, no LLM call, no wasted spend
+— but <em>only</em> for Ellen's tenant. Priya asking the same question a minute
+later still misses the cache in her partition.</p>
+<h2 id="how-it-actually-works-end-to-end">How it actually works end-to-end<a class="headerlink" href="#how-it-actually-works-end-to-end" title="Anchor link">&para;</a></h2>
+<p>Walk through the internal state as one successful request flows through the
+framework. Ellen's <code>POST /chat</code> arrives; the server has already extracted
+her <code>Scope(1, 1)</code> from her JWT.</p>
+<p><strong>t=0ms — Request setup.</strong> The HTTP layer builds a <code>RunContext</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ctx = RunContext(
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    correlation_id=&quot;chat-abc123&quot;,
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    scope=Scope(org_id=1, domain_id=1),
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    budget=Budget(max_cost_usd=0.10, max_calls=8),
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    services=Services(invoker=&lt;shared&gt;, observer=&lt;per-request&gt;,
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                      trace=&lt;per-request&gt;),
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    meters=[quota_per_org],       # tenant-partitioned by scope.key()
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    cancel=CancellationToken(),
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    autonomy=&quot;auto&quot;,
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>)
+</span></code></pre></div>
+<p>The <code>invoker</code> and <code>quota_per_org</code> are <strong>shared</strong> across all tenants — that's
+what makes the framework cheap. What partitions is <code>scope</code>.</p>
+<p><strong>t=1ms — Agent.run entered.</strong> The Agent's ReActCognition begins its drive.
+It resolves the RequestBuilder, deep-copies its termination condition (per
+<code>AKT34</code> — no cross-drive state), then hands off to <code>_iterate</code>.</p>
+<p><strong>t=2ms — Invoker.stream called.</strong> ReAct constructs a <code>ChatRequest</code>,
+threads the output_adapter through <code>meta={"output_adapter": None}</code> (nothing
+structured here), and calls <code>ctx.invoker.stream(req, ctx, meta=...)</code>. The
+Invoker wraps this into a <code>Call("chat", req, ctx, meta={...})</code> and runs
+the chat-middleware chain.</p>
+<p><strong>t=3ms — Meter guard fires.</strong> The <code>meter()</code> middleware runs
+<code>on_request</code>. It iterates <code>ctx.all_meters</code> — which is <code>[budget, quota]</code> —
+and calls <code>guard(call)</code> on each. <code>Budget.guard</code> checks the run-wide cost
+ceiling. <code>Quota.guard</code> derives <code>key = call.ctx.scope.key() = "org1:dom1"</code>
+and checks THAT partition's RPM / TPM / USD windows. If either meter is
+over ceiling, <code>MeterExceeded</code> raises here, before any spend.</p>
+<p><strong>t=4ms — LLM stream begins.</strong> The chain terminates in the LLM adapter's
+<code>stream(...)</code>. Deltas start flowing back:
+- Delta 1: <code>text="Your"</code>, no tool_calls, no usage
+- Delta 2: <code>text=" incident"</code>, ...
+- Delta N (terminal): <code>text="", finish_reason="tool_calls",
+  tool_calls=(ToolCall("c1", "search_docs", {"query": "incident response protocol"}),)</code></p>
+<p>Each <code>text</code> delta the cognition emits as <code>StreamEvent("message_delta", text=...)</code>
+so the SSE handler can push it to Ellen's browser in real time.</p>
+<p><strong>t=~800ms — Assemble deltas, dispatch tool.</strong> <code>assemble_deltas</code> folds
+the stream into an <code>LLMResult(content="Your incident...", tool_calls=(tc,))</code>.
+Because the response has tool_calls, ReAct appends the assistant turn to
+the transcript and dispatches the tool via <code>ctx.invoker.invoke_tool(...)</code>.</p>
+<p><strong>t=~801ms — Tool executes.</strong> The <code>search_docs</code> FunctionTool's inner
+callable reaches into memory:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>memory = ScopedMemory(               # tenant guard
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    CachedMemory(                    # in-proc TTL cache
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        VectorMemory(index=...)      # concrete backend
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    )
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>)
+</span></code></pre></div>
+<ul>
+<li><code>ScopedMemory._check(ctx)</code> runs FIRST — reads <code>ctx.scope.org_id=1</code> and
+  <code>ctx.scope.domain_id=1</code>, both truthy, returns True. If ANY layer forgot
+  to thread scope, this is the choke point that raises <code>PermissionError</code>.</li>
+<li><code>CachedMemory.query(query, k=5, ctx, where=None)</code> computes
+  <code>key = ("org1:dom1", "incident response protocol", 5, "{}")</code> and looks
+  it up. On the first call — miss. Delegates to <code>inner.query</code>.</li>
+<li><code>VectorMemory.search(scope=Scope(1,1), query="incident...", k=5)</code> returns
+  three <code>MemoryItem</code> objects from Ellen's tenant's index. Different vector
+  backends implement scope differently (namespace, filter, separate index);
+  the port contract just says "search within this scope".</li>
+<li>CachedMemory stores <code>(now, list(items))</code> — a defensive copy — under the
+  scope-partitioned key. Returns <code>list(items)</code> — another defensive copy —
+  to the caller.</li>
+</ul>
+<p><strong>t=~850ms — Tool result flows back.</strong> The <code>search_docs</code> result becomes a
+<code>Message(role="tool", content="&lt;chunks joined&gt;", tool_call_id="c1")</code> and
+lands in the transcript. ReAct emits <code>StreamEvent("tool_result", tool_call=..., tool_result=...)</code>.</p>
+<p><strong>t=~851ms — Next LLM turn.</strong> The transcript now has the tool result;
+another <code>invoker.stream(...)</code> call. The LLM synthesizes a final answer citing
+the chunks. This time there are no tool_calls — the terminal delta has
+<code>finish_reason="stop"</code>.</p>
+<p><strong>t=~1400ms — Charge + emit final.</strong> Meter middleware's <code>on_response</code>
+fires: <code>budget.charge(call, usage)</code> and <code>quota.charge(call, usage)</code> each
+land the spend under <code>scope.key()="org1:dom1"</code>. <code>budget.spent_usd</code> for THIS
+run goes up; <code>quota._charges["org1:dom1"]</code> gets a new entry. Ellen's meter
+moved; the shared meter's other partitions are untouched.</p>
+<p><strong>t=~1401ms — Final event.</strong> ReAct yields
+<code>StreamEvent("final", result=AgentResult(output="Your incident response...", usage=&lt;total&gt;, ...), usage=&lt;total&gt;)</code>.
+The SSE handler closes the stream.</p>
+<p>Meanwhile, Priya's parallel request has been running through the same
+Invoker, same LLM adapter, same CachedMemory instance — but with
+<code>ctx.scope=Scope(2, 1)</code>. Every scope-keyed lookup lands in a different
+partition. Ellen's cache entries are invisible to Priya's queries.</p>
+<h2 id="composition-sketch">Composition sketch<a class="headerlink" href="#composition-sketch" title="Anchor link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>UI  ──▶  chat endpoint
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>              │  scope = Scope(org_id=A, domain_id=…)
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>              ▼
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        Agent(name=&quot;assistant&quot;,
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>              cognition=ReActCognition(tools=[search_docs]),
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>              output=None)
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>              │
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>              ▼
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>        Middleware chain (shared Invoker; per-tenant Quota):
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>          tracing → meter(budget + per-tenant Quota) →
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>          retry → LLMPort
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>              │
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>              ▼
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        search_docs = FunctionTool wrapping:
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>          ScopedMemory(               # tenant gate
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>            CachedMemory(              # in-proc TTL cache, scope-partitioned
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>              VectorMemory(            # concrete backend
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>                scope=ctx.scope        # tenant-scoped index namespace
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>              )))
+</span></code></pre></div>
+<p><strong>Adapter contract</strong>: LLM/Store adapters MUST NOT retain state keyed on anything other than the process/instance. Per-tenant isolation lives in <code>scope</code>, threaded through <code>RunContext.child()</code>, NOT inside adapters.</p>
+<h2 id="where-it-can-fail">Where it can fail<a class="headerlink" href="#where-it-can-fail" title="Anchor link">&para;</a></h2>
+<p>Enumerated so a code reviewer can walk the list. Each is a real risk if
+the framework's invariants slip.</p>
+<h3 id="framework-level-failures-the-frameworks-job-to-prevent">Framework-level failures (the framework's job to prevent)<a class="headerlink" href="#framework-level-failures-the-frameworks-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>Cache key drops the scope axis.</strong> A refactor to <code>CachedMemory._key</code>
+   that forgets the <code>scope_key</code> argument → tenant B's identical query hits
+   tenant A's cache entry. <em>Locked by <code>test_cache_is_partitioned_by_scope</code>.</em></li>
+<li><strong>Cache returns internal list by reference.</strong> A caller that mutates
+   the returned list corrupts the cache for the whole TTL window,
+   affecting subsequent hits from the same tenant. <em>Locked by
+   <code>test_cached_result_is_isolated_from_caller_mutation</code>.</em></li>
+<li><strong><code>where</code> dict with unhashable values crashes the lookup.</strong> Filters
+   like <code>{"tags": ["a", "b"]}</code> would break the cache key. <em>Locked by
+   <code>test_cache_accepts_unhashable_where_values</code>.</em></li>
+<li><strong>Meter middleware not iterating <code>ctx.all_meters</code>.</strong> A regression that
+   only guards <code>Budget</code> and skips per-tenant <code>Quota</code> → runaway spend
+   under load. <em>Locked by
+   <code>test_quota_isolates_tenants_end_to_end_through_meter_middleware</code>.</em></li>
+<li><strong>Meter iteration order changes.</strong> Currently <code>Budget</code> is first, so
+   its trip short-circuits <code>Quota.charge</code>. A reordering could double-charge
+   or under-charge. <em>Locked by
+   <code>test_budget_and_quota_both_engaged_through_meter_middleware</code>.</em></li>
+<li><strong>ScopedMemory's enforce becomes bypassable.</strong> If <code>ScopedMemory._check</code>
+   raised only warnings instead of <code>PermissionError</code>, a scope-less run
+   would silently reach VectorMemory. <em>Locked by
+   <code>test_scoped_memory_rejects_missing_scope</code>.</em></li>
+<li><strong><code>RunContext.child()</code> doesn't inherit scope.</strong> A sub-agent (e.g., a
+   Skill invoked as a tool) would run without a tenant identity → the
+   ScopedMemory gate would fail loud, but only after the sub-run had
+   already started. <em>Structurally verified: <code>child()</code> sets
+   <code>scope=self.scope</code> (shared reference).</em></li>
+</ol>
+<h3 id="integration-level-failures-the-wirings-job-to-prevent">Integration-level failures (the wiring's job to prevent)<a class="headerlink" href="#integration-level-failures-the-wirings-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong><code>Invoker</code> wiring forgets the meter middleware.</strong> No <code>meter()</code> in
+   <code>chat_middleware</code> → no Quota enforcement → tenant B's runaway consumption
+   burns tenant A's budget. <em>Not lockable at the framework layer; a
+   wire-up smoke test in the SaaS product's tests is the right place.</em></li>
+<li><strong><code>RunContext.scope</code> extracted from the wrong request field.</strong> JWT
+   parsing bug puts tenant B's scope into tenant A's <code>RunContext</code>. <em>Not
+   a framework concern; the SaaS product's auth layer.</em></li>
+<li><strong><code>VectorMemory</code> backend doesn't honour the scope on <code>search</code>.</strong> A
+   Pinecone / Weaviate namespace bug returns cross-tenant vectors even
+   though the scope was correctly threaded. <em>The <code>VectorPort</code> contract
+   requires per-scope isolation; the adapter carries this contract.</em></li>
+<li><strong>Streaming transport crosses tenant sessions.</strong> The framework yields
+   <code>StreamEvent</code>s; whichever transport (SSE, WebSocket) fans them out
+   must not route tenant A's tokens onto tenant B's connection. <em>Transport
+   layer's job; the framework only guarantees per-run stream ordering.</em></li>
+</ol>
+<h3 id="application-level-failures-the-apps-job-to-prevent">Application-level failures (the app's job to prevent)<a class="headerlink" href="#application-level-failures-the-apps-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>Tools written that ignore <code>ctx</code>.</strong> A <code>search_docs</code> implementation that
+   reads a global connection pool without threading scope would read across
+   tenants. Only the tool author can prevent this — but the framework's
+   <code>Tool.run(args, ctx)</code> signature at least surfaces <code>ctx</code> so the author has
+   the tenant context available.</li>
+<li><strong>Custom <code>MemorySource</code> doesn't respect scope in <code>write</code>.</strong> The
+   <code>MemorySource.write</code> contract asks the impl to key by <code>ctx.scope</code>; a
+   custom impl that forgets writes tenant A's items into the shared
+   namespace. Same principle: the framework provides <code>ctx</code>; the impl
+   must use it.</li>
+<li><strong><code>scope.org_id=0</code> is treated as unscoped</strong> by <code>_default_enforce</code> (falsy int). If your tenant IDs start at 0, override the enforce callable or use non-zero IDs.</li>
+</ol>
+<h2 id="invariants-matrix">Invariants matrix<a class="headerlink" href="#invariants-matrix" title="Anchor link">&para;</a></h2>
+<p>Every row is a property the framework MUST hold. Each row names the test
+that locks it in — if you're changing code that touches these areas,
+verify the test still asserts what its name claims.</p>
+<table>
+<thead>
+<tr>
+<th>Invariant</th>
+<th>Concrete failure if violated</th>
+<th>Locked by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Scope partitions the cache key</strong> — <code>(scope_key, query, k, where)</code></td>
+<td>Tenant B's identical query hits tenant A's cached items → cross-tenant read</td>
+<td><code>test_cache_is_partitioned_by_scope</code> in <code>tests/memory/test_cached_memory.py</code></td>
+</tr>
+<tr>
+<td><strong><code>ScopedMemory.enforce</code> cannot be bypassed</strong> at wire-time</td>
+<td>A caller layering <code>CachedMemory(VectorMemory)</code> without the outer guard reads every tenant's index</td>
+<td><code>test_scoped_memory_rejects_missing_scope</code> in <code>tests/memory/test_scoped_memory.py</code></td>
+</tr>
+<tr>
+<td><strong><code>where</code> dict may contain unhashable values</strong> without crashing the cache</td>
+<td>A filter like <code>{"tags": ["security","finance"]}</code> blows up the key lookup, forcing repeated round-trips</td>
+<td><code>test_cache_accepts_unhashable_where_values</code></td>
+</tr>
+<tr>
+<td><strong>Cache reads return a defensive copy</strong></td>
+<td>UI dedupes the returned list → mutates the cache → next tenant's read sees the dedup</td>
+<td><code>test_cached_result_is_isolated_from_caller_mutation</code></td>
+</tr>
+<tr>
+<td><strong>Cache key stable across dict ordering</strong></td>
+<td>Semantically-equal filters double-fetch → cost overrun + non-deterministic behaviour</td>
+<td><code>test_cache_key_stable_across_where_dict_ordering</code></td>
+</tr>
+<tr>
+<td><strong>Per-tenant Quota clamps runaway spend</strong></td>
+<td>A stuck retry loop on tenant B burns tenant A's budget</td>
+<td><code>test_quota_isolates_tenants_end_to_end_through_meter_middleware</code>, <code>test_budget_and_quota_both_engaged_through_meter_middleware</code> in <code>tests/runtime/test_meter.py</code></td>
+</tr>
+<tr>
+<td><strong>Streaming per response is in-order</strong></td>
+<td>Interleaved responses corrupt one user's transcript with another's tokens</td>
+<td>Framework-level: <code>assemble_deltas</code> reducer + property tests on stream operators</td>
+</tr>
+<tr>
+<td><strong><code>RunContext.child()</code> inherits scope</strong></td>
+<td>A sub-agent runs without tenant identity; ScopedMemory then blocks it, but only after the child was already spawned</td>
+<td>Structural — <code>RunContext.child</code> sets <code>scope=self.scope</code></td>
+</tr>
+<tr>
+<td><strong>Every retrieval tool declares <code>caps=("private_data",)</code></strong></td>
+<td>Adding an egress tool later doesn't auto-flag the emergent trifecta</td>
+<td>Needs a lint check — currently a gap; a <code>RunPolicy</code> panel test would cover it</td>
+</tr>
+</tbody>
+</table>
+<h2 id="expected-output-on-a-successful-run">Expected output on a successful run<a class="headerlink" href="#expected-output-on-a-successful-run" title="Anchor link">&para;</a></h2>
+<p>After Ellen's chat completes cleanly, the framework produces the following
+concrete artifacts. Any deviation from these shapes on a green run is a
+signal.</p>
+<h3 id="the-final-agentresult">The final <code>AgentResult</code><a class="headerlink" href="#the-final-agentresult" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">AgentResult</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">output</span><span class="o">=</span><span class="s2">&quot;Your incident-response protocol at Company A begins with...&quot;</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">usage</span><span class="o">=</span><span class="n">Usage</span><span class="p">(</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">input_tokens</span><span class="o">=</span><span class="mi">1247</span><span class="p">,</span>      <span class="c1"># prompt + tool result</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="n">output_tokens</span><span class="o">=</span><span class="mi">312</span><span class="p">,</span>      <span class="c1"># assistant tokens</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="n">cost_usd</span><span class="o">=</span><span class="mf">0.0034</span><span class="p">,</span>        <span class="c1"># computed by adapter</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">cache_read_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>    <span class="c1"># no prompt-cache hit on cold turn</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="n">cache_write_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="p">),</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="n">partial</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>              <span class="c1"># ran to a stop, not a repair-exhausted fallback</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">evals</span><span class="o">=</span><span class="p">{},</span>                   <span class="c1"># no HITL suspend, no policy verdict attached</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">parsed</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                <span class="c1"># no structured output adapter</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">prompt_version</span><span class="o">=</span><span class="s2">&quot;researcher-chat-v1&quot;</span><span class="p">,</span>  <span class="c1"># from the wired RequestBuilder</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Key checks:</p>
+<ul>
+<li><code>partial=False</code> — a healthy run completes; <code>partial=True</code> signals a
+  <code>max_iterations</code> ceiling, an unrepaired <code>parse</code> failure, or a suspended
+  HITL run. On a chat, only <code>parse</code> failure would produce partial (and this
+  use case doesn't wire <code>parse</code>).</li>
+<li><code>evals</code> is empty — this run had no HITL gates, no policy verdicts, no
+  step-level errors surviving the loop.</li>
+<li><code>usage.cost_usd</code> matches the sum of every LLM turn's charge on this run.</li>
+</ul>
+<h3 id="the-streamevent-sequence">The <code>StreamEvent</code> sequence<a class="headerlink" href="#the-streamevent-sequence" title="Anchor link">&para;</a></h3>
+<p>The stream that flows to the SSE handler (ordered):</p>
+<ol>
+<li><code>StreamEvent(type="message_delta", text="Your")</code> — first token</li>
+<li><code>StreamEvent(type="message_delta", text=" incident")</code> — subsequent tokens</li>
+<li>… (dozens of message_delta events until the model requests a tool call)</li>
+<li><code>StreamEvent(type="tool_call", tool_call=ToolCall("c1", "search_docs", {"query": "..."}))</code></li>
+<li><code>StreamEvent(type="tool_result", tool_call=&lt;same&gt;, tool_result=&lt;chunks joined&gt;)</code></li>
+<li><code>StreamEvent(type="step", text="iteration:1")</code></li>
+<li><code>StreamEvent(type="message_delta", text="Your")</code> — start of turn 2</li>
+<li>… (more text deltas)</li>
+<li><code>StreamEvent(type="final", result=AgentResult(...), usage=Usage(...))</code></li>
+</ol>
+<p>If you saw an <code>interrupt</code> event, that would mean a <code>requires_approval=True</code>
+tool was invoked. This use case wires no such tool.</p>
+<h3 id="observer-stream">Observer stream<a class="headerlink" href="#observer-stream" title="Anchor link">&para;</a></h3>
+<p>Product-facing observations delivered to the wired <code>ObserverPort</code>:</p>
+<ul>
+<li><code>Observation(kind="progress", render="chat run starting", agent="assistant", run_id="chat-abc123", ...)</code></li>
+<li>Zero-or-more <code>Observation(kind="partial_result", ...)</code> if the app emits them</li>
+<li>Exactly one <code>Observation(kind="result", render="chat done", payload={"tokens": 312}, ...)</code></li>
+</ul>
+<p>The <code>run_id</code> on every observation equals <code>ctx.correlation_id="chat-abc123"</code>.
+The <code>trace_context</code> field is set iff a tracer was wired and a span was open
+at emit time.</p>
+<h3 id="meter-state-after-the-run">Meter state after the run<a class="headerlink" href="#meter-state-after-the-run" title="Anchor link">&para;</a></h3>
+<p>Assuming tenants 1 and 2 both ran once:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">budget</span><span class="o">.</span><span class="n">spent_usd</span>    <span class="o">==</span> <span class="mf">0.0034</span> <span class="o">+</span> <span class="o">...</span>    <span class="c1"># shared: the run-wide budget</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">budget</span><span class="o">.</span><span class="n">calls</span>        <span class="o">==</span> <span class="mi">2</span>                <span class="c1"># both chat turns counted</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">quota</span><span class="o">.</span><span class="n">_charges</span><span class="p">[</span><span class="s2">&quot;org1:dom1&quot;</span><span class="p">]</span>  <span class="c1"># one entry for Ellen&#39;s run</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">quota</span><span class="o">.</span><span class="n">_charges</span><span class="p">[</span><span class="s2">&quot;org2:dom1&quot;</span><span class="p">]</span>  <span class="c1"># one entry for Priya&#39;s run</span>
+</span></code></pre></div>
+<p><code>quota._charges</code> MUST have two distinct keys with one entry each. If they
+share a key or one is missing an entry, isolation broke.</p>
+<h3 id="cachedmemory-state-after-the-run">CachedMemory state after the run<a class="headerlink" href="#cachedmemory-state-after-the-run" title="Anchor link">&para;</a></h3>
+<p>If Ellen's query hit the memory tool once with <code>k=5</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">cached_memory</span><span class="o">.</span><span class="n">_cache</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># {(&quot;org1:dom1&quot;, &quot;incident response protocol&quot;, 5, &quot;{}&quot;): (now_ts, [&lt;3 items&gt;])}</span>
+</span></code></pre></div>
+<p>One entry, keyed on the tenant partition. Priya's identical query would
+add a second entry with <code>("org2:dom1", ...)</code>.</p>
+<h2 id="verification-protocol">Verification protocol<a class="headerlink" href="#verification-protocol" title="Anchor link">&para;</a></h2>
+<p>How to actually check the design is working — not just "tests pass" but
+"the invariants hold structurally in the current code".</p>
+<h3 id="1-automated-run-the-tests-locked-to-the-invariants">1. Automated: run the tests locked to the invariants<a class="headerlink" href="#1-automated-run-the-tests-locked-to-the-invariants" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/memory/test_cached_memory.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">              </span>tests/memory/test_scoped_memory.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">              </span>tests/runtime/test_meter.py
+</span></code></pre></div>
+<p>Expected: all pass. Any failure is a live invariant violation.</p>
+<h3 id="2-structural-grep-for-load-bearing-scope-threading">2. Structural: grep for load-bearing scope threading<a class="headerlink" href="#2-structural-grep-for-load-bearing-scope-threading" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Every RunContext.child call must NOT drop scope.</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;RunContext(&quot;</span><span class="w"> </span>agentkit/runtime/context.py
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Expected: only one production construction; child() passes scope=self.scope.</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># Every MemorySource impl reads ctx.scope in query/write.</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;async def query&quot;</span><span class="w"> </span>agentkit/memory/
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">&quot;async def write&quot;</span><span class="w"> </span>agentkit/memory/
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="c1"># Expected: every impl&#39;s signature takes `ctx: Ctx` and uses it.</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="c1"># CachedMemory._key includes scope_key.</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;def _key&quot;</span><span class="w"> </span>agentkit/memory/decorators.py
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="c1"># Expected: signature has scope_key parameter and it&#39;s included in the tuple.</span>
+</span></code></pre></div>
+<h3 id="3-adversarial-two-tenant-smoke-test">3. Adversarial: two-tenant smoke test<a class="headerlink" href="#3-adversarial-two-tenant-smoke-test" title="Anchor link">&para;</a></h3>
+<p>Build the smallest possible reproduction:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Not committed — one-off verification script.</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Budget</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">CachedMemory</span><span class="p">,</span> <span class="n">ScopedMemory</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">Quota</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.middlewares</span><span class="w"> </span><span class="kn">import</span> <span class="n">meter</span><span class="p">,</span> <span class="n">tracing</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">quota</span> <span class="o">=</span> <span class="n">Quota</span><span class="p">(</span><span class="n">max_usd</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">clock</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">1000.0</span><span class="p">)</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">invoker</span> <span class="o">=</span> <span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=&lt;</span><span class="n">FakeLLM</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">chat_middleware</span><span class="o">=</span><span class="p">[</span><span class="n">meter</span><span class="p">()])</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">one_run</span><span class="p">(</span><span class="n">org_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;run-</span><span class="si">{</span><span class="n">org_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>        <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="n">org_id</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>        <span class="n">services</span><span class="o">=</span><span class="n">Services</span><span class="p">(</span><span class="n">invoker</span><span class="o">=</span><span class="n">invoker</span><span class="p">),</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>        <span class="n">meters</span><span class="o">=</span><span class="p">[</span><span class="n">quota</span><span class="p">],</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>    <span class="p">)</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>    <span class="c1"># ... run an Agent with a memory tool ...</span>
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">one_run</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">one_run</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="c1"># Verify: quota._charges has two distinct keys (&quot;org1:dom1&quot; and &quot;org2:dom1&quot;),</span>
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="c1"># each with exactly the entries that tenant produced. No key overlap.</span>
+</span></code></pre></div>
+<p>If this succeeds, the tenant-isolation story is holding structurally.</p>
+<h3 id="4-what-failing-would-look-like">4. What "failing" would look like<a class="headerlink" href="#4-what-failing-would-look-like" title="Anchor link">&para;</a></h3>
+<ul>
+<li><code>quota._charges["org1:dom1"]</code> has an entry that came from tenant 2 → cache
+  key axis missing scope.</li>
+<li><code>CachedMemory._cache</code> has an entry keyed only on <code>(query, k, where)</code> with
+  no scope prefix → key regression.</li>
+<li>Tenant 2's Agent returns tenant 1's document text → VectorMemory scope
+  filter regression OR ScopedMemory bypass.</li>
+<li>Both tenants exhaust the same quota window at the same time → per-tenant
+  partitioning collapsed to a single shared bucket.</li>
+</ul>
+<h2 id="correctness-checklist-for-future-changes">Correctness checklist (for future changes)<a class="headerlink" href="#correctness-checklist-for-future-changes" title="Anchor link">&para;</a></h2>
+<p>When touching any of these files, re-verify against this use case:</p>
+<ul>
+<li><code>agentkit/memory/decorators.py</code> — <code>_key(...)</code> must always include the
+  scope axis. Grep: <code>def _key</code>, verify signature carries a scope arg.</li>
+<li><code>agentkit/memory/decorators.py</code> — <code>ScopedMemory._check</code> runs BEFORE
+  any inner call in <code>query</code> / <code>write</code>. Grep: <code>self._check(ctx)</code> at
+  entry of both methods.</li>
+<li><code>agentkit/adapters/store/*.py</code> — any <code>get</code>/<code>set</code> where key isn't
+  scoped is a leak surface. All <code>StorePort</code> writes routed through
+  <code>idempotency_key(scope, ...)</code> or an equivalent prefix.</li>
+<li><code>agentkit/runtime/context.py</code> — <code>RunContext.child()</code> inherits scope
+  (verify), so a child agent operates on the same tenant.</li>
+</ul>
+<h2 id="the-primitives-it-exercises">The primitives it exercises<a class="headerlink" href="#the-primitives-it-exercises" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Primitive</th>
+<th>Role here</th>
+<th>Why load-bearing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RunContext.scope</code></td>
+<td>Tenant identity, threaded via <code>ctx.scope</code> on every call</td>
+<td>The only piece of state that tells any layer "who is this for"</td>
+</tr>
+<tr>
+<td><code>ScopedMemory</code></td>
+<td>Fail-loud tenant guard around VectorMemory</td>
+<td>Refuses on missing scope; last line of defence if a caller forgets</td>
+</tr>
+<tr>
+<td><code>CachedMemory</code></td>
+<td>TTL cache for identical repeated queries</td>
+<td>Cheap wins on repeated lookups within a session</td>
+</tr>
+<tr>
+<td><code>VectorMemory</code></td>
+<td>Backend semantic search, indexed per-tenant</td>
+<td>Only surface that actually touches other tenants' bytes</td>
+</tr>
+<tr>
+<td><code>ReActCognition</code></td>
+<td>Tool-calling loop over the retrieval tool</td>
+<td>Multi-turn refinement, "search more" reruns</td>
+</tr>
+<tr>
+<td><code>FunctionTool.caps</code></td>
+<td><code>("private_data",)</code> on <code>search_docs</code></td>
+<td>Feeds <code>RunPolicy</code> to catch trifecta later if egress tools get added</td>
+</tr>
+<tr>
+<td><code>Budget</code> + per-tenant <code>Quota</code> meter</td>
+<td>Cost/tokens per tenant per window</td>
+<td>Prevents one abusive tenant from spending the entire pool</td>
+</tr>
+<tr>
+<td><code>StreamEvent</code></td>
+<td>Token streaming to the UI</td>
+<td>User-facing progressive rendering</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-it-deliberately-doesnt-use">What it deliberately doesn't use<a class="headerlink" href="#what-it-deliberately-doesnt-use" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>Checkpointer</code></strong> — chats are ephemeral; no crash-resume story.</li>
+<li><strong><code>SignalChannel</code></strong> — single agent, no coordination.</li>
+<li><strong><code>RunPolicy</code> block-mode</strong> — retrieval-only trifecta stays under threshold
+  (no egress, no untrusted-content), so flag-mode is enough.</li>
+<li><strong><code>Workflow</code></strong> — no deterministic graph; conversation is emergent.</li>
+<li><strong><code>Skill.as_agent</code></strong> — this Agent is bespoke to the product, not a
+  reusable recipe.</li>
+</ul>
+<h2 id="design-tensions-to-hold-in-mind">Design tensions to hold in mind<a class="headerlink" href="#design-tensions-to-hold-in-mind" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Shared vs per-tenant Invoker</strong>: shared is cheaper (one middleware
+  chain, one httpx pool) but harder to reason about isolation. We
+  chose shared because <code>ctx.scope</code> is threaded end-to-end; if that
+  invariant ever breaks, we lose the cheap-shared property.</li>
+<li><strong>Cache TTL vs eviction on write</strong>: writes invalidate ALL cache
+  entries currently (<code>CachedMemory.write</code> clears <code>_cache</code>). Fine for
+  low-write patterns; if writes are hot, a per-tenant partition +
+  scoped invalidation is the next step.</li>
+<li><strong>Streaming ordering when the LLM adapter is shared</strong>: assumes the
+  provider's SSE stream is per-request. Never share a Delta stream
+  between two Calls. Structurally enforced by <code>Call</code> being one-per-request.</li>
+</ul>
+<h2 id="what-this-use-case-tests-about-agentkit-reverse-view">What this use case tests about agentkit (reverse view)<a class="headerlink" href="#what-this-use-case-tests-about-agentkit-reverse-view" title="Anchor link">&para;</a></h2>
+<p>If this design breaks in production, the framework has a bug. The specific
+things this design proves the framework must support:</p>
+<ol>
+<li>Scope threading works end-to-end from HTTP entry → middleware → tool → memory.</li>
+<li>No in-process shared cache silently unpartitions tenants.</li>
+<li>The <code>MemorySource</code> decorator stack is safe to compose in any order that
+   makes semantic sense (<code>ScopedMemory</code> outermost, <code>CachedMemory</code> inside).</li>
+<li><code>MappingProxyType</code> (<code>ToolCall.arguments</code>) round-trips cleanly through the
+   tool boundary even when args carry per-tenant filters.</li>
+</ol>
+<h2 id="verification-snapshot">Verification snapshot<a class="headerlink" href="#verification-snapshot" title="Anchor link">&para;</a></h2>
+<p>Last audited against the current tree:</p>
+<ul>
+<li><strong>Automated invariant tests</strong>: <code>pytest tests/memory/test_cached_memory.py
+  tests/memory/test_scoped_memory.py tests/runtime/test_meter.py</code> → 29
+  passed, 0 failed.</li>
+<li><strong><code>RunContext.child()</code> inherits scope</strong>: <code>scope=self.scope</code> (shared
+  reference, read-only) — verified in <code>agentkit/runtime/context.py:child</code>.</li>
+<li><strong><code>CachedMemory._key</code> signature includes scope</strong>: <code>_key(query, k, where,
+  scope_key)</code> — the scope axis is a required positional argument, not
+  optional.</li>
+<li><strong><code>ScopedMemory._check</code> fires on both entry points</strong>: <code>query</code> at line 71
+  and <code>write</code> at line 75 both call <code>self._check(ctx)</code> before delegating to
+  the inner source.</li>
+</ul>
+<p>All four load-bearing structural checks pass. The design holds in the
+current tree.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

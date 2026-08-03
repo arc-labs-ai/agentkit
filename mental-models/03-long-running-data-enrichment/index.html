@@ -1,0 +1,2167 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/mental-models/03-long-running-data-enrichment/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Mental Model: Long-Running Data Enrichment (10k rows) - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mental-model-long-running-data-enrichment-10k-rows" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mental Model: Long-Running Data Enrichment (10k rows)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User experience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-actually-works-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it actually works end-to-end
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-it-can-fail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where it can fail
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where it can fail">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#framework-level-failures-the-frameworks-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Framework-level failures (the framework's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-level-failures-the-wirings-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration-level failures (the wiring's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-level-failures-the-row-tools-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application-level failures (the row-tool's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-output-on-a-successful-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected output on a successful run
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Expected output on a successful run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-final-workflowresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The final WorkflowResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-per-row-agentresult-one-of-10000" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The per-row AgentResult (one of 10,000)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint-state-after-the-run-completes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpoint state after the run completes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#budget-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budget state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storeport-state-idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorePort state (idempotency)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-automated-run-the-invariant-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Automated: run the invariant tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-structural-grep-for-load-bearing-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Structural: grep for load-bearing patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-adversarial-crash-and-resume-smoke-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Adversarial: crash-and-resume smoke test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-failing-would-look-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What "failing" would look like
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-primitives-it-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The primitives it exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-deliberately-doesnt-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it deliberately doesn't use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correctness-checklist-for-future-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correctness checklist (for future changes)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tensions-to-hold-in-mind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tensions to hold in mind
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-use-case-tests-about-agentkit-reverse-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this use case tests about agentkit (reverse view)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mental-model-long-running-data-enrichment-10k-rows">Mental Model: Long-Running Data Enrichment (10k rows)<a class="headerlink" href="#mental-model-long-running-data-enrichment-10k-rows" title="Anchor link">&para;</a></h1>
+<p>The durability + cost story. This use case exists to prove that agentkit's
+<code>Workflow</code> + <code>Checkpointer</code> + <code>Budget</code> primitives compose into a system that
+can process large batches over long durations, survive crashes cleanly, and
+never overshoot a budget cap under concurrent workers.</p>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Anchor link">&para;</a></h2>
+<p>A batch job enriches 10,000 vendor records with a summary + a risk category
+via an LLM. Runs on a cheap worker for ~2 hours. The worker might crash,
+the model might get rate-limited, the cost budget must be respected across
+concurrent parallel workers, and re-running after a crash must not
+re-enrich rows already done.</p>
+<h2 id="user-experience">User experience<a class="headerlink" href="#user-experience" title="Anchor link">&para;</a></h2>
+<p>An operator submits: <em>"Enrich all vendors updated in the last 7 days.
+Budget: $50. Concurrency: 8."</em></p>
+<p>The job starts. A progress bar reports: <em>"2,347 / 10,000 done · $12.30
+spent · 8 workers active · est. 18 min remaining."</em></p>
+<p>The worker OS gets OOM-killed at 4,100 rows. The operator sees the last
+checkpoint (<code>4,000 rows</code>, <code>$21.15 spent</code>) and resumes with a single command.
+The job picks up at row 4,001, respects the remaining $28.85 of budget, and
+completes.</p>
+<h2 id="how-it-actually-works-end-to-end">How it actually works end-to-end<a class="headerlink" href="#how-it-actually-works-end-to-end" title="Anchor link">&para;</a></h2>
+<p>Walk through the internal state as a successful 10k-row batch flows through
+the framework. Times are wall-clock at a shared LLM adapter with typical
+provider latency; the framework's own overhead per row is single-digit ms.</p>
+<p><strong>t=0 — Workflow assembly.</strong> The batch job's entry point builds the top-level
+graph and the per-row worker:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>worker = Agent(
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    name=&quot;enricher&quot;,
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    model=&quot;gpt-4o-mini&quot;,
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    cognition=SingleCallCognition(),
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    output=EnrichedVendor,           # Pydantic → typed output
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    max_repairs=1,
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>)
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>wf = (
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    Workflow(name=&quot;vendor-enrichment&quot;, max_steps=1)
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>      .fn(&quot;load_rows&quot;, load_rows_from_db)
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>      .subworkflow(&quot;enrich_batch&quot;, per_batch_wf, after=&quot;load_rows&quot;)
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>)
+</span></code></pre></div>
+<p>The <code>RunContext</code> for the run carries <code>budget=Budget(max_cost_usd=50.0,
+max_concurrency=8)</code>, a <code>store=InMemoryStore()</code> (Redis in prod), and a
+<code>checkpointer=Checkpointer(port=&lt;CheckpointPort&gt;)</code>. <code>ctx.correlation_id</code>
+is <code>"enrich-2026-07-03-abc"</code>. Every child context (<code>ctx.child()</code>) shares
+the same <code>Budget</code>, <code>store</code>, and <code>checkpointer</code> by reference — that is the
+whole point of the tree: shared meters, shared durability.</p>
+<p><strong>t=~10ms — load_rows.</strong> The first fn-node runs to completion, returning
+10,000 row dicts. Its <code>Usage()</code> is zero (no LLM). <code>Workflow._execute</code> merges
+that into the running <code>usage</code> (still zero) and commits <code>done["load_rows"] =
+[&lt;10k rows&gt;]</code>. The wave advances to <code>enrich_batch</code>.</p>
+<p><strong>t=~11ms — per-batch dispatch begins.</strong> <code>per_batch_wf</code> reads
+<code>done["load_rows"]</code> and slices it into chunks of ~100. For chunk 0:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pairs = [(worker, row) for row in chunk]     # 100 pairs
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>results = await run_agents(pairs, ctx, best_effort=True)
+</span></code></pre></div>
+<p><code>run_agents</code> calls <code>ctx.semaphore()</code> which returns the Budget's cached
+<code>asyncio.Semaphore(max_concurrency=8)</code>. This semaphore is the ONE authority
+on how many LLM turns are in flight across the whole tree — every fan-out
+in the run acquires from it, so a stray sub-agent cannot double the
+concurrency by creating its own semaphore.</p>
+<p><strong>t=~12ms — per-row Agent + SingleCallCognition.</strong> For row 0, <code>worker.run(row,
+ctx.child())</code> enters. <code>SingleCallCognition</code> builds one <code>ChatRequest</code> (system
+prompt + row content, <code>response_format=EnrichedVendor.model_json_schema()</code>),
+threads the <code>output_adapter</code> through <code>meta</code>, and calls
+<code>ctx.invoker.stream(req, ctx, meta=...)</code>.</p>
+<p><strong>t=~13ms — Budget guard fires.</strong> The <code>meter()</code> middleware runs <code>on_request</code>
+and calls <code>budget.guard(call)</code>. Under the budget's lock, <code>spent_usd</code> is
+compared to <code>max_cost_usd</code>. On row 0 with <code>spent_usd=0.0</code>, guard passes.
+The call proceeds down the chain to the LLM adapter.</p>
+<p><strong>t=~13ms — Semaphore acquire.</strong> Concurrently with the meter guard, up to
+8 rows have already crossed into <code>_run</code> inside <code>gather_bounded</code>, each
+holding one permit of the shared <code>asyncio.Semaphore</code>. Rows 9…99 are
+suspended on <code>async with sem:</code> and will resume only as earlier rows'
+coroutines release. This is the ONLY concurrency ceiling — there is no
+worker pool.</p>
+<p><strong>t=~13ms — idempotency_key computation.</strong> Before dispatching the LLM
+call, the per-batch code wraps the worker call in
+<code>ctx.store.get_or_set(key, lambda: worker.run(row, ctx.child()))</code> where
+<code>key = idempotency_key(ctx.scope, "enrich", row["id"], row["updated_at"])</code>.
+<code>idempotency_key</code> is <code>"idem:" + stable_hash(parts, length=24)</code>;
+<code>stable_hash</code> sorts JSON keys and routes unknowns through <code>_stable_default</code>
+so the digest is identical across processes. On a fresh run, the store
+misses, the producer callable runs, and the returned <code>AgentResult</code> is
+stored under that key.</p>
+<p><strong>t=~800ms — First row's LLM stream returns.</strong> The single-shot response
+carries <code>EnrichedVendor</code> JSON. <code>SingleCallCognition</code> invokes the output
+adapter, coerces to the Pydantic model, and returns
+<code>AgentResult(output=&lt;json text&gt;, usage=Usage(input=…, output=…, cost=0.0021),
+parsed=EnrichedVendor(...), partial=False)</code>.</p>
+<p><strong>t=~800ms — Budget.charge fires.</strong> <code>meter()</code>'s <code>on_response</code> calls
+<code>budget.charge(call, usage)</code>. Under the lock:
+<code>self.spent_usd = round(self.spent_usd + usage.cost_usd, 6); self.calls += 1</code>.
+Because the lock serialises charges from ALL 8 concurrent workers, the
+final total is invariant under interleaving. <code>Usage.__add__</code> is
+associative + commutative (Hypothesis-verified), so per-worker Usage
+folding into the shared meter converges to the same number regardless of
+order.</p>
+<p><strong>t=~1s — First 8 rows have returned.</strong> The semaphore releases 8 permits;
+rows 9…16 acquire and dispatch. <code>gather_bounded</code> preserves input order in
+the returned <code>list[R]</code> — even if row 12 completes before row 8, the result
+slot ordering is preserved because each task has its own index.</p>
+<p><strong>t=~30s — Chunk 0 done (~100 rows).</strong> <code>run_agents</code> returns 100 <code>AgentResult</code>
+entries (best_effort mode; each raised exception lands as a raw <code>Exception</code> object in its slot (not a <code>Failure</code>); callers detect via <code>isinstance(res, BaseException)</code>). <code>per_batch_wf</code> folds the results into <code>done_ids</code> and
+computes cumulative cost.</p>
+<p><strong>t=~30s — First checkpoint save.</strong> <code>per_batch_wf</code> calls:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>await ctx.checkpointer.snapshot(
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    run_id=ctx.correlation_id,
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    state={&quot;done_ids&quot;: list(done_ids), &quot;next_chunk&quot;: 1, &quot;spent_usd&quot;: budget.spent_usd},
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    status=CheckpointStatus.RUNNING,
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    metadata={&quot;chunk&quot;: 0, &quot;rows_in_chunk&quot;: 100},
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>)
+</span></code></pre></div>
+<p>Inside <code>Checkpointer.snapshot</code>, the per-run lock is acquired, the current
+version list is read, <code>next_version = max+1</code> is computed, and BOTH <code>state</code>
+and <code>metadata</code> are <code>copy.deepcopy</code>'d before being stored. Any live mutation
+of <code>done_ids</code> in the hot loop after the snapshot returns cannot reach the
+persisted record — this is the load-bearing invariant behind resume.</p>
+<p><strong>t=~30s — Checkpoint cadence.</strong> The batch chooses "every chunk" (~100 rows)
+as its cadence. Too frequent kills throughput (each snapshot is a
+deep-copy + a port write); too infrequent means a crash loses more work.
+100 rows per snapshot is the deliberate trade — production tuning depends
+on per-row cost.</p>
+<p><strong>t=~5min — 10<sup>th</sup> chunk done, ~1000 rows.</strong> <code>budget.spent_usd ≈ $2.10</code>,
+<code>budget.calls == 1000</code>, 10 checkpoints (versions 1…10) exist for
+<code>run_id</code>. The Budget's semaphore has been continuously oversubscribed
+(100 rows in the batch, 8 permits) — steady-state 8 workers active.</p>
+<p><strong>t=~10min — Crash.</strong> The worker process is OOM-killed at row 4,100 mid-way
+through chunk 41. The 40 chunks already snapshotted are durable; the 100
+rows partially in flight in chunk 40 either landed in the store (via
+<code>get_or_set</code>) or did not. The most recent RUNNING checkpoint is version 40,
+state <code>{"done_ids": [1..4000], "next_chunk": 40, "spent_usd": 21.15}</code>.</p>
+<p><strong>t=~11min — Resume.</strong> Operator restarts the process; the batch job's
+entry point calls <code>saved = await ctx.checkpointer.resume(ctx.correlation_id)</code>.
+<code>saved.state</code> is a deep-copy of what was persisted; the resumer reads
+<code>done_ids = set(saved.state["done_ids"])</code> and <code>next_chunk = 40</code>. A
+fresh <code>Budget</code> is constructed with <code>spent_usd = saved.state["spent_usd"]</code>
+so <code>remaining_usd()</code> is <code>50 - 21.15 = $28.85</code>.</p>
+<p><strong>t=~11min — Row-level idempotency during resume.</strong> The resumer iterates
+chunks 40…99. For chunk 40, it dispatches all 100 rows again — but each
+call goes through <code>ctx.store.get_or_set(idempotency_key(...), ...)</code>. Rows
+that landed in the store during the first run (some of chunk 40's rows
+completed before the OOM) return the cached <code>AgentResult</code> immediately with
+<code>usage=Usage()</code> (no re-charge). Rows whose producer callable raised or
+never ran are re-dispatched — the "producer that raises is NOT stored"
+contract on <code>StorePort.get_or_set</code> ensures no failure poisons the cache.</p>
+<p><strong>t=~11min+ — Resume proceeds.</strong> New chunks (41…99) snapshot as before,
+version numbers continue monotonically from 41. The Budget accumulates
+into the merged <code>spent_usd</code>, cap intact.</p>
+<p><strong>t=~2h — Terminal.</strong> Chunk 99 completes. <code>per_batch_wf</code> returns its final
+<code>WorkflowResult</code>. The top-level <code>Workflow</code> records <code>stop_reason="complete"</code>,
+merges usage, and returns. The batch job's entry point calls
+<code>await ctx.checkpointer.snapshot(run_id, {...}, status=CheckpointStatus.DONE)</code>
+one last time — this final version's status is terminal, and the persistence
+port may prune non-latest versions per its policy.</p>
+<h2 id="where-it-can-fail">Where it can fail<a class="headerlink" href="#where-it-can-fail" title="Anchor link">&para;</a></h2>
+<p>Enumerated so a code reviewer can walk the list. Each is a real risk if
+the framework's invariants slip.</p>
+<h3 id="framework-level-failures-the-frameworks-job-to-prevent">Framework-level failures (the framework's job to prevent)<a class="headerlink" href="#framework-level-failures-the-frameworks-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>Snapshot stores a live reference instead of a deep-copy.</strong> A refactor
+   to <code>Checkpointer.snapshot</code> that drops <code>copy.deepcopy(state)</code> → the hot
+   loop's continued mutation of <code>done_ids</code> corrupts every prior checkpoint
+   on <code>InMemoryStore</code> (and diverges from serializing backends). <em>Locked by
+   <code>test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it</code>.</em></li>
+<li><strong>Deep-copy fails on nested containers or <code>MappingProxyType</code>.</strong> State
+   carrying a <code>ToolCall.arguments</code> (a <code>MappingProxyType</code>) fails pickle on
+   Redis/Postgres → resume is broken on any real backend. <em>Locked by
+   <code>test_snapshot_state_containing_toolcalls_survives_deepcopy</code>.</em></li>
+<li><strong><code>Usage.__add__</code> becomes non-associative.</strong> Concurrent workers fold
+   Usage in different orders → cost totals drift → cost cap trips
+   inconsistently across runs. <em>Locked by <code>test_usage_add_is_associative</code>
+   and <code>test_usage_add_is_commutative</code> (Hypothesis-generated).</em></li>
+<li><strong><code>Usage</code> loses <code>frozen=True</code>.</strong> A worker mutates a shared Usage
+   snapshot → concurrent workers' charges corrupt each other's view of
+   spend. <em>Locked by <code>test_kernel_value_types_are_frozen</code>.</em></li>
+<li><strong><code>idempotency_key</code> becomes non-deterministic across processes.</strong>
+   <code>stable_hash</code> starts including a memory address or <code>dict.__repr__</code>
+   → resume computes different keys than the original run → every row
+   re-enriches → cost doubles. <em>Locked by
+   <code>test_idempotency_key_deterministic_across_calls</code> and
+   <code>test_stable_hash_ignores_dict_iteration_order</code>.</em></li>
+<li><strong><code>gather_bounded</code> violates its concurrency cap.</strong> A regression that
+   drops the <code>async with sem:</code> guard or replaces the shared semaphore
+   with a per-task one → provider rate-limits everything → cascading
+   429s. <em>Locked by <code>test_gather_bounded_preserves_order_and_bounds</code>.</em></li>
+<li><strong><code>Workflow._execute</code> drops strict-zip on wave commit.</strong> A silent
+   arity mismatch (bounded gather returns fewer items than dispatched)
+   silently loses a row's result. <em>Locked by
+   <code>test_workflow_wave_raises_when_node_run_returns_wrong_arity</code>.</em></li>
+<li><strong><code>Checkpointer.snapshot</code> skips the per-run lock.</strong> Two concurrent
+   snapshots for the same <code>run_id</code> both compute <code>next_version = max+1</code>
+   off the same read → the second <code>port.save</code> either clobbers the first
+   (silent loss) or raises a duplicate-key error. <em>Locked by
+   <code>test_concurrent_snapshots_of_same_run_id_produce_distinct_versions</code>.</em></li>
+<li><strong><code>Budget.charge</code> skips its lock.</strong> 8 concurrent charges each read
+   <code>spent_usd</code> before any writes back → the run overshoots
+   <code>max_cost_usd</code> by up to 8× the last delta. <em>Locked by
+   <code>test_concurrent_charges_serialize</code> in <code>tests/runtime/test_meter.py</code>.</em></li>
+<li><strong><code>run_with_resilience</code> retries a PERMANENT class.</strong> A 403 or
+    content-filter refusal retries anyway, burning tokens and possibly
+    banning the key. <em>Locked by
+    <code>test_run_with_resilience_fails_fast_on_permanent</code>.</em></li>
+</ol>
+<h3 id="integration-level-failures-the-wirings-job-to-prevent">Integration-level failures (the wiring's job to prevent)<a class="headerlink" href="#integration-level-failures-the-wirings-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong><code>idempotency_key</code> parts don't uniquely identify the row.</strong> The
+   batch author uses <code>(scope, "enrich", row["id"])</code> on a table where
+   <code>id</code> is stable across schema versions but the <code>updated_at</code> column
+   changes the desired output. Resume returns stale results because
+   the same key is used. <em>A batch-job smoke test comparing pre- and
+   post-schema-migration output is the right place to catch this;
+   not a framework concern.</em></li>
+<li><strong>Checkpoint cadence choice is wrong for the row cost.</strong> Cadence of
+   every 100 rows on 500ms-per-row content is fine; on 30s-per-row
+   content, an OOM in the middle of a chunk loses 30 minutes of work.
+   <em>The batch author's responsibility to tune; verify with a
+   deliberately-killed dry run.</em></li>
+<li><strong><code>Budget</code> shared instance is not passed to child contexts.</strong> The
+   batch job constructs a fresh <code>Budget</code> inside <code>per_batch_wf</code> instead
+   of reading from the parent — every chunk gets its own $50 cap.
+   <em>Not a framework failure; the wiring must reuse the parent's
+   <code>Budget</code> reference.</em></li>
+<li><strong><code>StorePort</code> chosen has stale semantics on retry.</strong> <code>InMemoryStore</code>
+   is fine single-process; a real cluster with Redis must configure
+   TTL long enough that a resume 6 hours after a crash still sees the
+   cached rows. <em>Wiring's responsibility; contract on <code>StorePort</code> is
+   silent about TTL policy.</em></li>
+<li><strong>The Workflow's <code>max_steps</code> is set below the number of chunks.</strong>
+   With 100 chunks and <code>max_steps=1</code> on the top-level Workflow, the
+   nested <code>per_batch_wf</code> steps don't count against it — but if a
+   refactor flattens the graph, the batch stalls at <code>max_steps</code> with
+   <code>stop_reason="max_steps"</code>. <em>Not framework failure; wiring choice.</em></li>
+<li><strong>The <code>output=EnrichedVendor</code> schema drifts from the store's cached
+   rows.</strong> A resume after a schema change loads cached <code>AgentResult</code>
+   whose <code>parsed</code> field is the old shape. <em>The batch author must
+   invalidate the store or bump the idempotency key on schema change.</em></li>
+</ol>
+<h3 id="application-level-failures-the-row-tools-job-to-prevent">Application-level failures (the row-tool's job to prevent)<a class="headerlink" href="#application-level-failures-the-row-tools-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>The per-row worker's prompt reads a global variable.</strong> Two
+   concurrent workers on rows with different content share prompt
+   state via a module-level dict → cross-row contamination in the LLM
+   input. Only the worker author can prevent this.</li>
+<li><strong>The Pydantic model has a field with a default_factory that mutates
+   shared state.</strong> Each row's <code>EnrichedVendor</code> instance mutates a
+   class-level list → results carry across rows. Framework can't help.</li>
+<li><strong>The custom <code>load_rows_from_db</code> fn returns a generator instead of
+   a list.</strong> The Workflow snapshot deep-copies but the generator is
+   exhausted mid-way → downstream chunks are empty. Row tool must
+   return a materialised list.</li>
+<li><strong>The row worker uses <code>time.sleep</code> inside its cognition.</strong> Blocks
+   the whole event loop → all 8 workers idle even under a semaphore.
+   Framework mandates async everywhere; app code that calls sync I/O
+   defeats the concurrency.</li>
+<li><strong>The row worker catches every exception and returns a fake
+   success.</strong> Every "failure" becomes a stored <code>AgentResult</code> with
+   garbage content → the store caches garbage → resume returns garbage.
+   The framework's <code>Failure</code> value type is the right shape for
+   best-effort failures; app-level try/except must use it.</li>
+</ol>
+<h2 id="expected-output-on-a-successful-run">Expected output on a successful run<a class="headerlink" href="#expected-output-on-a-successful-run" title="Anchor link">&para;</a></h2>
+<p>After the 10k-row job completes cleanly, the framework produces the
+following concrete artifacts. Any deviation from these shapes on a green
+run is a signal.</p>
+<h3 id="the-final-workflowresult">The final <code>WorkflowResult</code><a class="headerlink" href="#the-final-workflowresult" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">WorkflowResult</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">outputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="s2">&quot;load_rows&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="mi">10000</span> <span class="n">row</span> <span class="n">dicts</span><span class="o">&gt;</span><span class="p">],</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="s2">&quot;enrich_batch&quot;</span><span class="p">:</span> <span class="n">WorkflowResult</span><span class="p">(</span>               <span class="c1"># nested per_batch_wf result</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>            <span class="n">outputs</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>                <span class="s2">&quot;chunk_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="mi">100</span> <span class="n">AgentResult</span><span class="o">&gt;</span><span class="p">],</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>                <span class="s2">&quot;chunk_1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="mi">100</span> <span class="n">AgentResult</span><span class="o">&gt;</span><span class="p">],</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>                <span class="c1"># …</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>                <span class="s2">&quot;chunk_99&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="mi">100</span> <span class="n">AgentResult</span><span class="o">&gt;</span><span class="p">],</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>            <span class="p">},</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>            <span class="n">usage</span><span class="o">=</span><span class="n">Usage</span><span class="p">(</span><span class="n">input_tokens</span><span class="o">=</span><span class="mi">8_200_000</span><span class="p">,</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>                        <span class="n">output_tokens</span><span class="o">=</span><span class="mi">1_100_000</span><span class="p">,</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>                        <span class="n">cost_usd</span><span class="o">=</span><span class="mf">45.31</span><span class="p">),</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>            <span class="n">steps</span><span class="o">=</span><span class="mi">101</span><span class="p">,</span>                                <span class="c1"># load_rows + 100 chunks</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>            <span class="n">stop_reason</span><span class="o">=</span><span class="s2">&quot;complete&quot;</span><span class="p">,</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>            <span class="n">suspended</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>        <span class="p">),</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="p">},</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>    <span class="n">usage</span><span class="o">=</span><span class="n">Usage</span><span class="p">(</span><span class="n">input_tokens</span><span class="o">=</span><span class="mi">8_200_000</span><span class="p">,</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>                <span class="n">output_tokens</span><span class="o">=</span><span class="mi">1_100_000</span><span class="p">,</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>                <span class="n">cost_usd</span><span class="o">=</span><span class="mf">45.31</span><span class="p">),</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="n">steps</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>                                          <span class="c1"># load_rows + enrich_batch</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="n">stop_reason</span><span class="o">=</span><span class="s2">&quot;complete&quot;</span><span class="p">,</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="n">suspended</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Key checks:</p>
+<ul>
+<li><code>stop_reason == "complete"</code> — a healthy run terminates here;
+  <code>"suspended"</code> means a human-gate is open (this use case wires none);
+  <code>"max_steps"</code> means the graph cycled; <code>"deadlock"</code> means the DAG had a
+  cycle.</li>
+<li><code>usage.cost_usd &lt; budget.max_cost_usd</code> — should be strictly less; the
+  cap trips as a <code>MeterExceeded</code>, never as a silent zero-cost row.</li>
+<li><code>suspended is None</code> — non-null means the run paused for a decision.</li>
+</ul>
+<h3 id="the-per-row-agentresult-one-of-10000">The per-row <code>AgentResult</code> (one of 10,000)<a class="headerlink" href="#the-per-row-agentresult-one-of-10000" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">AgentResult</span><span class="p">(</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">output</span><span class="o">=</span><span class="s1">&#39;{&quot;vendor_id&quot;: 42, &quot;summary&quot;: &quot;…&quot;, &quot;risk&quot;: &quot;medium&quot;}&#39;</span><span class="p">,</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">usage</span><span class="o">=</span><span class="n">Usage</span><span class="p">(</span><span class="n">input_tokens</span><span class="o">=</span><span class="mi">820</span><span class="p">,</span> <span class="n">output_tokens</span><span class="o">=</span><span class="mi">110</span><span class="p">,</span> <span class="n">cost_usd</span><span class="o">=</span><span class="mf">0.0021</span><span class="p">),</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">partial</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                        <span class="c1"># parse succeeded on first try (or on repair)</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">evals</span><span class="o">=</span><span class="p">{},</span>                             <span class="c1"># no HITL, no policy verdicts</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">parsed</span><span class="o">=</span><span class="n">EnrichedVendor</span><span class="p">(</span><span class="n">vendor_id</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">summary</span><span class="o">=</span><span class="s2">&quot;…&quot;</span><span class="p">,</span> <span class="n">risk</span><span class="o">=</span><span class="s2">&quot;medium&quot;</span><span class="p">),</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">prompt_version</span><span class="o">=</span><span class="s2">&quot;enricher-v1&quot;</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>If a row's <code>partial=True</code>, its output text is the raw model reply but
+<code>parsed</code> is <code>None</code> — the output adapter's parse-and-repair loop exhausted
+<code>max_repairs</code>. <code>best_effort=True</code> on the batch means such rows land as
+<code>AgentResult(partial=True, parsed=None, ...)</code> (not as <code>Failure</code>); the
+batch author reconciles the <code>partial=True</code> slice separately.</p>
+<h3 id="checkpoint-state-after-the-run-completes">Checkpoint state after the run completes<a class="headerlink" href="#checkpoint-state-after-the-run-completes" title="Anchor link">&para;</a></h3>
+<p>The final <code>snapshot(status=DONE)</code> writes one terminal version. Prior
+RUNNING versions may remain (per-port policy) or may be pruned by an
+explicit <code>ctx.checkpointer.delete(run_id)</code> call in the batch's terminal
+handler. On <code>InMemoryStore</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">checkpointer</span><span class="o">.</span><span class="n">list_versions</span><span class="p">(</span><span class="n">run_id</span><span class="p">)</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># [1, 2, 3, …, 100, 101]   — 100 RUNNING + 1 DONE</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">cp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">checkpointer</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">run_id</span><span class="p">)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">cp</span><span class="o">.</span><span class="n">status</span>                    <span class="c1"># CheckpointStatus.DONE</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">cp</span><span class="o">.</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;done_ids&quot;</span><span class="p">]</span>         <span class="c1"># [1, 2, 3, …, 10000]</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">cp</span><span class="o">.</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;spent_usd&quot;</span><span class="p">]</span>        <span class="c1"># 45.31</span>
+</span></code></pre></div>
+<p>If the batch's terminal handler calls <code>delete(run_id)</code>, all versions are
+gone and <code>resume(run_id)</code> returns <code>None</code>. That's the "reclaim" pattern.</p>
+<h3 id="budget-state">Budget state<a class="headerlink" href="#budget-state" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">budget</span><span class="o">.</span><span class="n">spent_usd</span>    <span class="c1"># 45.31</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">budget</span><span class="o">.</span><span class="n">calls</span>        <span class="c1"># 10000       — every per-row Agent counts as one call</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">budget</span><span class="o">.</span><span class="n">max_cost_usd</span> <span class="c1"># 50.0</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">budget</span><span class="o">.</span><span class="n">remaining_usd</span><span class="p">()</span>  <span class="c1"># 4.69</span>
+</span></code></pre></div>
+<p><code>budget.calls</code> must equal <code>10000</code> on a green run; if it's less, some rows
+were served from <code>StorePort</code> cache (a resume situation) and their
+<code>usage=Usage()</code> charged nothing. If it's more, retry middleware fired on
+transient errors — the <code>retry</code> middleware's charges accumulate as expected.</p>
+<h3 id="storeport-state-idempotency">StorePort state (idempotency)<a class="headerlink" href="#storeport-state-idempotency" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># 10000 keys, one per row.</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">_data</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;idem:&quot;</span><span class="p">)]</span>   <span class="c1"># 10000 entries</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># Value shape:</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">store</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="s2">&quot;idem:&lt;hash&gt;&quot;</span><span class="p">]</span>     <span class="c1"># AgentResult(parsed=EnrichedVendor(…), …)</span>
+</span></code></pre></div>
+<p>On a resumed run, the store will end with the same 10k keys — rows served
+from cache and rows dispatched fresh both land in the same store shape.</p>
+<h2 id="verification-protocol">Verification protocol<a class="headerlink" href="#verification-protocol" title="Anchor link">&para;</a></h2>
+<p>How to actually check the design is working — not just "tests pass" but
+"the invariants hold structurally in the current code".</p>
+<h3 id="1-automated-run-the-invariant-tests">1. Automated: run the invariant tests<a class="headerlink" href="#1-automated-run-the-invariant-tests" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/capabilities/test_checkpointer.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">              </span>tests/agents/test_workflow.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">              </span>tests/runtime/test_meter.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">              </span>tests/kernel/test_kernel.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">              </span>-k<span class="w"> </span><span class="s2">&quot;usage or idempotency or gather&quot;</span>
+</span></code></pre></div>
+<p>Expected: all pass. The <code>-k</code> filter narrows to the four load-bearing
+invariants of this use case; a full run of the four files also exercises
+adjacent properties.</p>
+<h3 id="2-structural-grep-for-load-bearing-patterns">2. Structural: grep for load-bearing patterns<a class="headerlink" href="#2-structural-grep-for-load-bearing-patterns" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># Checkpointer.snapshot deep-copies BOTH state and metadata at the seam.</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;deepcopy&quot;</span><span class="w"> </span>agentkit/capabilities/checkpointer/base.py
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1"># Expected: at least two hits (state and metadata), both inside snapshot().</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># gather_bounded exists and is the only fan-out primitive used by run_agents.</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;gather_bounded\|max_concurrency&quot;</span><span class="w"> </span>agentkit/kernel/concurrency.py
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># Expected: gather_bounded function definition + dispatch inside run_agents.</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># (max_concurrency lives in Budget, not concurrency.py — that&#39;s fine.)</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># idempotency_key composes with stable_hash; deterministic across processes.</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;def idempotency_key&quot;</span><span class="w"> </span>agentkit/kernel/resilience.py
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="c1"># Expected: a single definition delegating to stable_hash on *parts.</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="c1"># Usage.__add__ is defined on the frozen dataclass.</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;def __add__\|frozen=True&quot;</span><span class="w"> </span>agentkit/kernel/types.py
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="c1"># Expected: __add__ on Usage, frozen=True on the dataclass.</span>
+</span></code></pre></div>
+<h3 id="3-adversarial-crash-and-resume-smoke-test">3. Adversarial: crash-and-resume smoke test<a class="headerlink" href="#3-adversarial-crash-and-resume-smoke-test" title="Anchor link">&para;</a></h3>
+<p>Build the smallest possible reproduction:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Not committed — one-off verification script.</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Budget</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.store</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryStore</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities.checkpointer</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpointer</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.resilience</span><span class="w"> </span><span class="kn">import</span> <span class="n">idempotency_key</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.concurrency</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_agents</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">enrich_batch</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">ctx</span><span class="p">):</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">done_ids</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span> <span class="mi">100</span><span class="p">):</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>        <span class="n">chunk</span> <span class="o">=</span> <span class="n">rows</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="mi">100</span><span class="p">]</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>        <span class="n">pairs</span> <span class="o">=</span> <span class="p">[(</span><span class="n">worker</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">chunk</span><span class="p">]</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>        <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">run_agents</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">ctx</span><span class="p">,</span> <span class="n">best_effort</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>        <span class="n">done_ids</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">chunk</span><span class="p">)</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>        <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">checkpointer</span><span class="o">.</span><span class="n">snapshot</span><span class="p">(</span>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>            <span class="n">ctx</span><span class="o">.</span><span class="n">correlation_id</span><span class="p">,</span>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>            <span class="p">{</span><span class="s2">&quot;done_ids&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">done_ids</span><span class="p">),</span> <span class="s2">&quot;spent_usd&quot;</span><span class="p">:</span> <span class="n">ctx</span><span class="o">.</span><span class="n">budget</span><span class="o">.</span><span class="n">spent_usd</span><span class="p">},</span>
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>        <span class="p">)</span>
+</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>        <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">300</span><span class="p">:</span>              <span class="c1"># simulate crash after 300 rows</span>
+</span><span id="__span-10-22"><a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;boom&quot;</span><span class="p">)</span>
+</span><span id="__span-10-23"><a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>
+</span><span id="__span-10-24"><a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a><span class="c1"># Run 1 — crashes after 300 rows.</span>
+</span><span id="__span-10-25"><a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a><span class="n">budget</span> <span class="o">=</span> <span class="n">Budget</span><span class="p">(</span><span class="n">max_cost_usd</span><span class="o">=</span><span class="mf">50.0</span><span class="p">,</span> <span class="n">max_concurrency</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+</span><span id="__span-10-26"><a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a><span class="n">store</span> <span class="o">=</span> <span class="n">InMemoryStore</span><span class="p">()</span>
+</span><span id="__span-10-27"><a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a><span class="n">ckpt</span> <span class="o">=</span> <span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">InMemoryCheckpointStore</span><span class="p">())</span>
+</span><span id="__span-10-28"><a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-x&quot;</span><span class="p">,</span> <span class="n">budget</span><span class="o">=</span><span class="n">budget</span><span class="p">,</span> <span class="n">store</span><span class="o">=</span><span class="n">store</span><span class="p">,</span> <span class="n">checkpointer</span><span class="o">=</span><span class="n">ckpt</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+</span><span id="__span-10-29"><a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a><span class="n">rows</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">i</span><span class="p">}</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">)]</span>
+</span><span id="__span-10-30"><a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-10-31"><a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>    <span class="k">await</span> <span class="n">enrich_batch</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-10-32"><a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a><span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+</span><span id="__span-10-33"><a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>    <span class="k">pass</span>
+</span><span id="__span-10-34"><a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>
+</span><span id="__span-10-35"><a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a><span class="c1"># Verify checkpoint state.</span>
+</span><span id="__span-10-36"><a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a><span class="n">saved</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ckpt</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="s2">&quot;run-x&quot;</span><span class="p">)</span>
+</span><span id="__span-10-37"><a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a><span class="k">assert</span> <span class="n">saved</span><span class="o">.</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;done_ids&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">301</span><span class="p">))</span>
+</span><span id="__span-10-38"><a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a><span class="k">assert</span> <span class="n">saved</span><span class="o">.</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;spent_usd&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span>
+</span><span id="__span-10-39"><a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>
+</span><span id="__span-10-40"><a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a><span class="c1"># Run 2 — resume; rows 1..300 should be served from store, no re-charge.</span>
+</span><span id="__span-10-41"><a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a><span class="n">before_spent</span> <span class="o">=</span> <span class="n">budget</span><span class="o">.</span><span class="n">spent_usd</span>
+</span><span id="__span-10-42"><a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a><span class="n">resumed_rows</span> <span class="o">=</span> <span class="n">rows</span><span class="p">[</span><span class="mi">300</span><span class="p">:]</span>     <span class="c1"># what a real resumer would compute from done_ids</span>
+</span><span id="__span-10-43"><a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a><span class="k">await</span> <span class="n">enrich_batch</span><span class="p">(</span><span class="n">resumed_rows</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-10-44"><a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a><span class="c1"># Verify: budget.spent_usd increased ONLY by rows 301..1000, not by any 1..300.</span>
+</span></code></pre></div>
+<p>If this succeeds — resumed rows do not re-charge and the final state has
+1000 unique idempotency keys — the durability story is holding structurally.</p>
+<h3 id="4-what-failing-would-look-like">4. What "failing" would look like<a class="headerlink" href="#4-what-failing-would-look-like" title="Anchor link">&para;</a></h3>
+<ul>
+<li><code>budget.spent_usd &gt; budget.max_cost_usd</code> at run end → <code>Budget.guard</code>
+  under-fired OR <code>Budget.charge</code> isn't serialised under the lock.</li>
+<li>Two resumed runs of the same job produce different <code>WorkflowResult.usage</code>
+  totals → <code>Usage.__add__</code> is not associative/commutative.</li>
+<li>Row 42's <code>AgentResult</code> after resume is not identical to the pre-crash
+  result → <code>idempotency_key</code> drifts across processes OR store contract
+  broken.</li>
+<li><code>ctx.checkpointer.list_versions(run_id)</code> after 100 chunks returns
+  <code>[1, 1, 1, …]</code> or non-monotonic → per-run lock in <code>Checkpointer.snapshot</code>
+  regressed.</li>
+<li><code>gather_bounded</code> returns 99 results for a 100-item batch → strict-zip
+  guard in <code>Workflow._execute</code> should have raised, or per_batch_wf's
+  equivalent guard is missing.</li>
+</ul>
+<h2 id="composition">Composition<a class="headerlink" href="#composition" title="Anchor link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>operator ──▶ POST /enrich {source: &quot;vendors&quot;, budget: 50, concurrency: 8}
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>                │
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>                ▼
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>        Workflow(name=&quot;vendor-enrichment&quot;, max_steps=1)
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>          .fn(&quot;load_rows&quot;, load_rows_from_db)
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>          .subworkflow(&quot;enrich_batch&quot;, per_batch_wf, after=&quot;load_rows&quot;)
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>                │
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>                ▼
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>        per_batch_wf runs in the parent&#39;s ctx.child():
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>          for each chunk of ~100 rows:
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>            run_agents([(worker, row) for row in chunk],
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>                       ctx,
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>                       best_effort=True)
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>                │
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>                ▼
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>        worker = Agent(
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>          name=&quot;enricher&quot;,
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>          model=&quot;gpt-4o-mini&quot;,
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>          cognition=SingleCallCognition(),
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>          output=EnrichedVendor,               # Pydantic model → typed output
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>          max_repairs=1,
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>        )
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>                │
+</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>                ▼
+</span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>        Middleware chain (per-worker Invoker sharing the same LLMPort):
+</span><span id="__span-11-26"><a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a>          tracing → meter(Budget) → memoize → output_coerce → retry → LLMPort
+</span><span id="__span-11-27"><a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a>                │
+</span><span id="__span-11-28"><a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>                ▼
+</span><span id="__span-11-29"><a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>        Checkpoint every 100 rows via top-level Workflow&#39;s human_gate?
+</span><span id="__span-11-30"><a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a>          No — we use ctx.checkpointer.snapshot(
+</span><span id="__span-11-31"><a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a>            run_id, {&quot;done_ids&quot;: [...], &quot;spent_cost&quot;: ...},
+</span><span id="__span-11-32"><a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a>            status=RUNNING)
+</span><span id="__span-11-33"><a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a>          on our own cadence inside per_batch_wf.
+</span><span id="__span-11-34"><a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>                │
+</span><span id="__span-11-35"><a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a>                ▼
+</span><span id="__span-11-36"><a id="__codelineno-11-36" name="__codelineno-11-36" href="#__codelineno-11-36"></a>        Idempotency:
+</span><span id="__span-11-37"><a id="__codelineno-11-37" name="__codelineno-11-37" href="#__codelineno-11-37"></a>          for each row, compute idempotency_key(scope, &quot;enrich&quot;, row.id)
+</span><span id="__span-11-38"><a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a>          use ctx.store.get_or_set(key, lambda: worker.run(row, ctx.child()))
+</span></code></pre></div>
+<p>The top-level Workflow is boring — two nodes. The interesting work is in
+<code>per_batch_wf</code>, which fans out per-row calls under a shared semaphore and
+snapshots periodically.</p>
+<h2 id="the-primitives-it-exercises">The primitives it exercises<a class="headerlink" href="#the-primitives-it-exercises" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Primitive</th>
+<th>Role here</th>
+<th>Why load-bearing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Workflow</code> (subworkflow + fn nodes)</td>
+<td>Deterministic top-level graph</td>
+<td>Two phases (load / enrich) with data dependency</td>
+</tr>
+<tr>
+<td><code>Agent(output=Pydantic)</code> + <code>SingleCallCognition</code></td>
+<td>Per-row worker, one call each</td>
+<td>Parse-and-repair for structured output</td>
+</tr>
+<tr>
+<td><code>gather_bounded</code> (via <code>run_agents</code>)</td>
+<td>Concurrency-capped fan-out</td>
+<td>Never exceeds N in-flight workers</td>
+</tr>
+<tr>
+<td><code>Budget(max_cost_usd, max_calls, max_concurrency)</code></td>
+<td>Run-wide cost + call + concurrency ceiling</td>
+<td>Central authority that meter middleware charges</td>
+</tr>
+<tr>
+<td><code>Usage.__add__</code> (associative + commutative)</td>
+<td>Per-row charges fold into the run total</td>
+<td>Concurrent workers charging in any order produce the same total</td>
+</tr>
+<tr>
+<td><code>Checkpointer</code> (custom cadence)</td>
+<td>Save-every-100 durability</td>
+<td>Resume from the latest checkpoint after crash</td>
+</tr>
+<tr>
+<td><code>idempotency_key</code> + <code>StorePort.get_or_set</code></td>
+<td>Row-level dedup on resume</td>
+<td>A resumed run re-attempting a completed row returns cached result</td>
+</tr>
+<tr>
+<td><code>output_coerce</code> + <code>SchemaAdapter</code></td>
+<td>Structured typed output per row</td>
+<td>The <code>EnrichedVendor</code> Pydantic model is the wire shape</td>
+</tr>
+<tr>
+<td><code>retry</code> middleware</td>
+<td>Automatic backoff on transient errors</td>
+<td>429/5xx don't kill a 2-hour job</td>
+</tr>
+<tr>
+<td><code>memoize</code> middleware (optional)</td>
+<td>Cache identical LLM calls</td>
+<td>If two rows have identical content, don't pay twice</td>
+</tr>
+<tr>
+<td><code>Failure</code> value type</td>
+<td>Errors as data, aggregated per-batch</td>
+<td><code>best_effort=True</code> folds row failures into the result</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-it-deliberately-doesnt-use">What it deliberately doesn't use<a class="headerlink" href="#what-it-deliberately-doesnt-use" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>ReActCognition</code></strong> — each row is a single call; no tool loop.</li>
+<li><strong><code>SignalChannel</code></strong> — workers don't coordinate; they operate independently
+  in parallel groups.</li>
+<li><strong><code>RunPolicy</code> block-mode</strong> — no user-facing egress; internal batch.</li>
+<li><strong><code>ExternalTermination</code></strong> / <strong><code>Autonomy</code> gates</strong> — no HITL.</li>
+<li><strong><code>Skill.as_agent</code></strong> — the worker Agent is inline; not a reusable recipe.</li>
+<li><strong><code>Coordinator</code> cognition</strong> — Workflow is the explicit-control choice; the
+  emergent coordinator shape would be wrong here (rows don't have a
+  team-lead relationship).</li>
+</ul>
+<h2 id="invariants">Invariants<a class="headerlink" href="#invariants" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Invariant</th>
+<th>Concrete failure if violated</th>
+<th>Locked by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Checkpoint state independent of live scratch dict</strong></td>
+<td>Live loop's <code>done_ids</code> grows after checkpoint → resume from that checkpoint sees over-counted progress</td>
+<td><code>test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it</code></td>
+</tr>
+<tr>
+<td><strong>Deep-copy handles nested containers + <code>MappingProxyType</code></strong></td>
+<td>State containing <code>ToolCall.arguments</code> fails pickle on serializing backends → job cannot resume across a real (non-InMemory) backend</td>
+<td><code>test_snapshot_state_containing_toolcalls_survives_deepcopy</code></td>
+</tr>
+<tr>
+<td><strong><code>Usage.__add__</code> is associative + commutative</strong></td>
+<td>8 concurrent workers folding usage in different orders produce different totals → cost cap trips inconsistently</td>
+<td><code>test_usage_add_is_associative</code>, <code>test_usage_add_is_commutative</code> (Hypothesis-generated)</td>
+</tr>
+<tr>
+<td><strong><code>Usage</code> is frozen</strong></td>
+<td>A worker mutates a shared Usage snapshot → concurrent workers' charges corrupt each other's view</td>
+<td><code>test_kernel_value_types_are_frozen</code> (parametrized)</td>
+</tr>
+<tr>
+<td><strong><code>idempotency_key</code> is deterministic across processes</strong></td>
+<td>Resume computes different keys than the original run → every row re-enriches → cost doubles</td>
+<td><code>test_idempotency_key_deterministic_across_calls</code>, <code>test_stable_hash_ignores_dict_iteration_order</code></td>
+</tr>
+<tr>
+<td><strong><code>stable_hash</code> on a plain class doesn't include memory address</strong></td>
+<td>Same conceptual row hashed differently on resume → dedup lookup misses → double-enrichment</td>
+<td><code>test_stable_hash_plain_class_no_memory_address</code></td>
+</tr>
+<tr>
+<td><strong><code>gather_bounded(sem=budget.semaphore())</code> never exceeds cap</strong></td>
+<td>Concurrency accidentally unbounded → provider rate-limits everything → cascade fails</td>
+<td><code>test_gather_bounded_preserves_order_and_bounds</code></td>
+</tr>
+<tr>
+<td><strong><code>Workflow</code> wave commit uses strict zip</strong></td>
+<td>A silent semaphore bug returns fewer items than dispatched → some rows are dropped without an error</td>
+<td><code>Workflow._execute</code> strict=True + arity guard</td>
+</tr>
+<tr>
+<td><strong><code>run_with_resilience</code> retries TRANSIENT and UNKNOWN, not PERMANENT</strong></td>
+<td>429s retry (good); 403s retry (bad — wastes tokens and might get key banned)</td>
+<td><code>classify</code> ordering + <code>test_run_with_resilience_fails_fast_on_permanent</code></td>
+</tr>
+<tr>
+<td><strong><code>CircuitBreaker</code> counts only TRANSIENT/UNKNOWN</strong></td>
+<td>Every 400 on a bad row opens the breaker → whole job stalls</td>
+<td><code>test_breaker_skips_permanent_errors</code></td>
+</tr>
+<tr>
+<td><strong><code>Suspended</code> is frozen</strong></td>
+<td>Resume path mutates the pending list → a mid-flight retry writes into the check-pointed value</td>
+<td><code>test_frozen_kernel_value_types</code> extended to result types</td>
+</tr>
+<tr>
+<td><strong><code>CircuitOpen</code> chains the original cause</strong></td>
+<td>Postmortem after a stalled job: you see <code>CircuitOpen</code> but the root TransientError is lost → no debugging signal</td>
+<td><code>test_circuit_open_preserves_original_cause</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="correctness-checklist-for-future-changes">Correctness checklist (for future changes)<a class="headerlink" href="#correctness-checklist-for-future-changes" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Every long-running writer must handle <code>CancelledError</code> cleanly.</strong> Grep
+  for <code>except Exception</code> in worker/handler code — should be
+  <code>except Exception as exc:</code> with cancellation NOT caught, OR the
+  broader <code>except BaseException</code> explicitly re-raises <code>CancelledError</code>.</li>
+<li><strong><code>Checkpointer.snapshot</code> cadence never blocks the hot path.</strong> If a
+  snapshot takes &gt;100ms, throughput drops noticeably. Verify via a
+  test that measures elapsed with a large state.</li>
+<li><strong>The <code>StorePort.get_or_set</code> "producer that raises is NOT stored"
+  contract holds.</strong> A transient error on row N must not poison the
+  cache; the next attempt should re-run. Verified by
+  <code>test_get_or_set_does_not_cache_failure</code> in <code>tests/test_stores.py</code>.</li>
+<li><strong>Concurrent snapshots of the same run_id assign distinct versions.</strong>
+  <code>test_concurrent_snapshots_of_same_run_id_produce_distinct_versions</code>
+  locks this; if that ever breaks, resume becomes non-deterministic.</li>
+<li><strong><code>ChatRequest</code> frozen; concurrent workers see distinct request
+  objects.</strong> <code>dataclasses.replace</code> is the only rewrite path. Grep
+  <code>\.model\s*=</code> in middlewares — every mutation site should be a
+  <code>replace</code>.</li>
+</ul>
+<h2 id="design-tensions-to-hold-in-mind">Design tensions to hold in mind<a class="headerlink" href="#design-tensions-to-hold-in-mind" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Checkpoint cadence</strong>: too frequent = throughput dies (each snapshot
+  is a deep-copy + a store write); too infrequent = crash loses too
+  much work. 100 rows is a starting point; production tuning depends
+  on typical row-processing cost.</li>
+<li><strong>Idempotency backend</strong>: <code>InMemoryStore</code> is fine for a single-process
+  worker but a real cluster needs Redis/Postgres. The <code>StorePort</code>
+  contract enforces "failures never cached" uniformly across backends;
+  test that invariant on your chosen backend.</li>
+<li><strong><code>memoize</code> middleware vs <code>idempotency_key</code> at the row level</strong>: memoize
+  caches identical <em>LLM calls</em>; the row-level idempotency caches
+  <em>enrichment results</em>. Both are wanted here — memoize saves duplicate
+  LLM cost inside a run, row idempotency saves duplicate row processing
+  across resumes.</li>
+<li><strong><code>best_effort=True</code> semantics</strong>: a row that fails N retries lands as
+  a <code>Failure</code> in the batch result. The Workflow's default is fail-fast;
+  we explicitly opt into partial progress. Documented so a caller knows
+  they need to reconcile the <code>failed_rows</code> slice separately.</li>
+<li><strong>Budget accounting under concurrency</strong>: each worker charges into the
+  same <code>Budget</code> instance. <code>Budget.charge</code> must be atomic — the framework
+  serializes via <code>Budget._lock</code> (verify). A racy charge would let
+  8 workers each see "we have room" and jointly overshoot.</li>
+</ul>
+<h2 id="what-this-use-case-tests-about-agentkit-reverse-view">What this use case tests about agentkit (reverse view)<a class="headerlink" href="#what-this-use-case-tests-about-agentkit-reverse-view" title="Anchor link">&para;</a></h2>
+<p>If a 10k-row batch produces different totals on repeated runs, or fails to
+resume cleanly after a crash, one of these framework invariants failed.
+The specific things this design proves the framework must support:</p>
+<ol>
+<li>Deep-copy at the checkpoint seam is the ONLY thing standing between the
+   live loop and the durable record. Any shared reference is a bug.</li>
+<li><code>Usage.__add__</code> associativity + commutativity means "the numbers add up"
+   is a real property, not a hope. Verified by Hypothesis.</li>
+<li><code>MappingProxyType</code> (via <code>ToolCall.arguments</code>) survives every backend the
+   <code>Checkpointer</code> might use — proved by our <code>tc_to_dict</code> unwrap + the
+   <code>stable_hash</code> <code>_stable_default</code> Mapping branch.</li>
+<li><code>gather_bounded</code> respects its semaphore under any interleaving of
+   worker starts and completions.</li>
+<li><code>run_with_resilience</code> retries the right classes, records the right
+   causes, and never gets stuck retrying a PERMANENT failure forever.</li>
+</ol>
+<h2 id="verification-snapshot">Verification snapshot<a class="headerlink" href="#verification-snapshot" title="Anchor link">&para;</a></h2>
+<p>Last audited against the current tree:</p>
+<ul>
+<li><strong>Automated invariant tests</strong>: <code>pytest tests/capabilities/test_checkpointer.py
+  tests/agents/test_workflow.py tests/runtime/test_meter.py
+  tests/kernel/test_kernel.py -k "usage or idempotency or gather"</code> →
+  12 passed, 0 failed, 104 deselected.</li>
+<li><strong><code>Checkpointer.snapshot</code> deep-copies both state and metadata</strong>:
+  <code>grep -n "deepcopy" agentkit/capabilities/checkpointer/base.py</code> returns
+  two hits (state at line 93, metadata at line 96) — both inside
+  <code>snapshot()</code>, exactly as required.</li>
+<li><strong><code>gather_bounded</code> is the fan-out primitive under <code>run_agents</code></strong>:
+  <code>grep -n "gather_bounded\|max_concurrency" agentkit/kernel/concurrency.py</code>
+  returns two hits — the function definition (line 62) and its dispatch
+  inside <code>run_agents</code> (line 97). <code>max_concurrency</code> itself lives on
+  <code>Budget</code> in <code>agentkit/runtime/meter.py</code> (expected — the semaphore is
+  owned by the run-wide meter, not the fan-out primitive).</li>
+<li><strong><code>idempotency_key</code> is defined once and delegates to <code>stable_hash</code></strong>:
+  <code>grep -n "def idempotency_key" agentkit/kernel/resilience.py</code> returns
+  one hit (line 249), body is <code>"idem:" + stable_hash(parts, length=24)</code>.</li>
+</ul>
+<p>All three load-bearing structural checks pass, and the 12 invariant tests
+in the targeted slice are green. The design holds in the current tree.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

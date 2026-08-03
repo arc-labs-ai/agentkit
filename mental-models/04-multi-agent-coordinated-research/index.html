@@ -1,0 +1,2307 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/mental-models/04-multi-agent-coordinated-research/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Mental Model: Multi-Agent Coordinated Research Report - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mental-model-multi-agent-coordinated-research-report" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mental Model: Multi-Agent Coordinated Research Report
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User experience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-actually-works-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it actually works end-to-end
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-primitives-it-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The primitives it exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-deliberately-doesnt-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it deliberately doesn't use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correctness-checklist-for-future-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correctness checklist (for future changes)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-it-can-fail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where it can fail
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where it can fail">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#framework-level-failures-the-frameworks-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Framework-level failures (the framework's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-level-failures-the-wirings-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration-level failures (the wiring's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-level-failures-the-research-apps-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application-level failures (the research app's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-output-on-a-successful-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected output on a successful run
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Expected output on a successful run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-final-agentresult-from-the-coordinator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The final AgentResult from the coordinator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-agent-streamevent-sequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-agent StreamEvent sequences
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signalchannel-state-per-researcher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SignalChannel state (per Researcher)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#actorbudget-bookkeeping-per-child" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ActorBudget bookkeeping per child
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpointer-state-after-the-pre-synthesis-checkpoint-clears" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpointer state after the pre-synthesis checkpoint clears
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-automated-run-the-invariant-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Automated: run the invariant tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-structural-grep-for-load-bearing-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Structural: grep for load-bearing patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-adversarial-parallel-dispatch-smoke-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Adversarial: parallel dispatch smoke test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-failing-would-look-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What "failing" would look like
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tensions-to-hold-in-mind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tensions to hold in mind
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-use-case-tests-about-agentkit-reverse-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this use case tests about agentkit (reverse view)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mental-model-multi-agent-coordinated-research-report">Mental Model: Multi-Agent Coordinated Research Report<a class="headerlink" href="#mental-model-multi-agent-coordinated-research-report" title="Anchor link">&para;</a></h1>
+<p>The coordination + streaming story. This use case exists to prove that
+agentkit's multi-agent primitives (<code>CoordinatorCognition</code>, <code>Skill.as_agent</code>,
+<code>SignalChannel</code>, <code>ActorBudget</code>, streaming through <code>merge</code>) compose into a
+team of agents that observe each other, share progress upward, and stay
+isolated where isolation matters.</p>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Anchor link">&para;</a></h2>
+<p>Given a research question ("what's the state of solid-state batteries in
+2026?"), produce a cited brief. The team is:</p>
+<ul>
+<li><strong>Planner</strong> — decomposes the question into 3–7 sub-questions.</li>
+<li><strong>Researchers</strong> (one per sub-question, running in parallel) — search,
+  read, and score sources.</li>
+<li><strong>Synthesizer</strong> — waits for researchers, produces a draft synthesis.</li>
+<li><strong>Critic</strong> — adversarially reviews the synthesis, flags contradictions.</li>
+</ul>
+<p>The user watches a live canvas: agents appear, their work streams in,
+edges connect sub-questions to sources to claims. A checkpoint pauses
+before synthesis so the user can drop irrelevant sources.</p>
+<h2 id="user-experience">User experience<a class="headerlink" href="#user-experience" title="Anchor link">&para;</a></h2>
+<p>User submits question. Within seconds a Planner node appears on canvas
+with 5 sub-question children. Five Researcher agents spawn in parallel —
+each streams its own tokens into its own card. As sources arrive, they
+appear under the matching sub-question. Progress bar in each Researcher
+card ticks up. After ~90s a checkpoint fires: "Review sources before
+synthesis." User drops 2 irrelevant sources, clicks Continue. Synthesizer
+starts, streaming a cited draft. Critic runs after. User exports the
+final brief.</p>
+<h2 id="how-it-actually-works-end-to-end">How it actually works end-to-end<a class="headerlink" href="#how-it-actually-works-end-to-end" title="Anchor link">&para;</a></h2>
+<p>Walk through the internal state as one successful research run flows
+through the framework. The user's <code>POST /research {question: "..."}</code>
+has already arrived; the api service has constructed a top-level
+<code>RunContext</code> (<code>correlation_id="run-xyz"</code>, <code>budget=Budget(...)</code>,
+<code>services=Services(invoker=&lt;shared&gt;, observer=&lt;per-run&gt;, ...)</code>, shared
+<code>CancellationToken</code>).</p>
+<p><strong>t=0ms — Coordinator Agent construction.</strong> The api wires four Skills
+(<code>planner_skill</code>, <code>researcher_skill</code>, <code>synth_skill</code>, <code>critic_skill</code>)
+and builds the coordinator:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>coordinator = Agent(
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    name=&quot;coordinator&quot;,
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    cognition=CoordinatorCognition(
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        children={
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>            &quot;planner&quot;:     planner_skill.as_agent(),
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>            &quot;researcher&quot;:  researcher_skill.as_agent(),
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>            &quot;synthesizer&quot;: synth_skill.as_agent(),
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            &quot;critic&quot;:      critic_skill.as_agent(),
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        },
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        policy=PlanPolicy(planner=&lt;Planner impl&gt;, best_effort=True),
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    ),
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>)
+</span></code></pre></div>
+<p>Each <code>Skill.as_agent()</code> returns a <strong>fresh</strong> <code>Agent</code> whose <code>cognition</code>
+is a <code>copy.deepcopy(skill.cognition)</code> (skill.py:106). Two spawns of the
+same Skill therefore never share the mutable termination counter that
+lives on <code>ReActCognition.termination</code>. That deep-copy is the primary
+isolation seam.</p>
+<p><strong>t=~10ms — coordinator.run entered.</strong> The Agent's <code>stream</code> opens an
+<code>invoke_agent</code> span and hands off to <code>CoordinatorCognition.drive</code>,
+which delegates to <code>policy.execute(coordinator, task, ctx, context)</code>.</p>
+<p><strong>t=~20ms — PlanPolicy calls Planner.plan(task, ctx).</strong> The Planner
+protocol is declared "may be sync or async" — the concrete Planner is
+an LLM-backed impl, so it returns a coroutine. <code>PlanPolicy</code> checks
+<code>inspect.isawaitable(...)</code> and <code>await</code>s the result. The Planner
+internally runs its own agent (small <code>ReActCognition</code> or
+<code>SingleCallCognition</code>) against an LLM to decompose the question, then
+returns a list of <code>Step(agent, input, group)</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[Step(&quot;researcher&quot;, &quot;solid-state cathode chemistries&quot;, group=0),
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a> Step(&quot;researcher&quot;, &quot;cycle-life results 2025-2026&quot;,   group=0),
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a> Step(&quot;researcher&quot;, &quot;sulfide vs oxide electrolytes&quot;, group=0),
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a> Step(&quot;researcher&quot;, &quot;manufacturability at scale&quot;,    group=0),
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a> Step(&quot;researcher&quot;, &quot;safety incidents / thermal&quot;,    group=0),
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a> Step(&quot;synthesizer&quot;, &quot;&lt;merged corpus placeholder&gt;&quot;,  group=1),
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a> Step(&quot;critic&quot;,      &quot;&lt;synthesis placeholder&gt;&quot;,      group=2)]
+</span></code></pre></div>
+<p><strong>t=~4s — Group 0 fans out.</strong> PlanPolicy groups by
+<code>sorted({s.group for s in steps})</code> and, for <code>group=0</code>, builds pairs
+<code>[(children["researcher"], step.input), ...]</code> and calls
+<code>run_agents(pairs, ctx, best_effort=True)</code>. <code>run_agents</code> grabs
+<code>ctx.semaphore()</code> and dispatches through <code>gather_best_effort</code> — a
+bounded fan-out where a failing researcher's exception is captured
+into the slot instead of cancelling siblings.</p>
+<p><strong>Problem the framework must solve:</strong> all five <code>pairs</code> share ONE
+<code>children["researcher"]</code> Agent instance. Its <code>cognition</code> is one
+<code>ReActCognition</code> object. Five concurrent <code>.run(...)</code> calls on that
+one instance would otherwise race on <code>MaxTurns.turn</code> /
+<code>Timeout._start</code>.</p>
+<p><strong>t=~4s — Each Researcher's drive isolates termination.</strong> Each
+child's <code>ReActCognition.drive</code> opens with:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">termination</span> <span class="o">=</span> <span class="n">_copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">termination</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">termination</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+</span></code></pre></div>
+<p>(react.py:113) — a <strong>drive-local</strong> variable, not <code>self.termination</code>.
+The clone is threaded into <code>_iterate</code> as an argument (react.py:128).
+Two concurrent drives on the same cognition therefore each own their
+own counter. This is the second isolation seam; the first (per-spawn
+Skill deep-copy) covers spawn-from-Skill paths, this one covers
+parallel-dispatch-on-shared-Agent paths.</p>
+<p><strong>t=~5s — Researchers start emitting.</strong> Each Researcher runs its
+tool loop (<code>search</code>, <code>fetch</code>, <code>score_source</code>). As sources land it
+emits <code>ProgressSignal[Mutation]</code> on its <code>SignalChannel</code>. Every
+<code>emit(signal)</code> runs:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">stamped</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">signal</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">sender_id</span><span class="o">=</span><span class="n">signal</span><span class="o">.</span><span class="n">sender_id</span> <span class="k">if</span> <span class="n">signal</span><span class="o">.</span><span class="n">sender_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">timestamp_us</span><span class="o">=</span><span class="n">signal</span><span class="o">.</span><span class="n">timestamp_us</span> <span class="k">if</span> <span class="n">signal</span><span class="o">.</span><span class="n">timestamp_us</span> <span class="o">!=</span> <span class="mi">0</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clock</span><span class="p">(),</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">outbox</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">stamped</span><span class="p">)</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent_merge_inbox</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent_merge_inbox</span><span class="o">.</span><span class="n">put</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">agent_id</span><span class="p">,</span> <span class="n">stamped</span><span class="p">))</span>
+</span></code></pre></div>
+<p>(channel.py:165, 171-173). The frozen envelope is <strong>not mutated in
+place</strong> — <code>replace(...)</code> returns a new stamped copy, and the SAME
+reference lands in both the outbox (audit) and the parent's
+merge_inbox (live merge). Identity is preserved across those two
+consumers; timestamps are stamped once, monotonic per channel.</p>
+<p><strong>t=~5-90s — Coordinator drains merge_inbox.</strong> The coordinator's
+side sees ONE queue (<code>merge_inbox</code>) into which five children's
+signals fan in with <code>(sender_id, stamped_signal)</code> pairs. Each signal
+becomes a Scene mutation that the api forwards to the canvas over
+WebSocket.</p>
+<p><strong>t=~10-90s — StreamEvent flow.</strong> In parallel with the signal
+stream, each Researcher's <code>ReActCognition._iterate</code> yields
+<code>StreamEvent("message_delta", text=...)</code> on every LLM token,
+<code>StreamEvent("tool_call", ...)</code> on every tool dispatch,
+<code>StreamEvent("tool_result", ...)</code> on every tool completion. The
+transport layer (api service) <code>merge(...)</code>s the five per-agent
+<code>StreamEvent</code> iterators into one interleaved stream — the streams
+operator uses a bounded queue with dual sentinel paths so a slow
+consumer applies backpressure and a cancelled pump doesn't deadlock
+(streams.py:119, <code>merge</code>).</p>
+<p><strong>t=~90s — All Researchers DoneSignal.</strong> Each Researcher's loop
+terminates (either <code>MaxTurns</code> in its drive-local clone trips, or the
+LLM emits a natural stop). Each emits <code>DoneSignal[Mutation]</code> upward.
+<code>run_agents</code> collects the five <code>AgentResult</code>s in input order — a
+best-effort slot with an exception is left in place; PlanPolicy then
+scans results and appends any failure to
+<code>AgentResult.evals["errors"]</code>.</p>
+<p><strong>t=~91s — human_gate suspension.</strong> Between group 0 (researchers)
+and group 1 (synthesizer), a <code>Step.gate("review")</code> in the plan
+suspends the coordinator via <code>Suspended</code>. <code>PlanPolicy</code> checkpoints
+the accumulated results + errors + usage to <code>ctx.store</code> under a
+<code>plan_policy:&lt;run_id&gt;</code> key, then returns
+<code>AgentResult.evals["suspended"] = Suspended(run_id="run-xyz", pending=("review",))</code>
+with <code>stop_reason="awaiting_decision"</code>. The synthesizer step in
+group 2 does NOT run.</p>
+<p><strong>t=<indefinite> — Operator interacts.</strong> The user drops two
+irrelevant sources on the canvas. The api posts an approve command
+with the trimmed source-id set and the pending decision id
+<strong>verbatim</strong>. It calls
+<code>PlanPolicy.resume(coordinator, {"review": "approve"}, ctx)</code>: the
+policy loads the saved state from <code>ctx.store</code>, deletes the
+checkpoint, and continues at the group AFTER the gate. A
+<code>{"review": "reject"}</code> decision (or a missing key) instead returns
+<code>stop_reason="rejected"</code> without running the synthesizer.</p>
+<p><strong>t=~91s (wall) / t=0 (resume) — Synthesizer runs.</strong> PlanPolicy's
+next group has one step: <code>synthesizer</code> with the approved corpus.
+<code>ReActCognition</code> (or <code>SingleCallCognition</code>, whichever the Synth
+Skill wired) drives one LLM call over the approved sources, emitting
+<code>message_delta</code> tokens as the draft streams. Terminal delta →
+<code>StreamEvent("final", result=AgentResult(...), usage=...)</code>.</p>
+<p><strong>t=~180s — Critic runs.</strong> Group 2 dispatches the critic on the
+synthesizer's output. The critic emits contradiction / weak-citation
+nodes as its own progress mutations. When done, another <code>final</code>.</p>
+<p><strong>t=~200s — Coordinator returns.</strong> PlanPolicy accumulates
+<code>results[-1].output</code> as the final brief (the critic's output, since
+it ran last; alternate wirings pin the synthesizer's output as the
+brief and treat critic outputs as sidecar evals). Usage is merged
+across all seven step-runs. The coordinator's <code>drive</code> yields exactly
+one terminal <code>StreamEvent("final", result=AgentResult(...), usage=...)</code>.
+<code>Agent.run</code> collects that final and returns the top-level result.</p>
+<h2 id="composition">Composition<a class="headerlink" href="#composition" title="Anchor link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>POST /research {question: &quot;...&quot;} 
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>     │
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>     ▼
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>Agent(name=&quot;coordinator&quot;,
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      cognition=CoordinatorCognition(
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        children={
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>          &quot;planner&quot;:     planner_skill.as_agent(),     # deep-copy per spawn
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>          &quot;researcher&quot;:  researcher_skill.as_agent(),  #   ↑ isolation seam #1
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>          &quot;synthesizer&quot;: synth_skill.as_agent(),
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>          &quot;critic&quot;:      critic_skill.as_agent(),
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        },
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        policy=PlanPolicy(planner=&lt;Planner protocol impl&gt;),
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>      ))
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>     │
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>     │  child spawn: coordinator.channel.attach_parent(coordinator&#39;s merge_inbox)
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>     │  each child channel emits upward → parent reads one queue
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>     │
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>     ▼
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>Planner runs → returns Plan(sub_questions=[q1..q5])
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>     │
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>     ▼
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>PlanPolicy dispatches Steps in group 0 → group 1 → …
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>  group 0: [Step(agent=&quot;researcher&quot;, input=q1),
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>            Step(agent=&quot;researcher&quot;, input=q2),
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>            ...]
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>     │
+</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>     ▼
+</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>run_agents(pairs, ctx, best_effort=True) fans out:
+</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>  gather_bounded over ctx.semaphore()
+</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>     │
+</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>     ▼
+</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>Each Researcher = Agent(cognition=ReActCognition(
+</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>    tools=[search, fetch, score_source],
+</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>    termination=MaxTurns(8) | Timeout(180)))
+</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>  → each drive() deep-copies its termination (isolation seam #2)
+</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>  → each emits ProgressSignal[Mutation] upward
+</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>     │
+</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>     ▼
+</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a>Coordinator&#39;s merge_inbox drains signals as they arrive.
+</span><span id="__span-4-40"><a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a>Each ProgressSignal is a stamped, frozen envelope.
+</span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>Coordinator writes each mutation to the Scene → canvas re-renders.
+</span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>     │
+</span><span id="__span-4-43"><a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>     ▼
+</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>When all researchers DoneSignal upward:
+</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>  human_gate → suspends → operator drops sources → resume
+</span><span id="__span-4-46"><a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>     │
+</span><span id="__span-4-47"><a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a>     ▼
+</span><span id="__span-4-48"><a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a>Synthesizer runs on approved corpus → SynthesisNode
+</span><span id="__span-4-49"><a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a>Critic runs on the synthesis → CritiqueNodes
+</span><span id="__span-4-50"><a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a>     │
+</span><span id="__span-4-51"><a id="__codelineno-4-51" name="__codelineno-4-51" href="#__codelineno-4-51"></a>     ▼
+</span><span id="__span-4-52"><a id="__codelineno-4-52" name="__codelineno-4-52" href="#__codelineno-4-52"></a>Return AgentResult(output=&lt;final brief&gt;, usage=&lt;merged&gt;)
+</span></code></pre></div>
+<h2 id="the-primitives-it-exercises">The primitives it exercises<a class="headerlink" href="#the-primitives-it-exercises" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Primitive</th>
+<th>Role here</th>
+<th>Why load-bearing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Coordinator</code> <code>Agent</code> + <code>CoordinatorCognition</code></td>
+<td>The team-lead pattern</td>
+<td>Emergent multi-agent control</td>
+</tr>
+<tr>
+<td><code>Skill.as_agent()</code> (deep-copied cognition)</td>
+<td>Materialise a named worker per spawn</td>
+<td>5 researchers must not share MaxTurns state</td>
+</tr>
+<tr>
+<td><code>PlanPolicy</code> + <code>Planner</code> (may be async)</td>
+<td>Plan → dispatch children in ordered groups</td>
+<td>The Planner LLM call is async; PlanPolicy awaits</td>
+</tr>
+<tr>
+<td><code>run_agents</code> (via <code>gather_bounded</code>)</td>
+<td>Concurrency-capped child dispatch</td>
+<td>Never spawns more researchers than <code>ctx.budget.semaphore</code> allows</td>
+</tr>
+<tr>
+<td><code>ReActCognition</code> (per researcher)</td>
+<td>Tool loop for search/fetch/score</td>
+<td>Each researcher iterates until done or terminated</td>
+</tr>
+<tr>
+<td>Per-drive termination clone</td>
+<td>5 researchers, one shared cognition instance, no state race</td>
+<td>The drive-local variable, not <code>self.termination</code></td>
+</tr>
+<tr>
+<td><code>SignalChannel</code> + <code>MergeInbox</code></td>
+<td>Child → parent progress stream</td>
+<td>Coordinator reads ONE queue instead of polling N children</td>
+</tr>
+<tr>
+<td>Frozen <code>SignalEnvelope</code> + <code>replace</code>-on-stamp</td>
+<td>Same stamped envelope on outbox + parent's merge_inbox</td>
+<td>Audit and merge loop see identical envelope identity</td>
+</tr>
+<tr>
+<td>Monotonic <code>timestamp_us</code> per channel</td>
+<td>Replay ordering across a cascade</td>
+<td>Sorting by timestamp reconstructs the DAG</td>
+</tr>
+<tr>
+<td><code>StreamEvent</code> (<code>Literal</code> type tag)</td>
+<td>Per-agent token streaming to canvas</td>
+<td><code>message_delta</code> / <code>tool_call</code> / <code>tool_result</code> / <code>final</code></td>
+</tr>
+<tr>
+<td><code>merge</code> (streams operator)</td>
+<td>Interleave multiple children's event streams into one</td>
+<td>The canvas subscribes to a single unified stream</td>
+</tr>
+<tr>
+<td><code>human_gate</code> (as a Workflow-style pause) OR <code>Suspended</code></td>
+<td>Pre-synthesis review checkpoint</td>
+<td>User can drop sources before the synthesizer runs</td>
+</tr>
+<tr>
+<td><code>ActorBudget</code> per researcher</td>
+<td>Slice of parent's Budget to each child</td>
+<td>One runaway researcher can't drain the whole run's budget</td>
+</tr>
+<tr>
+<td><code>CancellationToken</code> (shared)</td>
+<td>Cancel any node cancels all its children</td>
+<td>User's "abort research" propagates through the tree</td>
+</tr>
+<tr>
+<td><code>output_coerce</code> + Pydantic schemas per agent</td>
+<td>Planner returns <code>Plan</code>, Researcher returns <code>ResearchFindings</code>, etc.</td>
+<td>Typed inter-agent handoffs</td>
+</tr>
+<tr>
+<td><code>Handoff</code> + <code>handoff_tool</code> (optional)</td>
+<td>Explicit named routing when coordinator's policy needs it</td>
+<td>For the "Critic hands off to Reviser" pattern (not used here but part of the family)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-it-deliberately-doesnt-use">What it deliberately doesn't use<a class="headerlink" href="#what-it-deliberately-doesnt-use" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>Workflow</code></strong> — this is emergent (planner decides the plan at runtime).
+  Workflow would be right for a research pipeline with a FIXED shape
+  (<code>explore → catalog → cluster → decompose → investigate → synth →
+  critique</code>), which is what research·io's engine actually uses. This doc
+  is about the coordinator-cognition shape.</li>
+<li><strong><code>CachedMemory</code></strong> — each research run is unique; no repeated queries
+  within a session worth caching.</li>
+<li><strong><code>FileTool</code></strong> — sources come from the web (via <code>SearchPort</code> / <code>FetchPort</code>),
+  not the local FS.</li>
+</ul>
+<h2 id="invariants">Invariants<a class="headerlink" href="#invariants" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Invariant</th>
+<th>Concrete failure if violated</th>
+<th>Locked by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>Skill.as_agent()</code> returns independent cognition instances</strong></td>
+<td>5 researchers share MaxTurns counter → any one hitting max ends all of them</td>
+<td><code>test_as_agent_cognitions_are_independent_instances</code></td>
+</tr>
+<tr>
+<td><strong>Concurrent <code>as_agent()</code> calls produce isolated state</strong></td>
+<td>Two researchers spawned in parallel scribble on each other's termination</td>
+<td><code>test_concurrent_as_agent_calls_do_not_share_termination_state</code></td>
+</tr>
+<tr>
+<td><strong><code>ReActCognition.drive</code> uses a drive-local termination clone</strong></td>
+<td>Two concurrent drives on the same cognition (Coordinator dispatch) race on <code>self.termination = deepcopy(...)</code> assignment</td>
+<td>Termination lives on a local var + threaded into <code>_iterate</code>; regression documented in the correctness review that found the assign-to-self race</td>
+</tr>
+<tr>
+<td><strong><code>SignalEnvelope</code> is frozen</strong></td>
+<td>Post-emit mutation of <code>sender_id</code> → audit trail lies</td>
+<td><code>test_signal_envelope_is_frozen</code>, <code>test_all_signal_types_are_frozen</code></td>
+</tr>
+<tr>
+<td><strong><code>emit</code> publishes a stamped copy; caller's original untouched</strong></td>
+<td>Caller-side logging shows different values than the queue's</td>
+<td><code>test_channel_emit_does_not_mutate_caller_signal</code></td>
+</tr>
+<tr>
+<td><strong>Outbox and merge_inbox see identical stamped reference</strong></td>
+<td>Audit and merge-loop disagree on the envelope's identity (correlation_id / causation_id)</td>
+<td><code>test_channel_emit_produces_same_stamped_copy_for_outbox_and_parent</code></td>
+</tr>
+<tr>
+<td><strong>Timestamps within a channel are monotonic</strong></td>
+<td>Replay ordering breaks; UI shows events out of order</td>
+<td><code>test_channel_emit_stamps_are_monotonic_across_signals</code></td>
+</tr>
+<tr>
+<td><strong>Forwarder attribution: MergeInbox key = forwarder's agent_id</strong></td>
+<td>A child that forwards a grandchild's signal is invisible in the audit → causation graph broken</td>
+<td><code>test_channel_emit_stamps_child_id_when_forwarded_to_parent</code></td>
+</tr>
+<tr>
+<td><strong><code>try_send_to</code> never raises on full inbox</strong></td>
+<td>Best-effort broadcast becomes blocking → parent stalls waiting for a full child inbox</td>
+<td><code>test_channel_try_send_to_full_inbox_drops_without_raising</code></td>
+</tr>
+<tr>
+<td><strong>Two independent channels don't cross-talk</strong></td>
+<td>Concurrent emit from two channels crosses envelopes → attribution wrong</td>
+<td><code>test_two_channels_emit_independently</code></td>
+</tr>
+<tr>
+<td><strong><code>PlanPolicy</code> awaits async planner output</strong></td>
+<td>Async Planner returns a coroutine; iteration raises TypeError</td>
+<td><code>test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating</code></td>
+</tr>
+<tr>
+<td><strong><code>Handoff</code> / <code>handoff_tool</code> accepts <code>MappingProxyType</code> args</strong></td>
+<td>Tool receives <code>ToolCall.arguments</code> (a proxy view); <code>isinstance(dict)</code> fails → every handoff rejected as "unknown target"</td>
+<td><code>test_handoff_tool_accepts_mappingproxy_arguments</code></td>
+</tr>
+<tr>
+<td><strong><code>as_tool</code> extracts <code>task</code> from a <code>MappingProxyType</code></strong></td>
+<td>Skill invoked as a tool receives <code>str(args)</code> instead of the task string → sub-run gets garbage</td>
+<td><code>test_as_tool_forwards_task_from_mappingproxy_arguments</code></td>
+</tr>
+<tr>
+<td><strong><code>ActorBudget</code> clamps overspend at the reservation</strong></td>
+<td>A child spends beyond its reservation → the parent's budget bookkeeping goes negative</td>
+<td><code>test_actor_budget_settle_capped_at_reservation</code></td>
+</tr>
+<tr>
+<td><strong>Cancellation propagates via <code>ctx.cancel</code></strong></td>
+<td>Aborting the coordinator leaves 5 researchers running</td>
+<td><code>test_cancellation_mid_flight_propagates_to_children</code> (live coordinator dispatch) + <code>test_cancel_token_is_shared_reference_across_ctx_child</code> (structural invariant) in <code>tests/agents/test_coordinator_agent.py</code></td>
+</tr>
+<tr>
+<td><strong><code>StreamEvent.type</code> is a <code>Literal</code></strong></td>
+<td>A typo in a consumer's branch (<code>"finl"</code> vs <code>"final"</code>) silently misses the terminal event</td>
+<td>Type-level: <code>StreamEventType</code> Literal + mypy exhaustiveness on consumer branches</td>
+</tr>
+</tbody>
+</table>
+<h2 id="correctness-checklist-for-future-changes">Correctness checklist (for future changes)<a class="headerlink" href="#correctness-checklist-for-future-changes" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Coordinator dispatch loop must call <code>ctx.child()</code> per spawn.</strong> Otherwise
+  budget/cancellation/observation don't flow into children. Grep
+  <code>.run(</code> in <code>agents/policies/*.py</code> — every call should be
+  <code>child_agent.run(input, ctx.child())</code>, never <code>ctx</code> bare.</li>
+<li><strong>Every child agent's <code>RunContext</code> inherits the parent's <code>cancel</code> token.</strong>
+  Verify in <code>RunContext.child()</code> — the token is a shared reference, not
+  a copy.</li>
+<li><strong><code>Skill.as_agent()</code> deep-copy is not skippable.</strong> If someone adds a
+  "fast path" that shares cognition, the isolation test catches it. If
+  they disable that test to make a benchmark pass, they broke the
+  framework.</li>
+<li><strong><code>SignalChannel.emit</code> uses <code>dataclasses.replace</code>, never in-place mutation.</strong>
+  Grep <code>signal.sender_id =</code> in <code>channel.py</code> — should be zero matches.</li>
+<li><strong>The <code>merge</code> operator's cancellation-safe cleanup</strong>: verified by
+  <code>test_merge_early_break_from_infinite_sources_completes</code>. If a new
+  operator is added to <code>streams.py</code>, replicate that pattern (split
+  sentinel path on cancelled vs natural completion).</li>
+<li><strong>Coordinator's Suspended checkpoint carries the pending decision id
+  verbatim.</strong> Users approve/reject by that id; a rename or coercion
+  breaks resume. Verified by the checkpointer end-to-end test.</li>
+</ul>
+<h2 id="where-it-can-fail">Where it can fail<a class="headerlink" href="#where-it-can-fail" title="Anchor link">&para;</a></h2>
+<p>Enumerated so a code reviewer can walk the list. Each is a real risk if
+the framework's or the wiring's invariants slip.</p>
+<h3 id="framework-level-failures-the-frameworks-job-to-prevent">Framework-level failures (the framework's job to prevent)<a class="headerlink" href="#framework-level-failures-the-frameworks-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong><code>Skill.as_agent()</code> stops deep-copying <code>cognition</code>.</strong> A refactor
+   that shares the cognition instance across materialisations → five
+   researchers race on <code>MaxTurns.turn</code>. <em>Locked by
+   <code>test_as_agent_cognitions_are_independent_instances</code> and
+   <code>test_concurrent_as_agent_calls_do_not_share_termination_state</code> in
+   <code>tests/skills/test_skill.py</code>.</em></li>
+<li><strong><code>ReActCognition.drive</code> reassigns <code>self.termination</code> instead of
+   using a local.</strong> Under parallel dispatch of one shared Agent, two
+   drives race on <code>self.termination = deepcopy(...)</code> — one clobbers
+   the other. <em>Locked structurally by react.py:113 (local variable
+   name <code>termination</code>) and threaded into <code>_iterate</code> at line 128; the
+   test suite's live coordinator dispatch under
+   <code>test_cancellation_mid_flight_propagates_to_children</code> exercises
+   the concurrent-drive path.</em></li>
+<li><strong><code>SignalChannel.emit</code> mutates the caller's envelope in place.</strong>
+   The caller's log line reads different fields than the queue's copy;
+   audit and merge-loop disagree on identity. <em>Locked by
+   <code>test_channel_emit_does_not_mutate_caller_signal</code> and
+   <code>test_channel_emit_produces_same_stamped_copy_for_outbox_and_parent</code>
+   in <code>tests/agents/test_signal_protocol.py</code>.</em></li>
+<li><strong><code>SignalEnvelope</code> becomes non-frozen.</strong> A helper adds a
+   <code>set_sender</code> method → downstream code mutates <code>sender_id</code> post-emit
+   → cascade attribution rewritten silently. <em>Locked by
+   <code>test_signal_envelope_is_frozen</code> and <code>test_all_signal_types_are_frozen</code>.</em></li>
+<li><strong><code>PlanPolicy</code> stops awaiting async planners.</strong> A refactor iterates
+   <code>planner.plan(...)</code> directly → an async planner returns a coroutine
+   → <code>for step in coroutine</code> raises <code>TypeError</code>. <em>Locked by
+   <code>test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating</code>
+   in <code>tests/agents/test_workflow.py</code>.</em></li>
+<li><strong><code>run_agents</code> drops the semaphore.</strong> Concurrency bound collapses;
+   under load the coordinator spawns thousands of parallel researchers
+   and hits the provider's rate limit. <em>Locked structurally by
+   <code>concurrency.py:95-97</code> (<code>sem = ctx.semaphore()</code>; gather_bounded /
+   gather_best_effort take <code>sem=</code>).</em></li>
+<li><strong><code>ActorBudget.settle_child</code> stops capping at the reservation.</strong>
+   An over-spending child pushes the parent's <code>used_*</code> past its cap →
+   downstream <code>exhausted()</code> never trips. <em>Locked by
+   <code>test_actor_budget_settle_capped_at_reservation</code> in
+   <code>tests/agents/test_signal_protocol.py</code>.</em></li>
+<li><strong><code>merge</code> deadlocks on early consumer exit.</strong> A pump's <code>finally</code>
+   awaits a <code>queue.put</code> with a full queue and no reader → hang. <em>Locked
+   by the dual-sentinel pattern in <code>streams.py:merge</code> (cancelled →
+   <code>put_nowait</code> + <code>QueueFull</code> tolerance; natural → <code>await put</code>) and by
+   <code>test_merge_early_break_from_infinite_sources_completes</code>.</em></li>
+</ol>
+<h3 id="integration-level-failures-the-wirings-job-to-prevent">Integration-level failures (the wiring's job to prevent)<a class="headerlink" href="#integration-level-failures-the-wirings-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>Researcher Skill wired without a <code>termination</code>.</strong> With no smart
+   stop, <code>MaxTurns</code> on <code>ReActCognition</code> is the only ceiling — one
+   pathological researcher runs 8 turns and eats the whole budget.
+   <em>Not a framework concern; the research app's Skill construction
+   must always set a <code>termination</code>.</em></li>
+<li><strong>A tool is registered on the wrong Skill.</strong> The Synthesizer gets
+   <code>search</code> in its tool registry → it decides to "verify" a claim
+   with a live search mid-synthesis, blowing the citation contract.
+   <em>Wiring test in the research app must assert per-role tool sets.</em></li>
+<li><strong><code>PlanPolicy(planner=None, steps=None)</code> called with neither.</strong>
+   PlanPolicy raises <code>ValueError</code>, but that's a runtime failure. A
+   wire-up test should construct the coordinator once and dry-run to
+   surface this at boot.</li>
+<li><strong>Checkpointer not wired on the CoordinatorCognition (or on <code>ctx</code>).</strong>
+   The pre-synthesis <code>Suspended</code> fires; there's nowhere to persist
+   the pending decision + corpus → resume can't reconstruct the run.
+   <em>The app must construct with <code>CoordinatorCognition(..., checkpointer=&lt;store&gt;)</code>
+   or ensure <code>ctx.checkpointer</code> is set.</em></li>
+<li><strong>StreamEvent transport doesn't respect per-agent order.</strong> The api's
+   <code>merge(...)</code> fan-in is correct; a naive WebSocket forwarder that
+   re-orders by wall-clock timestamp corrupts the delta sequence for
+   one agent. <em>Framework only guarantees per-agent stream order;
+   transport must preserve that ordering on the wire.</em></li>
+<li><strong><code>best_effort=True</code> swallowed on <code>PlanPolicy</code> construction.</strong> With
+   <code>best_effort=False</code> (default), one flaky researcher's exception
+   cancels the whole group → the research run dies on a transient
+   fetch error. <em>Wiring must pass <code>best_effort=True</code> for the research
+   group.</em></li>
+</ol>
+<h3 id="application-level-failures-the-research-apps-job-to-prevent">Application-level failures (the research app's job to prevent)<a class="headerlink" href="#application-level-failures-the-research-apps-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>Planner prompt returns free-text steps instead of typed <code>Step</code>
+   objects.</strong> The Planner impl must coerce its LLM output through a
+   Pydantic schema; a regex-parsed plan silently mis-routes.</li>
+<li><strong>Synthesizer prompt drifts and starts synthesizing from prior
+   knowledge instead of the approved corpus.</strong> Framework can't detect
+   this — the prompt is the app's contract. Only a critic run + a
+   citation-existence check catches it.</li>
+<li><strong>Researcher scores sources on a subjective "interesting"
+   dimension.</strong> Scores should be grounded on relevance + credibility
+   heuristics, not aesthetic. The app owns the scoring prompt.</li>
+<li><strong>Critic prompt is toothless.</strong> A "review the synthesis" prompt
+   with no adversarial framing rubber-stamps every draft. Contradiction
+   flagging is an app-level correctness burden.</li>
+<li><strong>Coordinator prompt attempts to override PlanPolicy's dispatch.</strong>
+   The coordinator Agent's prompt influences only the Planner call in
+   this wiring; a stray "call the critic first" instruction is
+   ignored, but confuses debugging. Keep the coordinator prompt
+   minimal or empty when PlanPolicy owns dispatch.</li>
+<li><strong>Sub-question strings echo user PII verbatim into search
+   queries.</strong> The research app's Planner prompt must sanitize; the
+   framework has no visibility into query content.</li>
+</ol>
+<h2 id="expected-output-on-a-successful-run">Expected output on a successful run<a class="headerlink" href="#expected-output-on-a-successful-run" title="Anchor link">&para;</a></h2>
+<p>After the research run completes cleanly, the framework produces the
+following concrete artifacts. Any deviation from these shapes on a green
+run is a signal.</p>
+<h3 id="the-final-agentresult-from-the-coordinator">The final <code>AgentResult</code> from the coordinator<a class="headerlink" href="#the-final-agentresult-from-the-coordinator" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">AgentResult</span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">output</span><span class="o">=</span><span class="s2">&quot;Solid-state batteries in 2026 are transitioning from lab...&quot;</span><span class="p">,</span>  <span class="c1"># the final brief</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">usage</span><span class="o">=</span><span class="n">Usage</span><span class="p">(</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="n">input_tokens</span><span class="o">=</span><span class="mi">42_180</span><span class="p">,</span>      <span class="c1"># planner + 5 researchers + synth + critic</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="n">output_tokens</span><span class="o">=</span><span class="mi">8_940</span><span class="p">,</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        <span class="n">cost_usd</span><span class="o">=</span><span class="mf">0.612</span><span class="p">,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        <span class="n">cache_read_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        <span class="n">cache_write_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="p">),</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">partial</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="n">evals</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        <span class="s2">&quot;results&quot;</span><span class="p">:</span> <span class="p">[</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;plan JSON&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>         <span class="c1"># planner</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;findings q1&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>        <span class="c1"># researcher 1</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;findings q2&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>        <span class="c1"># researcher 2</span>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;findings q3&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>        <span class="c1"># researcher 3</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;findings q4&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>        <span class="c1"># researcher 4</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;findings q5&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>        <span class="c1"># researcher 5</span>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;synthesis draft&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span>    <span class="c1"># synthesizer</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>            <span class="n">AgentResult</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="s2">&quot;&lt;critique + revised&gt;&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">),</span> <span class="c1"># critic</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="p">],</span>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="s2">&quot;errors&quot;</span><span class="p">:</span> <span class="p">[],</span>              <span class="c1"># best_effort=True; empty on a fully-green run</span>
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>        <span class="s2">&quot;stop_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;plan_complete&quot;</span><span class="p">,</span>
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>    <span class="p">},</span>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    <span class="n">parsed</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                   <span class="c1"># no top-level parser on the coordinator</span>
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>    <span class="n">prompt_version</span><span class="o">=</span><span class="s2">&quot;coordinator-inline&quot;</span><span class="p">,</span>
+</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Key checks:</p>
+<ul>
+<li><code>partial=False</code> — no researcher failed a repair, no <code>max_iterations</code>
+  ceiling tripped.</li>
+<li><code>evals["errors"]</code> is empty. A best-effort slot with an exception
+  would land here as <code>(child_name, exc)</code>. Non-empty on a "green" run
+  is a red flag.</li>
+<li><code>evals["stop_reason"] == "plan_complete"</code> — the plan exhausted all
+  groups cleanly.</li>
+<li><code>usage</code> sums across every step's LLM turns.</li>
+</ul>
+<h3 id="per-agent-streamevent-sequences">Per-agent <code>StreamEvent</code> sequences<a class="headerlink" href="#per-agent-streamevent-sequences" title="Anchor link">&para;</a></h3>
+<p><strong>Planner</strong> (single-pass or short ReAct):</p>
+<ol>
+<li><code>StreamEvent("message_delta", text="{\"sub_")</code> ... — plan JSON streaming</li>
+<li><code>StreamEvent("message_delta", text="questions\": [")</code> ...</li>
+<li><code>StreamEvent("final", result=&lt;Plan AgentResult&gt;, usage=...)</code></li>
+</ol>
+<p><strong>Each Researcher</strong> (typical shape):</p>
+<ol>
+<li><code>StreamEvent("message_delta", text="I'll search for ")</code> ...</li>
+<li><code>StreamEvent("tool_call", tool_call=ToolCall("t1", "search", {"query": "..."}))</code></li>
+<li><code>StreamEvent("tool_result", tool_call=&lt;same&gt;, tool_result="&lt;top 5 URLs&gt;")</code></li>
+<li><code>StreamEvent("step", text="iteration:1")</code></li>
+<li><code>StreamEvent("message_delta", text="Fetching first source")</code> ...</li>
+<li><code>StreamEvent("tool_call", tool_call=ToolCall("t2", "fetch", {"url": "..."}))</code></li>
+<li><code>StreamEvent("tool_result", ...)</code></li>
+<li><code>StreamEvent("tool_call", tool_call=ToolCall("t3", "score_source", {...}))</code></li>
+<li><code>StreamEvent("tool_result", ...)</code></li>
+<li>... (multiple iterations)</li>
+<li><code>StreamEvent("final", result=&lt;ResearchFindings AgentResult&gt;, usage=...)</code></li>
+</ol>
+<p><strong>Synthesizer</strong> (post-checkpoint, streaming prose):</p>
+<ol>
+<li><code>StreamEvent("message_delta", text="Overview\n\n")</code> — draft tokens</li>
+<li>... (many message_delta events)</li>
+<li><code>StreamEvent("final", result=&lt;Synthesis AgentResult&gt;, usage=...)</code></li>
+</ol>
+<p><strong>Critic</strong> (analytical, may issue tool calls to re-fetch):</p>
+<ol>
+<li><code>StreamEvent("message_delta", text="Contradiction check:")</code> ...</li>
+<li>Optional <code>tool_call</code> / <code>tool_result</code> for citation verification</li>
+<li><code>StreamEvent("final", result=&lt;Critique AgentResult&gt;, usage=...)</code></li>
+</ol>
+<p><strong>Coordinator</strong> (aggregate; one terminal event by design):</p>
+<ol>
+<li><code>StreamEvent("final", result=&lt;aggregate AgentResult&gt;, usage=&lt;merged&gt;)</code></li>
+</ol>
+<p>The coordinator does NOT re-yield children's message deltas — those
+flow through the api's <code>merge(...)</code> of the children's own streams. See
+the CoordinatorCognition contract: policy runs to completion, one
+terminal event.</p>
+<h3 id="signalchannel-state-per-researcher"><code>SignalChannel</code> state (per Researcher)<a class="headerlink" href="#signalchannel-state-per-researcher" title="Anchor link">&para;</a></h3>
+<p>After a Researcher finishes:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">researcher_channel</span><span class="o">.</span><span class="n">outbox</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># Queue containing ~5-20 stamped ProgressSignal[Mutation] envelopes</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># each with sender_id=researcher.agent_id, monotonic timestamp_us,</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># then one DoneSignal at the end.</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">coordinator_channel</span><span class="o">.</span><span class="n">merge_inbox</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Queue containing ~25-100 (sender_id, stamped_signal) pairs across</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="c1"># all 5 researchers. Same stamped references as each researcher&#39;s</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="c1"># outbox — identity preserved.</span>
+</span></code></pre></div>
+<p>Structural check: for any signal <code>s</code> in a researcher's <code>outbox</code>, the
+corresponding pair <code>(researcher.agent_id, s)</code> MUST exist in the
+coordinator's <code>merge_inbox</code> with an identical object identity (Python
+<code>is</code>). If they differ, <code>dataclasses.replace</code> is being called twice
+(regression) or a copy is being made in transit.</p>
+<h3 id="actorbudget-bookkeeping-per-child"><code>ActorBudget</code> bookkeeping per child<a class="headerlink" href="#actorbudget-bookkeeping-per-child" title="Anchor link">&para;</a></h3>
+<p>After a Researcher settles:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># On the parent (coordinator):</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">coordinator_actor_budget</span><span class="o">.</span><span class="n">reserved_tokens</span>   <span class="o">==</span> <span class="mi">0</span>       <span class="c1"># released</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">coordinator_actor_budget</span><span class="o">.</span><span class="n">reserved_cost_usd</span> <span class="o">==</span> <span class="mf">0.0</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">coordinator_actor_budget</span><span class="o">.</span><span class="n">used_tokens</span>       <span class="o">==</span> <span class="o">&lt;</span><span class="n">up</span> <span class="n">to</span> <span class="n">reservation</span><span class="p">,</span> <span class="n">never</span> <span class="n">over</span><span class="o">&gt;</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">coordinator_actor_budget</span><span class="o">.</span><span class="n">used_cost_usd</span>     <span class="o">==</span> <span class="o">&lt;</span><span class="n">up</span> <span class="n">to</span> <span class="n">reservation</span><span class="p">,</span> <span class="n">never</span> <span class="n">over</span><span class="o">&gt;</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># On the child (researcher):</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">researcher_actor_budget</span><span class="o">.</span><span class="n">used_tokens</span>        <span class="o">==</span> <span class="o">&lt;</span><span class="n">actual</span> <span class="n">spend</span><span class="p">,</span> <span class="n">may</span> <span class="n">exceed</span> <span class="n">reservation</span><span class="o">&gt;</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">researcher_actor_budget</span><span class="o">.</span><span class="n">used_cost_usd</span>      <span class="o">==</span> <span class="o">&lt;</span><span class="n">actual</span> <span class="n">spend</span><span class="p">,</span> <span class="n">may</span> <span class="n">exceed</span> <span class="n">reservation</span><span class="o">&gt;</span>
+</span></code></pre></div>
+<p>The over-spend (if any) is visible on the child's own book — for
+observability — but the parent's <code>used_*</code> MUST NOT exceed what was
+reserved. That cap is what stops one runaway researcher from silently
+consuming the whole run's envelope.</p>
+<h3 id="checkpointer-state-after-the-pre-synthesis-checkpoint-clears">Checkpointer state after the pre-synthesis checkpoint clears<a class="headerlink" href="#checkpointer-state-after-the-pre-synthesis-checkpoint-clears" title="Anchor link">&para;</a></h3>
+<p>Between the checkpoint firing and the operator's approve:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">checkpoint</span> <span class="o">=</span> <span class="p">{</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="s2">&quot;run_id&quot;</span><span class="p">:</span> <span class="s2">&quot;run-xyz&quot;</span><span class="p">,</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;suspended&quot;</span><span class="p">,</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="s2">&quot;state&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>        <span class="s2">&quot;phase&quot;</span><span class="p">:</span> <span class="s2">&quot;pre_synthesis&quot;</span><span class="p">,</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="s2">&quot;corpus&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="n">source_id</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>       <span class="c1"># the researchers&#39; output</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>        <span class="s2">&quot;pending&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="n">decision_id</span><span class="o">&gt;</span><span class="p">],</span>         <span class="c1"># opaque id the operator returns verbatim</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>        <span class="s2">&quot;context&quot;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">serialized</span> <span class="n">WorkingContext</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>        <span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">serialized</span> <span class="n">Usage</span> <span class="n">so</span> <span class="n">far</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="p">},</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="s2">&quot;created_at&quot;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">timestamp</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>On resume with the operator's approve command:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">checkpoint</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">&quot;cleared&quot;</span>     <span class="c1"># OR the row is deleted, impl-dependent</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># The coordinator&#39;s state advances to &quot;synthesis&quot; phase and PlanPolicy</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># resumes at group=1.</span>
+</span></code></pre></div>
+<p>The <code>pending</code> id MUST round-trip: the operator returns the exact string
+the checkpoint stored. A rename or coercion breaks the handshake.</p>
+<h2 id="verification-protocol">Verification protocol<a class="headerlink" href="#verification-protocol" title="Anchor link">&para;</a></h2>
+<p>How to actually check the design is working — not just "tests pass" but
+"the invariants hold structurally in the current code".</p>
+<h3 id="1-automated-run-the-invariant-tests">1. Automated: run the invariant tests<a class="headerlink" href="#1-automated-run-the-invariant-tests" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/skills/test_skill.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">              </span>tests/agents/test_signal_protocol.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">              </span>tests/agents/test_coordinator_agent.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">              </span>tests/agents/test_agent_loop.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">              </span>-k<span class="w"> </span><span class="s2">&quot;as_agent or termination or channel or signal or coordinator&quot;</span>
+</span></code></pre></div>
+<p>Expected: all pass. Any failure is a live invariant violation. Adjacent
+files that lock further invariants:</p>
+<ul>
+<li><code>tests/agents/test_workflow.py</code> — <code>test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating</code>.</li>
+<li><code>tests/agents/test_handoff.py</code> — <code>test_handoff_tool_accepts_mappingproxy_arguments</code>.</li>
+<li><code>tests/tools/test_function_tool.py</code> — <code>test_as_tool_forwards_task_from_mappingproxy_arguments</code>.</li>
+<li><code>tests/agents/test_actor_budget.py</code> and <code>test_signal_protocol.py</code> —
+  ActorBudget reservation + settle behaviour.</li>
+</ul>
+<h3 id="2-structural-grep-for-load-bearing-patterns">2. Structural: grep for load-bearing patterns<a class="headerlink" href="#2-structural-grep-for-load-bearing-patterns" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># Per-spawn cognition isolation (Skill.as_agent deep-copy).</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;deepcopy&quot;</span><span class="w"> </span>agentkit/skills/skill.py
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># Expected: line 106 — cognition=copy.deepcopy(self.cognition),</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="c1"># Per-drive termination isolation (drive-local clone).</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;termination&quot;</span><span class="w"> </span>agentkit/agents/cognition/react.py
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># Expected: &#39;termination = _copy.deepcopy(self.termination)&#39; as a LOCAL</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="c1"># variable, threaded into _iterate(...) as an argument. No line</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="c1"># reassigning ``self.termination`` inside ``drive``.</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="c1"># SignalChannel.emit uses replace-on-stamp (never mutation).</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;dataclasses.replace&quot;</span><span class="w"> </span>agentkit/agents/control/channel.py
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="c1"># Expected: three matches (emit, send_to, try_send_to). Zero matches for</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="c1"># ``signal.sender_id =`` or ``signal.timestamp_us =`` in this file.</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="c1"># PlanPolicy awaits async planners.</span>
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;isawaitable&quot;</span><span class="w"> </span>agentkit/agents/policies/plan.py
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="c1"># Expected: &#39;steps = await plan if inspect.isawaitable(plan) else plan&#39;</span>
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="c1"># run_agents grabs the tree semaphore.</span>
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;ctx.semaphore&quot;</span><span class="w"> </span>agentkit/kernel/concurrency.py
+</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="c1"># Expected: sem = ctx.semaphore() inside run_agents.</span>
+</span></code></pre></div>
+<h3 id="3-adversarial-parallel-dispatch-smoke-test">3. Adversarial: parallel dispatch smoke test<a class="headerlink" href="#3-adversarial-parallel-dispatch-smoke-test" title="Anchor link">&para;</a></h3>
+<p>Build the smallest possible reproduction that exercises both isolation
+seams — one Skill, spawned twice, dispatched in parallel on the same
+Agent instance:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Not committed — one-off verification script.</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Skill</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.control.termination</span><span class="w"> </span><span class="kn">import</span> <span class="n">MaxTurns</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="c1"># One Skill, one shared cognition template with a mutable counter.</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="n">researcher_skill</span> <span class="o">=</span> <span class="n">Skill</span><span class="p">(</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;researcher&quot;</span><span class="p">,</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;finds sources&quot;</span><span class="p">,</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">termination</span><span class="o">=</span><span class="n">MaxTurns</span><span class="p">(</span><span class="mi">3</span><span class="p">)),</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="p">)</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="c1"># Materialise twice — deep-copy seam #1.</span>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="n">a1</span> <span class="o">=</span> <span class="n">researcher_skill</span><span class="o">.</span><span class="n">as_agent</span><span class="p">()</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="n">a2</span> <span class="o">=</span> <span class="n">researcher_skill</span><span class="o">.</span><span class="n">as_agent</span><span class="p">()</span>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="k">assert</span> <span class="n">a1</span><span class="o">.</span><span class="n">cognition</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">a2</span><span class="o">.</span><span class="n">cognition</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="k">assert</span> <span class="n">a1</span><span class="o">.</span><span class="n">cognition</span><span class="o">.</span><span class="n">termination</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">a2</span><span class="o">.</span><span class="n">cognition</span><span class="o">.</span><span class="n">termination</span>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>
+</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="c1"># Now the harder case: ONE Agent instance dispatched twice concurrently</span>
+</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="c1"># on its OWN cognition (the coordinator path via `children[&quot;researcher&quot;]`).</span>
+</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="n">one_agent</span> <span class="o">=</span> <span class="n">researcher_skill</span><span class="o">.</span><span class="n">as_agent</span><span class="p">()</span>
+</span><span id="__span-12-24"><a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a>
+</span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">drive_once</span><span class="p">(</span><span class="n">task</span><span class="p">):</span>
+</span><span id="__span-12-26"><a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a>    <span class="k">return</span> <span class="k">await</span> <span class="n">one_agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">child</span><span class="p">())</span>
+</span><span id="__span-12-27"><a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a>
+</span><span id="__span-12-28"><a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a><span class="c1"># Two concurrent drives share `one_agent.cognition.termination`.</span>
+</span><span id="__span-12-29"><a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a><span class="c1"># The drive-local deep-copy (seam #2) must isolate them.</span>
+</span><span id="__span-12-30"><a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a><span class="n">r1</span><span class="p">,</span> <span class="n">r2</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span>
+</span><span id="__span-12-31"><a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a>    <span class="n">drive_once</span><span class="p">(</span><span class="s2">&quot;q1&quot;</span><span class="p">),</span>
+</span><span id="__span-12-32"><a id="__codelineno-12-32" name="__codelineno-12-32" href="#__codelineno-12-32"></a>    <span class="n">drive_once</span><span class="p">(</span><span class="s2">&quot;q2&quot;</span><span class="p">),</span>
+</span><span id="__span-12-33"><a id="__codelineno-12-33" name="__codelineno-12-33" href="#__codelineno-12-33"></a><span class="p">)</span>
+</span><span id="__span-12-34"><a id="__codelineno-12-34" name="__codelineno-12-34" href="#__codelineno-12-34"></a><span class="c1"># Verify: each drive&#39;s termination counter was independent.</span>
+</span><span id="__span-12-35"><a id="__codelineno-12-35" name="__codelineno-12-35" href="#__codelineno-12-35"></a><span class="c1"># If one drive&#39;s MaxTurns tripped at 3, the other&#39;s counter was NOT</span>
+</span><span id="__span-12-36"><a id="__codelineno-12-36" name="__codelineno-12-36" href="#__codelineno-12-36"></a><span class="c1"># affected — both completed their full loops.</span>
+</span></code></pre></div>
+<p>If this succeeds, both isolation seams are holding structurally.</p>
+<h3 id="4-what-failing-would-look-like">4. What "failing" would look like<a class="headerlink" href="#4-what-failing-would-look-like" title="Anchor link">&para;</a></h3>
+<ul>
+<li>Five researchers all terminate after 3 turns total when each has
+  <code>MaxTurns(8)</code> → drive-local termination broke; they're sharing one
+  counter.</li>
+<li><code>researcher.outbox</code> and <code>coordinator.merge_inbox</code> contain <strong>different
+  object identities</strong> for the same logical signal → <code>dataclasses.replace</code>
+  is being called twice, or a copy is being made in transit.</li>
+<li><code>AgentResult.evals["errors"]</code> contains an entry from a healthy
+  researcher → <code>best_effort</code> wiring dropped, or a spurious exception
+  is being swallowed by <code>gather_best_effort</code>.</li>
+<li>The pre-synthesis checkpoint fires, operator approves, and the
+  resume path re-runs the researchers → the checkpoint's <code>pending</code>
+  id was renamed or coerced.</li>
+<li>Coordinator returns <code>partial=True</code> on a run where every child
+  terminated cleanly → someone's cognition tripped <code>max_iterations</code>
+  instead of a natural stop; likely an override on the ReAct default
+  that lost the termination condition.</li>
+</ul>
+<h2 id="design-tensions-to-hold-in-mind">Design tensions to hold in mind<a class="headerlink" href="#design-tensions-to-hold-in-mind" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>SignalChannel</code> vs <code>RunContext.emit</code></strong>: two channels for two purposes.
+  <code>emit</code> is product-facing observation (goes to the UI). <code>SignalChannel</code>
+  is inter-agent coordination (goes parent → child or child → parent).
+  Never conflate them.</li>
+<li><strong><code>PlanPolicy</code> vs <code>RoundRobinPolicy</code> vs <code>SelectorPolicy</code></strong>: policy
+  chooses HOW to dispatch, not WHO. All three are Strategy impls of the
+  same abstract "given the coordinator + task + children, run something".
+  For research, <code>PlanPolicy</code> is right because the plan itself is dynamic
+  (LLM-generated).</li>
+<li><strong><code>Handoff</code> vs <code>SelectorPolicy</code></strong>: two ways to route. <code>Handoff</code> is a
+  typed value emitted by a child ("I'm done, next should be <code>bob</code>");
+  <code>SelectorPolicy</code> is a coordinator-side chooser. For a strict pipeline
+  (planner → researcher → synth → critic) neither fits perfectly;
+  <code>PlanPolicy</code> with groups is cleaner because it separates "what to do"
+  from "when to do it".</li>
+<li><strong><code>best_effort=True</code> at the run_agents level</strong>: one researcher failing
+  shouldn't kill the whole run. Errors surface in
+  <code>AgentResult.evals["errors"]</code> for the coordinator to include in its
+  final synthesis.</li>
+<li><strong>Streaming to the UI</strong>: the canvas subscribes to <code>ctx.emit</code> observations
+  (Scene-level) AND to a per-agent <code>stream()</code> (token deltas). Two channels,
+  interleaved via a <code>merge</code> in the transport layer (the api service, not
+  agentkit). agentkit's job is only to ensure <code>StreamEvent</code> order-preserves
+  per-agent.</li>
+</ul>
+<h2 id="what-this-use-case-tests-about-agentkit-reverse-view">What this use case tests about agentkit (reverse view)<a class="headerlink" href="#what-this-use-case-tests-about-agentkit-reverse-view" title="Anchor link">&para;</a></h2>
+<p>If a multi-agent research team produces cross-contaminated results, or
+loses track of who said what, or dies half-way through and can't resume,
+one of these framework invariants failed. The specific things this design
+proves the framework must support:</p>
+<ol>
+<li><code>Skill.as_agent()</code> isolation is real, not just documented. Deep-copy at
+   the <code>as_agent</code> seam AND at the <code>drive</code> seam means two paths where the
+   framework must not accidentally re-share state.</li>
+<li><code>SignalChannel</code>'s frozen-envelope + replace-on-stamp story means the
+   audit trail is trustworthy. A signal in the outbox and the same signal
+   in the parent's merge_inbox are the SAME reference — no drift, no race.</li>
+<li><code>PlanPolicy</code> handles both sync and async planners without special-casing
+   at the call site. Any Protocol saying "may be sync or async" must have
+   every consumer honour it — <code>LedgerPolicy</code> did, <code>PlanPolicy</code> had to catch
+   up (regression documented in the review pass).</li>
+<li><code>MappingProxyType</code> (arriving via <code>ToolCall.arguments</code>) flows through
+   every tool boundary: <code>FunctionTool._invoke</code>, <code>as_tool._fn</code>,
+   <code>handoff_tool._fn</code>, and the provider serializers
+   (<code>openai_compat._to_msg</code>, <code>anthropic._to_msg</code>). Missing one is a
+   silently-broken feature.</li>
+<li><code>ActorBudget</code> + shared <code>CancellationToken</code> mean the parent has real
+   control over children — cost, concurrency, and lifecycle.</li>
+</ol>
+<h2 id="verification-snapshot">Verification snapshot<a class="headerlink" href="#verification-snapshot" title="Anchor link">&para;</a></h2>
+<p>Last audited against the current tree:</p>
+<ul>
+<li><strong>Automated invariant tests</strong>: <code>pytest tests/skills/test_skill.py
+  tests/agents/test_signal_protocol.py tests/agents/test_coordinator_agent.py
+  tests/agents/test_agent_loop.py -k "as_agent or termination or channel
+  or signal or coordinator"</code> → <strong>44 passed, 0 failed</strong>.</li>
+<li><strong><code>Skill.as_agent()</code> deep-copies cognition</strong>: <code>grep -n "deepcopy"
+  agentkit/skills/skill.py</code> returns line 106 —
+  <code>cognition=copy.deepcopy(self.cognition),</code>. Present as expected.</li>
+<li><strong><code>ReActCognition.drive</code> uses a drive-local termination clone</strong>: <code>grep
+  -n "termination" agentkit/agents/cognition/react.py</code> returns 17 matches;
+  react.py:113 assigns to a local <code>termination = _copy.deepcopy(...)</code>
+  and threads it into <code>_iterate</code> at line 128. No <code>self.termination = ...</code>
+  reassignment inside <code>drive</code>.</li>
+<li><strong><code>SignalChannel</code> stamps via <code>dataclasses.replace</code></strong>: <code>grep -n
+  "dataclasses.replace" agentkit/agents/control/channel.py</code> returns 3
+  matches at lines 165 (<code>emit</code>), 183 (<code>send_to</code>), 195 (<code>try_send_to</code>).
+  No in-place mutation of <code>sender_id</code> / <code>timestamp_us</code> in this file.</li>
+</ul>
+<p>All three structural checks pass and the 44 tests in scope are green.
+The design holds in the current tree.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

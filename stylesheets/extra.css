@@ -1,0 +1,33 @@
+/* agentkit docs — small theme polish over the Material defaults. */
+
+:root {
+  --md-code-font: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Slightly tighter, more readable code blocks. */
+.md-typeset pre > code,
+.md-typeset .highlight code {
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.md-typeset .highlight {
+  border-radius: 6px;
+  margin: 1em 0;
+}
+
+/* Inline code — softer background so it doesn't shout. */
+.md-typeset code {
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+/* Section headings — a touch more air above. */
+.md-typeset h2 { margin-top: 2.4em; }
+.md-typeset h3 { margin-top: 1.8em; }
+
+/* Tables — de-emphasise the borders. */
+.md-typeset table:not([class]) {
+  font-size: 0.85rem;
+}

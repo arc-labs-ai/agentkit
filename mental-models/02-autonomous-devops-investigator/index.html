@@ -1,0 +1,2226 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/mental-models/02-autonomous-devops-investigator/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Mental Model: Autonomous DevOps Investigator - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mental-model-autonomous-devops-investigator" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mental Model: Autonomous DevOps Investigator
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User experience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-actually-works-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it actually works end-to-end
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-it-can-fail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where it can fail
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where it can fail">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#framework-level-failures-the-frameworks-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Framework-level failures (the framework's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-level-failures-the-wirings-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration-level failures (the wiring's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-level-failures-the-operators-job-to-prevent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application-level failures (the operator's job to prevent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-output-on-a-successful-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected output on a successful run
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Expected output on a successful run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-final-agentresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The final AgentResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-streamevent-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The StreamEvent sequence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observer-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observer stream
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint-state-saved-along-the-way" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpoint state saved along the way
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#budget-state-after-the-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budget state after the run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-automated-run-the-invariant-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Automated: run the invariant tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-structural-grep-for-load-bearing-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Structural: grep for load-bearing patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-adversarial-hitl-smoke-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Adversarial: HITL smoke test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-failing-would-look-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What "failing" would look like
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-primitives-it-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The primitives it exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-deliberately-doesnt-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it deliberately doesn't use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correctness-checklist-for-future-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correctness checklist (for future changes)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tensions-to-hold-in-mind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tensions to hold in mind
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-use-case-tests-about-agentkit-reverse-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this use case tests about agentkit (reverse view)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mental-model-autonomous-devops-investigator">Mental Model: Autonomous DevOps Investigator<a class="headerlink" href="#mental-model-autonomous-devops-investigator" title="Anchor link">&para;</a></h1>
+<p>The security + human-gate story. This use case exists to prove that agentkit's
+safety primitives (<code>RunPolicy</code>, <code>requires_approval</code>, <code>Autonomy</code> tiers,
+<code>CancellationToken</code>, <code>caps</code> on tools) compose into a system that CANNOT
+autonomously take destructive action without an operator's explicit consent.</p>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Anchor link">&para;</a></h2>
+<p>An oncall AI observes production alerts (PagerDuty, Sentry, log-based),
+investigates by reading logs / deploys / metrics, forms a hypothesis, and
+proposes a remediation. It never applies the remediation without a human
+approving that specific action. The alert content is <em>untrusted</em> (attackers
+can shape it), the logs contain <em>private data</em>, and the remediation tools
+<em>egress</em> to production infra — the lethal trifecta. The framework's job is
+to make it impossible for that combination to fire autonomously.</p>
+<h2 id="user-experience">User experience<a class="headerlink" href="#user-experience" title="Anchor link">&para;</a></h2>
+<p>An alert fires: "checkout-api p99 latency &gt; 2s". The AI's canvas shows:
+- reads the last 15 min of <code>checkout-api</code> logs
+- correlates with the most recent deploy (rev <code>abc123</code>, 8 min ago)
+- notes error rate ↑ starting 30s after deploy
+- proposes: <em>"Roll back deploy <code>abc123</code> via <code>kubectl rollout undo -n prod checkout-api</code>. This is destructive."</em>
+- surfaces a <strong>REVIEW REQUIRED</strong> card to the oncall channel with the
+  proposed command, evidence, and blast-radius estimate.</p>
+<p>The oncall reviews, clicks Approve. The AI executes the rollback, waits
+for the deploy status to go healthy, posts a summary to the Slack thread.</p>
+<p>If the oncall clicks Cancel, the run halts; nothing was executed.</p>
+<h2 id="how-it-actually-works-end-to-end">How it actually works end-to-end<a class="headerlink" href="#how-it-actually-works-end-to-end" title="Anchor link">&para;</a></h2>
+<p>Walk through the internal state as one successful investigation flows through
+the framework. The alert arrives at <code>POST /investigate</code>; the server has
+already extracted the alert body from the PagerDuty webhook, verified the
+signature, and mapped it to <code>Scope(org_id=7, domain_id="prod")</code>.</p>
+<p><strong>t=0ms — Request setup.</strong> The HTTP layer builds a <code>RunContext</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ctx = RunContext(
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    correlation_id=&quot;incident-2f9a&quot;,
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    scope=Scope(org_id=7, domain_id=&quot;prod&quot;),
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    budget=Budget(max_cost_usd=2.0, max_calls=15, max_depth=4),
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    services=Services(
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        invoker=&lt;shared&gt;,
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        observer=&lt;per-request&gt;,
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        checkpointer=&lt;Postgres-backed CheckpointPort&gt;,
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        trace=&lt;per-request&gt;,
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    ),
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    meters=[],                    # no tenant Quota on this use case
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    cancel=CancellationToken(),   # operator&#39;s Cancel trips this
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    autonomy=&quot;manual&quot;,            # every step gates
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>)
+</span></code></pre></div>
+<p><code>autonomy="manual"</code> is the load-bearing bit — under <code>Autonomy.MANUAL</code>,
+<code>should_gate</code> returns <code>True</code> for every tool call, regardless of the tool's
+own <code>requires_approval</code> flag. Read-only tools still gate; the operator
+sees each proposed action before it fires.</p>
+<p><strong>t=1ms — Agent.run entered.</strong> The <code>Agent</code>'s <code>stream()</code> opens an
+<code>invoke_agent</code> span, stamps <code>agentkit.agent.cognition="react"</code> and
+<code>agentkit.scope.org_id=7</code>, then hands off to <code>ReActCognition.drive</code>.
+Drive deep-copies the termination clone into a drive-local variable so
+concurrent investigations sharing the same cognition instance don't race
+on <code>MaxTurns.turn</code> / <code>Timeout._start</code>. <code>run_id = ctx.correlation_id =
+"incident-2f9a"</code>.</p>
+<p><strong>t=2ms — Checkpointer load probe.</strong> <code>_load(ctx, run_id)</code> asks the
+<code>Checkpointer.resume(run_id)</code> port for a prior snapshot. First
+invocation of this run — returns <code>None</code>. The <code>RequestBuilder</code> builds the
+initial prompt from the alert body (<code>request_builder.build(task, context,
+ctx, output_adapter=None)</code>); <code>usage=Usage()</code>, <code>start_i=0</code>, <code>repaired=False</code>.</p>
+<p><strong>t=3ms — <code>_iterate</code> loop enters.</strong> <code>termination.reset()</code> fires
+(iteration 0 boundary). Iteration <code>i=0</code>:</p>
+<ol>
+<li><code>ctx.check_cancelled()</code> — token not tripped, no-op.</li>
+<li><code>ChatRequest</code> built with <code>tools=[get_logs, get_deploys, check_metrics,
+   kubectl_rollout, slack_notify]</code> schemas.</li>
+<li><code>ctx.invoker.stream(req, ctx, meta={"output_adapter": None})</code> — chat
+   middleware chain runs: <code>tracing → meter → retry → egress_guard →
+   LLMPort</code>.</li>
+</ol>
+<p><strong>t=4ms — Meter guard.</strong> <code>meter()</code> middleware iterates
+<code>ctx.all_meters=[budget]</code> and calls <code>budget.guard(call)</code>. <code>Budget._check</code>
+verifies <code>spent_usd &lt;= max_cost_usd (2.0)</code> and <code>calls &lt;= max_calls (15)</code>.
+Pass — the middleware yields to the next hop.</p>
+<p><strong>t=~600ms — LLM streams.</strong> The provider returns deltas. Deltas 1..N
+carry text; the terminal delta carries <code>finish_reason="tool_calls"</code> with
+<code>ToolCall("c1", "get_logs", {"service": "checkout-api", "since_minutes": 15})</code>.
+Each text delta the cognition emits as <code>StreamEvent("message_delta",
+text=...)</code>. <code>assemble_deltas</code> folds the stream into an <code>LLMResult</code>.</p>
+<p><strong>t=~601ms — Gate check.</strong> <code>_needs_approval(res.tool_calls, ctx)</code> iterates
+<code>res.tool_calls</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>for c in calls:
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    tool = self.tools.get(c.name)         # get_logs
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    if should_gate(
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        ctx.autonomy,                       # &quot;manual&quot;
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        requires_approval=self.tools.requires_approval(c.name),  # False for get_logs
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        key_step=getattr(tool, &quot;side_effecting&quot;, False),         # False
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    ):
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        return True
+</span></code></pre></div>
+<p>Because <code>autonomy="manual"</code>, <code>should_gate</code> short-circuits on the first
+branch: <code>if autonomy == Autonomy.MANUAL: return True</code>. Even a read-only
+<code>get_logs</code> gates.</p>
+<p><strong>t=~602ms — Suspend #1.</strong> The cognition:</p>
+<ol>
+<li>Appends the assistant turn to the transcript.</li>
+<li>Calls <code>_save(ctx, run_id, context, usage, i=0, repaired, status="suspended", pending=(tc,))</code>.</li>
+<li><code>Checkpointer.snapshot</code> deep-copies <code>state</code>, bumps to <code>version=1</code>, calls
+   <code>port.save(cp)</code>. On Postgres, that's one INSERT.</li>
+<li>Emits <code>StreamEvent("interrupt", tool_call=tc)</code>.</li>
+<li>Yields the terminal <code>final</code> event with <code>AgentResult(output="",
+   partial=True, evals={"stop_reason": "awaiting_approval",
+   "suspended": Suspended(run_id, pending=(tc,))})</code>.</li>
+<li><code>_iterate</code> returns — the loop is dead until an explicit <code>resume()</code>.</li>
+</ol>
+<p>The SSE stream carries the <code>interrupt</code> event to the browser. The operator
+UI renders a REVIEW REQUIRED card with <code>tc.name="get_logs"</code> and
+<code>tc.arguments={"service": "checkout-api", "since_minutes": 15}</code> verbatim
+— the <code>MappingProxyType</code> on <code>ToolCall.arguments</code> prevents any downstream
+render code from mutating it.</p>
+<p><strong>t=~603ms → t=~90s — Human wall clock.</strong> The oncall reads the card,
+clicks Approve. The API server receives <code>POST /runs/incident-2f9a/approve
+{"c1": "approve"}</code> and calls <code>agent.resume(run_id="incident-2f9a",
+decisions={"c1": "approve"}, ctx=&lt;fresh ctx with same
+correlation_id&gt;)</code>.</p>
+<p>Note: the process may have restarted between suspend and approve. That's
+the point of <code>Checkpointer</code> — the snapshot lives in Postgres, not in the
+run's in-memory state. A fresh worker picks up the same <code>run_id</code> and the
+resume works identically.</p>
+<p><strong>t=~90.001s — Resume path.</strong> <code>ReActCognition.resume</code>:</p>
+<ol>
+<li><code>_load(ctx, run_id)</code> reads the latest checkpoint. <code>saved.status="suspended"</code>.</li>
+<li><code>rehydrate(saved.state)</code> reconstructs the <code>WorkingContext</code>,
+   <code>Usage</code>, iteration index <code>i=0</code>, <code>repaired=False</code>.</li>
+<li><code>pending = [dict_to_tc(d) for d in saved.state["pending"]]</code> — one
+   <code>ToolCall("c1", "get_logs", {"service": ..., "since_minutes": 15})</code>.</li>
+<li>For each pending call, <code>decision=decisions.get(tc.id, "reject")</code>.
+   <code>decision="approve"</code> — dispatches <code>_invoke_tool_safe(ctx, tc)</code>.</li>
+<li>The <code>get_logs</code> tool executes, returns 47 log lines. The result becomes
+   a <code>Message("tool", content="&lt;lines&gt;", tool_call_id="c1", name="get_logs")</code>
+   appended to <code>context</code>.</li>
+<li>Enters <code>_iterate(agent, context, usage, i+1=1, repaired, ...)</code> — the
+   loop resumes from the <em>next</em> iteration.</li>
+</ol>
+<p><strong>t=~90.005s — Iteration 1.</strong> New chat call with the updated transcript
+(alert + assistant + tool result). The model reads the logs, decides it
+needs deploys, returns <code>ToolCall("c2", "get_deploys", {"namespace":
+"prod", "service": "checkout-api"})</code>. Same gate story — MANUAL suspends
+again. Operator approves. Resume. Iteration 2. And so on.</p>
+<p><strong>t=~120s — Iteration 3, the destructive proposal.</strong> The model has
+enough evidence. It returns <code>ToolCall("c4", "kubectl_rollout",
+{"namespace": "prod", "service": "checkout-api", "revision": "abc123"})</code>.
+For THIS tool, <code>tools.requires_approval("kubectl_rollout") = True</code> AND
+<code>tool.side_effecting = True</code> AND <code>tool.caps = ("egress",)</code> — the tool
+itself demands approval regardless of autonomy tier.</p>
+<p><code>_needs_approval</code> returns True. Suspend #4. The interrupt card renders
+the <strong>verbatim</strong> <code>MappingProxyType</code> arguments — <code>args.pop("dry_run")</code>
+would raise <code>TypeError('mappingproxy' object does not support item
+deletion)</code>. The operator sees <code>revision="abc123"</code>. What they see is
+exactly what will run.</p>
+<p><strong>t=~180s — Approve + execute.</strong> Operator clicks Approve. <code>resume</code> runs
+<code>kubectl_rollout</code> with the frozen args. The tool shells out (this is the
+one blast-radius call). Its result: <code>"rollout undone; new revision xyz789
+healthy at 2026-07-03T14:22:10Z"</code>.</p>
+<p><strong>t=~181s — Iteration 4.</strong> No pending gate — the model chooses
+<code>ToolCall("c5", "slack_notify", ...)</code>. Because <code>slack_notify</code> has
+<code>requires_approval=False</code>, under <code>autonomy="manual"</code> it STILL gates.
+(This is the correct behaviour: MANUAL means the operator wants to see
+every step.) Operator approves; slack notification fires.</p>
+<p><strong>t=~185s — Iteration 5, terminal.</strong> The model returns no tool_calls —
+its terminal delta is <code>finish_reason="stop"</code> with a natural-language
+summary. Because <code>agent.parse is None</code>, the loop appends the assistant
+message, calls <code>_clear(ctx, run_id)</code> (Checkpointer.delete — the run is
+done, no need to keep snapshots), and yields:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>StreamEvent(
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    &quot;final&quot;,
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    result=AgentResult(
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        output=&quot;Rolled back deploy abc123. New rev xyz789 healthy. p99 back to 340ms.&quot;,
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        usage=Usage(input_tokens=12_400, output_tokens=1_827, cost_usd=0.183),
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>        prompt_version=&quot;investigator-v3&quot;,
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    ),
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    usage=&lt;total&gt;,
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>)
+</span></code></pre></div>
+<p><strong>Cancellation path (alternative).</strong> If at any point the operator clicks
+Cancel, the API calls <code>ctx.cancel.cancel()</code>. On the next iteration
+boundary, <code>ctx.check_cancelled()</code> raises <code>Cancelled("run cancelled")</code>.
+The loop exits via the exception — the terminal <code>final</code> event does NOT
+fire, so the caller (<code>Agent.run</code>) sees a <code>Cancelled</code> propagate up. An
+in-flight <code>kubectl_rollout</code> tool call cannot be un-called — the loop
+cancels, but the shell subprocess runs to completion. This is documented
+as best-effort.</p>
+<h2 id="where-it-can-fail">Where it can fail<a class="headerlink" href="#where-it-can-fail" title="Anchor link">&para;</a></h2>
+<p>Enumerated so a code reviewer can walk the list. Each is a real risk if
+the framework's invariants slip.</p>
+<h3 id="framework-level-failures-the-frameworks-job-to-prevent">Framework-level failures (the framework's job to prevent)<a class="headerlink" href="#framework-level-failures-the-frameworks-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong><code>should_gate</code> regresses on MANUAL.</strong> A refactor that drops the
+   <code>if autonomy == Autonomy.MANUAL: return True</code> short-circuit → MANUAL
+   only gates approval-required tools, and read-only tools slip through
+   silently. The operator's contract ("show me every step") breaks.
+   <em>Locked by the <code>should_gate</code> truth-table in
+   <code>tests/agents/test_gate.py</code>.</em></li>
+<li><strong>Approval snapshot mutable across the seam.</strong> If
+   <code>ToolCall.arguments</code> were a plain <code>dict</code> instead of <code>MappingProxyType</code>,
+   a tool implementation could <code>args.pop("dry_run")</code> between the UI
+   render and execution — the operator sees "dry run" but the actual
+   call is destructive. <em>Locked by
+   <code>test_toolcall_arguments_view_rejects_item_assignment</code> in
+   <code>tests/kernel/test_kernel.py</code>.</em></li>
+<li><strong><code>Checkpointer.snapshot</code> shares state by reference.</strong> If the
+   snapshot didn't deep-copy <code>state</code> / <code>metadata</code>, the running loop
+   would mutate the persisted record — an operator loading the paused
+   view would see stale evidence, or (worse) evidence that no longer
+   matches what will resume. <em>Locked by
+   <code>test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it</code>
+   in <code>tests/capabilities/test_checkpointer.py</code>.</em></li>
+<li><strong><code>Suspended.pending</code> is a mutable list.</strong> A stray
+   <code>suspended.pending.append(...)</code> after emit would desync the operator's
+   card from what resume actually invokes. The frozen tuple pins both
+   ends of the handshake. <em>Locked by
+   <code>test_suspended_pending_is_a_frozen_tuple</code> in <code>tests/agents/test_agents.py</code>.</em></li>
+<li><strong>Cancellation not checked between turns.</strong> If
+   <code>ctx.check_cancelled()</code> were removed from the top of <code>_iterate</code>'s
+   loop, an operator's Cancel would only take effect after another full
+   LLM turn — burning another turn's worth of tokens and possibly one
+   more approved tool call. <em>Locked by <code>tests/runtime/test_cancellation.py</code>.</em></li>
+<li><strong><code>max_iterations</code> ceiling drops.</strong> If <code>for i in range(start_i,
+   self.max_iterations)</code> were replaced with <code>while True</code>, a termination
+   bug would loop forever until the cost cap tripped — the never-hang
+   backstop would be gone. <em>Framework contract: verified structurally
+   in <code>_iterate</code>.</em></li>
+<li><strong><code>run_with_resilience</code> retries permanent failures.</strong> A 403 on
+   <code>kubectl</code> (bad RBAC) should fail fast, not storm the API. If the
+   <code>classify</code> ordering flipped so PERMANENT went through the retry
+   branch, an audit alarm would fire before the model even saw the
+   error. <em>Locked by <code>test_run_with_resilience_fails_fast_on_permanent</code>
+   in <code>tests/kernel/test_kernel.py</code>.</em></li>
+<li><strong>Resume ignores checkpoint's <code>pending</code> list.</strong> If <code>resume</code> rebuilt
+   <code>pending</code> from the transcript instead of <code>saved.state["pending"]</code>, a
+   snapshot corruption or a race between snapshot and interrupt emit
+   would let the operator approve tool call A while the loop invoked
+   tool call B. <em>Locked by
+   <code>test_agent_suspends_then_resumes_through_a_checkpointer</code> in
+   <code>tests/capabilities/test_checkpointer.py</code>.</em></li>
+</ol>
+<h3 id="integration-level-failures-the-wirings-job-to-prevent">Integration-level failures (the wiring's job to prevent)<a class="headerlink" href="#integration-level-failures-the-wirings-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong><code>RunContext.autonomy</code> extracted from the wrong request field.</strong> A
+   product config bug puts <code>autonomy="auto"</code> where the ops runbook said
+   <code>"manual"</code> — every step suddenly skips the operator's review card.
+   <em>Not a framework concern; the SaaS product's wiring layer is
+   responsible.</em></li>
+<li><strong>Approval endpoint doesn't verify operator identity.</strong> The API
+   accepts <code>POST /runs/{id}/approve</code> without a signed operator session
+   → any authenticated user can approve any pending gate. Framework
+   passes the decisions dict through unchanged; who's allowed to POST
+   is the app's auth story.</li>
+<li><strong><code>Checkpointer</code> port wired to a lossy backend.</strong> The in-memory
+   <code>Checkpointer</code> port on the wire, an OOM during suspend loses the
+   pending state, the operator's approval arrives to nothing. Wire a
+   Postgres-backed <code>CheckpointPort</code> for prod; a smoke test in the
+   product's CI covers the wiring.</li>
+<li><strong><code>egress_guard</code> middleware missing from <code>chat_middleware</code>.</strong> The
+   trifecta panel emits a flagged verdict, but if the chain doesn't
+   include an egress check, a rogue tool that egress-hides in the
+   chat-call path (a URL fetched via the model's built-in tool use)
+   escapes the review. Framework provides the middleware; wiring must
+   include it.</li>
+<li><strong>SSE transport drops <code>interrupt</code> events silently.</strong> The framework
+   yields the event; if the transport's back-pressure handler discards
+   events when the client disconnects, the operator never sees the
+   card. Framework only guarantees per-run stream ordering; delivery is
+   the transport's job.</li>
+<li><strong>Alert ingestion doesn't tag <code>caps=("untrusted_content",)</code>.</strong> If
+   the ingestion step just passes the raw alert body as
+   <code>Agent.run(task=alert_body)</code> without a <code>FunctionTool</code> wrapper, the
+   <code>RunPolicy.check</code> panel never sees the untrusted-content cap, so
+   the trifecta verdict is missing one leg — the flag never fires even
+   when it should.</li>
+</ol>
+<h3 id="application-level-failures-the-operators-job-to-prevent">Application-level failures (the operator's job to prevent)<a class="headerlink" href="#application-level-failures-the-operators-job-to-prevent" title="Anchor link">&para;</a></h3>
+<ol>
+<li><strong>Tool declared side-effecting without <code>requires_approval=True</code>.</strong>
+   The tool author's mistake — <code>kubectl_rollout</code> shipped with
+   <code>side_effecting=True, requires_approval=False</code>. Under
+   <code>autonomy="auto"</code>, the gate skips → destructive call fires
+   autonomously. Correctness checklist below calls this out; a lint
+   check on the tool registry is the right long-term fix.</li>
+<li><strong>Tool implementation reads state outside <code>ctx</code>.</strong> A <code>get_logs</code>
+   impl that reads a global Kubernetes client instead of the one on
+   <code>ctx.services.k8s</code> bypasses the framework's scope threading — a
+   test that runs one investigation with a mocked client would still
+   hit the real cluster.</li>
+<li><strong>Tool result carries executable payload.</strong> A <code>get_logs</code> result
+   embedded with <code>&lt;script&gt;</code> or shell fragments (an attacker shaping
+   the log line) → the model incorporates that content into its next
+   turn. The framework's <code>guardrail.wrap_tool_output</code> frames tool
+   output as UNTRUSTED, but the tool author must not disable the
+   guardrail with <code>guardrail=None</code> on the cognition.</li>
+<li><strong><code>slack_notify</code> tool sends sensitive log excerpts.</strong> The tool
+   author decides what to pass to Slack. If it forwards raw log lines
+   (private data + egress in one call), the caps list should be
+   <code>("egress", "private_data")</code> and <code>requires_approval=True</code>.
+   Missing that means the trifecta verdict is muted.</li>
+<li><strong>Human approves without reading.</strong> The operator clicks Approve
+   without checking <code>tc.arguments</code>. Not a framework concern per se,
+   but the UI's job to make the destructive summary unmissable
+   (blast-radius estimate, resource name, diff preview). Framework
+   guarantees the arguments are frozen; UI decides how loudly to
+   render them.</li>
+<li><strong>Tool author's retry loop re-invokes on transient failure.</strong> A
+   <code>kubectl_rollout</code> impl that catches its own transient errors and
+   retries internally → the model + operator saw one approval, but two
+   destructive calls fired. Retry belongs at the middleware layer, not
+   the tool layer.</li>
+</ol>
+<h2 id="expected-output-on-a-successful-run">Expected output on a successful run<a class="headerlink" href="#expected-output-on-a-successful-run" title="Anchor link">&para;</a></h2>
+<p>After a clean investigation completes (5 iterations, 4 approvals), the
+framework produces the following concrete artifacts. Any deviation on a
+green run is a signal.</p>
+<h3 id="the-final-agentresult">The final <code>AgentResult</code><a class="headerlink" href="#the-final-agentresult" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">AgentResult</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">output</span><span class="o">=</span><span class="s2">&quot;Rolled back deploy abc123. New revision xyz789 healthy at &quot;</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>           <span class="s2">&quot;2026-07-03T14:22:10Z. p99 latency recovered to 340ms.&quot;</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">usage</span><span class="o">=</span><span class="n">Usage</span><span class="p">(</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="n">input_tokens</span><span class="o">=</span><span class="mi">12_400</span><span class="p">,</span>       <span class="c1"># prompt + 4 tool results across iterations</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="n">output_tokens</span><span class="o">=</span><span class="mi">1_827</span><span class="p">,</span>       <span class="c1"># assistant text + tool_call args</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">cost_usd</span><span class="o">=</span><span class="mf">0.183</span><span class="p">,</span>            <span class="c1"># under the 2.00 ceiling</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="n">cache_read_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>        <span class="n">cache_write_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="p">),</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">partial</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                 <span class="c1"># ran to a natural stop, not a max_iterations trip</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">evals</span><span class="o">=</span><span class="p">{},</span>                      <span class="c1"># no pending suspend, no policy verdict attached</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">parsed</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                   <span class="c1"># no output schema wired</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="n">prompt_version</span><span class="o">=</span><span class="s2">&quot;investigator-v3&quot;</span><span class="p">,</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Key checks:</p>
+<ul>
+<li><code>partial=False</code> — clean stop. If the run had exhausted
+  <code>max_iterations</code> before finding a resolution, <code>partial=True</code> and
+  <code>evals={"stop_reason": "max_iterations"}</code>.</li>
+<li><code>evals</code> is empty on the terminal <code>final</code>. The four intermediate
+  <code>Suspended</code> values lived in the terminal-of-that-turn's <code>evals</code>, then
+  were consumed by <code>resume</code>; the final terminal has none.</li>
+<li><code>usage.cost_usd &lt; budget.max_cost_usd</code> — the run stayed inside its
+  envelope.</li>
+</ul>
+<h3 id="the-streamevent-sequence">The <code>StreamEvent</code> sequence<a class="headerlink" href="#the-streamevent-sequence" title="Anchor link">&para;</a></h3>
+<p>The stream carried across all four suspend/resume cycles, in order:</p>
+<ol>
+<li><code>StreamEvent(type="message_delta", text="Investigating...")</code> — chat starts</li>
+<li>… (dozens of message_delta events, thinking prose)</li>
+<li><code>StreamEvent(type="interrupt", tool_call=ToolCall("c1", "get_logs", {...}))</code> — gate #1</li>
+<li><code>StreamEvent(type="final", result=AgentResult(partial=True, evals={"suspended": Suspended(...)}))</code></li>
+<li><strong>[operator approves — new stream opens on resume]</strong></li>
+<li><code>StreamEvent(type="tool_result", tool_call=&lt;c1&gt;, tool_result="&lt;47 log lines&gt;")</code></li>
+<li><code>StreamEvent(type="step", text="iteration:1")</code></li>
+<li><code>StreamEvent(type="message_delta", text="The logs show...")</code> — turn 2 assistant</li>
+<li><code>StreamEvent(type="interrupt", tool_call=ToolCall("c2", "get_deploys", {...}))</code> — gate #2</li>
+<li>… (repeats through gates #3 and #4)</li>
+<li><code>StreamEvent(type="interrupt", tool_call=ToolCall("c4", "kubectl_rollout", {...}))</code> — gate #4, destructive</li>
+<li><strong>[operator approves — resume]</strong></li>
+<li><code>StreamEvent(type="tool_result", tool_call=&lt;c4&gt;, tool_result="rollout undone; ...")</code></li>
+<li><code>StreamEvent(type="step", text="iteration:4")</code></li>
+<li>… (slack notification + terminal turn)</li>
+<li><code>StreamEvent(type="final", result=AgentResult(output="Rolled back...", partial=False), usage=...)</code></li>
+</ol>
+<p>The invariant to check: EVERY tool call that fired is preceded by an
+<code>interrupt</code> event AND a matching resume decision. If a <code>tool_result</code>
+event appears with no prior <code>interrupt</code>, the gate was bypassed — that's
+a live invariant violation.</p>
+<h3 id="observer-stream">Observer stream<a class="headerlink" href="#observer-stream" title="Anchor link">&para;</a></h3>
+<p>Product-facing observations delivered to the wired <code>ObserverPort</code>:</p>
+<ul>
+<li><code>Observation(kind="progress", render="investigation started", agent="investigator", run_id="incident-2f9a")</code></li>
+<li><code>Observation(kind="progress", render="awaiting approval: get_logs", ...)</code> — one per suspend</li>
+<li><code>Observation(kind="progress", render="awaiting approval: kubectl_rollout", payload={"caps": ["egress"], "side_effecting": True}, ...)</code></li>
+<li><code>Observation(kind="result", render="rollback complete", payload={"revision": "xyz789", "cost_usd": 0.183, "iterations": 5}, ...)</code></li>
+</ul>
+<p>Every observation carries <code>run_id="incident-2f9a"</code> and <code>agent="investigator"</code>.
+The <code>trace_context</code> field is set on each observation iff a real tracer
+was wired and a span was open at emit time.</p>
+<h3 id="checkpoint-state-saved-along-the-way">Checkpoint state saved along the way<a class="headerlink" href="#checkpoint-state-saved-along-the-way" title="Anchor link">&para;</a></h3>
+<p><code>Checkpointer.list_versions("incident-2f9a")</code> at suspend #4 (before
+approval) returns <code>[1, 2, 3, 4, 5, 6, 7]</code> — one snapshot per suspend
+(<code>status="suspended"</code>) and one per resumed iteration boundary
+(<code>status="running"</code>). After the terminal <code>final</code> event, <code>_clear</code> fires
+and <code>list_versions</code> returns <code>[]</code> — the durable state is gone; the run
+is complete.</p>
+<p>The snapshot at version 4 (the <code>kubectl_rollout</code> suspend) carries:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">Checkpoint</span><span class="p">(</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">run_id</span><span class="o">=</span><span class="s2">&quot;incident-2f9a&quot;</span><span class="p">,</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">version</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">status</span><span class="o">=</span><span class="n">CheckpointStatus</span><span class="o">.</span><span class="n">SUSPENDED</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">state</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="s2">&quot;prefix&quot;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">serialized</span> <span class="n">prompt</span> <span class="n">prefix</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="nb">all</span> <span class="n">turns</span> <span class="n">so</span> <span class="n">far</span><span class="p">,</span> <span class="k">as</span> <span class="n">dicts</span><span class="o">&gt;</span><span class="p">],</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="s2">&quot;scratchpad&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        <span class="s2">&quot;limit&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="s2">&quot;shared&quot;</span><span class="p">:</span> <span class="p">{},</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        <span class="s2">&quot;usage&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;input_tokens&quot;</span><span class="p">:</span> <span class="mi">8_120</span><span class="p">,</span> <span class="s2">&quot;output_tokens&quot;</span><span class="p">:</span> <span class="mi">1_340</span><span class="p">,</span> <span class="s2">&quot;cost_usd&quot;</span><span class="p">:</span> <span class="mf">0.121</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="s2">&quot;iteration&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        <span class="s2">&quot;repaired&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>        <span class="s2">&quot;pending&quot;</span><span class="p">:</span> <span class="p">[{</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>            <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;c4&quot;</span><span class="p">,</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;kubectl_rollout&quot;</span><span class="p">,</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>            <span class="s2">&quot;arguments&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;namespace&quot;</span><span class="p">:</span> <span class="s2">&quot;prod&quot;</span><span class="p">,</span> <span class="s2">&quot;service&quot;</span><span class="p">:</span> <span class="s2">&quot;checkout-api&quot;</span><span class="p">,</span> <span class="s2">&quot;revision&quot;</span><span class="p">:</span> <span class="s2">&quot;abc123&quot;</span><span class="p">},</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>        <span class="p">}],</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>    <span class="p">},</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="n">created_at</span><span class="o">=</span><span class="mf">1735916400.123</span><span class="p">,</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>    <span class="n">metadata</span><span class="o">=</span><span class="p">{},</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>The <code>pending[0]["arguments"]</code> matches the operator's approval card
+byte-for-byte. If they differ, the framework has a bug OR a mutating
+consumer touched the arguments after <code>snapshot</code>.</p>
+<h3 id="budget-state-after-the-run">Budget state after the run<a class="headerlink" href="#budget-state-after-the-run" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">budget</span><span class="o">.</span><span class="n">spent_usd</span> <span class="o">==</span> <span class="mf">0.183</span>         <span class="c1"># sum of 5 chat turns&#39; usage.cost_usd</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">budget</span><span class="o">.</span><span class="n">calls</span>    <span class="o">==</span> <span class="mi">5</span>              <span class="c1"># 5 chat requests (one per iteration)</span>
+</span></code></pre></div>
+<p><code>budget.calls</code> equals the number of iterations that produced a chat
+call. Suspend/resume cycles do NOT count as separate calls on the
+Budget — the resume reuses the checkpointed usage and starts from
+<code>i+1</code>. <code>budget.remaining_usd() = 2.0 - 0.183 = 1.817</code> — plenty of
+headroom.</p>
+<h2 id="verification-protocol">Verification protocol<a class="headerlink" href="#verification-protocol" title="Anchor link">&para;</a></h2>
+<p>How to actually check the design is working — not just "tests pass" but
+"the invariants hold structurally in the current code".</p>
+<h3 id="1-automated-run-the-invariant-tests">1. Automated: run the invariant tests<a class="headerlink" href="#1-automated-run-the-invariant-tests" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/agents/test_agent_loop.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">              </span>tests/agents/test_gate.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">              </span>tests/agents/test_control.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">              </span>tests/runtime/test_cancellation.py<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">              </span>tests/capabilities/test_checkpointer.py
+</span></code></pre></div>
+<p>Expected: all pass. Any failure is a live invariant violation. These
+tests exercise <code>should_gate</code> truth tables, the <code>MANUAL</code>/<code>GATED</code>/<code>AUTO</code>
+loop paths, <code>Suspended</code>/resume round-trips, <code>Checkpointer.snapshot</code>
+deep-copy, and cancellation propagation.</p>
+<h3 id="2-structural-grep-for-load-bearing-patterns">2. Structural: grep for load-bearing patterns<a class="headerlink" href="#2-structural-grep-for-load-bearing-patterns" title="Anchor link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>agentkit
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># The gate seam is called from ReAct&#39;s approval check.</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;requires_approval&quot;</span><span class="w"> </span>agentkit/agents/cognition/react.py
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Expected: exactly one match inside _needs_approval, threading the</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># tool&#39;s requires_approval flag into should_gate.</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># should_gate is the sole gating policy — no cognition should re-derive it.</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;should_gate&quot;</span><span class="w"> </span>agentkit/agents/control/gate.py
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="c1"># Expected: three matches (docstring reference, def, __all__ export).</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># The function has ONE definition; imports elsewhere all call the same one.</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="c1"># Cancellation must fire at least once per iteration.</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;check_cancelled\|ctx.cancel&quot;</span><span class="w"> </span>agentkit/agents/cognition/react.py
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="c1"># Expected: at least one ctx.check_cancelled() at the top of _iterate&#39;s loop.</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="c1"># Tool arguments are frozen at construction.</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;MappingProxyType&quot;</span><span class="w"> </span>agentkit/kernel/types.py
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="c1"># Expected: ToolCall.arguments wrapped in MappingProxyType on __post_init__.</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="c1"># Snapshot deep-copies state.</span>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;deepcopy&quot;</span><span class="w"> </span>agentkit/capabilities/checkpointer/base.py
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="c1"># Expected: Checkpointer.snapshot deep-copies both state and metadata.</span>
+</span></code></pre></div>
+<h3 id="3-adversarial-hitl-smoke-test">3. Adversarial: HITL smoke test<a class="headerlink" href="#3-adversarial-hitl-smoke-test" title="Anchor link">&para;</a></h3>
+<p>Build the smallest reproduction of the gate + resume flow:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Not committed — one-off verification script.</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Budget</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.result</span><span class="w"> </span><span class="kn">import</span> <span class="n">Suspended</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">FunctionTool</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">kubectl_rollout</span><span class="p">(</span><span class="o">**</span><span class="n">args</span><span class="p">):</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="k">return</span> <span class="s2">&quot;rolled back&quot;</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="n">tool</span> <span class="o">=</span> <span class="n">FunctionTool</span><span class="p">(</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;kubectl_rollout&quot;</span><span class="p">,</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>        <span class="n">fn</span><span class="o">=</span><span class="n">kubectl_rollout</span><span class="p">,</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>        <span class="n">requires_approval</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>        <span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>        <span class="n">caps</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;egress&quot;</span><span class="p">,),</span>
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>    <span class="p">)</span>
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;investigator&quot;</span><span class="p">,</span>
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;fake&quot;</span><span class="p">,</span>
+</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">tool</span><span class="p">]),</span>
+</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>    <span class="p">)</span>
+</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span>
+</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;smoke-1&quot;</span><span class="p">,</span>
+</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>        <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="s2">&quot;prod&quot;</span><span class="p">),</span>
+</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>        <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span>              <span class="c1"># deliberately auto — tool&#39;s flag must still gate</span>
+</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>        <span class="n">services</span><span class="o">=</span><span class="n">Services</span><span class="p">(</span><span class="n">invoker</span><span class="o">=&lt;</span><span class="n">FakeLLM</span> <span class="n">emitting</span> <span class="n">kubectl_rollout</span> <span class="n">tool_call</span><span class="o">&gt;</span><span class="p">),</span>
+</span><span id="__span-8-30"><a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>    <span class="p">)</span>
+</span><span id="__span-8-31"><a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;roll back&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-8-32"><a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>    <span class="c1"># Verify:</span>
+</span><span id="__span-8-33"><a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">partial</span> <span class="ow">is</span> <span class="kc">True</span>
+</span><span id="__span-8-34"><a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>    <span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;suspended&quot;</span><span class="p">]</span>
+</span><span id="__span-8-35"><a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
+</span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>    <span class="k">assert</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;kubectl_rollout&quot;</span>
+</span><span id="__span-8-37"><a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>    <span class="c1"># Now attempt to mutate the approval snapshot — must raise:</span>
+</span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>        <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">arguments</span><span class="p">[</span><span class="s2">&quot;namespace&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;hacked&quot;</span>
+</span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+</span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>        <span class="k">pass</span>   <span class="c1"># expected: MappingProxyType blocks item assignment</span>
+</span><span id="__span-8-42"><a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>    <span class="c1"># Also: pending is a tuple, not a list — a rebind attempt raises.</span>
+</span><span id="__span-8-43"><a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>
+</span><span id="__span-8-44"><a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p>If this succeeds (Suspended emitted, arguments frozen, resume threads
+the decisions through), the HITL story is holding structurally.</p>
+<h3 id="4-what-failing-would-look-like">4. What "failing" would look like<a class="headerlink" href="#4-what-failing-would-look-like" title="Anchor link">&para;</a></h3>
+<ol>
+<li>A <code>tool_result</code> event appears in the stream with no prior
+   <code>interrupt</code> event for that <code>tool_call.id</code> under <code>autonomy="manual"</code> —
+   <code>should_gate</code> regressed on the MANUAL branch.</li>
+<li>The operator's rendered <code>arguments</code> dict differs from what the
+   resumed tool actually invoked — <code>ToolCall.arguments</code> mutability
+   regression OR <code>Checkpointer</code> shallow-copy regression.</li>
+<li><code>Suspended.pending</code> accepts <code>.append()</code> or item assignment — the
+   frozen shell/tuple guard broke.</li>
+<li>An operator Cancel triggers, but another <code>interrupt</code> event fires
+   after the Cancel timestamp — <code>ctx.check_cancelled()</code> missing from
+   the loop top.</li>
+<li><code>Checkpointer.list_versions(run_id)</code> returns non-empty after the
+   run's terminal <code>final</code> — <code>_clear</code> didn't fire on the success path.</li>
+<li>Under <code>autonomy="auto"</code>, a tool with <code>requires_approval=True</code> fires
+   without an interrupt — the AUTO branch of <code>should_gate</code> regressed.</li>
+</ol>
+<h2 id="composition">Composition<a class="headerlink" href="#composition" title="Anchor link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>alert ──▶ POST /investigate
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>              │  RunContext(autonomy=&quot;manual&quot;,
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>              │             budget=Budget(max_cost_usd=2, max_calls=15),
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>              │             scope=Scope(org_id=…, domain_id=&quot;prod&quot;))
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>              ▼
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        Agent(name=&quot;investigator&quot;,
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>              cognition=ReActCognition(
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>                tools=ToolRegistry.from_tools([
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>                  get_logs,          # caps=(&quot;private_data&quot;,)
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>                  get_deploys,       # caps=(&quot;private_data&quot;,)
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>                  check_metrics,     # caps=(&quot;private_data&quot;,)
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>                  kubectl_rollout,   # caps=(&quot;egress&quot;,),
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>                                     # side_effecting=True,
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>                                     # requires_approval=True
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>                  slack_notify,      # caps=(&quot;egress&quot;,),
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>                                     # side_effecting=True,
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>                                     # requires_approval=False (informational)
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>                ]),
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>                termination=MaxTurns(10) | Timeout(seconds=180)),
+</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>              policy=RunPolicy(mode=&quot;flag&quot;))    # emits verdict, doesn&#39;t block
+</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>              │
+</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>              ▼
+</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>        Middleware chain:
+</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>          tracing → meter → retry → egress_guard → LLMPort
+</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>              │
+</span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>              ▼
+</span><span id="__span-9-27"><a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>        Human-gate flow:
+</span><span id="__span-9-28"><a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>          - tool call arrives with requires_approval=True
+</span><span id="__span-9-29"><a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>          - loop suspends → Suspended(run_id, pending=[ToolCall(...)])
+</span><span id="__span-9-30"><a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a>          - Checkpointer.snapshot(status=&quot;suspended&quot;)
+</span><span id="__span-9-31"><a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>          - UI renders card with the pending ToolCall verbatim
+</span><span id="__span-9-32"><a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>          - operator&#39;s Approve/Reject arrives as a command
+</span><span id="__span-9-33"><a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a>          - ReActCognition.resume(run_id, decisions={id: &quot;approve&quot;|&quot;reject&quot;|&lt;JSON&gt;}, ctx)
+</span><span id="__span-9-34"><a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a>              │
+</span><span id="__span-9-35"><a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>              ▼
+</span><span id="__span-9-36"><a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a>        Cancellation:
+</span><span id="__span-9-37"><a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a>          - CancellationToken shared on ctx.cancel
+</span><span id="__span-9-38"><a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a>          - operator&#39;s Cancel command → token.cancel() → ctx.check_cancelled()
+</span><span id="__span-9-39"><a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a>            raises between turns → run exits with a cancelled Failure
+</span></code></pre></div>
+<p>The Alert-reading step is worth calling out: whichever tool ingests the raw
+alert text ships <code>caps=("untrusted_content",)</code> so <code>RunPolicy.check</code> sees the
+full trifecta up front.</p>
+<h2 id="the-primitives-it-exercises">The primitives it exercises<a class="headerlink" href="#the-primitives-it-exercises" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Primitive</th>
+<th>Role here</th>
+<th>Why load-bearing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RunPolicy.check</code></td>
+<td>Panel that flags/blocks the lethal trifecta</td>
+<td>If untrusted_content + private_data + egress ever mix in one tool call without approval, the framework must surface it</td>
+</tr>
+<tr>
+<td><code>FunctionTool.caps</code></td>
+<td>Per-tool trifecta tag</td>
+<td>The input to <code>RunPolicy</code></td>
+</tr>
+<tr>
+<td><code>FunctionTool.requires_approval</code></td>
+<td>Per-tool HITL gate</td>
+<td>Egress tools require approval regardless of autonomy tier</td>
+</tr>
+<tr>
+<td><code>Autonomy</code> (<code>manual</code> / <code>gated</code> / <code>auto</code>)</td>
+<td>Run-wide HITL policy</td>
+<td>Production runs pin <code>manual</code> → every step gates</td>
+</tr>
+<tr>
+<td><code>Suspended</code></td>
+<td>The value returned from <code>Agent.run</code> when a gate fires</td>
+<td>The seam between the run and the operator UI</td>
+</tr>
+<tr>
+<td><code>Checkpointer</code></td>
+<td>Durable pause across operator lunch break</td>
+<td>Approval may arrive minutes/hours later; process may restart</td>
+</tr>
+<tr>
+<td><code>ReActCognition.resume</code></td>
+<td>Continue from a suspended checkpoint with the human's decision</td>
+<td>Threads approve/reject/edit into the tool loop</td>
+</tr>
+<tr>
+<td><code>CancellationToken</code></td>
+<td>Cooperative abort from the operator</td>
+<td>Kills the loop between turns; in-flight tool calls run to completion</td>
+</tr>
+<tr>
+<td><code>Budget</code> (max_cost + max_calls)</td>
+<td>Never-hang backstop</td>
+<td>Investigation halts even if the model wanders</td>
+</tr>
+<tr>
+<td><code>MaxTurns \| Timeout</code></td>
+<td>Smart stops layered on the hard budget</td>
+<td>Termination composes with <code>\|</code> (OR)</td>
+</tr>
+<tr>
+<td><code>ExternalTermination</code></td>
+<td>Operator can also flip a flag mid-run</td>
+<td>Alternative cancel path</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-it-deliberately-doesnt-use">What it deliberately doesn't use<a class="headerlink" href="#what-it-deliberately-doesnt-use" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>Workflow</code></strong> — investigation is emergent (which log to check next depends
+  on previous evidence). Workflow is the wrong tool.</li>
+<li><strong><code>SignalChannel</code></strong> — single agent, no children. Signals model coordinator
+  ↔ worker; that's the research-report shape, not this.</li>
+<li><strong><code>Skill.as_agent</code></strong> — this investigator is bespoke wiring; skills are for
+  reusable recipes.</li>
+<li><strong><code>CachedMemory</code></strong> — reads are per-alert, cache would either be stale or a
+  security risk (an alert from tenant A leaking into an unrelated alert's
+  context).</li>
+</ul>
+<h2 id="invariants">Invariants<a class="headerlink" href="#invariants" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Invariant</th>
+<th>Concrete failure if violated</th>
+<th>Locked by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>requires_approval=True</code> always fires the human gate</strong></td>
+<td>The loop invokes a <code>kubectl</code> command without operator consent → prod outage or data loss</td>
+<td><code>test_manual_autonomy_gates_an_unapproved_tool</code>, <code>test_gated_autonomy_gates_side_effecting_key_step</code> in <code>tests/agents/test_agent_loop.py</code></td>
+</tr>
+<tr>
+<td><strong><code>Autonomy.MANUAL</code> gates every step, not just approval-required ones</strong></td>
+<td>Operator wanted "review everything" mode; framework only gated the flagged tools → ran read-only tools they wanted to see first</td>
+<td><code>should_gate</code> truth table in <code>tests/agents/test_gate.py</code></td>
+</tr>
+<tr>
+<td><strong><code>RunPolicy.check</code> returns a flagged verdict when trifecta hits</strong></td>
+<td>The tool set has all three caps and nobody notices → framework silently allows autonomous auto-remediation</td>
+<td><code>PolicyVerdict</code> tests in <code>tests/agents/test_control.py</code></td>
+</tr>
+<tr>
+<td><strong><code>Suspended</code> carries the ToolCall arguments verbatim</strong></td>
+<td>Operator UI shows a hallucinated command different from what would actually run</td>
+<td><code>test_agent_suspends_then_resumes_through_a_checkpointer</code></td>
+</tr>
+<tr>
+<td><strong><code>ToolCall.arguments</code> cannot be mutated between UI render and execution</strong></td>
+<td>A tool implementation <code>args.pop("dry_run")</code> mutates the approval snapshot → operator sees "dry run" but actual call is destructive</td>
+<td><code>test_toolcall_arguments_view_rejects_item_assignment</code></td>
+</tr>
+<tr>
+<td><strong><code>Checkpointer.snapshot</code> deep-copies state</strong></td>
+<td>Suspended snapshot's <code>pending</code> list is shared with the running loop's; a resume-race mutates one side and the operator sees stale evidence</td>
+<td><code>test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it</code></td>
+</tr>
+<tr>
+<td><strong>Cancellation propagates through <code>ctx.check_cancelled()</code> between turns</strong></td>
+<td>Operator's Cancel arrives but the loop already dispatched the next chat call → burns another turn's tokens after the abort</td>
+<td><code>tests/runtime/test_cancellation.py</code></td>
+</tr>
+<tr>
+<td><strong><code>Budget.max_calls</code> is a hard ceiling</strong></td>
+<td>Termination condition bug leaves the loop unhung by MaxTurns → runs forever until cost cap trips</td>
+<td>Framework contract: <code>_iterate</code>'s <code>for i in range(start_i, self.max_iterations)</code> is the never-hang backstop</td>
+</tr>
+<tr>
+<td><strong>Approved tools RE-approve on subsequent runs</strong></td>
+<td>Operator approves once → the run remembers → next investigation autonomously reuses the approval</td>
+<td>By design: the approval carrier is <code>Suspended</code> scoped to <code>run_id</code>; a new <code>run_id</code> starts fresh</td>
+</tr>
+<tr>
+<td><strong>The kernel <code>run_with_resilience</code> does NOT retry PERMANENT failures</strong></td>
+<td>A 403 on <code>kubectl</code> triggers a retry storm → looks like an attack pattern to infra security</td>
+<td><code>test_run_with_resilience_fails_fast_on_permanent</code>, <code>classify</code> ordering test</td>
+</tr>
+</tbody>
+</table>
+<h2 id="correctness-checklist-for-future-changes">Correctness checklist (for future changes)<a class="headerlink" href="#correctness-checklist-for-future-changes" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Any new tool with side-effecting infra actions must declare
+  <code>caps=("egress",)</code> AND <code>requires_approval=True</code>.</strong> Missing either
+  is a bug. Add an assertion on the tool registry that egress-capable
+  side-effecting tools always require approval.</li>
+<li><strong><code>RunPolicy.check</code> must see every tool the loop can dispatch.</strong> If a
+  Skill-adapted tool wraps another agent, the outer policy sees only
+  the wrapper's caps — verify caps are propagated on adaptation.</li>
+<li><strong>Grep <code>ctx.check_cancelled()</code> in every cognition — must fire at
+  least once per turn.</strong> Missing check = un-cancellable loop.</li>
+<li><strong><code>Suspended.pending</code> is a frozen <code>tuple</code>, not a mutable <code>list</code>.</strong>
+  Two doors both locked: the frozen dataclass blocks rebinding, the
+  tuple itself blocks item mutation. Verified by
+  <code>test_suspended_pending_is_a_frozen_tuple</code> in <code>tests/test_agents.py</code>.</li>
+<li><strong><code>Autonomy</code> values are <code>AutonomyLiteral</code> — a typo doesn't silently
+  drop to AUTO.</strong> mypy catches this at the seam.</li>
+</ul>
+<h2 id="design-tensions-to-hold-in-mind">Design tensions to hold in mind<a class="headerlink" href="#design-tensions-to-hold-in-mind" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>RunPolicy(mode="flag")</code> vs <code>mode="deny"</code></strong>: flag mode publishes a
+  verdict as an observation; block mode raises. We use flag here because
+  the operator UI is the enforcement point — the run continues to gather
+  evidence, but the trifecta warning surfaces prominently in the review card.</li>
+<li><strong><code>caps</code> on the alert-ingestion step</strong>: whichever way the alert enters
+  the run (as a param on <code>Agent.run(task)</code> or a tool call), the framework
+  needs a signal that the input is untrusted. Convention: wrap alert
+  ingestion in a <code>FunctionTool(name="alert_content", caps=("untrusted_content",))</code>
+  called at run start so <code>RunPolicy.check</code> sees the tag.</li>
+<li><strong>Auto-remediation for pre-approved runbooks</strong>: the "operator approved
+  this playbook once" pattern is dangerous. We deliberately require
+  per-run approval; a "trusted playbook" library would need its own
+  cryptographic-attestation layer, not a framework-level exception.</li>
+<li><strong>What "cancel" means for an in-flight <code>kubectl</code></strong>: the framework
+  cancels the LOOP, not the tool's I/O. A <code>kubectl</code> in flight cannot
+  be un-called. Document that Cancel is best-effort for tool calls
+  already dispatched.</li>
+</ul>
+<h2 id="what-this-use-case-tests-about-agentkit-reverse-view">What this use case tests about agentkit (reverse view)<a class="headerlink" href="#what-this-use-case-tests-about-agentkit-reverse-view" title="Anchor link">&para;</a></h2>
+<p>If a real oncall AI built on agentkit ever executes a destructive command
+without operator approval, one of these framework invariants failed. The
+specific things this design proves the framework must support:</p>
+<ol>
+<li><code>caps</code> + <code>requires_approval</code> compose into a real gate that no code path
+   bypasses.</li>
+<li>The <code>Autonomy</code> policy tier is honoured uniformly across all cognition
+   impls (currently ReAct — but any new cognition must respect <code>should_gate</code>).</li>
+<li><code>Suspended</code> + <code>Checkpointer</code> durably represent the pause; a process
+   restart during operator lunch doesn't lose the pending approval.</li>
+<li><code>ToolCall.arguments</code> frozen-view prevents the classic
+   "approve-then-modify" attack (a tool impl silently mutating args
+   between the operator's view and the actual execution).</li>
+<li><code>CancellationToken</code> is a first-class abort signal — operators can always
+   stop a run, even one mid-loop.</li>
+</ol>
+<h2 id="verification-snapshot">Verification snapshot<a class="headerlink" href="#verification-snapshot" title="Anchor link">&para;</a></h2>
+<p>Last audited against the current tree:</p>
+<ul>
+<li><strong>Automated invariant tests</strong>: <code>pytest tests/agents/test_agent_loop.py
+  tests/agents/test_gate.py tests/agents/test_control.py
+  tests/runtime/test_cancellation.py tests/capabilities/test_checkpointer.py</code>
+  → 69 passed, 0 failed.</li>
+<li><strong>Gate call site</strong>: <code>grep -n "requires_approval"
+  agentkit/agents/cognition/react.py</code> → 1 match at line 361 inside
+  <code>_needs_approval</code>, threading the tool's flag into <code>should_gate</code>.
+  Expected structural evidence present.</li>
+<li><strong>Sole gating policy</strong>: <code>grep -n "should_gate"
+  agentkit/agents/control/gate.py</code> → 3 matches (docstring, <code>def</code>,
+  <code>__all__</code>). One definition, exported once. Expected structural
+  evidence present.</li>
+<li><strong>Cancellation check between turns</strong>: <code>grep -n
+  "check_cancelled\|ctx.cancel" agentkit/agents/cognition/react.py</code>
+  → 1 match at line 206, at the top of <code>_iterate</code>'s per-iteration
+  body. Expected structural evidence present.</li>
+</ul>
+<p>All four load-bearing structural checks pass. The design holds in the
+current tree.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
