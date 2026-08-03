@@ -1,0 +1,142 @@
+"""memoize middlewares — one family for exact reuse, idempotency, and near-duplicate caching.
+
+- `memoize(key=…)`          — exact, single-flight, scope-keyed (chat or read-only tool reuse).
+- `idempotent()`            — exact, keyed by (run, scope, tool, args), never caches a failure; wired
+                              for side-effecting tools so an at-least-once retry doesn't re-fire.
+- `semantic_memoize(…)`     — near-duplicate reuse over a VectorPort (read-only), thresholded.
+
+All three are the same idea (skip `next` when a prior result is reusable); they differ only in how the
+key/match is derived. Exact/idempotent ride `StorePort.get_or_set` (single-flight) — a raised producer is
+never stored, so failures are never cached.
+"""
+
+from __future__ import annotations
+
+import contextlib
+from collections.abc import AsyncIterator, Callable
+from typing import Any
+
+from agentkit.kernel.middleware import Call, Handler, Middleware, _assemble, _result_to_stream
+from agentkit.kernel.resilience import idempotency_key
+from agentkit.kernel.resilience import stable_hash as _hash
+from agentkit.kernel.types import Chunk, LLMResult, Usage
+
+
+def _emit_cache_hit(call: Call, key: str) -> None:
+    """Drop a ``cache.hit`` event on the currently-open span — best-effort.
+
+    Fired when ``memoize`` short-circuits to a stored result so the trace timeline
+    explains why this call has no provider span underneath it. A misbehaving tracer
+    must never break the cache path, so the call is wrapped in ``contextlib.suppress``."""
+    trace = getattr(call.ctx, "trace", None)
+    if trace is None:
+        return
+    with contextlib.suppress(Exception):
+        trace.add_event_to_current_span("cache.hit", cache_key=key)
+
+
+def memoize(
+    *,
+    key: Callable[[Call], str],
+    store: Any = None,
+    ttl: int | None = None,
+    when: Callable[[Call], bool] | None = None,
+) -> Middleware:
+    """Single-flight, never-cache-failure reuse over `StorePort.get_or_set`: the producer
+    *collects* the inner stream to the assembled result and stores it; a hit re-emits the stored result as
+    a one-shot stream. Memoized calls are therefore not incremental — the correctness of single-flight +
+    a raised producer never being stored wins over incremental delivery for a cache layer."""
+
+    async def mw(call: Call, nxt: Handler) -> AsyncIterator[Any]:
+        if (when is not None and not when(call)) or (store or call.ctx.store) is None:
+            async for x in nxt(call):
+                yield x
+            return
+        s = store or call.ctx.store
+        ran = {"v": False}
+
+        async def produce() -> Any:
+            ran["v"] = True  # runs only on a MISS
+            return _assemble(
+                call, [x async for x in nxt(call)]
+            )  # a raised stream propagates → unstored
+
+        cache_key = key(call)
+        result = await s.get_or_set(cache_key, produce, ttl=ttl)
+        if not ran["v"]:
+            call.meta["cache_hit"] = True  # signal a hit to outer middlewares (audit → "deduped")
+            _emit_cache_hit(call, cache_key)  # trace timeline: explain the missing provider span
+        for item in _result_to_stream(call, result):
+            yield item
+
+    return mw
+
+
+def idempotent(*, store: Any = None) -> Middleware:
+    """Dedupe SIDE-EFFECTING tool calls on (run, scope, tool, args); a failure is never stored."""
+
+    def key(call: Call) -> str:
+        r = call.request
+        return idempotency_key(call.ctx.correlation_id, call.ctx.scope.key(), r.name, r.arguments)
+
+    return memoize(key=key, store=store, when=lambda c: getattr(c.request, "side_effecting", False))
+
+
+def semantic_memoize(
+    *,
+    vector: Any = None,
+    threshold: float = 0.85,
+    text: Callable[[Call], str] | None = None,
+    when: Callable[[Call], bool] | None = None,
+) -> Middleware:
+    """Near-duplicate reuse for READ-ONLY calls over a VectorPort (scored search), scope-isolated.
+    NEVER attach to a side-effecting call — masking a real action behind a hit would be a correctness
+    bug, so guard with `when=` (defaults to chat calls / explicitly read-only)."""
+    _text = text or (
+        lambda c: getattr(c.request, "messages", None) and c.request.messages[-1].content or ""
+    )
+
+    async def mw(call: Call, nxt: Handler) -> AsyncIterator[Any]:
+        if (when is not None and not when(call)) or (vector or call.ctx.vector) is None:
+            async for x in nxt(call):
+                yield x
+            return
+        vec = vector or call.ctx.vector
+        query = _text(call)
+        hits = await vec.search(call.ctx.scope, query, k=1)
+        if (
+            hits and hits[0][0] >= threshold
+        ):  # hit → reconstruct a result, re-stream (no new tokens)
+            md = hits[0][1].metadata
+            call.meta["cache_hit"] = True
+            _emit_cache_hit(call, hits[0][1].id)
+            cached = LLMResult(
+                content=md.get("content", ""),
+                model=md.get("model"),
+                provider="semantic-cache",
+                finish_reason="cached",
+                usage=Usage(),
+            )
+            for it in _result_to_stream(call, cached):
+                yield it
+            return
+        items = []  # miss → tee (incremental) while collecting to cache
+        async for x in nxt(call):
+            items.append(x)
+            yield x
+        result = _assemble(call, items)
+        content = getattr(result, "content", None)  # only cache LLM-shaped, serializable results
+        if content is not None:
+            cid = _hash(query)
+            await vec.upsert(
+                call.ctx.scope,
+                [
+                    Chunk(
+                        id=cid,
+                        text=query,
+                        metadata={"content": content, "model": getattr(result, "model", None)},
+                    )
+                ],
+            )
+
+    return mw

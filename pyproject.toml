@@ -1,0 +1,62 @@
+[project]
+name = "arc-agentkit"
+version = "0.1.0"
+description = "A low-level, async-first base framework for agentic AI — one runtime with opinion-free primitives and composable cross-cutting concerns."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+authors = [{ name = "Arc Labs", email = "hello@arc-labs.ai" }]
+maintainers = [{ name = "Arc Labs" }]
+keywords = ["agents", "llm", "ai", "agentic", "framework", "async", "openai", "anthropic", "tool-use"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/arc-labs-ai/agentkit"
+Documentation = "https://arc-labs-ai.github.io/agentkit/"
+Repository = "https://github.com/arc-labs-ai/agentkit"
+Issues = "https://github.com/arc-labs-ai/agentkit/issues"
+Changelog = "https://github.com/arc-labs-ai/agentkit/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+http = ["httpx[http2]>=0.27"]
+fast = ["orjson>=3.10"]
+observability = [
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+]
+postgres = [
+    "asyncpg>=0.29",
+    "pgvector>=0.2",
+]
+redis = [
+    "redis>=5.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentkit"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "hypothesis>=6.100",
+]

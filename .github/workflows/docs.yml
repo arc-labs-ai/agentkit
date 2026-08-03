@@ -1,0 +1,61 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    name: build + deploy mkdocs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for mkdocs config
+        id: mkdocs-config
+        run: |
+          if [ -f mkdocs.yml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::mkdocs.yml not present yet — skipping build/deploy."
+          fi
+
+      - name: Install uv
+        if: steps.mkdocs-config.outputs.present == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        if: steps.mkdocs-config.outputs.present == 'true'
+        run: uv python install 3.12
+
+      - name: Build site (strict)
+        if: steps.mkdocs-config.outputs.present == 'true'
+        run: |
+          uv run --with mkdocs --with mkdocs-material \
+            mkdocs build --strict
+
+      - name: Deploy to gh-pages
+        if: steps.mkdocs-config.outputs.present == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
