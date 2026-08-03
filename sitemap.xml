@@ -21,6 +21,10 @@
          <lastmod>2026-08-03</lastmod>
     </url>
     <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/tutorial/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/adapters/</loc>
          <lastmod>2026-08-03</lastmod>
     </url>
@@ -110,6 +114,34 @@
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/mental-models/04-multi-agent-coordinated-research/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/otel-tracing-and-metrics/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/resume-after-crash/</loc>
+         <lastmod>2026-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/spend-budget-and-quota/</loc>
          <lastmod>2026-08-03</lastmod>
     </url>
 </urlset>

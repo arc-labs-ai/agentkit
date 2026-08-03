@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/concepts/capabilities/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/">
       
       
-        <link rel="prev" href="../runtime/">
+        <link rel="prev" href="../spend-budget-and-quota/">
       
       
-        <link rel="next" href="../agents/">
+        <link rel="next" href="../custom-middleware/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Capabilities - agentkit</title>
+        <title>Parallel agents with cooperative cancellation - agentkit</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#capabilities" class="md-skip">
+        <a href="#how-do-i-run-agents-in-parallel-and-cancel-all-of-them-if-one-fails" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Capabilities
+              Parallel agents with cooperative cancellation
             
           </span>
         </div>
@@ -344,8 +344,6 @@
       
   
   
-    
-  
   
   
     
@@ -358,11 +356,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -383,7 +381,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -401,7 +399,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../kernel/" class="md-nav__link">
+      <a href="../../concepts/kernel/" class="md-nav__link">
         
   
   
@@ -429,7 +427,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../runtime/" class="md-nav__link">
+      <a href="../../concepts/runtime/" class="md-nav__link">
         
   
   
@@ -437,6 +435,291 @@
     
   
     Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hitl-tool-approval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resume-after-crash/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resume from a checkpoint after a crash
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spend-budget-and-quota/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cap spend with Budget and Quota
   
 
     
@@ -473,7 +756,7 @@
   <span class="md-ellipsis">
     
   
-    Capabilities
+    Parallel agents with cooperative cancellation
   
 
     
@@ -491,7 +774,7 @@
   <span class="md-ellipsis">
     
   
-    Capabilities
+    Parallel agents with cooperative cancellation
   
 
     
@@ -517,10 +800,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-capabilities-shipped" class="md-nav__link">
+  <a href="#when-youd-want-this" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The capabilities shipped
+        When you'd want this
       
     </span>
   </a>
@@ -528,10 +811,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-capabilities-plug-in" class="md-nav__link">
+  <a href="#working-code" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How capabilities plug in
+        Working code
       
     </span>
   </a>
@@ -539,10 +822,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-invariants-it-enforces" class="md-nav__link">
+  <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The invariants it enforces
+        How it works
       
     </span>
   </a>
@@ -550,10 +833,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
+  <a href="#gotchas" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API
+        Gotchas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
       
     </span>
   </a>
@@ -576,290 +870,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agents/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Agents
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../prompts/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Prompts
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../middlewares/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Middlewares
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Recipes
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Recipes
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../recipes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../recipes/hitl-tool-approval/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Human-in-the-loop tool approval
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../recipes/resume-after-crash/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Resume from a checkpoint after a crash
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../recipes/spend-budget-and-quota/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cap spend with Budget and Quota
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../recipes/parallel-agents-with-cancellation/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Parallel agents with cooperative cancellation
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../recipes/custom-middleware/" class="md-nav__link">
+      <a href="../custom-middleware/" class="md-nav__link">
         
   
   
@@ -887,7 +898,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/otel-tracing-and-metrics/" class="md-nav__link">
+      <a href="../otel-tracing-and-metrics/" class="md-nav__link">
         
   
   
@@ -1391,10 +1402,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-capabilities-shipped" class="md-nav__link">
+  <a href="#when-youd-want-this" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The capabilities shipped
+        When you'd want this
       
     </span>
   </a>
@@ -1402,10 +1413,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-capabilities-plug-in" class="md-nav__link">
+  <a href="#working-code" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How capabilities plug in
+        Working code
       
     </span>
   </a>
@@ -1413,10 +1424,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-invariants-it-enforces" class="md-nav__link">
+  <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The invariants it enforces
+        How it works
       
     </span>
   </a>
@@ -1424,10 +1435,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
+  <a href="#gotchas" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API
+        Gotchas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
       
     </span>
   </a>
@@ -1454,106 +1476,133 @@
   
 
 
-<h1 id="capabilities">Capabilities<a class="headerlink" href="#capabilities" title="Anchor link">&para;</a></h1>
-<p><strong>What this is.</strong> A capability is an <em>optional collaborator</em> an agent
-can be wired with — a <code>RequestBuilder</code> that assembles a prompt from
-sources, a <code>Compactor</code> that shrinks a growing context window, a
-<code>Guardrail</code> that vetoes a response, an <code>Evaluator</code> that scores it, a
-<code>Checkpointer</code> that snapshots the run so a crash can be resumed.
-Each capability is a small, typed Protocol; each has one or more
-implementations shipped in <code>agentkit.capabilities</code>.</p>
-<p><strong>Why it exists.</strong> Compaction, grounding, guardrails, and durability
-are <em>pathologically</em> the wrong things to bake into a base class. They
-have context-specific tradeoffs (which model? which safety policy?
-which storage?), and you almost always want to swap one implementation
-for another without editing the loop. Capabilities are how agentkit
-keeps the loop small and the swap surface flat.</p>
-<h2 id="the-capabilities-shipped">The capabilities shipped<a class="headerlink" href="#the-capabilities-shipped" title="Anchor link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Capability</th>
-<th>What it does</th>
-<th>Ships</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>RequestBuilder</code></td>
-<td>Compose a <code>ChatRequest</code> from prompt + memory + tools + budget.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Grounder</code></td>
-<td>Attach retrieved evidence (memory hits) into the request.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Compactor</code></td>
-<td>Shrink a <code>WorkingContext</code> before it hits the model's window.</td>
-<td>4 impls</td>
-</tr>
-<tr>
-<td><code>Guardrail</code></td>
-<td>Approve / block / edit an outbound message.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Evaluator</code></td>
-<td>Score a candidate output (LLM-judge or rule-based).</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Checkpointer</code></td>
-<td>Snapshot run state so a crash can be resumed at the last step.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>SchemaAdapter</code></td>
-<td>Coerce free-form model output into a typed shape (Pydantic / dataclass / dict).</td>
-<td>Yes</td>
-</tr>
-</tbody>
-</table>
-<h2 id="how-capabilities-plug-in">How capabilities plug in<a class="headerlink" href="#how-capabilities-plug-in" title="Anchor link">&para;</a></h2>
-<p>Capabilities are not <code>Agent</code> constructor kwargs. They wire in at the
-edges of the loop: a <code>Compactor</code> feeds a <code>RequestBuilder</code>, a
-<code>Guardrail</code> runs inside the middleware chain, a <code>Checkpointer</code> is
-handed to the cognition or policy that suspends/resumes.</p>
-<p>The shipped compactor strategies are
-<code>ImportanceFilteringCompactor</code>, <code>SlidingWindowCompactor</code>,
-<code>SummarizationCompactor</code>, and <code>TruncationCompactor</code> — all in
-<code>agentkit</code>. <code>Guardrail</code>, <code>Evaluator</code>, and <code>Checkpointer</code> ship as
-Protocols in <code>agentkit.capabilities</code>; implementations are yours to
-plug in.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">SlidingWindowCompactor</span><span class="p">,</span> <span class="n">TruncationCompactor</span>
+<h1 id="how-do-i-run-agents-in-parallel-and-cancel-all-of-them-if-one-fails">How do I run agents in parallel and cancel all of them if one fails?<a class="headerlink" href="#how-do-i-run-agents-in-parallel-and-cancel-all-of-them-if-one-fails" title="Anchor link">&para;</a></h1>
+<h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
+<p>Fan out a Planner's sub-questions across N Researchers. Race two
+implementations of the same skill and keep the first. Kick off a batch
+of independent enrichment tasks. In each case you want two properties
+the raw <code>asyncio.gather</code> doesn't give you:</p>
+<ul>
+<li><strong>Sibling cancellation on failure.</strong> If one Researcher blows up, the
+  others should stop; you don't want to keep paying to finish work
+  you're about to throw away.</li>
+<li><strong>A shared budget and cancel token.</strong> Cost accrues on the parent's
+  <code>Budget</code>; an external cancel (operator hit stop) propagates to every
+  child at every safe point.</li>
+</ul>
+<p><code>run_agents(...)</code> is the primitive. It builds one <code>ctx.child()</code> per
+pair (depth+1, sharing <code>budget</code> / <code>services</code> / <code>cancel</code> by reference)
+and calls <code>gather_bounded(...)</code> under the parent's semaphore.</p>
+<h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Dep-free strategies — take a budget directly.</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">compactor</span> <span class="o">=</span> <span class="n">SlidingWindowCompactor</span><span class="p">(</span><span class="n">keep_recent</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># or:</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">compactor</span> <span class="o">=</span> <span class="n">TruncationCompactor</span><span class="p">(</span><span class="n">max_tokens</span><span class="o">=</span><span class="mi">12_000</span><span class="p">)</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># Hand it to a RequestBuilder as `compactor=`; the RequestBuilder</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># folds the transcript through it before every LLM call.</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">CancellationToken</span><span class="p">,</span> <span class="n">run_agents</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">demo_sibling_cancel</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;One failing agent cancels the rest — TaskGroup semantics.&quot;&quot;&quot;</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="p">(</span><span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="n">fail_times</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">fail_exc</span><span class="o">=</span><span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;scripted failure&quot;</span><span class="p">))</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">)</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">a</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;m&quot;</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;brief&quot;</span><span class="p">)</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">b</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;m&quot;</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;brief&quot;</span><span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="k">await</span> <span class="n">run_agents</span><span class="p">([(</span><span class="n">a</span><span class="p">,</span> <span class="s2">&quot;topic-a&quot;</span><span class="p">),</span> <span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s2">&quot;topic-b&quot;</span><span class="p">)],</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">except</span><span class="o">*</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        <span class="k">for</span> <span class="n">exc</span> <span class="ow">in</span> <span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">:</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[sibling-cancel] caught: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">demo_best_effort</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;`best_effort=True` isolates failures into Failure objects.&quot;&quot;&quot;</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="p">(</span><span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="n">fail_times</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">fail_exc</span><span class="o">=</span><span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;scripted failure&quot;</span><span class="p">))</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">)</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">a</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;m&quot;</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;brief&quot;</span><span class="p">)</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">b</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;m&quot;</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;brief&quot;</span><span class="p">)</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">run_agents</span><span class="p">([(</span><span class="n">a</span><span class="p">,</span> <span class="s2">&quot;topic-a&quot;</span><span class="p">),</span> <span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s2">&quot;topic-b&quot;</span><span class="p">)],</span> <span class="n">ctx</span><span class="p">,</span> <span class="n">best_effort</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[best-effort] </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">demo_external_cancel</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;External signal trips the token; the agent unwinds cooperatively.&quot;&quot;&quot;</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.concurrency</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cancelled</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(</span><span class="s2">&quot;ok&quot;</span><span class="p">),</span> <span class="n">cancel</span><span class="o">=</span><span class="n">CancellationToken</span><span class="p">())</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">cancel_after</span><span class="p">(</span><span class="n">delay</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="k">assert</span> <span class="n">ctx</span><span class="o">.</span><span class="n">cancel</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">cancel</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">long_running</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>            <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.02</span><span class="p">)</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>            <span class="n">ctx</span><span class="o">.</span><span class="n">check_cancelled</span><span class="p">()</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TaskGroup</span><span class="p">()</span> <span class="k">as</span> <span class="n">tg</span><span class="p">:</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">cancel_after</span><span class="p">(</span><span class="mf">0.05</span><span class="p">))</span>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">long_running</span><span class="p">())</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="k">except</span><span class="o">*</span> <span class="n">Cancelled</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[external-cancel] observed: </span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>    <span class="k">await</span> <span class="n">demo_sibling_cancel</span><span class="p">()</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>    <span class="k">await</span> <span class="n">demo_best_effort</span><span class="p">()</span>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>    <span class="k">await</span> <span class="n">demo_external_cancel</span><span class="p">()</span>
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>
+</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<p>The LLM-driven strategies (<code>SummarizationCompactor</code>,
-<code>ImportanceFilteringCompactor</code>) also require a <code>summarizer=</code> /
-<code>filterer=</code> LLM port to do their work.</p>
-<p>None of these are required; an agent with none of them is still a
-valid agent.</p>
-<h2 id="the-invariants-it-enforces">The invariants it enforces<a class="headerlink" href="#the-invariants-it-enforces" title="Anchor link">&para;</a></h2>
-<ol>
-<li><strong>Every capability is a Protocol.</strong> No <code>abstract base class</code>
-   inheritance; you implement the interface and hand it in.</li>
-<li><strong>Capabilities are stateless per run.</strong> State that has to survive
-   goes through <code>Checkpointer</code> — an in-memory field in a capability
-   silently kills durability.</li>
-<li><strong>No capability drives the loop.</strong> A <code>Compactor</code> shrinks input; it
-   doesn't decide when to compact. The cognition owns control flow.</li>
-</ol>
-<h2 id="api">API<a class="headerlink" href="#api" title="Anchor link">&para;</a></h2>
-<p>Full generated reference lives at
-<a href="../../api-reference/capabilities/">API › capabilities</a>.</p>
+<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
+<p><strong><code>run_agents(pairs, ctx)</code></strong> — the default mode. Builds per-child
+contexts, runs each <code>agent.run(task, child_ctx)</code> inside an
+<code>asyncio.TaskGroup</code> bounded by <code>ctx.semaphore()</code>. TaskGroup semantics
+give sibling-cancellation for free: the first failure raises,
+outstanding tasks are cancelled, and the raised exceptions are grouped
+into an <code>ExceptionGroup</code> you catch with <code>except*</code>.</p>
+<p><strong><code>run_agents(pairs, ctx, best_effort=True)</code></strong> — for batches where one
+failure must NOT sink the others. Each slot in the returned list is
+either an <code>AgentResult</code> or a <code>Failure</code> (from
+<code>agentkit.kernel.errors</code>). <code>Failure</code> carries the exception on
+<code>.cause</code>, the classified category on <code>.category</code>, and a <code>source</code> string
+naming the slot — so a caller can retry, route around, or escalate
+uniformly instead of guessing what a raw exception meant.</p>
+<p><strong><code>CancellationToken</code></strong> is cooperative — a well-behaved async loop
+checks <code>ctx.check_cancelled()</code> at every safe point (loop top, between
+steps, between tool calls). Cancelling the token doesn't kill running
+coroutines; it makes the next check raise <code>Cancelled</code>. <code>run_agents</code>
+shares the token by reference across all children, so cancelling the
+parent cancels the subtree.</p>
+<h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><code>ExceptionGroup</code> isn't a plain exception.</strong> Use <code>except*</code> (Python
+  3.11+, agentkit requires 3.12) or iterate <code>eg.exceptions</code> inside a
+  plain <code>except ExceptionGroup</code>.</li>
+<li><strong>Cooperative cancel means points matter.</strong> A synchronous CPU-bound
+  loop inside a tool never checks the token. Yield an <code>await
+  asyncio.sleep(0)</code> or check <code>ctx.check_cancelled()</code> on your own
+  iteration boundaries. Blocking I/O belongs on a <code>ProcessPoolExecutor</code>
+  or a threadpool so the event loop stays reactive.</li>
+<li><strong><code>Budget.max_concurrency</code> bounds fan-out, not <code>run_agents</code>.</strong> The
+  semaphore lives on <code>Budget</code> and defaults to 8; if you fan out 100
+  children they'll still run 8 at a time. Increase
+  <code>Budget(max_concurrency=...)</code> if you need more.</li>
+<li><strong><code>best_effort=True</code> still charges the shared budget.</strong> A
+  <code>Failure</code>-in-a-slot doesn't refund the cost of the LLM calls that
+  raced to error.</li>
+</ul>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
+<ul>
+<li><a href="../../concepts/agents/">Concepts · Agents</a> — where <code>run_agents</code>
+  fits alongside <code>Workflow</code> and the coordinator cognitions.</li>
+<li><a href="../spend-budget-and-quota/">Cap spend with Budget and Quota</a> — the
+  ceiling that stops a runaway fan-out.</li>
+<li><code>agentkit.kernel.concurrency</code> module docstring — the full concurrency
+  surface (<code>gather_bounded</code>, <code>gather_best_effort</code>, <code>run_sync</code>).</li>
+</ul>
 
 
 
@@ -1574,7 +1623,7 @@ valid agent.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 20:52:47 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 21:27:10 UTC">August 3, 2026</span>
   </span>
 
     
@@ -1612,7 +1661,7 @@ valid agent.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../runtime/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Runtime">
+          <a href="../spend-budget-and-quota/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Cap spend with Budget and Quota">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1622,20 +1671,20 @@ valid agent.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Runtime
+                Cap spend with Budget and Quota
               </div>
             </div>
           </a>
         
         
           
-          <a href="../agents/" class="md-footer__link md-footer__link--next" aria-label="Next: Agents">
+          <a href="../custom-middleware/" class="md-footer__link md-footer__link--next" aria-label="Next: Write a custom middleware">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Agents
+                Write a custom middleware
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -10,31 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/concepts/capabilities/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/">
       
       
-        <link rel="prev" href="../runtime/">
+        <link rel="prev" href="../concepts/middlewares/">
       
       
-        <link rel="next" href="../agents/">
+        <link rel="next" href="hitl-tool-approval/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Capabilities - agentkit</title>
+        <title>Overview - agentkit</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -53,11 +53,11 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../../stylesheets/extra.css">
+      <link rel="stylesheet" href="../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#capabilities" class="md-skip">
+        <a href="#recipes" class="md-skip">
           Skip to content
         </a>
       
@@ -98,7 +98,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+    <a href=".." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Capabilities
+              Overview
             
           </span>
         </div>
@@ -236,7 +236,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+    <a href=".." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -266,7 +266,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -293,7 +293,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/" class="md-nav__link">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -320,7 +320,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tutorial/" class="md-nav__link">
+      <a href="../tutorial/" class="md-nav__link">
         
   
   
@@ -344,8 +344,6 @@
       
   
   
-    
-  
   
   
     
@@ -358,11 +356,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -383,7 +381,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -401,7 +399,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../kernel/" class="md-nav__link">
+      <a href="../concepts/kernel/" class="md-nav__link">
         
   
   
@@ -429,7 +427,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../runtime/" class="md-nav__link">
+      <a href="../concepts/runtime/" class="md-nav__link">
         
   
   
@@ -454,37 +452,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Capabilities
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../concepts/capabilities/" class="md-nav__link">
         
   
   
@@ -500,70 +471,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#the-capabilities-shipped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The capabilities shipped
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-capabilities-plug-in" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How capabilities plug in
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-invariants-it-enforces" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The invariants it enforces
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -576,7 +483,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../agents/" class="md-nav__link">
+      <a href="../concepts/agents/" class="md-nav__link">
         
   
   
@@ -604,7 +511,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../prompts/" class="md-nav__link">
+      <a href="../concepts/prompts/" class="md-nav__link">
         
   
   
@@ -632,7 +539,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../middlewares/" class="md-nav__link">
+      <a href="../concepts/middlewares/" class="md-nav__link">
         
   
   
@@ -664,8 +571,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -676,11 +585,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -701,7 +610,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -716,10 +625,19 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../recipes/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -735,6 +653,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -747,7 +666,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/hitl-tool-approval/" class="md-nav__link">
+      <a href="hitl-tool-approval/" class="md-nav__link">
         
   
   
@@ -775,7 +694,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/resume-after-crash/" class="md-nav__link">
+      <a href="resume-after-crash/" class="md-nav__link">
         
   
   
@@ -803,7 +722,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/spend-budget-and-quota/" class="md-nav__link">
+      <a href="spend-budget-and-quota/" class="md-nav__link">
         
   
   
@@ -831,7 +750,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/parallel-agents-with-cancellation/" class="md-nav__link">
+      <a href="parallel-agents-with-cancellation/" class="md-nav__link">
         
   
   
@@ -859,7 +778,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/custom-middleware/" class="md-nav__link">
+      <a href="custom-middleware/" class="md-nav__link">
         
   
   
@@ -887,7 +806,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../recipes/otel-tracing-and-metrics/" class="md-nav__link">
+      <a href="otel-tracing-and-metrics/" class="md-nav__link">
         
   
   
@@ -974,7 +893,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/agents/" class="md-nav__link">
+      <a href="../api-reference/agents/" class="md-nav__link">
         
   
   
@@ -1002,7 +921,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/runtime/" class="md-nav__link">
+      <a href="../api-reference/runtime/" class="md-nav__link">
         
   
   
@@ -1030,7 +949,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/kernel/" class="md-nav__link">
+      <a href="../api-reference/kernel/" class="md-nav__link">
         
   
   
@@ -1058,7 +977,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/capabilities/" class="md-nav__link">
+      <a href="../api-reference/capabilities/" class="md-nav__link">
         
   
   
@@ -1086,7 +1005,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/prompts/" class="md-nav__link">
+      <a href="../api-reference/prompts/" class="md-nav__link">
         
   
   
@@ -1114,7 +1033,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/middlewares/" class="md-nav__link">
+      <a href="../api-reference/middlewares/" class="md-nav__link">
         
   
   
@@ -1142,7 +1061,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/context/" class="md-nav__link">
+      <a href="../api-reference/context/" class="md-nav__link">
         
   
   
@@ -1170,7 +1089,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/memory/" class="md-nav__link">
+      <a href="../api-reference/memory/" class="md-nav__link">
         
   
   
@@ -1198,7 +1117,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/tools/" class="md-nav__link">
+      <a href="../api-reference/tools/" class="md-nav__link">
         
   
   
@@ -1226,7 +1145,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/skills/" class="md-nav__link">
+      <a href="../api-reference/skills/" class="md-nav__link">
         
   
   
@@ -1254,7 +1173,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/testing/" class="md-nav__link">
+      <a href="../api-reference/testing/" class="md-nav__link">
         
   
   
@@ -1282,7 +1201,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/adapters/" class="md-nav__link">
+      <a href="../api-reference/adapters/" class="md-nav__link">
         
   
   
@@ -1317,7 +1236,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../examples/" class="md-nav__link">
+      <a href="../examples/" class="md-nav__link">
         
   
   
@@ -1344,7 +1263,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../contributing/" class="md-nav__link">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -1384,58 +1303,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#the-capabilities-shipped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The capabilities shipped
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-capabilities-plug-in" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How capabilities plug in
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-invariants-it-enforces" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The invariants it enforces
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1454,106 +1321,61 @@
   
 
 
-<h1 id="capabilities">Capabilities<a class="headerlink" href="#capabilities" title="Anchor link">&para;</a></h1>
-<p><strong>What this is.</strong> A capability is an <em>optional collaborator</em> an agent
-can be wired with — a <code>RequestBuilder</code> that assembles a prompt from
-sources, a <code>Compactor</code> that shrinks a growing context window, a
-<code>Guardrail</code> that vetoes a response, an <code>Evaluator</code> that scores it, a
-<code>Checkpointer</code> that snapshots the run so a crash can be resumed.
-Each capability is a small, typed Protocol; each has one or more
-implementations shipped in <code>agentkit.capabilities</code>.</p>
-<p><strong>Why it exists.</strong> Compaction, grounding, guardrails, and durability
-are <em>pathologically</em> the wrong things to bake into a base class. They
-have context-specific tradeoffs (which model? which safety policy?
-which storage?), and you almost always want to swap one implementation
-for another without editing the loop. Capabilities are how agentkit
-keeps the loop small and the swap surface flat.</p>
-<h2 id="the-capabilities-shipped">The capabilities shipped<a class="headerlink" href="#the-capabilities-shipped" title="Anchor link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Capability</th>
-<th>What it does</th>
-<th>Ships</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>RequestBuilder</code></td>
-<td>Compose a <code>ChatRequest</code> from prompt + memory + tools + budget.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Grounder</code></td>
-<td>Attach retrieved evidence (memory hits) into the request.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Compactor</code></td>
-<td>Shrink a <code>WorkingContext</code> before it hits the model's window.</td>
-<td>4 impls</td>
-</tr>
-<tr>
-<td><code>Guardrail</code></td>
-<td>Approve / block / edit an outbound message.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Evaluator</code></td>
-<td>Score a candidate output (LLM-judge or rule-based).</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>Checkpointer</code></td>
-<td>Snapshot run state so a crash can be resumed at the last step.</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td><code>SchemaAdapter</code></td>
-<td>Coerce free-form model output into a typed shape (Pydantic / dataclass / dict).</td>
-<td>Yes</td>
-</tr>
-</tbody>
-</table>
-<h2 id="how-capabilities-plug-in">How capabilities plug in<a class="headerlink" href="#how-capabilities-plug-in" title="Anchor link">&para;</a></h2>
-<p>Capabilities are not <code>Agent</code> constructor kwargs. They wire in at the
-edges of the loop: a <code>Compactor</code> feeds a <code>RequestBuilder</code>, a
-<code>Guardrail</code> runs inside the middleware chain, a <code>Checkpointer</code> is
-handed to the cognition or policy that suspends/resumes.</p>
-<p>The shipped compactor strategies are
-<code>ImportanceFilteringCompactor</code>, <code>SlidingWindowCompactor</code>,
-<code>SummarizationCompactor</code>, and <code>TruncationCompactor</code> — all in
-<code>agentkit</code>. <code>Guardrail</code>, <code>Evaluator</code>, and <code>Checkpointer</code> ship as
-Protocols in <code>agentkit.capabilities</code>; implementations are yours to
-plug in.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">SlidingWindowCompactor</span><span class="p">,</span> <span class="n">TruncationCompactor</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Dep-free strategies — take a budget directly.</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">compactor</span> <span class="o">=</span> <span class="n">SlidingWindowCompactor</span><span class="p">(</span><span class="n">keep_recent</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># or:</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">compactor</span> <span class="o">=</span> <span class="n">TruncationCompactor</span><span class="p">(</span><span class="n">max_tokens</span><span class="o">=</span><span class="mi">12_000</span><span class="p">)</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># Hand it to a RequestBuilder as `compactor=`; the RequestBuilder</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># folds the transcript through it before every LLM call.</span>
-</span></code></pre></div>
-<p>The LLM-driven strategies (<code>SummarizationCompactor</code>,
-<code>ImportanceFilteringCompactor</code>) also require a <code>summarizer=</code> /
-<code>filterer=</code> LLM port to do their work.</p>
-<p>None of these are required; an agent with none of them is still a
-valid agent.</p>
-<h2 id="the-invariants-it-enforces">The invariants it enforces<a class="headerlink" href="#the-invariants-it-enforces" title="Anchor link">&para;</a></h2>
-<ol>
-<li><strong>Every capability is a Protocol.</strong> No <code>abstract base class</code>
-   inheritance; you implement the interface and hand it in.</li>
-<li><strong>Capabilities are stateless per run.</strong> State that has to survive
-   goes through <code>Checkpointer</code> — an in-memory field in a capability
-   silently kills durability.</li>
-<li><strong>No capability drives the loop.</strong> A <code>Compactor</code> shrinks input; it
-   doesn't decide when to compact. The cognition owns control flow.</li>
-</ol>
-<h2 id="api">API<a class="headerlink" href="#api" title="Anchor link">&para;</a></h2>
-<p>Full generated reference lives at
-<a href="../../api-reference/capabilities/">API › capabilities</a>.</p>
+<h1 id="recipes">Recipes<a class="headerlink" href="#recipes" title="Anchor link">&para;</a></h1>
+<p>Recipes are focused answers to specific questions. Each one is a
+self-contained page: the question, one runnable script, an explanation
+of the primitives involved, and the gotchas. If you want a linear
+walkthrough, use the <a href="../tutorial/">Tutorial</a>; if you want the mental
+model of a primitive, use the <a href="../concepts/kernel/">Concepts</a>; this
+section is what you reach for after you've written some code and hit
+one specific wall.</p>
+<div class="grid cards">
+<ul>
+<li>
+<p><strong>Human-in-the-loop tool approval</strong></p>
+<hr />
+<p>How do I pause a tool for human approval? <code>side_effecting=True</code>,
+<code>Autonomy.GATED</code>, <code>Suspended</code>, <code>agent.resume(...)</code>.</p>
+<p><a href="hitl-tool-approval/">:octicons-arrow-right-24: Read</a></p>
+</li>
+<li>
+<p><strong>Resume after a crash</strong></p>
+<hr />
+<p>How do I pick a run back up after the worker process died?
+<code>Checkpointer</code> + one run id.</p>
+<p><a href="resume-after-crash/">:octicons-arrow-right-24: Read</a></p>
+</li>
+<li>
+<p><strong>Cap spend with Budget and Quota</strong></p>
+<hr />
+<p>How do I put a hard ceiling on a run's cost, and a rolling cap on a
+tenant's spend? <code>Budget</code>, <code>Quota</code>, <code>MeterExceeded</code>.</p>
+<p><a href="spend-budget-and-quota/">:octicons-arrow-right-24: Read</a></p>
+</li>
+<li>
+<p><strong>Parallel agents with cancellation</strong></p>
+<hr />
+<p>How do I run agents in parallel, and how do I make sure one
+failure cancels the rest? <code>run_agents</code>, <code>CancellationToken</code>,
+cooperative cancel.</p>
+<p><a href="parallel-agents-with-cancellation/">:octicons-arrow-right-24: Read</a></p>
+</li>
+<li>
+<p><strong>Write a custom middleware</strong></p>
+<hr />
+<p>How do I add my own cross-cutting concern? <code>BaseMiddleware</code> for
+transform/observe, raw <code>(call, next)</code> for resilience/caching.</p>
+<p><a href="custom-middleware/">:octicons-arrow-right-24: Read</a></p>
+</li>
+<li>
+<p><strong>Wire OpenTelemetry</strong></p>
+<hr />
+<p>How do I hook agentkit up to a real trace + metrics backend?
+<code>TracePort</code> / <code>MetricsPort</code>, <code>otel_tracer</code>, span attributes.</p>
+<p><a href="otel-tracing-and-metrics/">:octicons-arrow-right-24: Read</a></p>
+</li>
+</ul>
+</div>
 
 
 
@@ -1574,7 +1396,7 @@ valid agent.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 20:52:47 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 21:27:10 UTC">August 3, 2026</span>
   </span>
 
     
@@ -1612,7 +1434,7 @@ valid agent.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../runtime/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Runtime">
+          <a href="../concepts/middlewares/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Middlewares">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1622,20 +1444,20 @@ valid agent.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Runtime
+                Middlewares
               </div>
             </div>
           </a>
         
         
           
-          <a href="../agents/" class="md-footer__link md-footer__link--next" aria-label="Next: Agents">
+          <a href="hitl-tool-approval/" class="md-footer__link md-footer__link--next" aria-label="Next: Human-in-the-loop tool approval">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Agents
+                Human-in-the-loop tool approval
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1687,10 +1509,10 @@ valid agent.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
