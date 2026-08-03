@@ -2178,7 +2178,7 @@ must be JSON-serializable (which the loop/workflow checkpoints are). Single-flig
 
 
 
-        <p>Durable <code>StorePort</code> over Postgres (extra: <code>agentkit[postgres]</code>, via asyncpg). One KV table +
+        <p>Durable <code>StorePort</code> over Postgres (extra: <code>arc-agentkit[postgres]</code>, via asyncpg). One KV table +
 one append-log table, JSON-text values. Call <code>await init()</code> once to create the tables. Single-flight is
 in-process; durability/atomicity is Postgres's. TTL is not enforced (no sweeper — use <code>RedisStore</code> for TTL).
 Inject a <code>pool</code> for tests; else an asyncpg pool is created from <code>dsn</code>.</p>
@@ -2233,7 +2233,7 @@ Inject a <code>pool</code> for tests; else an asyncpg pool is created from <code
 
 
 
-        <p>Durable <code>StorePort</code> over Redis (extra: <code>agentkit[redis]</code>). KV via GET/SET(EX), append-logs via
+        <p>Durable <code>StorePort</code> over Redis (extra: <code>arc-agentkit[redis]</code>). KV via GET/SET(EX), append-logs via
 RPUSH/LRANGE, values JSON-encoded. Single-flight is in-process (an <code>asyncio.Lock</code> per key); TTL is honored
 natively (SETEX). Inject a <code>client</code> (e.g. a fake) for tests; else built from <code>url</code>.</p>
 
@@ -2368,7 +2368,7 @@ natively (SETEX). Inject a <code>client</code> (e.g. a fake) for tests; else bui
 
         <p>CheckpointPort adapters — <code>InMemoryCheckpointStore</code> is the offline reference + contract
 every durable backend matches; <code>PostgresCheckpointStore</code> is the production durable backing
-(extra: <code>agentkit[postgres]</code>). Public surface is <code>agentkit.adapters.checkpoint</code>.</p>
+(extra: <code>arc-agentkit[postgres]</code>). Public surface is <code>agentkit.adapters.checkpoint</code>.</p>
 
 
 

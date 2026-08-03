@@ -1989,7 +1989,8 @@ snapshots periodically.</p>
 <li><strong>The <code>StorePort.get_or_set</code> "producer that raises is NOT stored"
   contract holds.</strong> A transient error on row N must not poison the
   cache; the next attempt should re-run. Verified by
-  <code>test_get_or_set_does_not_cache_failure</code> in <code>tests/test_stores.py</code>.</li>
+  <code>test_inmemory_get_or_set_raising_fn_does_not_cache_and_next_call_retries</code>
+  in <code>tests/adapters/test_stores.py</code>.</li>
 <li><strong>Concurrent snapshots of the same run_id assign distinct versions.</strong>
   <code>test_concurrent_snapshots_of_same_run_id_produce_distinct_versions</code>
   locks this; if that ever breaks, resume becomes non-deterministic.</li>
@@ -2082,7 +2083,7 @@ in the targeted slice are green. The design holds in the current tree.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 20:22:36 UTC">August 3, 2026</span>
   </span>
 
     

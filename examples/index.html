@@ -1002,17 +1002,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-to-look-for" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What to look for
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#running-an-example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1096,17 +1085,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-to-look-for" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What to look for
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#running-an-example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1151,40 +1129,36 @@
 <h1 id="examples">Examples<a class="headerlink" href="#examples" title="Anchor link">&para;</a></h1>
 <p>End-to-end demos live in the
 <a href="https://github.com/arc-labs-ai/agentkit/tree/main/examples"><code>examples/</code></a>
-folder in the repo. Each example is a small, self-contained project
-that runs against a real LLM provider and demonstrates one shape of
-composition. The folder currently ships three:
-<code>01_single_agent.py</code>, <code>02_streaming_and_tools.py</code>, and
-<code>03_composed_middlewares.py</code>.</p>
-<h2 id="what-to-look-for">What to look for<a class="headerlink" href="#what-to-look-for" title="Anchor link">&para;</a></h2>
+folder in the repo. Each is a small, self-contained script that runs
+against a <code>FakeLLM</code> — no API keys required — and demonstrates one
+shape of composition. The folder currently ships three:</p>
 <ul>
-<li><strong>Batteries-included chat.</strong> The shortest possible program — one
-  <code>Chat</code>, one prompt, one response.</li>
-<li><strong>Agent + tools.</strong> A <code>ReActCognition</code> agent with two or three
-  <code>@tool</code>-decorated functions.</li>
-<li><strong>Coordinated multi-agent.</strong> Planner → parallel researchers →
-  synthesizer, coordinated by a <code>Coordinator</code> cognition over a
-  <code>SignalChannel</code>.</li>
-<li><strong>Durable long run.</strong> A run with a <code>Checkpointer</code> wired in, crash-and-
-  resume tested.</li>
-<li><strong>Multi-tenant chat.</strong> <code>ScopedMemory</code> + tenant <code>Quota</code> in a single
-  process serving many customers.</li>
+<li><strong><code>01_single_agent.py</code></strong> — the shortest useful program. One
+  <code>Agent</code>, one prompt, one call. Prints the typed <code>AgentResult</code>.</li>
+<li><strong><code>02_streaming_and_tools.py</code></strong> — a <code>ReActCognition</code> agent with
+  two <code>@tool</code>-decorated functions, driven token-by-token through
+  <code>Agent.stream(...)</code>.</li>
+<li><strong><code>03_composed_middlewares.py</code></strong> — a custom middleware chain
+  (<code>tracing → meter → retry</code>) wired into an <code>Invoker</code>, showing the
+  seams the <code>Agent</code> normally composes for you.</li>
 </ul>
-<p>Each example ships with a short README explaining the invariants it
-exercises and the Concepts page that covers the primitives it uses.</p>
 <h2 id="running-an-example">Running an example<a class="headerlink" href="#running-an-example" title="Anchor link">&para;</a></h2>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/arc-labs-ai/agentkit
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>agentkit
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>uv<span class="w"> </span>sync
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>sk-...
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/01_single_agent.py
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/01_single_agent.py
 </span></code></pre></div>
+<p>Every example uses <code>FakeLLM</code> from <code>agentkit.testing</code>, so <code>uv sync</code>
+is the only prerequisite. To point one at a real provider, swap
+<code>FakeLLM(...)</code> for one of the batteries-included preset clients
+(<code>claude(api_key=...)</code>, <code>openai(api_key=...)</code>, etc.) and provide
+the corresponding API key.</p>
 <h2 id="related-deep-dives">Related deep dives<a class="headerlink" href="#related-deep-dives" title="Anchor link">&para;</a></h2>
 <p>The
 <a href="https://github.com/arc-labs-ai/agentkit/tree/main/docs/mental-models">mental models</a>
 walk through four longer scenarios that stress different framework
-invariants — read them alongside the examples for the <em>why</em> behind the
-composition each demo picks.</p>
+invariants — read them alongside the examples for the <em>why</em> behind
+the composition each demo picks.</p>
 
 
 
@@ -1205,7 +1179,7 @@ composition each demo picks.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 19:43:40 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 20:03:22 UTC">August 3, 2026</span>
   </span>
 
     
