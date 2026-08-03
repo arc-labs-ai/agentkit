@@ -2,7 +2,8 @@
 
 The `Agent`, `Workflow`, and `Cognition` machinery, plus the control
 primitives (signals, `RunPolicy`, `Handoff`, `ActorBudget`) and
-policies (`RoundRobin`, `Selector`, `Plan`, `Ledger`).
+policies (`RoundRobinPolicy`, `SelectorPolicy`, `PlanPolicy`,
+`LedgerPolicy`).
 
 See the [Agents concept](../concepts/agents.md) for the mental model.
 

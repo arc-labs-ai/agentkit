@@ -2,11 +2,11 @@
 
 **What this is.** `agentkit.kernel` is the opinion-free foundation every
 other package sits on. It defines the value types the whole framework
-speaks (`ChatRequest`, `LLMResult`, `Message`, `Scope`, `Usage`,
-`Budget`), the `Port` protocols that let you swap providers, the
-`middleware` contract that every cross-cutting concern conforms to, and
-the small library of concurrency and resilience primitives that make
-async code safe to compose.
+speaks (`ChatRequest`, `LLMResult`, `Message`, `Scope`, `Usage`), the
+`Port` protocols that let you swap providers, the `middleware`
+contract that every cross-cutting concern conforms to, and the small
+library of concurrency and resilience primitives that make async code
+safe to compose.
 
 **Why it exists.** Every framework that lets its "core" import a
 provider client eventually smuggles opinions into places you can't
@@ -17,16 +17,18 @@ vocabulary; policy is what higher layers add.
 ## What lives in the kernel
 
 - **Value types** — immutable dataclasses / models for the shapes that
-  cross every boundary: `Message`, `ChatRequest`, `LLMResult`, `Scope`,
-  `Usage`, `Budget`, `ToolCall`, `ToolResult`.
+  cross every boundary: `Message`, `ToolCall`, `ToolSchema`,
+  `ChatRequest`, `ToolRequest`, `LLMResult`, `StreamEvent`, `Usage`,
+  `Scope`, `Operation`. (`Budget` is a runtime concern, not a kernel
+  type — see [Runtime](runtime.md).)
 - **Ports** — Protocols for external services: `LLMPort`, `StorePort`,
   `TracePort`, `ObserverPort`. Every adapter (in `agentkit.adapters/`)
   implements one of these.
 - **Middleware contract** — the `Call` envelope, `Middleware` Protocol,
-  and `compose(...)` function that turn a list of middlewares into a
-  single chain.
-- **Concurrency** — `CancellationToken`, cooperative `Bounded` /
-  `WaitGroup` helpers, deterministic clock for tests.
+  and `chain(...)` function that turn a list of middlewares plus a
+  terminal handler into a single chain.
+- **Concurrency** — `CancellationToken`, `gather_bounded`,
+  `gather_best_effort`, `run_agents`, and `run_sync`.
 - **Observation** — the shape of the trace / metric events every layer
   emits, so observers stay adapter-agnostic.
 
@@ -44,7 +46,7 @@ vocabulary; policy is what higher layers add.
 ## Related deep dive
 
 See the internal
-[mental models](https://github.com/arc-labs/agentkit/tree/main/docs/mental-models)
+[mental models](https://github.com/arc-labs-ai/agentkit/tree/main/docs/mental-models)
 for the reasoning behind these invariants and the concrete failure
 modes when they slip. The kernel is load-bearing in all four models.
 

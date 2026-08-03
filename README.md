@@ -80,14 +80,15 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Point the same code at a real provider by swapping the LLM seam:
+Point the same code at a real provider by using the batteries-included
+`claude` chat directly:
 
 ```python
-from agentkit import Chat, claude
+from agentkit import claude
 
-llm = Chat.build(claude("claude-sonnet-4-6", api_key="..."))
-ctx = make_test_ctx(llm=llm)
-result = await agent.run("what is 6 * 7?", ctx)
+async with claude(api_key="sk-...", model="claude-sonnet-4-6") as chat:
+    result = await chat("what is 6 * 7?", system="Answer in as few words as possible.")
+    print(result.content)
 ```
 
 More runnable examples — tool loops, streaming, composed middlewares —

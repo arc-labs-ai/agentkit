@@ -66,7 +66,7 @@ issue a warning and revoke; with OIDC there's no token to leak.
 
    ```bash
    pip install --upgrade arc-agentkit
-   python -c "import agentkit; print(agentkit.__version__)"
+   python -c "from importlib.metadata import version; print(version('arc-agentkit'))"
    ```
 
 ## Local dry-run before tagging

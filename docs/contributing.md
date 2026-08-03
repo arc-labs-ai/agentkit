@@ -6,14 +6,14 @@ title: Contributing
 
 The authoritative guide lives at the repository root:
 
-- **[`CONTRIBUTING.md`](https://github.com/arc-labs/agentkit/blob/main/CONTRIBUTING.md)** — full contributor guide.
-- **[`CODE_OF_CONDUCT.md`](https://github.com/arc-labs/agentkit/blob/main/CODE_OF_CONDUCT.md)** — the community standards we hold each other to.
-- **[`CHANGELOG.md`](https://github.com/arc-labs/agentkit/blob/main/CHANGELOG.md)** — release notes.
+- **[`CONTRIBUTING.md`](https://github.com/arc-labs-ai/agentkit/blob/main/CONTRIBUTING.md)** — full contributor guide.
+- **[`CODE_OF_CONDUCT.md`](https://github.com/arc-labs-ai/agentkit/blob/main/CODE_OF_CONDUCT.md)** — the community standards we hold each other to.
+- **[`CHANGELOG.md`](https://github.com/arc-labs-ai/agentkit/blob/main/CHANGELOG.md)** — release notes.
 
 ## Quick pointers
 
 - **Bug reports and feature requests** — open an issue on
-  [GitHub](https://github.com/arc-labs/agentkit/issues).
+  [GitHub](https://github.com/arc-labs-ai/agentkit/issues).
 - **Design changes** — start a discussion before opening a large PR,
   especially for anything touching the kernel, the middleware
   contract, or an agent Protocol.

@@ -65,7 +65,8 @@ The moment you want the model to *do* something, drop from `Chat` to an
 cognition drive the loop:
 
 ```python
-from agentkit import Agent, ReActCognition, tool
+from agentkit import Agent, tool
+from agentkit.agents.cognition import ReActCognition
 
 @tool
 async def get_weather(city: str) -> str:
@@ -74,12 +75,11 @@ async def get_weather(city: str) -> str:
 
 agent = Agent(
     name="weather-bot",
-    cognition=ReActCognition(),
-    tools=[get_weather],
+    cognition=ReActCognition(tools=[get_weather]),
 )
 ```
 
-You then call `await agent.run(ctx, "What's the weather in Paris?")` on
+You then call `await agent.run("What's the weather in Paris?", ctx)` on
 a `RunContext` you build (or borrow from a `Chat`).
 
 ## Where to go next

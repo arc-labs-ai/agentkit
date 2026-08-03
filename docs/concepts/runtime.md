@@ -28,7 +28,7 @@ The single value threaded through every call. Carries:
 - `services: Services` — the wired-in `Invoker`, `Observer`, `Trace`,
   and (optionally) `Store`.
 - `cancel: CancellationToken` — cooperative cancellation surface.
-- `autonomy` — the run's autonomy tier (`suggest` / `confirm` / `auto`),
+- `autonomy` — the run's autonomy tier (`auto` / `gated` / `manual`),
   read by tools and cognitions that gate on human approval.
 
 ### `Invoker`
@@ -63,7 +63,9 @@ can call the middleware chain without wiring a full services bundle.
    loop must be reachable to `cancel.raise_if_set()`; blocking
    primitives are banned on the hot path.
 3. **Budgets are enforced, not advisory.** `Budget` overspend raises
-   `BudgetExhausted` and unwinds the call — it doesn't just warn.
+   `MeterExceeded` (from `agentkit.runtime.meter`) and unwinds the
+   call — it doesn't just warn. (Distinct from `BudgetExhausted` in
+   `agentkit.agents`, which is a per-actor `ActorBudget` signal.)
 
 ## API
 

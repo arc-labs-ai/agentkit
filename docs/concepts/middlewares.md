@@ -25,7 +25,7 @@ The full chain the framework's `Agent` typically composes for chat
 calls:
 
 ```
-tracing  →  meter  →  retry  →  memoize  →  compaction  →  guard  →  output_coerce
+tracing  →  meter  →  retry  →  memoize  →  compaction  →  security  →  output_coerce
 ```
 
 Middlewares run **outer-to-inner** on the way in, and **inner-to-outer**
@@ -35,23 +35,26 @@ result.
 
 ## What ships in `agentkit.middlewares`
 
-| Middleware       | Responsibility                                                        |
-|------------------|-----------------------------------------------------------------------|
-| `tracing`        | Emit start/end spans with correlation, prompt version, tool name.     |
-| `meter`          | Accumulate `Usage` and enforce `Budget` / `Quota`.                    |
-| `retry`          | Provider-aware retry with jitter and optional circuit breaker.        |
-| `fallback`       | Try a next LLM when the primary raises a terminal error.              |
-| `memoize`        | Cache identical requests, keyed by scope-aware content hash.          |
-| `output_coerce`  | Coerce free-form output into a typed shape (`SchemaAdapter`).         |
-| `compaction`     | Route through a `Compactor` if the projected input exceeds a budget.  |
-| `guard`          | Run inbound / outbound `Guardrail`s.                                  |
-| `security`       | Redact / block known-secret patterns before they leave the process.   |
+| Middleware         | Responsibility                                                        |
+|--------------------|-----------------------------------------------------------------------|
+| `tracing`          | Emit start/end spans with correlation, prompt version, tool name.     |
+| `meter`            | Accumulate `Usage` and enforce `Budget` / `Quota`.                    |
+| `retry`            | Provider-aware retry with jitter and optional circuit breaker.        |
+| `fallback`         | Try a next LLM when the primary raises a terminal error.              |
+| `memoize`          | Cache identical requests, keyed by scope-aware content hash.          |
+| `idempotent`       | Deduplicate calls that carry an idempotency key.                      |
+| `semantic_memoize` | Vector-similarity cache for near-duplicate requests.                  |
+| `output_coerce`    | Coerce free-form output into a typed shape (`SchemaAdapter`).         |
+| `compaction`       | Route through a `Compactor` if the projected input exceeds a budget.  |
+| `egress`           | Gate what leaves the process (allowlists, size caps).                 |
+| `audit`            | Structured audit records for every call.                              |
+| `security`         | Redact / block known-secret patterns before they leave the process.   |
 
 ## Writing your own
 
 A middleware is any callable that takes `(Call, next)` and returns
-whatever `next(Call)` returns — usually an `LLMResult` for chat or a
-`ToolResult` for tools:
+whatever `next(Call)` returns — usually an `LLMResult` for chat calls
+or the tool's return value for tool calls:
 
 ```python
 from agentkit.kernel import Call, LLMResult

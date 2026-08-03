@@ -1,8 +1,9 @@
 # `agentkit.context`
 
 `WorkingContext` — the in-flight reasoning state (prefix, messages,
-scratchpad, journal) — plus `Scope`, `TokenCounter`, and the small
-prefix helpers.
+scratchpad, journal) — plus `TokenCounter` and the small prefix
+helpers. (`Scope` lives in `agentkit.kernel.types`; see
+[API › kernel](kernel.md).)
 
 ::: agentkit.context
     options:

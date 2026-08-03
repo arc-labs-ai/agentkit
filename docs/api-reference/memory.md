@@ -1,9 +1,8 @@
 # `agentkit.memory`
 
 The `MemorySource` Protocol plus the shipped implementations —
-`CompositeMemory`, `VectorMemory`, `FileMemory`, `JournalMemory`,
-`ScratchpadMemory`, `ToolMemory` — and the `Scoped` / `Compacted` /
-`Cached` decorators.
+`CompositeMemory`, `SequentialMemory`, `VectorMemory` — and the
+`ScopedMemory` / `CompactedMemory` / `CachedMemory` decorators.
 
 ::: agentkit.memory
     options:

@@ -29,26 +29,31 @@ keeps the loop small and the swap surface flat.
 
 ## How capabilities plug in
 
-Capabilities are wired at agent construction, not discovered at
-runtime:
+Capabilities are not `Agent` constructor kwargs. They wire in at the
+edges of the loop: a `Compactor` feeds a `RequestBuilder`, a
+`Guardrail` runs inside the middleware chain, a `Checkpointer` is
+handed to the cognition or policy that suspends/resumes.
+
+The shipped compactor strategies are
+`ImportanceFilteringCompactor`, `SlidingWindowCompactor`,
+`SummarizationCompactor`, and `TruncationCompactor` — all in
+`agentkit`. `Guardrail`, `Evaluator`, and `Checkpointer` ship as
+Protocols in `agentkit.capabilities`; implementations are yours to
+plug in.
 
 ```python
-from agentkit import Agent, ReActCognition
-from agentkit.capabilities import (
-    LLMCompactor, ContentGuardrail, InMemoryCheckpointer,
+from agentkit import (
+    RequestBuilder,
+    SummarizationCompactor,
 )
 
-agent = Agent(
-    name="researcher",
-    cognition=ReActCognition(),
-    compactor=LLMCompactor(model="claude-haiku-4-5", target_tokens=8000),
-    guardrail=ContentGuardrail(...),
-    checkpointer=InMemoryCheckpointer(),
+builder = RequestBuilder(
+    compactor=SummarizationCompactor(target_tokens=8000),
 )
 ```
 
-None of these are required; an `Agent` built with none of them is
-still a valid agent.
+None of these are required; an agent with none of them is still a
+valid agent.
 
 ## The invariants it enforces
 
