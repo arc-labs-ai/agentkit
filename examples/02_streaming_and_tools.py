@@ -23,10 +23,9 @@ from __future__ import annotations
 
 import asyncio
 
+from agentkit import Agent, ToolCall, tool
 from agentkit.agents.cognition import ReActCognition
 from agentkit.testing import FakeLLM, Turn, make_test_ctx
-
-from agentkit import Agent, ToolCall, tool
 
 
 @tool(side_effecting=False)

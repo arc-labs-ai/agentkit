@@ -99,27 +99,27 @@ under [`examples/`](./examples).
 Five layers, one direction of dependency. Each is a link into the docs where
 depth lives:
 
-- **[Kernel](https://arc-labs-ai.github.io/agentkit/kernel/)** — opinion-free
+- **[Kernel](https://arc-labs-ai.github.io/agentkit/concepts/kernel/)** — opinion-free
   primitives: immutable value types (`Message`, `ToolCall`, `LLMResult`,
   `Usage`), the port Protocols every seam (`LLMPort`, `StorePort`,
   `VectorPort`, …) implements, the middleware contract, and concurrency +
   resilience helpers. Zero third-party imports.
-- **[Runtime](https://arc-labs-ai.github.io/agentkit/runtime/)** —
+- **[Runtime](https://arc-labs-ai.github.io/agentkit/concepts/runtime/)** —
   `RunContext` (identity + services + cancel + budget), `Invoker` (the one
   runner that walks the middleware chain to a terminal LLM/tool call),
   `Budget` and `Quota` (spend meters that halt runs cleanly on overrun).
-- **[Agent + Cognition](https://arc-labs-ai.github.io/agentkit/agents/)** —
+- **[Agent + Cognition](https://arc-labs-ai.github.io/agentkit/concepts/agents/)** —
   `Agent` is identity + chat-call config; `Cognition` is the pluggable
   turn-taking strategy. Ships with `SingleCallCognition`, `ReActCognition`
   (tool loop + HITL suspend + durable resume), and `CoordinatorCognition`
   (multi-agent orchestration). Adding a new regime is one Protocol impl —
   no `Agent` subclassing.
-- **[Middleware](https://arc-labs-ai.github.io/agentkit/middlewares/)** —
+- **[Middleware](https://arc-labs-ai.github.io/agentkit/concepts/middlewares/)** —
   cross-cutting concerns as composable functions: `tracing`, `retry`,
   `fallback`, `memoize`, `output_coerce`, `meter`, `compaction`, `egress`,
   `audit`, `security`. Two ordered lists (chat + tool) handed to `Invoker`;
   reorder or swap by editing the list.
-- **[Capabilities](https://arc-labs-ai.github.io/agentkit/capabilities/)** —
+- **[Capabilities](https://arc-labs-ai.github.io/agentkit/concepts/capabilities/)** —
   optional cross-cutting collaborators: `RequestBuilder` (prompt +
   grounding), `Compactor` (four strategies), `Guardrail`, `Evaluator`,
   `Checkpointer`, `SchemaAdapter` (structured outputs across Pydantic,

@@ -42,15 +42,20 @@ Protocols in `agentkit.capabilities`; implementations are yours to
 plug in.
 
 ```python
-from agentkit import (
-    RequestBuilder,
-    SummarizationCompactor,
-)
+from agentkit.capabilities import SlidingWindowCompactor, TruncationCompactor
 
-builder = RequestBuilder(
-    compactor=SummarizationCompactor(target_tokens=8000),
-)
+# Dep-free strategies — take a budget directly.
+compactor = SlidingWindowCompactor(keep_recent=10)
+# or:
+compactor = TruncationCompactor(max_tokens=12_000)
+
+# Hand it to a RequestBuilder as `compactor=`; the RequestBuilder
+# folds the transcript through it before every LLM call.
 ```
+
+The LLM-driven strategies (`SummarizationCompactor`,
+`ImportanceFilteringCompactor`) also require a `summarizer=` /
+`filterer=` LLM port to do their work.
 
 None of these are required; an agent with none of them is still a
 valid agent.

@@ -68,7 +68,7 @@ cognition drive the loop:
 from agentkit import Agent, tool
 from agentkit.agents.cognition import ReActCognition
 
-@tool
+@tool(side_effecting=False)
 async def get_weather(city: str) -> str:
     """Return the current weather for a city."""
     return f"{city}: 72F, clear"

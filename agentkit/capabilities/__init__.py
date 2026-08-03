@@ -10,6 +10,7 @@ from agentkit.capabilities.compaction import (
 )
 from agentkit.capabilities.eval import Evaluator
 from agentkit.capabilities.guardrails import Guardrail
+from agentkit.capabilities.output_schema import OutputCoercionError, SchemaAdapter, adapt
 from agentkit.capabilities.request_builder import BuiltRequest, Grounder, RequestBuilder
 
 __all__ = [
@@ -20,8 +21,11 @@ __all__ = [
     "Grounder",
     "Guardrail",
     "ImportanceFilteringCompactor",
+    "OutputCoercionError",
     "RequestBuilder",
+    "SchemaAdapter",
     "SlidingWindowCompactor",
     "SummarizationCompactor",
     "TruncationCompactor",
+    "adapt",
 ]

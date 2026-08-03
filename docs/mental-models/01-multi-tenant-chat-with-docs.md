@@ -107,7 +107,7 @@ callable reaches into memory:
 ```
 memory = ScopedMemory(               # tenant guard
     CachedMemory(                    # in-proc TTL cache
-        VectorMemory(index=...)      # concrete backend
+        VectorMemory(vector=...)     # concrete backend (a VectorPort impl)
     )
 )
 ```
@@ -170,8 +170,8 @@ UI  ──▶  chat endpoint
           ScopedMemory(               # tenant gate
             CachedMemory(              # in-proc TTL cache, scope-partitioned
               VectorMemory(            # concrete backend
-                scope=ctx.scope        # tenant-scoped index namespace
-              )))
+                vector=port            # a VectorPort — tenant isolation
+              )))                      # comes from ctx.scope via the port
 ```
 
 **Adapter contract**: LLM/Store adapters MUST NOT retain state keyed on anything other than the process/instance. Per-tenant isolation lives in `scope`, threaded through `RunContext.child()`, NOT inside adapters.

@@ -40,10 +40,9 @@ from __future__ import annotations
 
 import asyncio
 
+from agentkit import ChatRequest, Message
 from agentkit.middlewares import output_coerce, retry, tracing
 from agentkit.testing import FakeLLM, make_test_ctx
-
-from agentkit import ChatRequest, Message
 
 
 async def main() -> None:

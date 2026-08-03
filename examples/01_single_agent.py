@@ -20,9 +20,8 @@ from __future__ import annotations
 
 import asyncio
 
-from agentkit.testing import FakeLLM, make_test_ctx
-
 from agentkit import Agent
+from agentkit.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
