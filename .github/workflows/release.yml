@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/agentkit
+      url: https://pypi.org/p/arc-agentkit
     permissions:
       id-token: write
     steps:
@@ -54,4 +54,6 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI via trusted publisher
-        uses: pypa/gh-action-pypi-publish@release/v1
+        # SHA-pinned (currently v1.14.2 — https://github.com/pypa/gh-action-pypi-publish/tree/release/v1)
+        # This action holds signing authority via OIDC; pin to a commit, not a moving tag.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33

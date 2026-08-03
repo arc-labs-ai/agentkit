@@ -5,8 +5,8 @@
 **A low-level, async-first framework for building AI agents in Python.**
 
 [![CI](https://github.com/arc-labs-ai/agentkit/actions/workflows/ci.yml/badge.svg)](https://github.com/arc-labs-ai/agentkit/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/pypi/v/agentkit)](https://pypi.org/project/agentkit/)
-[![Python versions](https://img.shields.io/pypi/pyversions/agentkit)](https://pypi.org/project/agentkit/)
+[![PyPI version](https://img.shields.io/pypi/v/arc-agentkit)](https://pypi.org/project/arc-agentkit/)
+[![Python versions](https://img.shields.io/pypi/pyversions/arc-agentkit)](https://pypi.org/project/arc-agentkit/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)
 
 [Docs](https://arc-labs-ai.github.io/agentkit/) · [Quickstart](#quickstart) · [Examples](./examples) · [Changelog](./CHANGELOG.md)
@@ -73,7 +73,7 @@ async def main() -> None:
 
     result = await agent.run("what is 6 * 7?", ctx)
     print(result.output)         # -> "42"
-    print(result.usage)          # -> Usage(input_tokens=10, output_tokens=5, cost_usd=0.0001)
+    print(result.usage)          # -> Usage(input_tokens=10, output_tokens=5, cost_usd=0.0001, cache_read_tokens=0, cache_write_tokens=0)
 
 
 if __name__ == "__main__":

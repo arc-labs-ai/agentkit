@@ -2,28 +2,18 @@
 
 End-to-end demos live in the
 [`examples/`](https://github.com/arc-labs-ai/agentkit/tree/main/examples)
-folder in the repo. Each example is a small, self-contained project
-that runs against a real LLM provider and demonstrates one shape of
-composition. The folder currently ships three:
-`01_single_agent.py`, `02_streaming_and_tools.py`, and
-`03_composed_middlewares.py`.
+folder in the repo. Each is a small, self-contained script that runs
+against a `FakeLLM` — no API keys required — and demonstrates one
+shape of composition. The folder currently ships three:
 
-## What to look for
-
-- **Batteries-included chat.** The shortest possible program — one
-  `Chat`, one prompt, one response.
-- **Agent + tools.** A `ReActCognition` agent with two or three
-  `@tool`-decorated functions.
-- **Coordinated multi-agent.** Planner → parallel researchers →
-  synthesizer, coordinated by a `Coordinator` cognition over a
-  `SignalChannel`.
-- **Durable long run.** A run with a `Checkpointer` wired in, crash-and-
-  resume tested.
-- **Multi-tenant chat.** `ScopedMemory` + tenant `Quota` in a single
-  process serving many customers.
-
-Each example ships with a short README explaining the invariants it
-exercises and the Concepts page that covers the primitives it uses.
+- **`01_single_agent.py`** — the shortest useful program. One
+  `Agent`, one prompt, one call. Prints the typed `AgentResult`.
+- **`02_streaming_and_tools.py`** — a `ReActCognition` agent with
+  two `@tool`-decorated functions, driven token-by-token through
+  `Agent.stream(...)`.
+- **`03_composed_middlewares.py`** — a custom middleware chain
+  (`tracing → meter → retry`) wired into an `Invoker`, showing the
+  seams the `Agent` normally composes for you.
 
 ## Running an example
 
@@ -31,14 +21,19 @@ exercises and the Concepts page that covers the primitives it uses.
 git clone https://github.com/arc-labs-ai/agentkit
 cd agentkit
 uv sync
-export ANTHROPIC_API_KEY=sk-...
 uv run python examples/01_single_agent.py
 ```
+
+Every example uses `FakeLLM` from `agentkit.testing`, so `uv sync`
+is the only prerequisite. To point one at a real provider, swap
+`FakeLLM(...)` for one of the batteries-included preset clients
+(`claude(api_key=...)`, `openai(api_key=...)`, etc.) and provide
+the corresponding API key.
 
 ## Related deep dives
 
 The
 [mental models](https://github.com/arc-labs-ai/agentkit/tree/main/docs/mental-models)
 walk through four longer scenarios that stress different framework
-invariants — read them alongside the examples for the *why* behind the
-composition each demo picks.
+invariants — read them alongside the examples for the *why* behind
+the composition each demo picks.

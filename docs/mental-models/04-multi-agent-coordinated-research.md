@@ -284,8 +284,7 @@ Return AgentResult(output=<final brief>, usage=<merged>)
 - **`Workflow`** — this is emergent (planner decides the plan at runtime).
   Workflow would be right for a research pipeline with a FIXED shape
   (`explore → catalog → cluster → decompose → investigate → synth →
-  critique`), which is what research·io's engine actually uses. This doc
-  is about the coordinator-cognition shape.
+  critique`). This doc is about the coordinator-cognition shape.
 - **`CachedMemory`** — each research run is unique; no repeated queries
   within a session worth caching.
 - **`FileTool`** — sources come from the web (via `SearchPort` / `FetchPort`),

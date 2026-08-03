@@ -31,7 +31,7 @@ issue a warning and revoke; with OIDC there's no token to leak.
    - Owner: `arc-labs-ai`
    - Repository: `agentkit`
    - Workflow name: `release.yml`
-   - Environment: `release` (matches the `environment:` block in `release.yml`)
+   - Environment: `pypi` (matches the `environment:` block in `release.yml`)
 
 2. **Same again for real PyPI**:
    - https://pypi.org/manage/account/publishing/

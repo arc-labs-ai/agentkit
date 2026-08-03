@@ -47,8 +47,8 @@ middleware that accrues `Usage` and enforces both.
 ### `EventBus`
 
 Fan-out for lifecycle and observation events, kept in-process by
-default. Adapters can bridge it to Redis Streams, OTel, or the
-research·io Broker.
+default. Adapters can bridge it to Redis Streams, OTel, or a
+downstream message broker.
 
 ### `NullCtx`
 

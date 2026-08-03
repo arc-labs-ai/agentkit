@@ -34,7 +34,7 @@ Steps:
 
 ## Environment
 
-- agentkit version: `uv pip show agentkit | grep Version`
+- agentkit version: `uv pip show arc-agentkit | grep Version`
 - Python version: `python --version`
 - OS + arch:
 - Optional extras installed (`http`, `redis`, `postgres`, `observability`, `fast`):

@@ -15,7 +15,7 @@ management and virtualenvs. The only prerequisite is a recent uv (>= 0.5)
 and Python 3.12 or 3.13 available on your machine.
 
 ```bash
-git clone https://github.com/arc-labs/agentkit.git
+git clone https://github.com/arc-labs-ai/agentkit.git
 cd agentkit
 make setup       # uv sync — installs runtime + dev deps into .venv
 make test        # pytest — should be green on a fresh clone
@@ -74,8 +74,8 @@ Before requesting review, walk through this list yourself:
       Optional deps go under `[project.optional-dependencies]` in
       `pyproject.toml`, not the base install.
 - [ ] Nothing under `agentkit/` imports from `tests/`, and nothing under
-      `agentkit/` imports research·io-specific concepts. This is a framework;
-      it should have no knowledge of any particular product.
+      `agentkit/` carries product-specific concepts from any consumer. This is
+      a framework; it should have no knowledge of any particular product.
 - [ ] Changelog entry added if the change is user-visible.
 - [ ] Docs under `docs/` updated if you added/renamed/removed a public symbol.
 

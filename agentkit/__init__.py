@@ -45,6 +45,13 @@ Zero core runtime dependencies (ADR-0005); extras (`http`, `postgres`,
 `redis`, `observability`) are opt-in seams.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("arc-agentkit")
+except PackageNotFoundError:  # pragma: no cover — running from a source tree, not an install
+    __version__ = "0.0.0+unknown"
+
 from agentkit import middlewares  # noqa: E402
 from agentkit.agents import (
     ActorBudget,
@@ -221,6 +228,7 @@ from agentkit.tools import (
 )
 
 __all__ = [
+    "__version__",
     # ---- kernel: value types -------------------------------------------------
     "Scope",
     "Usage",
