@@ -113,7 +113,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Why: why.md
   - Getting started: getting-started.md
+  - Cheatsheet: cheatsheet.md
   - Tutorial: tutorial.md
   - Concepts:
       - Kernel: concepts/kernel.md
@@ -122,6 +124,7 @@ nav:
       - Agents: concepts/agents.md
       - Prompts: concepts/prompts.md
       - Middlewares: concepts/middlewares.md
+  - Anti-patterns: anti-patterns.md
   - Recipes:
       - Overview: recipes/index.md
       - Human-in-the-loop tool approval: recipes/hitl-tool-approval.md
@@ -132,6 +135,10 @@ nav:
       - Wire OpenTelemetry: recipes/otel-tracing-and-metrics.md
       - Plug the claude CLI into FastAPI code-gen: recipes/claude-cli-fastapi-code-gen.md
       - Consume MCP tools from an agent: recipes/mcp-tools.md
+  - Migrating:
+      - Overview: migrating/index.md
+      - From LangChain: migrating/from-langchain.md
+      - From vanilla asyncio: migrating/from-vanilla-asyncio.md
   - API reference:
       - agents: api-reference/agents.md
       - runtime: api-reference/runtime.md

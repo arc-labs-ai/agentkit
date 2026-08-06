@@ -1,68 +1,75 @@
 # Recipes
 
-Recipes are focused answers to specific questions. Each one is a
-self-contained page: the question, one runnable script, an explanation
-of the primitives involved, and the gotchas. If you want a linear
-walkthrough, use the [Tutorial](../tutorial.md); if you want the mental
-model of a primitive, use the [Concepts](../concepts/kernel.md); this
-section is what you reach for after you've written some code and hit
-one specific wall.
+Grouped by the problem you're trying to solve, not by the primitive
+you're trying to use. Each recipe is a self-contained page: the
+question, one runnable script, an explanation, gotchas.
 
-<div class="grid cards" markdown>
+If you want a linear walkthrough, use the [Tutorial](../tutorial.md);
+if you want the mental model of a primitive, use the
+[Concepts](../concepts/kernel.md); if you're about to *write* code and
+want the tightest possible menu, use the
+[Cheatsheet](../cheatsheet.md). This page is what you reach for after
+you've hit one specific wall.
 
--   __Human-in-the-loop tool approval__
+## I need to control cost
 
-    ---
+Hard ceiling on a single run and a rolling window per tenant.
+`Budget`, `Quota`, `MeterExceeded`, `meter()` middleware.
 
-    How do I pause a tool for human approval? `side_effecting=True`,
-    `Autonomy.GATED`, `Suspended`, `agent.resume(...)`.
+[Cap spend with Budget and Quota :octicons-arrow-right-24:](spend-budget-and-quota.md)
 
-    [:octicons-arrow-right-24: Read](hitl-tool-approval.md)
+## I need to pause for a human
 
--   __Resume after a crash__
+Any tool that mutates the world — publishing, spending, sending —
+should not run without a human saying yes. Real pause, snapshot,
+resume from a fresh process.
 
-    ---
+[Human-in-the-loop tool approval :octicons-arrow-right-24:](hitl-tool-approval.md)
 
-    How do I pick a run back up after the worker process died?
-    `Checkpointer` + one run id.
+## I need to survive a crash
 
-    [:octicons-arrow-right-24: Read](resume-after-crash.md)
+The worker died mid-flight. A fresh worker picks up where the last
+one left off — same `run_id`, same `CheckpointPort`, hydrated
+transcript.
 
--   __Cap spend with Budget and Quota__
+[Resume from a checkpoint after a crash :octicons-arrow-right-24:](resume-after-crash.md)
 
-    ---
+## I need parallel agents that fail-fast together
 
-    How do I put a hard ceiling on a run's cost, and a rolling cap on a
-    tenant's spend? `Budget`, `Quota`, `MeterExceeded`.
+Fan out N children under a shared budget + cancel. One failure
+cancels the siblings; `best_effort=True` isolates failures instead.
 
-    [:octicons-arrow-right-24: Read](spend-budget-and-quota.md)
+[Parallel agents with cooperative cancellation :octicons-arrow-right-24:](parallel-agents-with-cancellation.md)
 
--   __Parallel agents with cancellation__
+## I need to plug in a custom concern
 
-    ---
+Redact a secret before it goes on the wire. Time every call. Cache
+on a custom key. Two shapes: `BaseMiddleware` for
+transform/guard/observe; raw `(call, next)` for
+resilience/caching/instrumentation.
 
-    How do I run agents in parallel, and how do I make sure one
-    failure cancels the rest? `run_agents`, `CancellationToken`,
-    cooperative cancel.
+[Write a custom middleware :octicons-arrow-right-24:](custom-middleware.md)
 
-    [:octicons-arrow-right-24: Read](parallel-agents-with-cancellation.md)
+## I need OpenTelemetry
 
--   __Write a custom middleware__
+Real traces and metrics in Tempo / Jaeger / Datadog / Honeycomb —
+any OTLP backend. `TracePort` + `MetricsPort`, one adapter each in
+`arc-agentkit[observability]`.
 
-    ---
+[Wire OpenTelemetry :octicons-arrow-right-24:](otel-tracing-and-metrics.md)
 
-    How do I add my own cross-cutting concern? `BaseMiddleware` for
-    transform/observe, raw `(call, next)` for resilience/caching.
+## I need to use my local Claude Code (no API key)
 
-    [:octicons-arrow-right-24: Read](custom-middleware.md)
+`ClaudeCliCognition` subprocesses your locally-installed `claude`
+CLI per run. Auth is the CLI's problem; you get its full tool surface
+and permission modes.
 
--   __Wire OpenTelemetry__
+[Plug the claude CLI into FastAPI code-gen :octicons-arrow-right-24:](claude-cli-fastapi-code-gen.md)
 
-    ---
+## I need to consume any MCP server
 
-    How do I hook agentkit up to a real trace + metrics backend?
-    `TracePort` / `MetricsPort`, `otel_tracer`, span attributes.
+`MCPClient(StdioServer(...))` plus three adapters that surface an
+MCP server's tools, resources, and prompts through agentkit's
+canonical `Tool`, `MemorySource`, and `Prompt` Protocols.
 
-    [:octicons-arrow-right-24: Read](otel-tracing-and-metrics.md)
-
-</div>
+[Consume MCP tools from an agent :octicons-arrow-right-24:](mcp-tools.md)
