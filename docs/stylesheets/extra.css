@@ -589,14 +589,36 @@
 
 .md-typeset pre > code,
 .md-typeset .highlight code {
-  font-size: 0.8rem;
-  line-height: 1.6;
+  font-size: 0.78rem;
+  /* Code wants tighter leading than prose — 1.5 keeps blank lines from
+     ballooning while still readable. Prose stays at 1.65 via .md-typeset. */
+  line-height: 1.5;
 }
 
 .md-typeset .highlight,
 .md-typeset pre {
   border-radius: var(--rio-radius);
-  margin: 1.1em 0;
+  /* Slightly tighter than 1.1em so consecutive code blocks + prose don't
+     feel over-airy on dense pages (cheatsheet, migration guides). */
+  margin: 0.9em 0;
+}
+
+/* Proper container padding + guaranteed horizontal scroll on narrow
+   viewports. Material's default `.md-typeset pre > code` gets 1.05em of
+   inner padding; we set it explicitly so the code isn't kissing the border
+   AND long lines scroll instead of clip. */
+.md-typeset pre > code,
+.md-typeset .highlight > pre > code {
+  padding: 0.9em 1.05em;
+  overflow-x: auto;
+  display: block;
+}
+
+/* Line-numbered blocks use a table layout — target the .code cell directly
+   so the linenos gutter stays put and only the code column scrolls. */
+.md-typeset .highlighttable td.code > .highlight > pre > code {
+  padding: 0.9em 1.05em;
+  overflow-x: auto;
 }
 
 .md-typeset .highlight {
