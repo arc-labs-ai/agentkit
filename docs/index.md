@@ -34,6 +34,28 @@ iteration so a fresh worker picks up where the last one died.
 tool and hands control to a human. Nothing is hidden. Every seam is
 a typed Protocol you can swap.
 
+## What you'll actually use
+
+Ontology before tutorial. When you sit down to write, this is the
+map from "what I want to do" to "which primitive fills that slot."
+
+| You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
+|---------------------------------------------------------------|-------------------------------------------------------------|
+| Wire one LLM call with retry / cost / trace on top            | `Chat` (from `claude()` / `openai()` / `deepseek()` / `openrouter()`) |
+| Build an agent that loops through tools                       | `Agent` + `ReActCognition`                                  |
+| Delegate the whole loop to a local `claude` CLI               | `Agent` + `ClaudeCliCognition`                              |
+| Orchestrate many child agents                                 | `Agent` + `CoordinatorCognition`                            |
+| A fixed multi-step pipeline (author writes the plan)          | `Workflow`                                                  |
+| Package prompt + cognition + tools + memory as one unit       | `Skill` (`.as_agent()` / `.as_tool()`)                      |
+| Consume an MCP server's tools                                 | `MCPClient` + `mcp_tools()`                                 |
+| Pause a tool for human approval                               | `Autonomy.GATED` on the `RunContext` + `Suspended` / `Agent.resume()` |
+| Cap what the run can spend                                    | `Budget(max_cost_usd=...)` / `Quota(max_rpm=..., max_usd=...)` |
+| Survive a worker crash                                        | `Checkpointer(port=...)`                                    |
+| Add a cross-cutting concern (tracing, retry, guardrail)       | Middleware in the `chain([...])` on the `Invoker`           |
+
+Every row is a slot in the same composition — the primitives on
+the right are how you fill it, not what agentkit forces you into.
+
 ## What changes with agentkit
 
 - **Budget halts the run cleanly** on overrun — `MeterExceeded`

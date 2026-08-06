@@ -1,5 +1,14 @@
 # Runtime
 
+!!! abstract "Where this fits in the four themes"
+    This page covers primitives from the **Control** theme
+    (`Budget`, `Quota`, `MeterExceeded`, `Autonomy` on `RunContext`,
+    `CancellationToken`) and threads the **State** theme
+    (`RunContext` is what carries per-request state through every hop
+    — scope, budget, cancel, services). The `Invoker`'s middleware
+    dispatch is the entry point into the **Behaviour** theme's chain.
+    See the four-theme grid on the [landing](../index.md).
+
 **What this is.** The runtime is the *per-request universe* every piece
 of agent code runs in. Concretely, that's `RunContext` (which carries a
 correlation id, tenant `Scope`, `Budget`, `Services` bundle, and a

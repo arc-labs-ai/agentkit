@@ -1,5 +1,14 @@
 # Kernel
 
+!!! abstract "Where this fits in the four themes"
+    The kernel is *underneath* all four themes — it is the shared
+    vocabulary every theme builds on. **Cognition** speaks in
+    `ChatRequest` / `LLMResult` / `StreamEvent`; **Control** uses
+    `CancellationToken` and the concurrency primitives; **State**
+    threads the `Message` / `Usage` / `Scope` value types; **Behaviour**
+    is the `Call` + `Middleware` + `chain(...)` contract itself.
+    See the four-theme grid on the [landing](../index.md).
+
 **What this is.** `agentkit.kernel` is the opinion-free foundation every
 other package sits on. It defines the value types the whole framework
 speaks (`ChatRequest`, `LLMResult`, `Message`, `Scope`, `Usage`), the

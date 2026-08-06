@@ -1,5 +1,16 @@
 # Middlewares
 
+!!! abstract "Where this fits in the four themes"
+    The middleware chain *is* the **Behaviour** theme — every
+    cross-cutting concern (tracing, retry, meter, fallback, memoize,
+    compaction, output_coerce, security, egress, audit) is a
+    middleware entry, and re-ordering them is how you change the
+    agent's behaviour without touching the loop. `meter()` is the
+    bridge into the **Control** theme (it enforces `Budget`/`Quota`);
+    `compaction()` is the bridge into the **State** theme (it hands
+    the transcript to a `Compactor`). See the four-theme grid on the
+    [landing](../index.md).
+
 **What this is.** A middleware is a thin async wrapper around a `Call`
 that adds one cross-cutting concern — tracing, cost metering, retry,
 memoization, output coercion, compaction, or a guardrail — and then

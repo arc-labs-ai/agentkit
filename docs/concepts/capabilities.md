@@ -1,5 +1,16 @@
 # Capabilities
 
+!!! abstract "Where this fits in the four themes"
+    This page covers primitives from the **State** theme
+    (`RequestBuilder`, `Grounder`, `Compactor` and its four
+    implementations, `Checkpointer` — the pieces that shape and
+    persist the state feeding the model) and the **Behaviour** theme
+    (`Guardrail`, `Evaluator`, `SchemaAdapter` — the pieces that
+    inspect, veto, and coerce what the model produces). The
+    `Checkpointer` also underpins the **Control** theme's HITL
+    suspend/resume path. See the four-theme grid on the
+    [landing](../index.md).
+
 **What this is.** A capability is an *optional collaborator* an agent
 can be wired with — a `RequestBuilder` that assembles a prompt from
 sources, a `Compactor` that shrinks a growing context window, a

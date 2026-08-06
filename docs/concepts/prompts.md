@@ -1,5 +1,13 @@
 # Prompts
 
+!!! abstract "Where this fits in the four themes"
+    `Prompt` is a **State**-theme primitive — the versioned template
+    that anchors every chat call. Its `id` + `version` travel with
+    every LLM call through the middleware chain (the **Behaviour**
+    theme) so a regression can be localised to a specific template
+    revision. See the four-theme grid on the
+    [landing](../index.md).
+
 **What this is.** `agentkit.prompts` is a small, deliberately-boring
 package that owns the *shape* of a prompt — a versioned `Prompt`
 value type — plus a couple of built-in helpers. It does **not** own

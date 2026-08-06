@@ -1,0 +1,57 @@
+# arc-agentkit
+
+> A low-level, composable Python framework for building AI agents. Provider-neutral (`claude()`, `openai()`, `deepseek()`, `openrouter()`, `ClaudeCliCognition`, or your own `LLMPort`); typed seams throughout; zero core runtime dependencies; `mypy --strict` clean.
+
+Organized around four themes: cognition (how the agent decides), control (what limits its authority), state (what it knows), behaviour (how each call is intercepted).
+
+## Getting started
+- [Landing](https://arc-labs-ai.github.io/agentkit/): pain-first intro and four-theme mental model.
+- [Why agentkit](https://arc-labs-ai.github.io/agentkit/why/): concrete guarantees and honest comparison.
+- [Getting started](https://arc-labs-ai.github.io/agentkit/getting-started/): install and first call.
+- [Tutorial](https://arc-labs-ai.github.io/agentkit/tutorial/): fifteen-minute walkthrough.
+- [Cheatsheet](https://arc-labs-ai.github.io/agentkit/cheatsheet/): every primitive on one page.
+- [Anti-patterns](https://arc-labs-ai.github.io/agentkit/anti-patterns/): shapes that void the framework's guarantees.
+
+## Concepts
+- [Kernel](https://arc-labs-ai.github.io/agentkit/concepts/kernel/): opinion-free value types + Protocol ports.
+- [Runtime](https://arc-labs-ai.github.io/agentkit/concepts/runtime/): RunContext + Invoker + Budget/Quota.
+- [Agents](https://arc-labs-ai.github.io/agentkit/concepts/agents/): Agent + Cognition Protocol.
+- [Capabilities](https://arc-labs-ai.github.io/agentkit/concepts/capabilities/): RequestBuilder + Compactor + Guardrail + Checkpointer + Evaluator.
+- [Middlewares](https://arc-labs-ai.github.io/agentkit/concepts/middlewares/): tracing / retry / meter / memoize / compaction / security / audit / egress.
+- [Prompts](https://arc-labs-ai.github.io/agentkit/concepts/prompts/): versioned Prompt values.
+
+## Recipes (indexed by problem)
+- [Control cost](https://arc-labs-ai.github.io/agentkit/recipes/spend-budget-and-quota/): Budget + Quota, MeterExceeded.
+- [Pause for a human](https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/): Autonomy tier + Suspended + resume().
+- [Survive a crash](https://arc-labs-ai.github.io/agentkit/recipes/resume-after-crash/): Checkpointer + resume-after-crash pattern.
+- [Parallel agents with cancellation](https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/): gather_bounded / run_agents / CancellationToken.
+- [Custom middleware](https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/): (call, next) contract, BaseMiddleware.
+- [OpenTelemetry](https://arc-labs-ai.github.io/agentkit/recipes/otel-tracing-and-metrics/): TracePort / MetricsPort wiring.
+- [Local Claude Code, no API key](https://arc-labs-ai.github.io/agentkit/recipes/claude-cli-fastapi-code-gen/): ClaudeCliCognition + FastAPI SSE.
+- [Any MCP server](https://arc-labs-ai.github.io/agentkit/recipes/mcp-tools/): MCPClient + mcp_tools / mcp_resources / mcp_prompts.
+
+## Migrating
+- [From LangChain](https://arc-labs-ai.github.io/agentkit/migrating/from-langchain/): concept-by-concept mapping.
+- [From vanilla asyncio + provider SDK](https://arc-labs-ai.github.io/agentkit/migrating/from-vanilla-asyncio/): loop + primitives.
+
+## Reference
+- [agents](https://arc-labs-ai.github.io/agentkit/api-reference/agents/): Agent, Workflow, Cognition, control primitives.
+- [runtime](https://arc-labs-ai.github.io/agentkit/api-reference/runtime/): RunContext, Invoker, Budget, Quota, EventBus.
+- [kernel](https://arc-labs-ai.github.io/agentkit/api-reference/kernel/): value types, ports, middleware contract, resilience, concurrency.
+- [capabilities](https://arc-labs-ai.github.io/agentkit/api-reference/capabilities/): RequestBuilder, Compactor, Guardrail, Checkpointer, Evaluator.
+- [middlewares](https://arc-labs-ai.github.io/agentkit/api-reference/middlewares/): tracing, retry, meter, memoize, compaction, security, audit, egress.
+- [context](https://arc-labs-ai.github.io/agentkit/api-reference/context/): WorkingContext, ContextScope, TokenCounter.
+- [memory](https://arc-labs-ai.github.io/agentkit/api-reference/memory/): MemorySource, VectorMemory, CompositeMemory, ScopedMemory.
+- [tools](https://arc-labs-ai.github.io/agentkit/api-reference/tools/): Tool, FunctionTool, ToolRegistry, @tool decorator.
+- [prompts](https://arc-labs-ai.github.io/agentkit/api-reference/prompts/): Prompt value type.
+- [skills](https://arc-labs-ai.github.io/agentkit/api-reference/skills/): Skill facade (prompt + cognition + tools + memory as one unit).
+- [adapters](https://arc-labs-ai.github.io/agentkit/api-reference/adapters/): LLM providers, vector, store, checkpoint, observer.
+- [testing](https://arc-labs-ai.github.io/agentkit/api-reference/testing/): FakeLLM, FakeFetch, FakeSearch, FakeMemory, FakeCtx.
+
+## Examples
+- [Examples index](https://arc-labs-ai.github.io/agentkit/examples/): runnable end-to-end scripts under `examples/` in the repo.
+
+## Repo
+- [GitHub](https://github.com/arc-labs-ai/agentkit)
+- [PyPI](https://pypi.org/project/arc-agentkit/)
+- [License](https://github.com/arc-labs-ai/agentkit/blob/main/LICENSE)

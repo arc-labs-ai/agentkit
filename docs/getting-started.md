@@ -10,8 +10,8 @@ pip install arc-agentkit
     On PyPI the distribution is **`arc-agentkit`** (the `agentkit` name
     on PyPI is owned by an unrelated project). The **import name stays
     `agentkit`**, so all documentation and examples use `import
-    agentkit` as-is. Follows the same pattern as `pip install Django`
-    → `import django`.
+    agentkit` as-is. Same pattern as `pip install Django` → `import
+    django`.
 
     Before the first release, install directly from Git:
 
@@ -27,68 +27,37 @@ pip install "arc-agentkit[http]"            # bundled httpx-based LLM providers
 pip install "arc-agentkit[postgres]"        # asyncpg + pgvector adapters
 pip install "arc-agentkit[redis]"           # redis-backed store
 pip install "arc-agentkit[observability]"   # OpenTelemetry exporter
+pip install "arc-agentkit[mcp]"             # Model Context Protocol client
 ```
 
 ## Requirements
 
 - Python 3.12 or newer.
-- An API key for at least one LLM provider (Anthropic, OpenAI, DeepSeek,
-  or OpenRouter are shipped as batteries-included presets).
+- One of: an API key for an LLM provider (Anthropic, OpenAI, DeepSeek,
+  OpenRouter are shipped as batteries-included presets), or the local
+  `claude` CLI on your PATH (the `ClaudeCliCognition` plug-in delegates
+  to it and needs no server-side key).
 
-## Your first agent
+## Verify the install
 
-The shortest useful program is a batteries-included `Chat` call. It
-already runs on a real `RunContext` with the standard
-`tracing → meter → retry` middleware chain, so you get cost accounting
-and structured retries for free:
-
-```python
-import asyncio
-from agentkit import claude
-
-async def main() -> None:
-    async with claude(api_key="sk-...", model="claude-sonnet-4-6") as chat:
-        result = await chat(
-            "Give me three surprising facts about octopuses.",
-            system="You reply in tight, cited bullets.",
-        )
-        print(result.content)
-        print(f"tokens: {result.usage.total_tokens}   cost: ${result.usage.cost_usd:.4f}")
-
-asyncio.run(main())
+```bash
+python -c "import agentkit; print(agentkit.__version__)"
 ```
 
-## Adding a tool
-
-The moment you want the model to *do* something, drop from `Chat` to an
-`Agent`. Register a plain async function as a tool and let a `ReAct`
-cognition drive the loop:
-
-```python
-from agentkit import Agent, tool
-from agentkit.agents.cognition import ReActCognition
-
-@tool(side_effecting=False)
-async def get_weather(city: str) -> str:
-    """Return the current weather for a city."""
-    return f"{city}: 72F, clear"
-
-agent = Agent(
-    name="weather-bot",
-    cognition=ReActCognition(tools=[get_weather]),
-)
-```
-
-You then call `await agent.run("What's the weather in Paris?", ctx)` on
-a `RunContext` you build (or borrow from a `Chat`).
+Prints the installed version. If it errors, the wheel isn't on your
+Python path — check the interpreter your shell resolved.
 
 ## Where to go next
 
-- **[Concepts › Kernel](concepts/kernel.md)** — the value types every
-  layer speaks.
-- **[Concepts › Runtime](concepts/runtime.md)** — `RunContext`, `Invoker`,
-  `Budget`, `Quota`.
-- **[Concepts › Agents](concepts/agents.md)** — `Agent` / `Workflow` /
-  `Cognition` and the control primitives.
-- **[Examples](examples.md)** — end-to-end demos in the `examples/`
-  folder.
+- **[Tutorial](tutorial.md)** — fifteen minutes, five steps, one
+  runnable script per step. Builds a real research-briefing agent with
+  a tool, a stream, a budget, and a human-approval gate.
+- **[Landing](index.md)** — the four-theme grid (cognition · control ·
+  state · behaviour) that names every primitive. Start here for the
+  mental model.
+- **[Why agentkit](why.md)** — twelve concrete guarantees and a
+  side-by-side comparison with LangChain / LangGraph / Instructor /
+  Pydantic-AI / hosted alternatives.
+- **[Cheatsheet](cheatsheet.md)** — every primitive, tight code,
+  skimmable in 90 seconds. Reach for it when you know what you want and
+  just need the invocation.
