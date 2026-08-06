@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{#-
+  Announcement bar — one line, dismissible via mkdocs-material's built-in
+  localStorage mechanism (enabled by `announce.dismiss` in theme.features).
+-#}
+{% block announce %}
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="{{ 'tutorial/' | url }}">tutorial</a>
+      to build a real research-briefing agent in 15 minutes.
+    </span>
+  </span>
+{% endblock %}
+
+{#-
+  Landing-page hero — full-bleed banner with drifting slate/amber gradient,
+  status pills, install command, and two CTAs. Rendered only on index.md.
+-#}
+{% block hero %}
+  {% if page and page.file and page.file.src_path in ('index.md', 'index') %}
+    <section class="rio-hero" role="banner" aria-label="agentkit">
+      <div class="rio-hero__bg" aria-hidden="true">
+        <div class="rio-hero__blob rio-hero__blob--a"></div>
+        <div class="rio-hero__blob rio-hero__blob--b"></div>
+        <div class="rio-hero__blob rio-hero__blob--c"></div>
+        <div class="rio-hero__grid"></div>
+      </div>
+      <div class="rio-hero__inner md-grid">
+        <div class="rio-hero__content">
+          <p class="rio-hero__eyebrow">arc-agentkit</p>
+          <h1 class="rio-hero__title">agentkit</h1>
+          <p class="rio-hero__tagline">A low-level, composable framework for AI agents in Python.</p>
+          <ul class="rio-hero__pills" aria-label="At a glance">
+            <li>Python 3.12+</li>
+            <li>Apache-2.0</li>
+            <li>zero core deps</li>
+            <li><code>mypy --strict</code></li>
+          </ul>
+          <div class="rio-hero__install" data-rio-install>
+            <span class="rio-hero__prompt" aria-hidden="true">$</span>
+            <code>pip install arc-agentkit</code>
+            <button type="button"
+                    class="rio-hero__copy"
+                    data-clipboard-text="pip install arc-agentkit"
+                    aria-label="Copy install command">
+              <span class="rio-hero__copy-label" data-idle="Copy" data-copied="Copied">Copy</span>
+            </button>
+          </div>
+          <div class="rio-hero__ctas">
+            <a class="rio-hero__cta rio-hero__cta--primary" href="{{ 'tutorial/' | url }}">
+              Read the tutorial
+              <span class="rio-hero__cta-arrow" aria-hidden="true">&rarr;</span>
+            </a>
+            <a class="rio-hero__cta rio-hero__cta--secondary" href="{{ 'cheatsheet/' | url }}">
+              See the cheatsheet
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}
+
+{#-
+  Extra <head> — mermaid palette parity + hero install copy handler.
+  Mermaid picks up config from `window.mermaidConfig`; mkdocs-material's
+  bundled mermaid initializer merges it before rendering. We also nudge
+  colors via the --md-mermaid-* CSS variables (see extra.css).
+-#}
+{% block extrahead %}
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+{% endblock %}

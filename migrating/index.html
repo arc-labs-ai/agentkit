@@ -10,31 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/migrating/">
       
       
-        <link rel="prev" href="../">
+        <link rel="prev" href="../recipes/mcp-tools/">
       
       
-        <link rel="next" href="../resume-after-crash/">
+        <link rel="next" href="from-langchain/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/favicon.svg">
+      <link rel="icon" href="../assets/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Human-in-the-loop tool approval - agentkit</title>
+        <title>Overview - agentkit</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -53,11 +53,11 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../../stylesheets/extra.css">
+      <link rel="stylesheet" href="../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-do-i-pause-a-tool-for-human-approval" class="md-skip">
+        <a href="#migrating" class="md-skip">
           Skip to content
         </a>
       
@@ -165,7 +165,7 @@
   <span class="rio-announce">
     <span class="rio-announce__tag">v0.1 shipped</span>
     <span class="rio-announce__body">
-      read the <a href="../../tutorial/">tutorial</a>
+      read the <a href="../tutorial/">tutorial</a>
       to build a real research-briefing agent in 15 minutes.
     </span>
   </span>
@@ -185,9 +185,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+    <a href=".." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
       
-  <img src="../../assets/favicon.svg" alt="logo">
+  <img src="../assets/favicon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Human-in-the-loop tool approval
+              Overview
             
           </span>
         </div>
@@ -324,9 +324,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+    <a href=".." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
       
-  <img src="../../assets/favicon.svg" alt="logo">
+  <img src="../assets/favicon.svg" alt="logo">
 
     </a>
     agentkit
@@ -353,7 +353,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -380,7 +380,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../why/" class="md-nav__link">
+      <a href="../why/" class="md-nav__link">
         
   
   
@@ -407,7 +407,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/" class="md-nav__link">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -434,7 +434,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cheatsheet/" class="md-nav__link">
+      <a href="../cheatsheet/" class="md-nav__link">
         
   
   
@@ -461,7 +461,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tutorial/" class="md-nav__link">
+      <a href="../tutorial/" class="md-nav__link">
         
   
   
@@ -540,7 +540,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/kernel/" class="md-nav__link">
+      <a href="../concepts/kernel/" class="md-nav__link">
         
   
   
@@ -568,7 +568,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/runtime/" class="md-nav__link">
+      <a href="../concepts/runtime/" class="md-nav__link">
         
   
   
@@ -596,7 +596,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/capabilities/" class="md-nav__link">
+      <a href="../concepts/capabilities/" class="md-nav__link">
         
   
   
@@ -624,7 +624,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/agents/" class="md-nav__link">
+      <a href="../concepts/agents/" class="md-nav__link">
         
   
   
@@ -652,7 +652,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/prompts/" class="md-nav__link">
+      <a href="../concepts/prompts/" class="md-nav__link">
         
   
   
@@ -680,7 +680,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/middlewares/" class="md-nav__link">
+      <a href="../concepts/middlewares/" class="md-nav__link">
         
   
   
@@ -715,7 +715,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../anti-patterns/" class="md-nav__link">
+      <a href="../anti-patterns/" class="md-nav__link">
         
   
   
@@ -739,8 +739,6 @@
       
   
   
-    
-  
   
   
     
@@ -753,11 +751,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
           <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
@@ -778,7 +776,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
@@ -796,7 +794,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../recipes/" class="md-nav__link">
         
   
   
@@ -821,37 +819,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Human-in-the-loop tool approval
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../recipes/hitl-tool-approval/" class="md-nav__link">
         
   
   
@@ -867,81 +838,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#when-youd-want-this" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When you'd want this
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-code" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working code
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How it works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gotchas" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotchas
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -954,7 +850,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../resume-after-crash/" class="md-nav__link">
+      <a href="../recipes/resume-after-crash/" class="md-nav__link">
         
   
   
@@ -982,7 +878,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../spend-budget-and-quota/" class="md-nav__link">
+      <a href="../recipes/spend-budget-and-quota/" class="md-nav__link">
         
   
   
@@ -1010,7 +906,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../parallel-agents-with-cancellation/" class="md-nav__link">
+      <a href="../recipes/parallel-agents-with-cancellation/" class="md-nav__link">
         
   
   
@@ -1038,7 +934,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../custom-middleware/" class="md-nav__link">
+      <a href="../recipes/custom-middleware/" class="md-nav__link">
         
   
   
@@ -1066,7 +962,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../otel-tracing-and-metrics/" class="md-nav__link">
+      <a href="../recipes/otel-tracing-and-metrics/" class="md-nav__link">
         
   
   
@@ -1094,7 +990,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../claude-cli-fastapi-code-gen/" class="md-nav__link">
+      <a href="../recipes/claude-cli-fastapi-code-gen/" class="md-nav__link">
         
   
   
@@ -1122,7 +1018,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mcp-tools/" class="md-nav__link">
+      <a href="../recipes/mcp-tools/" class="md-nav__link">
         
   
   
@@ -1154,8 +1050,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -1166,11 +1064,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
         
           
           <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
@@ -1191,7 +1089,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_9">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1206,10 +1104,19 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../migrating/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1225,6 +1132,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -1237,7 +1145,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../migrating/from-langchain/" class="md-nav__link">
+      <a href="from-langchain/" class="md-nav__link">
         
   
   
@@ -1265,7 +1173,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../migrating/from-vanilla-asyncio/" class="md-nav__link">
+      <a href="from-vanilla-asyncio/" class="md-nav__link">
         
   
   
@@ -1352,7 +1260,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/agents/" class="md-nav__link">
+      <a href="../api-reference/agents/" class="md-nav__link">
         
   
   
@@ -1380,7 +1288,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/runtime/" class="md-nav__link">
+      <a href="../api-reference/runtime/" class="md-nav__link">
         
   
   
@@ -1408,7 +1316,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/kernel/" class="md-nav__link">
+      <a href="../api-reference/kernel/" class="md-nav__link">
         
   
   
@@ -1436,7 +1344,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/capabilities/" class="md-nav__link">
+      <a href="../api-reference/capabilities/" class="md-nav__link">
         
   
   
@@ -1464,7 +1372,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/prompts/" class="md-nav__link">
+      <a href="../api-reference/prompts/" class="md-nav__link">
         
   
   
@@ -1492,7 +1400,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/middlewares/" class="md-nav__link">
+      <a href="../api-reference/middlewares/" class="md-nav__link">
         
   
   
@@ -1520,7 +1428,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/context/" class="md-nav__link">
+      <a href="../api-reference/context/" class="md-nav__link">
         
   
   
@@ -1548,7 +1456,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/memory/" class="md-nav__link">
+      <a href="../api-reference/memory/" class="md-nav__link">
         
   
   
@@ -1576,7 +1484,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/tools/" class="md-nav__link">
+      <a href="../api-reference/tools/" class="md-nav__link">
         
   
   
@@ -1604,7 +1512,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/skills/" class="md-nav__link">
+      <a href="../api-reference/skills/" class="md-nav__link">
         
   
   
@@ -1632,7 +1540,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/testing/" class="md-nav__link">
+      <a href="../api-reference/testing/" class="md-nav__link">
         
   
   
@@ -1660,7 +1568,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api-reference/adapters/" class="md-nav__link">
+      <a href="../api-reference/adapters/" class="md-nav__link">
         
   
   
@@ -1695,7 +1603,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../examples/" class="md-nav__link">
+      <a href="../examples/" class="md-nav__link">
         
   
   
@@ -1722,7 +1630,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../contributing/" class="md-nav__link">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -1762,69 +1670,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#when-youd-want-this" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When you'd want this
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-code" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working code
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How it works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gotchas" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotchas
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1843,135 +1688,37 @@
   
 
 
-<h1 id="how-do-i-pause-a-tool-for-human-approval">How do I pause a tool for human approval?<a class="headerlink" href="#how-do-i-pause-a-tool-for-human-approval" title="Anchor link">&para;</a></h1>
-<h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
-<p>Any tool that mutates the world — publishing content, spending money,
-sending a message, filing a ticket, running a shell command — should
-not run without a human saying yes when the run is being watched. The
-run should <strong>suspend to a checkpoint</strong> and hand control back to your
-driver code, which decides whether to resume with <code>"approve"</code>,
-<code>"reject"</code>, or a modified argument list.</p>
-<h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">,</span> <span class="n">ToolCall</span><span class="p">,</span> <span class="n">tool</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpointer</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">Turn</span><span class="p">,</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Send an email. Side-effecting — always gated under Autonomy.GATED.&quot;&quot;&quot;</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;sent to </span><span class="si">{</span><span class="n">to</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">subject</span><span class="si">!r}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="o">.</span><span class="n">script</span><span class="p">(</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="p">[</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="n">Turn</span><span class="p">(</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                <span class="n">tool_calls</span><span class="o">=</span><span class="p">(</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                    <span class="n">ToolCall</span><span class="p">(</span><span class="s2">&quot;c1&quot;</span><span class="p">,</span> <span class="s2">&quot;send_email&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;to&quot;</span><span class="p">:</span> <span class="s2">&quot;team@x&quot;</span><span class="p">,</span> <span class="s2">&quot;subject&quot;</span><span class="p">:</span> <span class="s2">&quot;brief&quot;</span><span class="p">}),</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                <span class="p">)</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            <span class="p">),</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="n">Turn</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Email sent.&quot;</span><span class="p">),</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="p">]</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="p">)</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="n">checkpointer</span><span class="o">=</span><span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">InMemoryCheckpointStore</span><span class="p">()),</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">,</span>  <span class="c1"># gate every side_effecting tool</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="p">)</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;notifier&quot;</span><span class="p">,</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Draft and send.&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">send_email</span><span class="p">]),</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="p">)</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="c1"># First run — the loop suspends before send_email fires.</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Send the team a brief.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;suspended&quot;</span><span class="p">]</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;awaiting approval for: </span><span class="si">{</span><span class="p">[</span><span class="n">tc</span><span class="o">.</span><span class="n">name</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">tc</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="c1"># Driver decides. Decisions are keyed by ToolCall.id:</span>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="c1">#   &quot;approve&quot;          — run with the model&#39;s args</span>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>    <span class="c1">#   &quot;reject&quot; / &quot;deny&quot;  — inject a DENIED tool result, keep the loop going</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>    <span class="c1">#   any other string   — parsed as a JSON args override, then run</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="n">decisions</span> <span class="o">=</span> <span class="p">{</span><span class="n">tc</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="s2">&quot;approve&quot;</span> <span class="k">for</span> <span class="n">tc</span> <span class="ow">in</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">}</span>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">susp</span><span class="o">.</span><span class="n">run_id</span><span class="p">,</span> <span class="n">decisions</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;final: </span><span class="si">{</span><span class="n">final</span><span class="o">.</span><span class="n">output</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</span></code></pre></div>
-<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
-<p><code>Autonomy</code> is a run-wide tier carried on <code>RunContext.autonomy</code>.
-<code>should_gate(autonomy, requires_approval, key_step)</code> is the shared
-policy every gating surface consults:</p>
-<table>
-<thead>
-<tr>
-<th>Autonomy</th>
-<th>Gates</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>"auto"</code></td>
-<td>Only tools explicitly marked <code>requires_approval=True</code></td>
-</tr>
-<tr>
-<td><code>"gated"</code></td>
-<td>Also every <code>side_effecting=True</code> tool (key step)</td>
-</tr>
-<tr>
-<td><code>"manual"</code></td>
-<td>Every tool call</td>
-</tr>
-</tbody>
-</table>
-<p>When the <code>ReActCognition</code> sees a gated tool call, it snapshots its
-state through the <code>Checkpointer</code> (status <code>"suspended"</code>), emits an
-<code>interrupt</code> event per pending tool call, and returns an <code>AgentResult</code>
-with <code>partial=True</code> and a <code>Suspended</code> value in
-<code>evals["suspended"]</code>. <code>Suspended.pending</code> is a <strong>frozen tuple</strong> of
-<code>ToolCall</code>s — the operator UI reads it and the resume path threads it
-back verbatim, so a mutable list can't desync the two ends of the
-handshake.</p>
-<p><code>agent.resume(run_id, decisions, ctx)</code> loads the snapshot, applies
-your per-call decisions, appends the tool results to the transcript,
-and drives the loop to a final answer. You can call it from an
-entirely fresh process — that's the point of the checkpointer.</p>
-<h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
+<h1 id="migrating">Migrating<a class="headerlink" href="#migrating" title="Anchor link">&para;</a></h1>
+<p>Two guides for the two most common starting points. Each maps
+concept-for-concept, shows a side-by-side rewrite, and calls out what
+you lose (there is always something) and what you gain.</p>
+<div class="grid cards">
 <ul>
-<li><strong><code>side_effecting=</code> is required on every <code>@tool</code>.</strong> The framework
-  fails at decoration time (not at call time) if you forget — because
-  the gating and idempotency primitives cannot guess.</li>
-<li><strong>You must wire a checkpointer for <code>resume(...)</code> to work.</strong>
-  Without one, the loop still emits <code>Suspended</code>, but the state isn't
-  persisted, so <code>resume</code> raises <code>ValueError("no suspended run … to
-  resume")</code>. <code>InMemoryCheckpointStore</code> is fine for tests; production
-  wants <code>PostgresCheckpointStore</code> (extra: <code>arc-agentkit[postgres]</code>).</li>
-<li><strong><code>agent.resume(...)</code> only works on a <code>ReActCognition</code>.</strong> Calling it
-  on a <code>SingleCallCognition</code> or a coordinator is a contract violation
-  and raises <code>RuntimeError</code> explicitly.</li>
-<li><strong>A <code>Suspended</code> result has <code>partial=True</code> and an empty
-  <code>output</code>.</strong> The final text comes from <code>resume(...)</code>, not the
-  original <code>run(...)</code>.</li>
+<li>
+<p><strong>From LangChain</strong></p>
+<hr />
+<p>You already have chains, tools, and an <code>AgentExecutor</code>. Here's the
+concept-to-concept mapping, a full before/after, and an honest read
+on where LangChain still wins (large integration catalog).</p>
+<p><a href="from-langchain/">:octicons-arrow-right-24: Read the LangChain guide</a></p>
+</li>
+<li>
+<p><strong>From vanilla asyncio + provider SDK</strong></p>
+<hr />
+<p>You wrote your own <code>messages.create</code> loop with a <code>for</code> over tool
+calls. Here's the same loop as a <code>ReActCognition</code> and every
+resilience/cancel/budget primitive you were about to write
+yourself.</p>
+<p><a href="from-vanilla-asyncio/">:octicons-arrow-right-24: Read the asyncio guide</a></p>
+</li>
 </ul>
-<h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
-<ul>
-<li><a href="../../tutorial/#step-5-pause-for-human-approval-before-publishing">Tutorial · Step 5</a>
-  — the same primitive introduced inside a full walkthrough.</li>
-<li><a href="../resume-after-crash/">Resume after a crash</a> — the checkpointer's
-  other job.</li>
-<li><a href="../../concepts/agents/">Concepts · Agents</a> — the mental model of
-  <code>Cognition</code> and the control primitives.</li>
-</ul>
+</div>
+<p>If your starting point is LlamaIndex, this round doesn't have a
+dedicated guide — the shapes differ enough (LlamaIndex is
+retrieval-first, agentkit is composition-first) that a direct
+mapping would mislead more than help. Read the <a href="../cheatsheet/">Cheatsheet</a>
+and <a href="../why/">Why agentkit</a> instead, and open an issue if a proper
+guide would help.</p>
 
 
 
@@ -1992,7 +1739,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 21:27:10 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 02:02:48 UTC">August 6, 2026</span>
   </span>
 
     
@@ -2030,7 +1777,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview">
+          <a href="../recipes/mcp-tools/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Consume MCP tools from an agent">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2040,20 +1787,20 @@ entirely fresh process — that's the point of the checkpointer.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Overview
+                Consume MCP tools from an agent
               </div>
             </div>
           </a>
         
         
           
-          <a href="../resume-after-crash/" class="md-footer__link md-footer__link--next" aria-label="Next: Resume from a checkpoint after a crash">
+          <a href="from-langchain/" class="md-footer__link md-footer__link--next" aria-label="Next: From LangChain">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Resume from a checkpoint after a crash
+                From LangChain
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -2105,10 +1852,10 @@ entirely fresh process — that's the point of the checkpointer.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

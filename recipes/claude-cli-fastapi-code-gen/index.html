@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/claude-cli-fastapi-code-gen/">
       
       
-        <link rel="prev" href="../">
+        <link rel="prev" href="../otel-tracing-and-metrics/">
       
       
-        <link rel="next" href="../resume-after-crash/">
+        <link rel="next" href="../mcp-tools/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Human-in-the-loop tool approval - agentkit</title>
+        <title>Plug the claude CLI into FastAPI code-gen - agentkit</title>
       
     
     
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-do-i-pause-a-tool-for-human-approval" class="md-skip">
+        <a href="#how-do-i-plug-the-claude-cli-into-a-fastapi-code-generation-endpoint" class="md-skip">
           Skip to content
         </a>
       
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Human-in-the-loop tool approval
+              Plug the claude CLI into FastAPI code-gen
             
           </span>
         </div>
@@ -821,37 +821,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Human-in-the-loop tool approval
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../hitl-tool-approval/" class="md-nav__link">
         
   
   
@@ -867,81 +840,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#when-youd-want-this" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When you'd want this
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-code" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working code
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How it works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gotchas" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotchas
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1091,10 +989,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../claude-cli-fastapi-code-gen/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plug the claude CLI into FastAPI code-gen
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1110,6 +1035,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#when-youd-want-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When you'd want this
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#working-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Working code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-walkthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration walkthrough
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gotchas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gotchas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1802,6 +1813,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#configuration-walkthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration walkthrough
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#gotchas" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1843,134 +1865,176 @@
   
 
 
-<h1 id="how-do-i-pause-a-tool-for-human-approval">How do I pause a tool for human approval?<a class="headerlink" href="#how-do-i-pause-a-tool-for-human-approval" title="Anchor link">&para;</a></h1>
+<h1 id="how-do-i-plug-the-claude-cli-into-a-fastapi-code-generation-endpoint">How do I plug the <code>claude</code> CLI into a FastAPI code-generation endpoint?<a class="headerlink" href="#how-do-i-plug-the-claude-cli-into-a-fastapi-code-generation-endpoint" title="Anchor link">&para;</a></h1>
 <h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
-<p>Any tool that mutates the world — publishing content, spending money,
-sending a message, filing a ticket, running a shell command — should
-not run without a human saying yes when the run is being watched. The
-run should <strong>suspend to a checkpoint</strong> and hand control back to your
-driver code, which decides whether to resume with <code>"approve"</code>,
-<code>"reject"</code>, or a modified argument list.</p>
+<p>You have the <a href="https://docs.claude.com/en/docs/claude-code"><code>claude</code> CLI</a>
+installed locally and already logged in (<code>claude login</code> set up your
+OAuth), and you want a small HTTP endpoint that runs Claude — with tool
+access and permission modes — inside an agentkit run without you
+managing API keys, provider quotas, or a second SDK. <code>ClaudeCliCognition</code>
+subprocesses the local CLI per run, streams its stream-JSON output as
+agentkit <code>StreamEvent</code>s, and hands you back the usual
+<code>AgentResult</code> — usage, session id, cost estimate.</p>
+<p>Reach for this when:</p>
+<ul>
+<li>You want local-first code-gen against <code>~/.claude</code> OAuth instead of
+  distributing API keys to your server.</li>
+<li>You need the CLI's built-in tools (<code>Read</code>, <code>Bash</code>, <code>Edit</code>, ...) and
+  its permission modes (<code>acceptEdits</code>, <code>plan</code>, <code>bypassPermissions</code>).</li>
+<li>You want the CLI's cost estimate surfaced on <code>Usage.cost_usd</code>
+  automatically.</li>
+</ul>
 <h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Streaming code-gen endpoint over the local `claude` CLI.</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">,</span> <span class="n">ToolCall</span><span class="p">,</span> <span class="n">tool</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpointer</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">Turn</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="sd">Run: `uv run --with fastapi --with uvicorn uvicorn app:app`</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="sd">Then: `curl -N -X POST localhost:8000/generate -d &#39;a python quicksort&#39;`</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Send an email. Side-effecting — always gated under Autonomy.GATED.&quot;&quot;&quot;</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;sent to </span><span class="si">{</span><span class="n">to</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">subject</span><span class="si">!r}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="o">.</span><span class="n">script</span><span class="p">(</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="p">[</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="n">Turn</span><span class="p">(</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                <span class="n">tool_calls</span><span class="o">=</span><span class="p">(</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                    <span class="n">ToolCall</span><span class="p">(</span><span class="s2">&quot;c1&quot;</span><span class="p">,</span> <span class="s2">&quot;send_email&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;to&quot;</span><span class="p">:</span> <span class="s2">&quot;team@x&quot;</span><span class="p">,</span> <span class="s2">&quot;subject&quot;</span><span class="p">:</span> <span class="s2">&quot;brief&quot;</span><span class="p">}),</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                <span class="p">)</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            <span class="p">),</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="n">Turn</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Email sent.&quot;</span><span class="p">),</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="p">]</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="p">)</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="n">checkpointer</span><span class="o">=</span><span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">InMemoryCheckpointStore</span><span class="p">()),</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">,</span>  <span class="c1"># gate every side_effecting tool</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="p">)</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;notifier&quot;</span><span class="p">,</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Draft and send.&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">send_email</span><span class="p">]),</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">Request</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamingResponse</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClaudeCliCognition</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># One cognition, shared across requests. It&#39;s stateless — every drive</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># spawns a fresh subprocess. The class-level semaphore (`max_concurrent`)</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1"># bounds parallel spawns so we don&#39;t hit the SDK&#39;s ~200-parallel hang.</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="n">cognition</span> <span class="o">=</span> <span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-opus-4-5&quot;</span><span class="p">,</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">permission_mode</span><span class="o">=</span><span class="s2">&quot;acceptEdits&quot;</span><span class="p">,</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="n">working_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/codegen-sandbox&quot;</span><span class="p">),</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="c1"># Isolate CLI settings/auth per deployment. Concurrent writes to</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="c1"># ~/.claude.json can corrupt it — a dedicated `config_dir` avoids that.</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    <span class="n">config_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/var/lib/mysvc/claude&quot;</span><span class="p">),</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="n">allowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Write&quot;</span><span class="p">,</span> <span class="s2">&quot;Edit&quot;</span><span class="p">,</span> <span class="s2">&quot;Bash&quot;</span><span class="p">),</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="n">max_concurrent</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="p">)</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;codegen&quot;</span><span class="p">,</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;You are a terse code generator. Produce runnable code only.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    <span class="n">cognition</span><span class="o">=</span><span class="n">cognition</span><span class="p">,</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="p">)</span>
 </span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="c1"># First run — the loop suspends before send_email fires.</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Send the team a brief.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;suspended&quot;</span><span class="p">]</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;awaiting approval for: </span><span class="si">{</span><span class="p">[</span><span class="n">tc</span><span class="o">.</span><span class="n">name</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">tc</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="c1"># Driver decides. Decisions are keyed by ToolCall.id:</span>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="c1">#   &quot;approve&quot;          — run with the model&#39;s args</span>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>    <span class="c1">#   &quot;reject&quot; / &quot;deny&quot;  — inject a DENIED tool result, keep the loop going</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>    <span class="c1">#   any other string   — parsed as a JSON args override, then run</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="n">decisions</span> <span class="o">=</span> <span class="p">{</span><span class="n">tc</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="s2">&quot;approve&quot;</span> <span class="k">for</span> <span class="n">tc</span> <span class="ow">in</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">}</span>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">susp</span><span class="o">.</span><span class="n">run_id</span><span class="p">,</span> <span class="n">decisions</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;final: </span><span class="si">{</span><span class="n">final</span><span class="o">.</span><span class="n">output</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/generate&quot;</span><span class="p">)</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">StreamingResponse</span><span class="p">:</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="n">prompt</span> <span class="o">=</span> <span class="p">(</span><span class="k">await</span> <span class="n">request</span><span class="o">.</span><span class="n">body</span><span class="p">())</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span> <span class="ow">or</span> <span class="s2">&quot;hello, world&quot;</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">sse_stream</span><span class="p">():</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        <span class="c1"># Minimal RunContext — no persistence, no tracing, just a run id.</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>        <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;req-1&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">Services</span><span class="p">())</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        <span class="k">async</span> <span class="k">for</span> <span class="n">ev</span> <span class="ow">in</span> <span class="n">agent</span><span class="o">.</span><span class="n">stream</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">ctx</span><span class="p">):</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>            <span class="k">if</span> <span class="n">ev</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;message_delta&quot;</span><span class="p">:</span>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>                <span class="k">yield</span> <span class="sa">f</span><span class="s2">&quot;data: </span><span class="si">{</span><span class="n">ev</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>            <span class="k">elif</span> <span class="n">ev</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;tool_call&quot;</span><span class="p">:</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>                <span class="k">yield</span> <span class="sa">f</span><span class="s2">&quot;event: tool_call</span><span class="se">\n</span><span class="s2">data: </span><span class="si">{</span><span class="n">ev</span><span class="o">.</span><span class="n">tool_call</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>            <span class="k">elif</span> <span class="n">ev</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;final&quot;</span><span class="p">:</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>                <span class="k">yield</span> <span class="p">(</span>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>                    <span class="sa">f</span><span class="s2">&quot;event: done</span><span class="se">\n</span><span class="s2">&quot;</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>                    <span class="sa">f</span><span class="s2">&quot;data: session_id=</span><span class="si">{</span><span class="n">ev</span><span class="o">.</span><span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;session_id&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>                    <span class="sa">f</span><span class="s2">&quot; cost_usd=</span><span class="si">{</span><span class="n">ev</span><span class="o">.</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>                <span class="p">)</span>
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>    <span class="k">return</span> <span class="n">StreamingResponse</span><span class="p">(</span><span class="n">sse_stream</span><span class="p">(),</span> <span class="n">media_type</span><span class="o">=</span><span class="s2">&quot;text/event-stream&quot;</span><span class="p">)</span>
 </span></code></pre></div>
+<p>Every request spawns one <code>claude -p "&lt;prompt&gt;" --output-format
+stream-json --verbose</code> subprocess with your model, system prompt,
+allowed tool list, permission mode, and working directory threaded
+through. Auth is entirely the CLI's problem: whatever
+<code>CLAUDE_CODE_OAUTH_TOKEN</code>, <code>ANTHROPIC_API_KEY</code>, or
+<code>~/.claude/</code>-stored OAuth the CLI would find on its own is what your
+endpoint uses.</p>
 <h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
-<p><code>Autonomy</code> is a run-wide tier carried on <code>RunContext.autonomy</code>.
-<code>should_gate(autonomy, requires_approval, key_step)</code> is the shared
-policy every gating surface consults:</p>
+<p><code>ClaudeCliCognition.drive(...)</code> maps the CLI's stream-JSON output onto
+the standard <code>StreamEvent</code> stream:</p>
 <table>
 <thead>
 <tr>
-<th>Autonomy</th>
-<th>Gates</th>
+<th>CLI event</th>
+<th>agentkit event</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>"auto"</code></td>
-<td>Only tools explicitly marked <code>requires_approval=True</code></td>
+<td><code>{"type": "assistant", ...text}</code></td>
+<td><code>StreamEvent("message_delta")</code></td>
 </tr>
 <tr>
-<td><code>"gated"</code></td>
-<td>Also every <code>side_effecting=True</code> tool (key step)</td>
+<td><code>{"type": "assistant", ...tool_use}</code></td>
+<td><code>StreamEvent("tool_call")</code></td>
 </tr>
 <tr>
-<td><code>"manual"</code></td>
-<td>Every tool call</td>
+<td><code>{"type": "user", ...tool_result}</code></td>
+<td><code>StreamEvent("tool_result")</code></td>
+</tr>
+<tr>
+<td><code>{"type": "result", ...}</code> (final)</td>
+<td><code>StreamEvent("final", result=…)</code></td>
 </tr>
 </tbody>
 </table>
-<p>When the <code>ReActCognition</code> sees a gated tool call, it snapshots its
-state through the <code>Checkpointer</code> (status <code>"suspended"</code>), emits an
-<code>interrupt</code> event per pending tool call, and returns an <code>AgentResult</code>
-with <code>partial=True</code> and a <code>Suspended</code> value in
-<code>evals["suspended"]</code>. <code>Suspended.pending</code> is a <strong>frozen tuple</strong> of
-<code>ToolCall</code>s — the operator UI reads it and the resume path threads it
-back verbatim, so a mutable list can't desync the two ends of the
-handshake.</p>
-<p><code>agent.resume(run_id, decisions, ctx)</code> loads the snapshot, applies
-your per-call decisions, appends the tool results to the transcript,
-and drives the loop to a final answer. You can call it from an
-entirely fresh process — that's the point of the checkpointer.</p>
+<p>Cost, session id, and duration are lifted onto <code>AgentResult</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;write a REST client&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">final</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span>            <span class="c1"># CLI-side estimate (see below)</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">final</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;session_id&quot;</span><span class="p">]</span>       <span class="c1"># for CLI --session-id resumption</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">final</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;cli_duration_ms&quot;</span><span class="p">]</span>  <span class="c1"># end-to-end CLI wall time</span>
+</span></code></pre></div>
+<h2 id="configuration-walkthrough">Configuration walkthrough<a class="headerlink" href="#configuration-walkthrough" title="Anchor link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">claude_bin</span><span class="o">=</span><span class="s2">&quot;claude&quot;</span><span class="p">,</span>              <span class="c1"># override for a specific install path</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-opus-4-5&quot;</span><span class="p">,</span>           <span class="c1"># -&gt; --model</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">working_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/sandbox&quot;</span><span class="p">),</span>  <span class="c1"># subprocess cwd; --add-dir surface</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">config_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/var/claude&quot;</span><span class="p">),</span>    <span class="c1"># CLAUDE_CONFIG_DIR — isolated auth</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">allowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Grep&quot;</span><span class="p">),</span>    <span class="c1"># -&gt; --allowed-tools Read,Grep</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">disallowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Bash&quot;</span><span class="p">,),</span>        <span class="c1"># -&gt; --disallowed-tools Bash</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">permission_mode</span><span class="o">=</span><span class="s2">&quot;acceptEdits&quot;</span><span class="p">,</span>     <span class="c1"># -&gt; --permission-mode acceptEdits</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">max_turns</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>                       <span class="c1"># -&gt; --max-turns 6</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">session_id</span><span class="o">=</span><span class="s2">&quot;ex-abcd-...&quot;</span><span class="p">,</span>          <span class="c1"># -&gt; --session-id (for resume)</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">extra_args</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;--append-system-prompt&quot;</span><span class="p">,</span> <span class="s2">&quot;no comments&quot;</span><span class="p">),</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">terminate_grace_s</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>             <span class="c1"># SIGTERM grace before SIGKILL</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">max_concurrent</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>                  <span class="c1"># class-level BoundedSemaphore</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="p">)</span>
+</span></code></pre></div>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong><code>side_effecting=</code> is required on every <code>@tool</code>.</strong> The framework
-  fails at decoration time (not at call time) if you forget — because
-  the gating and idempotency primitives cannot guess.</li>
-<li><strong>You must wire a checkpointer for <code>resume(...)</code> to work.</strong>
-  Without one, the loop still emits <code>Suspended</code>, but the state isn't
-  persisted, so <code>resume</code> raises <code>ValueError("no suspended run … to
-  resume")</code>. <code>InMemoryCheckpointStore</code> is fine for tests; production
-  wants <code>PostgresCheckpointStore</code> (extra: <code>arc-agentkit[postgres]</code>).</li>
-<li><strong><code>agent.resume(...)</code> only works on a <code>ReActCognition</code>.</strong> Calling it
-  on a <code>SingleCallCognition</code> or a coordinator is a contract violation
-  and raises <code>RuntimeError</code> explicitly.</li>
-<li><strong>A <code>Suspended</code> result has <code>partial=True</code> and an empty
-  <code>output</code>.</strong> The final text comes from <code>resume(...)</code>, not the
-  original <code>run(...)</code>.</li>
+<li><strong>Cold start is real.</strong> First subprocess per config_dir is 2–5s of
+  CLI warmup even before the model call. Second-and-later calls are
+  faster if you keep the same <code>config_dir</code>.</li>
+<li><strong><code>~/.claude.json</code> corrupts under concurrent writes.</strong> The default
+  <code>~/.claude</code> is a single-writer store; running two production
+  workers against the same home directory will eventually mangle it.
+  Point <code>config_dir=Path(...)</code> at a per-worker directory in
+  production, and treat it as owned by the process.</li>
+<li><strong><code>Usage.cost_usd</code> is a CLI estimate.</strong> The CLI computes it from
+  published per-token prices; provider invoices can drift from it.
+  Surface it as an estimate in your UI, not a bill.</li>
+<li><strong><code>agent.model</code> is ignored.</strong> Only <code>ClaudeCliCognition.model</code> is
+  passed to <code>--model</code>. If both are set, the cognition wins; if neither
+  is set, the CLI picks its default.</li>
+<li><strong><code>ctx.check_cancelled()</code> fires between events, not mid-event.</strong>
+  On cancel the cognition sends SIGTERM (waits <code>terminate_grace_s</code>)
+  then SIGKILL, and still emits a terminal <code>final</code> with <code>partial=True</code>
+  and <code>evals["stop_reason"] == "cancelled"</code>. Long uninterruptible
+  tool calls inside the CLI can only be killed, not "asked" to stop.</li>
 </ul>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
-<li><a href="../../tutorial/#step-5-pause-for-human-approval-before-publishing">Tutorial · Step 5</a>
-  — the same primitive introduced inside a full walkthrough.</li>
-<li><a href="../resume-after-crash/">Resume after a crash</a> — the checkpointer's
-  other job.</li>
-<li><a href="../../concepts/agents/">Concepts · Agents</a> — the mental model of
-  <code>Cognition</code> and the control primitives.</li>
+<li><a href="../../concepts/agents/">Concepts · Agents</a> — how a <code>Cognition</code> slots
+  into an <code>Agent</code>.</li>
+<li><a href="../hitl-tool-approval/">Human-in-the-loop tool approval</a> — the
+  agentkit-side gate that runs OUTSIDE this cognition (the CLI has
+  its own permission model).</li>
+<li><a href="../spend-budget-and-quota/">Cap spend with Budget and Quota</a> —
+  wire cost limits over the top of <code>ClaudeCliCognition</code>.</li>
 </ul>
 
 
@@ -1992,7 +2056,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 21:27:10 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 00:52:48 UTC">August 6, 2026</span>
   </span>
 
     
@@ -2030,7 +2094,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview">
+          <a href="../otel-tracing-and-metrics/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Wire OpenTelemetry">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2040,20 +2104,20 @@ entirely fresh process — that's the point of the checkpointer.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Overview
+                Wire OpenTelemetry
               </div>
             </div>
           </a>
         
         
           
-          <a href="../resume-after-crash/" class="md-footer__link md-footer__link--next" aria-label="Next: Resume from a checkpoint after a crash">
+          <a href="../mcp-tools/" class="md-footer__link md-footer__link--next" aria-label="Next: Consume MCP tools from an agent">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Resume from a checkpoint after a crash
+                Consume MCP tools from an agent
               </div>
             </div>
             <div class="md-footer__button md-icon">

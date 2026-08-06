@@ -13,16 +13,16 @@
         <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/getting-started/">
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../why/">
       
       
-        <link rel="next" href="../tutorial/">
+        <link rel="next" href="../cheatsheet/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../assets/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
@@ -63,6 +63,70 @@
 
     
     
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+
   </head>
   
   
@@ -73,7 +137,7 @@
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -89,6 +153,29 @@
     </div>
     <div data-md-component="announce">
       
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="../tutorial/">tutorial</a>
+      to build a real research-briefing agent in 15 minutes.
+    </span>
+  </span>
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
     </div>
     
     
@@ -100,8 +187,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../assets/favicon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -131,7 +217,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
     
       <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
@@ -141,7 +227,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
     
       <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
@@ -217,6 +303,8 @@
     
     <div class="md-container" data-md-component="container">
       
+  
+
       
         
           
@@ -238,8 +326,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../assets/favicon.svg" alt="logo">
 
     </a>
     agentkit
@@ -274,6 +361,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../why/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why
   
 
     
@@ -375,21 +489,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#your-first-agent" class="md-nav__link">
+  <a href="#verify-the-install" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Your first agent
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#adding-a-tool" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Adding a tool
+        Verify the install
       
     </span>
   </a>
@@ -411,6 +514,33 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -462,10 +592,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -483,8 +613,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -675,6 +805,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../anti-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anti-patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -689,10 +846,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
             
   
   
@@ -710,8 +867,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -917,6 +1074,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/claude-cli-fastapi-code-gen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plug the claude CLI into FastAPI code-gen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mcp-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -944,10 +1157,153 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Migrating
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/from-langchain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From LangChain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/from-vanilla-asyncio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From vanilla asyncio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
             
   
   
@@ -965,8 +1321,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1422,21 +1778,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#your-first-agent" class="md-nav__link">
+  <a href="#verify-the-install" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Your first agent
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#adding-a-tool" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Adding a tool
+        Verify the install
       
     </span>
   </a>
@@ -1483,8 +1828,8 @@
 <p>On PyPI the distribution is <strong><code>arc-agentkit</code></strong> (the <code>agentkit</code> name
 on PyPI is owned by an unrelated project). The <strong>import name stays
 <code>agentkit</code></strong>, so all documentation and examples use <code>import
-agentkit</code> as-is. Follows the same pattern as <code>pip install Django</code>
-→ <code>import django</code>.</p>
+agentkit</code> as-is. Same pattern as <code>pip install Django</code> → <code>import
+django</code>.</p>
 <p>Before the first release, install directly from Git:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit @ git+https://github.com/arc-labs-ai/agentkit&quot;</span>
 </span></code></pre></div>
@@ -1495,61 +1840,35 @@ behind opt-in extras — pull only what you need:</p>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[postgres]&quot;</span><span class="w">        </span><span class="c1"># asyncpg + pgvector adapters</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[redis]&quot;</span><span class="w">           </span><span class="c1"># redis-backed store</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[observability]&quot;</span><span class="w">   </span><span class="c1"># OpenTelemetry exporter</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[mcp]&quot;</span><span class="w">             </span><span class="c1"># Model Context Protocol client</span>
 </span></code></pre></div>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Anchor link">&para;</a></h2>
 <ul>
 <li>Python 3.12 or newer.</li>
-<li>An API key for at least one LLM provider (Anthropic, OpenAI, DeepSeek,
-  or OpenRouter are shipped as batteries-included presets).</li>
+<li>One of: an API key for an LLM provider (Anthropic, OpenAI, DeepSeek,
+  OpenRouter are shipped as batteries-included presets), or the local
+  <code>claude</code> CLI on your PATH (the <code>ClaudeCliCognition</code> plug-in delegates
+  to it and needs no server-side key).</li>
 </ul>
-<h2 id="your-first-agent">Your first agent<a class="headerlink" href="#your-first-agent" title="Anchor link">&para;</a></h2>
-<p>The shortest useful program is a batteries-included <code>Chat</code> call. It
-already runs on a real <code>RunContext</code> with the standard
-<code>tracing → meter → retry</code> middleware chain, so you get cost accounting
-and structured retries for free:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">claude</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">claude</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;sk-...&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">chat</span><span class="p">:</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">chat</span><span class="p">(</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>            <span class="s2">&quot;Give me three surprising facts about octopuses.&quot;</span><span class="p">,</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>            <span class="n">system</span><span class="o">=</span><span class="s2">&quot;You reply in tight, cited bullets.&quot;</span><span class="p">,</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>        <span class="p">)</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;tokens: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">total_tokens</span><span class="si">}</span><span class="s2">   cost: $</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<h2 id="verify-the-install">Verify the install<a class="headerlink" href="#verify-the-install" title="Anchor link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import agentkit; print(agentkit.__version__)&quot;</span>
 </span></code></pre></div>
-<h2 id="adding-a-tool">Adding a tool<a class="headerlink" href="#adding-a-tool" title="Anchor link">&para;</a></h2>
-<p>The moment you want the model to <em>do</em> something, drop from <code>Chat</code> to an
-<code>Agent</code>. Register a plain async function as a tool and let a <code>ReAct</code>
-cognition drive the loop:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">tool</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_weather</span><span class="p">(</span><span class="n">city</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the current weather for a city.&quot;&quot;&quot;</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">city</span><span class="si">}</span><span class="s2">: 72F, clear&quot;</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;weather-bot&quot;</span><span class="p">,</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">get_weather</span><span class="p">]),</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">)</span>
-</span></code></pre></div>
-<p>You then call <code>await agent.run("What's the weather in Paris?", ctx)</code> on
-a <code>RunContext</code> you build (or borrow from a <code>Chat</code>).</p>
+<p>Prints the installed version. If it errors, the wheel isn't on your
+Python path — check the interpreter your shell resolved.</p>
 <h2 id="where-to-go-next">Where to go next<a class="headerlink" href="#where-to-go-next" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong><a href="../concepts/kernel/">Concepts › Kernel</a></strong> — the value types every
-  layer speaks.</li>
-<li><strong><a href="../concepts/runtime/">Concepts › Runtime</a></strong> — <code>RunContext</code>, <code>Invoker</code>,
-  <code>Budget</code>, <code>Quota</code>.</li>
-<li><strong><a href="../concepts/agents/">Concepts › Agents</a></strong> — <code>Agent</code> / <code>Workflow</code> /
-  <code>Cognition</code> and the control primitives.</li>
-<li><strong><a href="../examples/">Examples</a></strong> — end-to-end demos in the <code>examples/</code>
-  folder.</li>
+<li><strong><a href="../tutorial/">Tutorial</a></strong> — fifteen minutes, five steps, one
+  runnable script per step. Builds a real research-briefing agent with
+  a tool, a stream, a budget, and a human-approval gate.</li>
+<li><strong><a href="../">Landing</a></strong> — the four-theme grid (cognition · control ·
+  state · behaviour) that names every primitive. Start here for the
+  mental model.</li>
+<li><strong><a href="../why/">Why agentkit</a></strong> — twelve concrete guarantees and a
+  side-by-side comparison with LangChain / LangGraph / Instructor /
+  Pydantic-AI / hosted alternatives.</li>
+<li><strong><a href="../cheatsheet/">Cheatsheet</a></strong> — every primitive, tight code,
+  skimmable in 90 seconds. Reach for it when you know what you want and
+  just need the invocation.</li>
 </ul>
 
 
@@ -1571,7 +1890,7 @@ a <code>RunContext</code> you build (or borrow from a <code>Chat</code>).</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 20:52:47 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 05:26:44 UTC">August 6, 2026</span>
   </span>
 
     
@@ -1609,7 +1928,7 @@ a <code>RunContext</code> you build (or borrow from a <code>Chat</code>).</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href=".." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
+          <a href="../why/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Why">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1619,20 +1938,20 @@ a <code>RunContext</code> you build (or borrow from a <code>Chat</code>).</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Home
+                Why
               </div>
             </div>
           </a>
         
         
           
-          <a href="../tutorial/" class="md-footer__link md-footer__link--next" aria-label="Next: Tutorial">
+          <a href="../cheatsheet/" class="md-footer__link md-footer__link--next" aria-label="Next: Cheatsheet">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Tutorial
+                Cheatsheet
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1684,7 +2003,7 @@ a <code>RunContext</code> you build (or borrow from a <code>Chat</code>).</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>

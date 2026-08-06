@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/mcp-tools/">
       
       
-        <link rel="prev" href="../">
+        <link rel="prev" href="../claude-cli-fastapi-code-gen/">
       
       
-        <link rel="next" href="../resume-after-crash/">
+        <link rel="next" href="../../migrating/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Human-in-the-loop tool approval - agentkit</title>
+        <title>Consume MCP tools from an agent - agentkit</title>
       
     
     
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-do-i-pause-a-tool-for-human-approval" class="md-skip">
+        <a href="#how-do-i-consume-an-mcp-server-from-an-agentkit-agent" class="md-skip">
           Skip to content
         </a>
       
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Human-in-the-loop tool approval
+              Consume MCP tools from an agent
             
           </span>
         </div>
@@ -821,37 +821,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Human-in-the-loop tool approval
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../hitl-tool-approval/" class="md-nav__link">
         
   
   
@@ -867,81 +840,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#when-youd-want-this" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When you'd want this
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-code" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working code
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How it works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gotchas" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gotchas
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1119,10 +1017,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../mcp-tools/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1138,6 +1063,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#when-youd-want-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When you'd want this
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#working-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Working code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-seams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three seams
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gotchas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gotchas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1791,10 +1791,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#the-three-seams" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it works
+        The three seams
       
     </span>
   </a>
@@ -1843,134 +1843,132 @@
   
 
 
-<h1 id="how-do-i-pause-a-tool-for-human-approval">How do I pause a tool for human approval?<a class="headerlink" href="#how-do-i-pause-a-tool-for-human-approval" title="Anchor link">&para;</a></h1>
+<h1 id="how-do-i-consume-an-mcp-server-from-an-agentkit-agent">How do I consume an MCP server from an agentkit agent?<a class="headerlink" href="#how-do-i-consume-an-mcp-server-from-an-agentkit-agent" title="Anchor link">&para;</a></h1>
 <h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
-<p>Any tool that mutates the world — publishing content, spending money,
-sending a message, filing a ticket, running a shell command — should
-not run without a human saying yes when the run is being watched. The
-run should <strong>suspend to a checkpoint</strong> and hand control back to your
-driver code, which decides whether to resume with <code>"approve"</code>,
-<code>"reject"</code>, or a modified argument list.</p>
-<h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">,</span> <span class="n">ToolCall</span><span class="p">,</span> <span class="n">tool</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpointer</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">Turn</span><span class="p">,</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Send an email. Side-effecting — always gated under Autonomy.GATED.&quot;&quot;&quot;</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;sent to </span><span class="si">{</span><span class="n">to</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">subject</span><span class="si">!r}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="o">.</span><span class="n">script</span><span class="p">(</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="p">[</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="n">Turn</span><span class="p">(</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                <span class="n">tool_calls</span><span class="o">=</span><span class="p">(</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                    <span class="n">ToolCall</span><span class="p">(</span><span class="s2">&quot;c1&quot;</span><span class="p">,</span> <span class="s2">&quot;send_email&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;to&quot;</span><span class="p">:</span> <span class="s2">&quot;team@x&quot;</span><span class="p">,</span> <span class="s2">&quot;subject&quot;</span><span class="p">:</span> <span class="s2">&quot;brief&quot;</span><span class="p">}),</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                <span class="p">)</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            <span class="p">),</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="n">Turn</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Email sent.&quot;</span><span class="p">),</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="p">]</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="p">)</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="n">checkpointer</span><span class="o">=</span><span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">InMemoryCheckpointStore</span><span class="p">()),</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">,</span>  <span class="c1"># gate every side_effecting tool</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="p">)</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;notifier&quot;</span><span class="p">,</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Draft and send.&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">send_email</span><span class="p">]),</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="p">)</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="c1"># First run — the loop suspends before send_email fires.</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Send the team a brief.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;suspended&quot;</span><span class="p">]</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;awaiting approval for: </span><span class="si">{</span><span class="p">[</span><span class="n">tc</span><span class="o">.</span><span class="n">name</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">tc</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="c1"># Driver decides. Decisions are keyed by ToolCall.id:</span>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="c1">#   &quot;approve&quot;          — run with the model&#39;s args</span>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>    <span class="c1">#   &quot;reject&quot; / &quot;deny&quot;  — inject a DENIED tool result, keep the loop going</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>    <span class="c1">#   any other string   — parsed as a JSON args override, then run</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="n">decisions</span> <span class="o">=</span> <span class="p">{</span><span class="n">tc</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="s2">&quot;approve&quot;</span> <span class="k">for</span> <span class="n">tc</span> <span class="ow">in</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">}</span>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">susp</span><span class="o">.</span><span class="n">run_id</span><span class="p">,</span> <span class="n">decisions</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;final: </span><span class="si">{</span><span class="n">final</span><span class="o">.</span><span class="n">output</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<p>The <a href="https://modelcontextprotocol.io">Model Context Protocol</a> ecosystem
+ships thousands of pre-built servers — filesystem, git, GitHub, search,
+databases, custom internal APIs — as language-agnostic subprocesses or
+HTTP endpoints. Rather than wrapping each one in a bespoke agentkit
+<code>Tool</code>, this integration lets you point at any MCP server and expose
+its tools, resources, and prompts through the framework's canonical
+<code>Tool</code>, <code>MemorySource</code>, and <code>Prompt</code> Protocols.</p>
+<p>Install the extra:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[mcp]&quot;</span>
 </span></code></pre></div>
-<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
-<p><code>Autonomy</code> is a run-wide tier carried on <code>RunContext.autonomy</code>.
-<code>should_gate(autonomy, requires_approval, key_step)</code> is the shared
-policy every gating surface consults:</p>
-<table>
-<thead>
-<tr>
-<th>Autonomy</th>
-<th>Gates</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>"auto"</code></td>
-<td>Only tools explicitly marked <code>requires_approval=True</code></td>
-</tr>
-<tr>
-<td><code>"gated"</code></td>
-<td>Also every <code>side_effecting=True</code> tool (key step)</td>
-</tr>
-<tr>
-<td><code>"manual"</code></td>
-<td>Every tool call</td>
-</tr>
-</tbody>
-</table>
-<p>When the <code>ReActCognition</code> sees a gated tool call, it snapshots its
-state through the <code>Checkpointer</code> (status <code>"suspended"</code>), emits an
-<code>interrupt</code> event per pending tool call, and returns an <code>AgentResult</code>
-with <code>partial=True</code> and a <code>Suspended</code> value in
-<code>evals["suspended"]</code>. <code>Suspended.pending</code> is a <strong>frozen tuple</strong> of
-<code>ToolCall</code>s — the operator UI reads it and the resume path threads it
-back verbatim, so a mutable list can't desync the two ends of the
-handshake.</p>
-<p><code>agent.resume(run_id, decisions, ctx)</code> loads the snapshot, applies
-your per-call decisions, appends the tool results to the transcript,
-and drives the loop to a final answer. You can call it from an
-entirely fresh process — that's the point of the checkpointer.</p>
+<p>Reach for this when:</p>
+<ul>
+<li>You want an off-the-shelf MCP server's tools inside a
+  <code>ReActCognition</code> loop without hand-writing an adapter each time.</li>
+<li>You want the server's exposed resources to become a <code>MemorySource</code>
+  the agent can query for grounding.</li>
+<li>You want the server's authored prompts as versioned <code>Prompt</code>
+  objects your agent can wire.</li>
+</ul>
+<h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="sd">&quot;&quot;&quot;Connect to an MCP server and hand its tools + resources to an agent.&quot;&quot;&quot;</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">MCPClient</span><span class="p">,</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">StdioServer</span><span class="p">,</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">mcp_prompts</span><span class="p">,</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">mcp_resources</span><span class="p">,</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">mcp_tools</span><span class="p">,</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="p">)</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="c1"># Point at any local MCP server. `uvx` / `npx` / a compiled binary —</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="c1"># the client just spawns the command and speaks the protocol over</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="c1"># stdio. Swap for `StreamableHttpServer(url=...)` for hosted servers.</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="n">server</span> <span class="o">=</span> <span class="n">StdioServer</span><span class="p">(</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>        <span class="n">command</span><span class="o">=</span><span class="s2">&quot;uvx&quot;</span><span class="p">,</span>
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>        <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;mcp-server-time&quot;</span><span class="p">,</span> <span class="s2">&quot;--local-timezone&quot;</span><span class="p">,</span> <span class="s2">&quot;UTC&quot;</span><span class="p">),</span>
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="p">)</span>
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">mcp</span><span class="p">:</span>
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>        <span class="c1"># Adapt everything the server exposes.</span>
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>        <span class="n">tools</span> <span class="o">=</span> <span class="k">await</span> <span class="n">mcp_tools</span><span class="p">(</span><span class="n">mcp</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;time_&quot;</span><span class="p">)</span>
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>        <span class="n">memory</span> <span class="o">=</span> <span class="n">mcp_resources</span><span class="p">(</span><span class="n">mcp</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;time_docs&quot;</span><span class="p">)</span>
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>        <span class="n">prompts</span> <span class="o">=</span> <span class="k">await</span> <span class="n">mcp_prompts</span><span class="p">(</span><span class="n">mcp</span><span class="p">)</span>
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>        <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;clock&quot;</span><span class="p">,</span>
+</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>            <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
+</span><span id="__span-1-37"><a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a>            <span class="n">prompt</span><span class="o">=</span><span class="n">prompts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;system&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;Answer with the current time when asked.&quot;</span><span class="p">,</span>
+</span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a>            <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="n">tools</span><span class="p">),</span>
+</span><span id="__span-1-39"><a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a>            <span class="n">memory</span><span class="o">=</span><span class="n">memory</span><span class="p">,</span>
+</span><span id="__span-1-40"><a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a>        <span class="p">)</span>
+</span><span id="__span-1-41"><a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a>
+</span><span id="__span-1-42"><a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a>        <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;mcp-1&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">Services</span><span class="p">())</span>
+</span><span id="__span-1-43"><a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a>        <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;What time is it in Tokyo?&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-1-44"><a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+</span><span id="__span-1-45"><a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a>
+</span><span id="__span-1-46"><a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a>
+</span><span id="__span-1-47"><a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p><code>mcp_tools()</code> returns a list satisfying agentkit's <code>Tool</code> Protocol —
+drop it straight into <code>ReActCognition(tools=...)</code>. <code>mcp_resources()</code>
+returns a <code>MemorySource</code>; assign it to <code>Agent.memory</code> and any
+default grounder will fold results into the prompt.  <code>mcp_prompts()</code>
+returns <code>{name: Prompt}</code> for any server-authored prompts that don't
+require arguments.</p>
+<h2 id="the-three-seams">The three seams<a class="headerlink" href="#the-three-seams" title="Anchor link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># tools ────────────────────────────────────────────────────────────</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">tools</span> <span class="o">=</span> <span class="k">await</span> <span class="n">mcp_tools</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;fs_&quot;</span><span class="p">)</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tools</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">description</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">parameters</span><span class="p">)</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="c1"># t is a `Tool` — usable in ReActCognition unchanged.</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># resources ────────────────────────────────────────────────────────</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">mcp_resources</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;my_docs&quot;</span><span class="p">)</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">items</span> <span class="o">=</span> <span class="k">await</span> <span class="n">memory</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;release notes&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># items: list[MemoryItem(content=..., source=&quot;my_docs&quot;, metadata={&quot;uri&quot;: ...})]</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="c1"># prompts ──────────────────────────────────────────────────────────</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">prompts</span> <span class="o">=</span> <span class="k">await</span> <span class="n">mcp_prompts</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="c1"># {name: Prompt(id=name, version=&quot;mcp:1&quot;, template=&lt;rendered&gt;)}</span>
+</span></code></pre></div>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong><code>side_effecting=</code> is required on every <code>@tool</code>.</strong> The framework
-  fails at decoration time (not at call time) if you forget — because
-  the gating and idempotency primitives cannot guess.</li>
-<li><strong>You must wire a checkpointer for <code>resume(...)</code> to work.</strong>
-  Without one, the loop still emits <code>Suspended</code>, but the state isn't
-  persisted, so <code>resume</code> raises <code>ValueError("no suspended run … to
-  resume")</code>. <code>InMemoryCheckpointStore</code> is fine for tests; production
-  wants <code>PostgresCheckpointStore</code> (extra: <code>arc-agentkit[postgres]</code>).</li>
-<li><strong><code>agent.resume(...)</code> only works on a <code>ReActCognition</code>.</strong> Calling it
-  on a <code>SingleCallCognition</code> or a coordinator is a contract violation
-  and raises <code>RuntimeError</code> explicitly.</li>
-<li><strong>A <code>Suspended</code> result has <code>partial=True</code> and an empty
-  <code>output</code>.</strong> The final text comes from <code>resume(...)</code>, not the
-  original <code>run(...)</code>.</li>
+<li><strong>Stateful vs stateless servers.</strong> Some MCP servers keep per-session
+  state (open file handles, DB transactions). <code>MCPClient</code> opens exactly
+  one session per <code>async with</code> block; if you split calls across
+  independent <code>MCPClient</code> contexts, that state does NOT carry over.</li>
+<li><strong>Tool-list caching.</strong> <code>MCPClient.list_tools()</code> caches for 30s. Call
+  <code>force_refresh=True</code> when a live server just registered a new tool
+  and you want the model to see it in the current turn.</li>
+<li><strong>Cancellation is pre-dispatch, not mid-call.</strong>
+  <code>MCPClient.call_tool(..., ctx=ctx)</code> checks <code>ctx.check_cancelled()</code>
+  BEFORE hitting the transport. To cancel a mid-flight call, close the
+  <code>MCPClient</code> context — the transport tear-down will terminate the
+  server's outbound stream. The session itself is not usable after that.</li>
+<li><strong>Every MCP tool defaults to <code>side_effecting=True</code>.</strong> MCP has no
+  standard "read-only" marker, so we assume the worst. Under
+  <code>Autonomy.GATED</code> this means every MCP tool call surfaces a human
+  approval interrupt — set <code>Autonomy.AUTO</code> if that's not what you want,
+  or wrap the returned tools to flip the flag.</li>
+<li><strong>Argumented prompts are dropped in v1.</strong> <code>mcp_prompts()</code> can only
+  materialize static prompts. Use <code>MCPClient.get_prompt(name, args)</code>
+  directly for prompts that require args.</li>
+<li><strong>The <code>mcp</code> extra pulls in <code>pydantic</code>.</strong> If your existing setup was
+  pydantic-free by design, the extra will end that. It comes in via
+  the upstream <code>mcp</code> package's wire schema.</li>
 </ul>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
-<li><a href="../../tutorial/#step-5-pause-for-human-approval-before-publishing">Tutorial · Step 5</a>
-  — the same primitive introduced inside a full walkthrough.</li>
-<li><a href="../resume-after-crash/">Resume after a crash</a> — the checkpointer's
-  other job.</li>
-<li><a href="../../concepts/agents/">Concepts · Agents</a> — the mental model of
-  <code>Cognition</code> and the control primitives.</li>
+<li><a href="../../concepts/agents/">Concepts · Agents</a> — how <code>Tool</code> / <code>Memory</code>
+  slot into an <code>Agent</code>.</li>
+<li><a href="../hitl-tool-approval/">Human-in-the-loop tool approval</a> — the
+  agentkit-side gate that fires before an MCP tool runs when
+  <code>Autonomy</code> allows it.</li>
+<li>The MCP spec: <a href="https://modelcontextprotocol.io">https://modelcontextprotocol.io</a></li>
 </ul>
 
 
@@ -1992,7 +1990,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 21:27:10 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 00:52:48 UTC">August 6, 2026</span>
   </span>
 
     
@@ -2030,7 +2028,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview">
+          <a href="../claude-cli-fastapi-code-gen/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Plug the claude CLI into FastAPI code-gen">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2040,20 +2038,20 @@ entirely fresh process — that's the point of the checkpointer.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Overview
+                Plug the claude CLI into FastAPI code-gen
               </div>
             </div>
           </a>
         
         
           
-          <a href="../resume-after-crash/" class="md-footer__link md-footer__link--next" aria-label="Next: Resume from a checkpoint after a crash">
+          <a href="../../migrating/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Resume from a checkpoint after a crash
+                Overview
               </div>
             </div>
             <div class="md-footer__button md-icon">

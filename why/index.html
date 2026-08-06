@@ -1,0 +1,2769 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/why/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../getting-started/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Why - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#why-agentkit" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="../tutorial/">tutorial</a>
+      to build a real research-briefing agent in 15 minutes.
+    </span>
+  </span>
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../assets/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Why
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../assets/favicon.svg" alt="logo">
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you get
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you get">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-a-run-has-an-explicit-ceiling-that-halts-it-not-a-dashboard-that-warns-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. A run has an explicit ceiling that halts it, not a dashboard that warns you
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-every-side-effecting-tool-goes-through-an-approval-gate-you-actually-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Every side-effecting tool goes through an approval gate you actually control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-a-crash-is-not-the-end-of-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. A crash is not the end of a run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-cooperative-cancel-across-the-whole-subtree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Cooperative cancel across the whole subtree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-the-middleware-chain-is-a-list-you-own-not-a-decorator-soup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The middleware chain is a list you own, not a decorator soup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-every-seam-is-a-typed-protocol-mypy-strict-clean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Every seam is a typed Protocol, mypy --strict clean
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-zero-runtime-dependencies-in-the-core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Zero runtime dependencies in the core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-structured-output-that-survives-model-drift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Structured output that survives model drift
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-compose-agents-without-subclassing-anything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Compose agents without subclassing anything
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-provider-neutral-by-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Provider-neutral by design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-mcp-is-a-first-class-citizen-not-a-translation-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. MCP is a first-class citizen, not a translation layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-a-first-class-testing-kit-that-avoids-double-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. A first-class testing kit that avoids double-implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-agentkit-is-the-fit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When agentkit is the fit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-its-probably-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When it's probably not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-alternatives-stack-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the alternatives stack up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sanity-check-what-agentkit-is-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sanity check: what agentkit is not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-typed-seams-buys-you-concretely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "typed seams" buys you concretely
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What &#34;typed seams&#34; buys you concretely">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#swap-openai-for-deepseek-for-openrouter-without-touching-the-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Swap OpenAI for DeepSeek for OpenRouter without touching the agent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#swap-the-checkpoint-store-from-in-memory-to-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Swap the checkpoint store from in-memory to Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#point-tracing-at-any-otlp-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point tracing at any OTLP backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-failure-modes-weve-seen-and-their-one-line-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The failure modes we've seen — and their one-line fixes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-bet-restated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The bet, restated
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../anti-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anti-patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/hitl-tool-approval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/resume-after-crash/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resume from a checkpoint after a crash
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/spend-budget-and-quota/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cap spend with Budget and Quota
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/parallel-agents-with-cancellation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel agents with cooperative cancellation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/custom-middleware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write a custom middleware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/otel-tracing-and-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire OpenTelemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/claude-cli-fastapi-code-gen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plug the claude CLI into FastAPI code-gen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mcp-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Migrating
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/from-langchain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From LangChain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/from-vanilla-asyncio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From vanilla asyncio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you get
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you get">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-a-run-has-an-explicit-ceiling-that-halts-it-not-a-dashboard-that-warns-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. A run has an explicit ceiling that halts it, not a dashboard that warns you
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-every-side-effecting-tool-goes-through-an-approval-gate-you-actually-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Every side-effecting tool goes through an approval gate you actually control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-a-crash-is-not-the-end-of-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. A crash is not the end of a run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-cooperative-cancel-across-the-whole-subtree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Cooperative cancel across the whole subtree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-the-middleware-chain-is-a-list-you-own-not-a-decorator-soup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The middleware chain is a list you own, not a decorator soup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-every-seam-is-a-typed-protocol-mypy-strict-clean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Every seam is a typed Protocol, mypy --strict clean
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-zero-runtime-dependencies-in-the-core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Zero runtime dependencies in the core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-structured-output-that-survives-model-drift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Structured output that survives model drift
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-compose-agents-without-subclassing-anything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Compose agents without subclassing anything
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-provider-neutral-by-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Provider-neutral by design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-mcp-is-a-first-class-citizen-not-a-translation-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. MCP is a first-class citizen, not a translation layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-a-first-class-testing-kit-that-avoids-double-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. A first-class testing kit that avoids double-implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-agentkit-is-the-fit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When agentkit is the fit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-its-probably-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When it's probably not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-alternatives-stack-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the alternatives stack up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sanity-check-what-agentkit-is-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sanity check: what agentkit is not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-typed-seams-buys-you-concretely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "typed seams" buys you concretely
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What &#34;typed seams&#34; buys you concretely">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#swap-openai-for-deepseek-for-openrouter-without-touching-the-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Swap OpenAI for DeepSeek for OpenRouter without touching the agent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#swap-the-checkpoint-store-from-in-memory-to-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Swap the checkpoint store from in-memory to Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#point-tracing-at-any-otlp-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point tracing at any OTLP backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-failure-modes-weve-seen-and-their-one-line-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The failure modes we've seen — and their one-line fixes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-bet-restated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The bet, restated
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="why-agentkit">Why agentkit<a class="headerlink" href="#why-agentkit" title="Anchor link">&para;</a></h1>
+<p>Every agent framework makes a bet. This page states agentkit's bet plainly,
+lists the twelve concrete guarantees you get if you take it, and compares
+the bet against the alternatives so you can pick the tool whose bet
+matches the code you're actually about to write.</p>
+<p>The bet: <strong>an agent is composed, not scripted.</strong> Four orthogonal concerns —
+<strong>cognition</strong>, <strong>control</strong>, <strong>state</strong>, <strong>behaviour</strong> — plug together
+through typed Protocols. Every seam is a swap. Nothing is hidden inside a
+loop you can't rewrite.</p>
+<h2 id="what-you-get">What you get<a class="headerlink" href="#what-you-get" title="Anchor link">&para;</a></h2>
+<p>Twelve concrete guarantees, each a capability the framework hands you and
+competitors mostly don't.</p>
+<h3 id="1-a-run-has-an-explicit-ceiling-that-halts-it-not-a-dashboard-that-warns-you">1. A run has an explicit ceiling that halts it, not a dashboard that warns you<a class="headerlink" href="#1-a-run-has-an-explicit-ceiling-that-halts-it-not-a-dashboard-that-warns-you" title="Anchor link">&para;</a></h3>
+<p><code>Budget(max_cost_usd=..., max_calls=..., max_depth=...)</code> on the
+<code>RunContext</code> is enforced under an async lock by the <code>meter()</code> middleware
+on every chat call. Overspend raises <code>MeterExceeded</code>; the cognition
+propagates it; the run stops. Totals are invariant under concurrent
+workers — a coordinator fanning ten researchers out on the same
+<code>Budget</code> cannot race past its ceiling. Same primitive scoped by tenant:
+<code>Quota(max_rpm=..., max_tpm=..., max_cost_usd_per_window=...)</code> on the
+same <code>meter()</code> chain.</p>
+<h3 id="2-every-side-effecting-tool-goes-through-an-approval-gate-you-actually-control">2. Every side-effecting tool goes through an approval gate you actually control<a class="headerlink" href="#2-every-side-effecting-tool-goes-through-an-approval-gate-you-actually-control" title="Anchor link">&para;</a></h3>
+<p><code>@tool(side_effecting=True)</code> marks a tool as world-mutating at
+decoration time; forgetting the flag is a <code>ToolDefinitionError</code>
+(the error is the fix). <code>RunContext.autonomy</code> is one of <code>"auto"</code>,
+<code>"gated"</code>, or <code>"manual"</code>. Under <code>"gated"</code>, every <code>side_effecting=True</code>
+tool call suspends the loop, snapshots state through the <code>Checkpointer</code>,
+returns a <code>Suspended</code> — and waits for your driver to call
+<code>agent.resume(run_id, decisions, ctx)</code> with <code>"approve"</code> /
+<code>"reject"</code> / a JSON args-override per pending <code>ToolCall.id</code>. The gate
+is a real pause, not an animation.</p>
+<h3 id="3-a-crash-is-not-the-end-of-a-run">3. A crash is not the end of a run<a class="headerlink" href="#3-a-crash-is-not-the-end-of-a-run" title="Anchor link">&para;</a></h3>
+<p>The same <code>Checkpointer</code> that powers HITL powers durable resume.
+<code>ReActCognition</code> snapshots after every successful tool iteration; a
+fresh process running the same <code>run_id</code> against the same
+<code>CheckpointPort</code> hydrates the transcript, <code>Usage</code>, and the next
+iteration index. <code>InMemoryCheckpointStore</code> for tests;
+<code>PostgresCheckpointStore</code> (from <code>arc-agentkit[postgres]</code>) for
+production. One producer per <code>run_id</code> — enforced by monotonic
+versioning at the port.</p>
+<h3 id="4-cooperative-cancel-across-the-whole-subtree">4. Cooperative cancel across the whole subtree<a class="headerlink" href="#4-cooperative-cancel-across-the-whole-subtree" title="Anchor link">&para;</a></h3>
+<p><code>CancellationToken</code> on <code>RunContext</code> is shared by reference through
+<code>ctx.child()</code>. Cancelling the parent flips every child's next
+<code>ctx.check_cancelled()</code> into a <code>Cancelled</code> exception. <code>run_agents(...)</code>
+runs children inside <code>asyncio.TaskGroup</code> bounded by
+<code>Budget.semaphore()</code> — the first failure cancels the siblings and
+raises an <code>ExceptionGroup</code> you catch with <code>except*</code>. Fan out ten
+researchers, one blows up, the other nine stop <em>before</em> they burn the
+same budget on work you'll throw away.</p>
+<h3 id="5-the-middleware-chain-is-a-list-you-own-not-a-decorator-soup">5. The middleware chain is a list you own, not a decorator soup<a class="headerlink" href="#5-the-middleware-chain-is-a-list-you-own-not-a-decorator-soup" title="Anchor link">&para;</a></h3>
+<p>Two chains — <code>chat_middleware</code>, <code>tool_middleware</code> — are handed to the
+<code>Invoker</code>. <code>chain([tracing(), meter(), retry(), memoize(),
+compaction(), security(), output_coerce()], terminal)</code> is a plain
+Python list: reorder, swap, or drop by editing the file. No plugin
+discovery, no registration decorator, no priority number to argue
+about. Ordering is deterministic because a list is deterministic.</p>
+<h3 id="6-every-seam-is-a-typed-protocol-mypy-strict-clean">6. Every seam is a typed Protocol, <code>mypy --strict</code> clean<a class="headerlink" href="#6-every-seam-is-a-typed-protocol-mypy-strict-clean" title="Anchor link">&para;</a></h3>
+<p><code>LLMPort</code>, <code>StorePort</code>, <code>VectorPort</code>, <code>SearchPort</code>, <code>FetchPort</code>,
+<code>ClockPort</code>, <code>CheckpointPort</code>, <code>TracePort</code>, <code>ObserverPort</code>,
+<code>MetricsPort</code>, <code>SamplerPort</code>, <code>ToolPort</code> — every I/O seam is a
+<code>typing.Protocol</code>. Swap OpenAI for DeepSeek by rewriting one line of
+wire-up. Swap the checkpoint store for your own by implementing four
+async methods. <code>py.typed</code> ships in the wheel.</p>
+<h3 id="7-zero-runtime-dependencies-in-the-core">7. Zero runtime dependencies in the core<a class="headerlink" href="#7-zero-runtime-dependencies-in-the-core" title="Anchor link">&para;</a></h3>
+<p><code>pip install arc-agentkit</code> gives you a working framework. No
+<code>pydantic</code>, no <code>httpx</code>, no vendor SDK, no <code>openai</code>, no <code>anthropic</code>.
+The batteries-included providers (<code>arc-agentkit[http]</code>), Postgres
+adapters (<code>arc-agentkit[postgres]</code>), Redis store (<code>arc-agentkit[redis]</code>),
+OpenTelemetry bridge (<code>arc-agentkit[observability]</code>), and MCP client
+(<code>arc-agentkit[mcp]</code>) are opt-in extras. Nothing you don't use is
+imported.</p>
+<h3 id="8-structured-output-that-survives-model-drift">8. Structured output that survives model drift<a class="headerlink" href="#8-structured-output-that-survives-model-drift" title="Anchor link">&para;</a></h3>
+<p><code>Agent(output=MyPydanticModel)</code> (or <code>attrs</code> / <code>dataclass</code> / raw JSON
+Schema dict) builds a <code>SchemaAdapter</code> at construction time. The
+adapter's schema lands in the cache-stable prompt prefix; the
+<code>output_coerce</code> middleware coerces raw text on the way out. Parse
+failure surfaces to the model as a repair message with a bounded
+<code>max_repairs</code> retry budget. Same primitive for tool outputs:
+<code>@tool(..., output_schema=MyModel)</code> validates every tool return.</p>
+<h3 id="9-compose-agents-without-subclassing-anything">9. Compose agents without subclassing anything<a class="headerlink" href="#9-compose-agents-without-subclassing-anything" title="Anchor link">&para;</a></h3>
+<p><code>Agent</code> is a <code>@dataclass</code>. Its <code>cognition=</code> field takes any
+<code>Cognition</code> Protocol impl. Change the loop by handing in a different
+cognition. <code>SingleCallCognition</code> for one-shot, <code>ReActCognition</code> for a
+tool loop, <code>CoordinatorCognition(children=..., policy=...)</code> for
+multi-agent, <code>ClaudeCliCognition</code> to delegate to the local <code>claude</code>
+CLI, or a 60-line <code>Cognition</code> subclass of your own. <code>Skill</code> composes
+prompt + cognition + tools + memory into a single wirable unit;
+<code>skill.as_agent()</code> and <code>skill.as_tool()</code> let it live as either.</p>
+<h3 id="10-provider-neutral-by-design">10. Provider-neutral by design<a class="headerlink" href="#10-provider-neutral-by-design" title="Anchor link">&para;</a></h3>
+<p>The core doesn't know what an LLM is beyond <code>LLMPort</code>. Batteries-included
+adapters — <code>claude(...)</code>, <code>openai(...)</code>, <code>deepseek(...)</code>,
+<code>openrouter(...)</code> — each return a <code>Chat</code> wired with the standard
+<code>tracing → meter → retry</code> chain. <code>ClaudeCliCognition</code> delegates to a
+locally-installed <code>claude</code> CLI (no API key needed on your server; the
+CLI's own auth is used). Any HTTP endpoint speaking a chat-style API
+is one <code>LLMPort</code> implementation away.</p>
+<h3 id="11-mcp-is-a-first-class-citizen-not-a-translation-layer">11. MCP is a first-class citizen, not a translation layer<a class="headerlink" href="#11-mcp-is-a-first-class-citizen-not-a-translation-layer" title="Anchor link">&para;</a></h3>
+<p><code>arc-agentkit[mcp]</code> gives you <code>MCPClient(StdioServer(...))</code> and three
+adapters: <code>mcp_tools(client)</code> returns objects satisfying agentkit's
+<code>Tool</code> Protocol, drop-in for <code>ReActCognition(tools=...)</code>.
+<code>mcp_resources(client)</code> returns a <code>MemorySource</code> the agent can query
+for grounding. <code>mcp_prompts(client)</code> returns
+<code>dict[str, Prompt]</code> for server-authored versioned prompts. One
+network to consume every MCP server ever written.</p>
+<h3 id="12-a-first-class-testing-kit-that-avoids-double-implementation">12. A first-class testing kit that avoids double-implementation<a class="headerlink" href="#12-a-first-class-testing-kit-that-avoids-double-implementation" title="Anchor link">&para;</a></h3>
+<p><code>FakeLLM</code>, <code>FakeFetch</code>, <code>FakeSearch</code>, <code>FakeMemory</code>, <code>FakeTool</code>,
+<code>FakeCompactor</code>, <code>FakeGrounder</code>, <code>FakeClock</code>, <code>RecordingTracer</code>,
+<code>FakeCtx</code>, and <code>make_test_ctx(...)</code> — the same doubles the framework's
+own suite uses. Zero API keys required to unit-test your agents end
+to end. Test doubles live under <code>agentkit.testing.*</code> and are
+<strong>deliberately</strong> not re-exported from the top-level package: a
+<code>from agentkit import FakeLLM</code> shape would let production code accidentally
+pin a test double. The boundary is enforced.</p>
+<h2 id="when-agentkit-is-the-fit">When agentkit is the fit<a class="headerlink" href="#when-agentkit-is-the-fit" title="Anchor link">&para;</a></h2>
+<p>If you tick most of these, agentkit is likely the right pick:</p>
+<ul>
+<li>The code is going into production; a demo notebook is not the target.</li>
+<li>You need cost caps, cancellation, and HITL as first-class concerns —
+  not the framework's <code>v0.3</code> addition.</li>
+<li>You want typed seams and <code>mypy --strict</code> on your own code, and the
+  framework had better not fight you.</li>
+<li>You want the loop to be visible and rewritable, not hidden behind a
+  graph DSL.</li>
+<li>You're wiring the LLM yourself — no vendor is going to lock you in.</li>
+</ul>
+<h2 id="when-its-probably-not">When it's probably not<a class="headerlink" href="#when-its-probably-not" title="Anchor link">&para;</a></h2>
+<ul>
+<li>You want a visual flow graph you can drag and drop. Reach for
+  LangGraph or a hosted equivalent.</li>
+<li>You want a hosted, one-click agent with built-in personas, memory,
+  and deploy. Reach for a hosted framework.</li>
+<li>You're building a personal script that never grows beyond one file
+  and one provider. Vanilla <code>asyncio</code> plus the provider SDK is fine
+  and agentkit's typed seams and control plane will just be ceremony.</li>
+<li>You need a giant catalog of pre-glued integrations. LangChain has
+  more of them today. agentkit ships fewer, on purpose.</li>
+</ul>
+<h2 id="how-the-alternatives-stack-up">How the alternatives stack up<a class="headerlink" href="#how-the-alternatives-stack-up" title="Anchor link">&para;</a></h2>
+<p>Each cell states the tool's actual bet, not marketing.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>The bet</th>
+<th>Where it wins</th>
+<th>Where it hurts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>agentkit</strong></td>
+<td>Typed, composable seams; explicit loop; cancel/budget/HITL as core, not add-ons.</td>
+<td>Production code that must survive. Multi-agent with hard limits.</td>
+<td>Prototyping in a notebook where ceremony outweighs benefit.</td>
+</tr>
+<tr>
+<td><strong>LangGraph</strong></td>
+<td>Agents as a directed graph; the graph DSL is the mental model.</td>
+<td>Flow you can draw; branching your ops team can review visually.</td>
+<td>Loop dynamics you can't model as a fixed graph. Type gymnastics.</td>
+</tr>
+<tr>
+<td><strong>LangChain</strong></td>
+<td>A large catalog of prebuilt integrations glued together via <code>Runnable</code>s.</td>
+<td>You need a specific integration and don't want to write it.</td>
+<td>Minimal, typed core. Vendor gravity comes with the catalog.</td>
+</tr>
+<tr>
+<td><strong>LlamaIndex</strong></td>
+<td>RAG-shaped abstractions with agents added on top.</td>
+<td>Document-heavy retrieval with sensible defaults.</td>
+<td>Non-RAG shapes push against the framework's grain.</td>
+</tr>
+<tr>
+<td><strong>Instructor</strong></td>
+<td>Structured outputs on top of a single provider SDK.</td>
+<td>You already have a script; you just need typed outputs.</td>
+<td>No tool loop, no cancel, no budget, no resume — only outputs.</td>
+</tr>
+<tr>
+<td><strong>Pydantic-AI</strong></td>
+<td>Typed agents backed by Pydantic; friendly for one-agent, one-provider setups.</td>
+<td>Solo agent with structured I/O; readable and typed.</td>
+<td>Multi-agent coordination, HITL suspend/resume, durability.</td>
+</tr>
+<tr>
+<td><strong>Vanilla asyncio + SDK</strong></td>
+<td>The whole thing is one file and one provider; nothing is worth abstracting.</td>
+<td>Truly small scripts. The 30-line loop that never grows.</td>
+<td>Retries, cancel, budget, HITL, resume — all you-write-it.</td>
+</tr>
+<tr>
+<td><strong>OpenAI Assistants API</strong></td>
+<td>The vendor owns the loop, the state, the tools, the memory.</td>
+<td>You want to hand off <em>everything</em>; you don't care about lock-in.</td>
+<td>The vendor changes the deal. State lives outside your process.</td>
+</tr>
+<tr>
+<td><strong>Claude Agent SDK</strong></td>
+<td>The vendor owns the loop, the tools, the sandbox; you write handlers.</td>
+<td>You want the CLI's tool surface (<code>Read</code>/<code>Bash</code>/<code>Edit</code>) in code.</td>
+<td>You can't rewrite the loop. Middleware is theirs, not yours.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="sanity-check-what-agentkit-is-not">Sanity check: what agentkit is <em>not</em><a class="headerlink" href="#sanity-check-what-agentkit-is-not" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Not an agent product.</strong> No built-in personas. No "researcher"
+  agent that comes with a prompt. You author agents; the framework
+  runs them.</li>
+<li><strong>Not a chain-builder.</strong> No graph DSL, no fluent <code>.pipe(...).and()</code>.
+  Composition is Python: a list of middlewares, a cognition object,
+  an <code>Agent</code> you construct.</li>
+<li><strong>Not opinionated about LLMs.</strong> The core doesn't import a provider.
+  The <code>claude()</code>, <code>openai()</code>, <code>deepseek()</code>, <code>openrouter()</code> presets are
+  convenience wrappers over <code>LLMPort</code> and are opt-in. Bring your own
+  by implementing <code>LLMPort</code> — it's four methods.</li>
+<li><strong>Not a hosted service.</strong> Runs where your Python runs. State lives
+  where you point the <code>CheckpointPort</code>.</li>
+</ul>
+<h2 id="what-typed-seams-buys-you-concretely">What "typed seams" buys you concretely<a class="headerlink" href="#what-typed-seams-buys-you-concretely" title="Anchor link">&para;</a></h2>
+<p>Every abstract argument for typed seams sounds fine and buys nothing
+in practice unless you can point at code. Here's what the
+<code>typing.Protocol</code>-driven design lets you do without editing the loop.</p>
+<h3 id="swap-openai-for-deepseek-for-openrouter-without-touching-the-agent">Swap OpenAI for DeepSeek for OpenRouter without touching the agent<a class="headerlink" href="#swap-openai-for-deepseek-for-openrouter-without-touching-the-agent" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Wire once — swap the provider by changing the preset call.</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">claude</span><span class="p">,</span> <span class="n">openai</span><span class="p">,</span> <span class="n">deepseek</span><span class="p">,</span> <span class="n">openrouter</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># One line different across all four:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">async</span> <span class="k">with</span> <span class="n">openai</span><span class="p">(</span><span class="n">api_key</span><span class="o">=...</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">chat</span><span class="p">:</span> <span class="o">...</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">async</span> <span class="k">with</span> <span class="n">deepseek</span><span class="p">(</span><span class="n">api_key</span><span class="o">=...</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;deepseek-chat&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">chat</span><span class="p">:</span> <span class="o">...</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">async</span> <span class="k">with</span> <span class="n">openrouter</span><span class="p">(</span><span class="n">api_key</span><span class="o">=...</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;anthropic/claude-3.5-sonnet&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">chat</span><span class="p">:</span> <span class="o">...</span>
+</span></code></pre></div>
+<p>Or drop to <code>LLMPort</code> and write your own vLLM / Ollama / in-house
+wrapper. Four async methods. The <code>Agent</code> doesn't care.</p>
+<h3 id="swap-the-checkpoint-store-from-in-memory-to-postgres">Swap the checkpoint store from in-memory to Postgres<a class="headerlink" href="#swap-the-checkpoint-store-from-in-memory-to-postgres" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Test:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">port</span> <span class="o">=</span> <span class="n">InMemoryCheckpointStore</span><span class="p">()</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># Production (arc-agentkit[postgres]):</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostgresCheckpointStore</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">port</span> <span class="o">=</span> <span class="n">PostgresCheckpointStore</span><span class="p">(</span><span class="n">dsn</span><span class="o">=</span><span class="s2">&quot;postgres://...&quot;</span><span class="p">)</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">checkpointer</span> <span class="o">=</span> <span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">port</span><span class="p">)</span>   <span class="c1"># same object, different backing</span>
+</span></code></pre></div>
+<p><code>ReActCognition</code>'s durable-resume path doesn't move.</p>
+<h3 id="point-tracing-at-any-otlp-backend">Point tracing at any OTLP backend<a class="headerlink" href="#point-tracing-at-any-otlp-backend" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Test:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="n">NoopTrace</span><span class="p">())</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Production:</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.observability</span><span class="w"> </span><span class="kn">import</span> <span class="n">otel_tracer</span><span class="p">,</span> <span class="n">otel_exporter_otlp_http</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">otel_exporter_otlp_http</span><span class="p">()</span>   <span class="c1"># reads OTEL_EXPORTER_OTLP_ENDPOINT etc.</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="n">otel_tracer</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Same <code>tracing()</code> middleware in the chain. Same spans. Different
+backend.</p>
+<h2 id="the-failure-modes-weve-seen-and-their-one-line-fixes">The failure modes we've seen — and their one-line fixes<a class="headerlink" href="#the-failure-modes-weve-seen-and-their-one-line-fixes" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Root cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent looped 40 times, spent $217</td>
+<td>No enforced budget</td>
+<td><code>Budget(max_cost_usd=5.0)</code> on the <code>RunContext</code></td>
+</tr>
+<tr>
+<td>Worker OOM'd, transcript lost</td>
+<td>No durable state</td>
+<td><code>Checkpointer(port=PostgresCheckpointStore(...))</code></td>
+</tr>
+<tr>
+<td>Tool called <code>rm -rf</code> in prod</td>
+<td>No approval gate</td>
+<td><code>autonomy="gated"</code> + <code>@tool(side_effecting=True)</code></td>
+</tr>
+<tr>
+<td>Provider blipped, whole run crashed</td>
+<td>No retry</td>
+<td>Add <code>retry(breaker=CircuitBreaker(...))</code> to the chain</td>
+</tr>
+<tr>
+<td>Tenant burned the shared limit</td>
+<td>No per-scope quota</td>
+<td><code>Quota(max_rpm=..., max_tpm=..., max_usd=...)</code> on <code>ctx.meters</code></td>
+</tr>
+<tr>
+<td>Cancel from the UI didn't stop anything</td>
+<td>No cooperative cancel</td>
+<td><code>CancellationToken</code> on <code>RunContext</code>, checked at safe points</td>
+</tr>
+<tr>
+<td>Fan-out kept running after one child raised</td>
+<td>Naive <code>asyncio.gather</code></td>
+<td><code>run_agents(...)</code> — <code>TaskGroup</code> cancels siblings on first fail</td>
+</tr>
+<tr>
+<td>Test fixtures pulled in real API keys</td>
+<td>No test doubles</td>
+<td><code>agentkit.testing.*</code> — <code>FakeLLM</code> + <code>make_test_ctx()</code></td>
+</tr>
+<tr>
+<td>Cost from cache hits was double-counted</td>
+<td>Meter after cache</td>
+<td>Middleware order: <code>meter</code> above <code>memoize</code> in the chain</td>
+</tr>
+<tr>
+<td>Structured output silently drifted from the schema</td>
+<td>No coercion in the loop</td>
+<td><code>Agent(output=MyPydanticModel)</code> + <code>output_coerce</code> middleware</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-bet-restated">The bet, restated<a class="headerlink" href="#the-bet-restated" title="Anchor link">&para;</a></h2>
+<p>Three sentences: <strong>cognition, control, state, behaviour</strong> are
+orthogonal. Each is a typed Protocol. You compose an agent by picking
+one implementation of each; you change the agent by picking a
+different one. The framework's only opinion is the shape of that
+composition.</p>
+<p>Everything else — how the agent decides, what it can do, what it
+knows, how it's watched — is a decision you make in Python you can
+read.</p>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong><a href="../cheatsheet/">Cheatsheet</a></strong> — every primitive, tight code,
+  skimmable in 90 seconds.</li>
+<li><strong><a href="../tutorial/">Tutorial</a></strong> — a 15-minute end-to-end walk from one
+  chat call to a gated tool the human has to approve.</li>
+<li><strong><a href="../recipes/">Recipes</a></strong> — problem-first answers to "how do
+  I X?".</li>
+<li><strong><a href="../anti-patterns/">Anti-patterns</a></strong> — the fifteen traps every
+  first-time user falls into.</li>
+<li><strong><a href="../migrating/from-langchain/">Migrating › From LangChain</a></strong> —
+  concept-by-concept mapping with a full before/after.</li>
+<li><strong><a href="../migrating/from-vanilla-asyncio/">Migrating › From vanilla asyncio</a></strong> —
+  for the reader who's hand-rolled a <code>messages.create</code> loop.</li>
+</ul>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 02:02:48 UTC">August 6, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href=".." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Home
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../getting-started/" class="md-footer__link md-footer__link--next" aria-label="Next: Getting started">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Getting started
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

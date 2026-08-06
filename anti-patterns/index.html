@@ -1,0 +1,2816 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/anti-patterns/">
+      
+      
+        <link rel="prev" href="../concepts/middlewares/">
+      
+      
+        <link rel="next" href="../recipes/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Anti-patterns - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#anti-patterns" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="../tutorial/">tutorial</a>
+      to build a real research-briefing agent in 15 minutes.
+    </span>
+  </span>
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../assets/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Anti-patterns
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../assets/favicon.svg" alt="logo">
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../why/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anti-patterns
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anti-patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dont-mix-up-the-argument-order-agentrunctx-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: mix up the argument order — agent.run(ctx, task)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-await-agentruntask-ctx-task-first-ctx-second" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: await agent.run(task, ctx) — task first, ctx second.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-reuse-one-runcontext-across-concurrent-agent-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: reuse one RunContext across concurrent agent runs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-one-top-level-runcontext-per-external-request-for-a-child-of-the-same-run-use-ctxchild" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: one top-level RunContext per external request. For a child of the same run, use ctx.child().
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-put-a-side-effecting-tool-under-autonomyauto-and-hope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: put a side-effecting tool under autonomy="auto" and hope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-set-runcontextautonomygated-on-any-run-that-has-side-effecting-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: set RunContext.autonomy="gated" on any run that has side-effecting tools.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-skip-side_effecting-on-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: skip side_effecting= on @tool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-state-the-flag-explicitly-on-every-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: state the flag explicitly on every @tool.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-import-cognitions-from-the-top-level-agentkit-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: import cognitions from the top-level agentkit package
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-from-agentkitagentscognition-import-reactcognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: from agentkit.agents.cognition import ReActCognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-mutate-suspendedpending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: mutate Suspended.pending
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-build-a-fresh-suspended-if-you-need-to-synthesize-one-in-a-test-otherwise-treat-it-as-read-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: build a fresh Suspended if you need to synthesize one in a test; otherwise treat it as read-only.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-construct-summarizationcompactor-with-no-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: construct SummarizationCompactor() with no arguments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-pass-an-llmport-same-shape-as-the-one-on-your-invoker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: pass an LLMPort — same shape as the one on your Invoker.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-set-budgetmax_cost_usd001-and-expect-it-to-catch-the-very-first-spend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: set Budget(max_cost_usd=0.01) and expect it to catch the very first spend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-size-the-budget-so-the-next-call-ceiling-matches-what-you-actually-want-to-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: size the budget so the "next call" ceiling matches what you actually want to stop.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-wire-fakellm-make_test_ctx-into-production-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: wire FakeLLM / make_test_ctx into production code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-use-a-real-llmport-in-production-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: use a real LLMPort in production wiring.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-import-cognitions-from-the-top-level-and-then-wonder-why-cognition-isnt-protocol-friendly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: import cognitions from the top-level and then wonder why Cognition isn't Protocol-friendly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-inherit-the-protocol-explicitly-when-you-add-a-cognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: inherit the Protocol explicitly when you add a cognition.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-run-two-workers-on-the-same-run_id-against-the-same-checkpointport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: run two workers on the same run_id against the same CheckpointPort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-enforce-a-lease-at-the-driver-one-worker-per-run_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: enforce a lease at the driver, one worker per run_id.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-rely-on-agentresume-for-a-non-reactcognition-cognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: rely on agent.resume(...) for a non-ReActCognition cognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-keep-agentresume-on-reactcognition-agents-suspend-other-cognitions-at-the-workflow-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: keep agent.resume(...) on ReActCognition agents; suspend other cognitions at the workflow layer.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-set-an-empty-agentprompt-and-expect-useful-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: set an empty agent.prompt and expect useful output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-give-every-agent-a-purposeful-system-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: give every agent a purposeful system prompt.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-swallow-cancelled-in-a-broad-except" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: swallow Cancelled in a broad except
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-let-cancelled-propagate-or-re-raise-it-deliberately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: let Cancelled propagate — or re-raise it deliberately.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-put-meter-after-retry-in-the-chat-chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: put meter() after retry() in the chat chain
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-tracing-compaction-meter-fallback-retry-memoize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: tracing → compaction → meter → fallback → retry → memoize.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/hitl-tool-approval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/resume-after-crash/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resume from a checkpoint after a crash
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/spend-budget-and-quota/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cap spend with Budget and Quota
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/parallel-agents-with-cancellation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel agents with cooperative cancellation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/custom-middleware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write a custom middleware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/otel-tracing-and-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire OpenTelemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/claude-cli-fastapi-code-gen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plug the claude CLI into FastAPI code-gen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/mcp-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Migrating
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/from-langchain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From LangChain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrating/from-vanilla-asyncio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From vanilla asyncio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dont-mix-up-the-argument-order-agentrunctx-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: mix up the argument order — agent.run(ctx, task)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-await-agentruntask-ctx-task-first-ctx-second" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: await agent.run(task, ctx) — task first, ctx second.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-reuse-one-runcontext-across-concurrent-agent-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: reuse one RunContext across concurrent agent runs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-one-top-level-runcontext-per-external-request-for-a-child-of-the-same-run-use-ctxchild" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: one top-level RunContext per external request. For a child of the same run, use ctx.child().
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-put-a-side-effecting-tool-under-autonomyauto-and-hope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: put a side-effecting tool under autonomy="auto" and hope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-set-runcontextautonomygated-on-any-run-that-has-side-effecting-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: set RunContext.autonomy="gated" on any run that has side-effecting tools.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-skip-side_effecting-on-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: skip side_effecting= on @tool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-state-the-flag-explicitly-on-every-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: state the flag explicitly on every @tool.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-import-cognitions-from-the-top-level-agentkit-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: import cognitions from the top-level agentkit package
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-from-agentkitagentscognition-import-reactcognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: from agentkit.agents.cognition import ReActCognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-mutate-suspendedpending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: mutate Suspended.pending
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-build-a-fresh-suspended-if-you-need-to-synthesize-one-in-a-test-otherwise-treat-it-as-read-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: build a fresh Suspended if you need to synthesize one in a test; otherwise treat it as read-only.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-construct-summarizationcompactor-with-no-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: construct SummarizationCompactor() with no arguments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-pass-an-llmport-same-shape-as-the-one-on-your-invoker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: pass an LLMPort — same shape as the one on your Invoker.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-set-budgetmax_cost_usd001-and-expect-it-to-catch-the-very-first-spend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: set Budget(max_cost_usd=0.01) and expect it to catch the very first spend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-size-the-budget-so-the-next-call-ceiling-matches-what-you-actually-want-to-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: size the budget so the "next call" ceiling matches what you actually want to stop.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-wire-fakellm-make_test_ctx-into-production-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: wire FakeLLM / make_test_ctx into production code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-use-a-real-llmport-in-production-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: use a real LLMPort in production wiring.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-import-cognitions-from-the-top-level-and-then-wonder-why-cognition-isnt-protocol-friendly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: import cognitions from the top-level and then wonder why Cognition isn't Protocol-friendly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-inherit-the-protocol-explicitly-when-you-add-a-cognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: inherit the Protocol explicitly when you add a cognition.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-run-two-workers-on-the-same-run_id-against-the-same-checkpointport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: run two workers on the same run_id against the same CheckpointPort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-enforce-a-lease-at-the-driver-one-worker-per-run_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: enforce a lease at the driver, one worker per run_id.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-rely-on-agentresume-for-a-non-reactcognition-cognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: rely on agent.resume(...) for a non-ReActCognition cognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-keep-agentresume-on-reactcognition-agents-suspend-other-cognitions-at-the-workflow-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: keep agent.resume(...) on ReActCognition agents; suspend other cognitions at the workflow layer.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-set-an-empty-agentprompt-and-expect-useful-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: set an empty agent.prompt and expect useful output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-give-every-agent-a-purposeful-system-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: give every agent a purposeful system prompt.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-swallow-cancelled-in-a-broad-except" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: swallow Cancelled in a broad except
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-let-cancelled-propagate-or-re-raise-it-deliberately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: let Cancelled propagate — or re-raise it deliberately.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dont-put-meter-after-retry-in-the-chat-chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Don't: put meter() after retry() in the chat chain
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-tracing-compaction-meter-fallback-retry-memoize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do: tracing → compaction → meter → fallback → retry → memoize.
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="anti-patterns">Anti-patterns<a class="headerlink" href="#anti-patterns" title="Anchor link">&para;</a></h1>
+<p>Fifteen mistakes we see over and over. Each is a <strong>Don't</strong> with a short
+"why this breaks", followed by a <strong>Do</strong> with the fix. Read this once
+before you write your first non-trivial agent; skim it again the day
+after you deploy.</p>
+<hr />
+<h3 id="dont-mix-up-the-argument-order-agentrunctx-task">Don't: mix up the argument order — <code>agent.run(ctx, task)</code><a class="headerlink" href="#dont-mix-up-the-argument-order-agentrunctx-task" title="Anchor link">&para;</a></h3>
+<p>This is the number-one first-day bug. The signature is
+<code>agent.run(task, ctx)</code>. Passing a <code>RunContext</code> where a <code>str</code> is
+expected will either raise <code>TypeError</code> immediately or (worse) pass a
+context repr into the model's user turn.</p>
+<h3 id="do-await-agentruntask-ctx-task-first-ctx-second">Do: <code>await agent.run(task, ctx)</code> — task first, ctx second.<a class="headerlink" href="#do-await-agentruntask-ctx-task-first-ctx-second" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Brief me on octopus cognition.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Same for <code>agent.stream(task, ctx)</code>. <code>agent.resume</code> is the odd one out
+— <code>agent.resume(run_id, decisions, ctx)</code>.</p>
+<hr />
+<h3 id="dont-reuse-one-runcontext-across-concurrent-agent-runs">Don't: reuse one <code>RunContext</code> across concurrent agent runs<a class="headerlink" href="#dont-reuse-one-runcontext-across-concurrent-agent-runs" title="Anchor link">&para;</a></h3>
+<p><code>RunContext.budget</code> and <code>RunContext.cancel</code> are shared references.
+Firing two <code>agent.run(task, ctx)</code> calls in parallel over the <em>same</em>
+top-level ctx means both contend the budget's async lock, and a
+cancel on one cancels the other. That's fine for a coordinator (it
+<em>wants</em> subtree cancel) — but not for two independent user requests.</p>
+<h3 id="do-one-top-level-runcontext-per-external-request-for-a-child-of-the-same-run-use-ctxchild">Do: one top-level <code>RunContext</code> per external request. For a child of the same run, use <code>ctx.child()</code>.<a class="headerlink" href="#do-one-top-level-runcontext-per-external-request-for-a-child-of-the-same-run-use-ctxchild" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># One top-level per request:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ctx_req1</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="s2">&quot;req-1&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">budget</span><span class="o">=</span><span class="n">Budget</span><span class="p">(</span><span class="n">max_cost_usd</span><span class="o">=</span><span class="mf">1.0</span><span class="p">),</span> <span class="n">services</span><span class="o">=</span><span class="n">svc</span><span class="p">)</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">ctx_req2</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="s2">&quot;req-2&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">budget</span><span class="o">=</span><span class="n">Budget</span><span class="p">(</span><span class="n">max_cost_usd</span><span class="o">=</span><span class="mf">1.0</span><span class="p">),</span> <span class="n">services</span><span class="o">=</span><span class="n">svc</span><span class="p">)</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task_a</span><span class="p">,</span> <span class="n">ctx_req1</span><span class="p">),</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task_b</span><span class="p">,</span> <span class="n">ctx_req2</span><span class="p">))</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># Coordinated fan-out uses ctx.child(), which SHARES budget + cancel by design:</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">await</span> <span class="n">run_agents</span><span class="p">([(</span><span class="n">a</span><span class="p">,</span> <span class="s2">&quot;sub-1&quot;</span><span class="p">),</span> <span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s2">&quot;sub-2&quot;</span><span class="p">)],</span> <span class="n">parent_ctx</span><span class="p">)</span>  <span class="c1"># each runs under parent_ctx.child()</span>
+</span></code></pre></div>
+<hr />
+<h3 id="dont-put-a-side-effecting-tool-under-autonomyauto-and-hope">Don't: put a side-effecting tool under <code>autonomy="auto"</code> and hope<a class="headerlink" href="#dont-put-a-side-effecting-tool-under-autonomyauto-and-hope" title="Anchor link">&para;</a></h3>
+<p><code>"auto"</code> gates <em>only</em> tools that explicitly opt in with
+<code>requires_approval=True</code>. A <code>side_effecting=True</code> tool is NOT gated
+under <code>"auto"</code>. If you meant "ask a human before this mutates the
+world," you meant <code>"gated"</code>.</p>
+<h3 id="do-set-runcontextautonomygated-on-any-run-that-has-side-effecting-tools">Do: set <code>RunContext.autonomy="gated"</code> on any run that has side-effecting tools.<a class="headerlink" href="#do-set-runcontextautonomygated-on-any-run-that-has-side-effecting-tools" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-42&quot;</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">,</span>   <span class="c1"># every @tool(side_effecting=True) suspends before firing</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">services</span><span class="o">=</span><span class="n">svc</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Escalate to <code>"manual"</code> if you want the human to approve <em>every</em> tool
+call, side-effecting or not.</p>
+<hr />
+<h3 id="dont-skip-side_effecting-on-tool">Don't: skip <code>side_effecting=</code> on <code>@tool</code><a class="headerlink" href="#dont-skip-side_effecting-on-tool" title="Anchor link">&para;</a></h3>
+<p>The framework can't guess whether a tool mutates the world, and the
+approval-gate + idempotency middleware both depend on the answer.
+Forgetting the keyword raises <code>ToolDefinitionError</code> <strong>at decoration
+time</strong>, not at call time — the error IS the fix.</p>
+<h3 id="do-state-the-flag-explicitly-on-every-tool">Do: state the flag explicitly on every <code>@tool</code>.<a class="headerlink" href="#do-state-the-flag-explicitly-on-every-tool" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>                     <span class="c1"># read-only lookup</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">search</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Search the web for `query`. Returns bulleted hits.&quot;&quot;&quot;</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="o">...</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">idempotent</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>    <span class="c1"># mutates + not safe to retry</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span><span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Publish `title` to the team wiki. Not idempotent.&quot;&quot;&quot;</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="o">...</span>
+</span></code></pre></div>
+<p><code>idempotent=True</code> is independent — set it on any tool the retry
+middleware can safely re-invoke.</p>
+<hr />
+<h3 id="dont-import-cognitions-from-the-top-level-agentkit-package">Don't: import cognitions from the top-level <code>agentkit</code> package<a class="headerlink" href="#dont-import-cognitions-from-the-top-level-agentkit-package" title="Anchor link">&para;</a></h3>
+<p>They aren't re-exported there. <code>from agentkit import ReActCognition</code>
+gives you <code>ImportError</code>. This is deliberate — cognitions are one
+family among many and the top-level package is already dense.</p>
+<h3 id="do-from-agentkitagentscognition-import-reactcognition">Do: <code>from agentkit.agents.cognition import ReActCognition</code><a class="headerlink" href="#do-from-agentkitagentscognition-import-reactcognition" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">SingleCallCognition</span><span class="p">,</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">ReActCognition</span><span class="p">,</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">CoordinatorCognition</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">ClaudeCliCognition</span><span class="p">,</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>The <a href="../cheatsheet/#cognition">cheatsheet</a> shows the full menu.</p>
+<hr />
+<h3 id="dont-mutate-suspendedpending">Don't: mutate <code>Suspended.pending</code><a class="headerlink" href="#dont-mutate-suspendedpending" title="Anchor link">&para;</a></h3>
+<p><code>Suspended</code> is a frozen dataclass and <code>.pending</code> is a <code>tuple</code> on
+purpose. The operator UI renders the pending items and the resume
+path threads them back verbatim; a mutable list would let a stray
+<code>.append(...)</code> desync the two ends of the handshake. Attempting to
+reassign raises <code>FrozenInstanceError</code>.</p>
+<h3 id="do-build-a-fresh-suspended-if-you-need-to-synthesize-one-in-a-test-otherwise-treat-it-as-read-only">Do: build a fresh <code>Suspended</code> if you need to synthesize one in a test; otherwise treat it as read-only.<a class="headerlink" href="#do-build-a-fresh-suspended-if-you-need-to-synthesize-one-in-a-test-otherwise-treat-it-as-read-only" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;suspended&quot;</span><span class="p">]</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">decisions</span> <span class="o">=</span> <span class="p">{</span><span class="n">tc</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="s2">&quot;approve&quot;</span> <span class="k">for</span> <span class="n">tc</span> <span class="ow">in</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">}</span>       <span class="c1"># read</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">susp</span><span class="o">.</span><span class="n">run_id</span><span class="p">,</span> <span class="n">decisions</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>     <span class="c1"># thread the id back</span>
+</span></code></pre></div>
+<hr />
+<h3 id="dont-construct-summarizationcompactor-with-no-arguments">Don't: construct <code>SummarizationCompactor()</code> with no arguments<a class="headerlink" href="#dont-construct-summarizationcompactor-with-no-arguments" title="Anchor link">&para;</a></h3>
+<p><code>summarizer=</code> is a required positional-only parameter — a
+<code>SummarizationCompactor</code> without an LLM to summarize with is a
+no-op with a misleading name. Constructing without it raises
+<code>TypeError</code> at construction time.</p>
+<h3 id="do-pass-an-llmport-same-shape-as-the-one-on-your-invoker">Do: pass an <code>LLMPort</code> — same shape as the one on your <code>Invoker</code>.<a class="headerlink" href="#do-pass-an-llmport-same-shape-as-the-one-on-your-invoker" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">SummarizationCompactor</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">providers</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">summarizer</span> <span class="o">=</span> <span class="n">providers</span><span class="o">.</span><span class="n">claude</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ANTHROPIC_API_KEY&quot;</span><span class="p">],</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>                              <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-3-5-haiku-latest&quot;</span><span class="p">)</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">compactor</span> <span class="o">=</span> <span class="n">SummarizationCompactor</span><span class="p">(</span><span class="n">summarizer</span><span class="o">=</span><span class="n">summarizer</span><span class="p">,</span> <span class="n">max_tokens</span><span class="o">=</span><span class="mi">8_000</span><span class="p">)</span>
+</span></code></pre></div>
+<p>For dep-free compaction, use <code>SlidingWindowCompactor(keep_recent=10)</code>
+or <code>TruncationCompactor(max_tokens=12_000)</code> — no LLM required.</p>
+<hr />
+<h3 id="dont-set-budgetmax_cost_usd001-and-expect-it-to-catch-the-very-first-spend">Don't: set <code>Budget(max_cost_usd=0.01)</code> and expect it to catch the very first spend<a class="headerlink" href="#dont-set-budgetmax_cost_usd001-and-expect-it-to-catch-the-very-first-spend" title="Anchor link">&para;</a></h3>
+<p>The meter's check is <strong>strict greater-than</strong>: a call whose spend lands
+exactly on <code>max_cost_usd</code> completes; the <em>next</em> call is where the run
+halts with <code>MeterExceeded</code>. The first spend always passes.</p>
+<h3 id="do-size-the-budget-so-the-next-call-ceiling-matches-what-you-actually-want-to-stop">Do: size the budget so the "next call" ceiling matches what you actually want to stop.<a class="headerlink" href="#do-size-the-budget-so-the-next-call-ceiling-matches-what-you-actually-want-to-stop" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># If a chat call costs ~$0.01 and you want to allow at most 3 completed calls:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">Budget</span><span class="p">(</span><span class="n">max_cost_usd</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">max_calls</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+</span></code></pre></div>
+<p>If you need first-call blocking too, guard your own precheck before
+<code>agent.run(...)</code>.</p>
+<hr />
+<h3 id="dont-wire-fakellm-make_test_ctx-into-production-code">Don't: wire <code>FakeLLM</code> / <code>make_test_ctx</code> into production code<a class="headerlink" href="#dont-wire-fakellm-make_test_ctx-into-production-code" title="Anchor link">&para;</a></h3>
+<p>Test doubles under <code>agentkit.testing.*</code> exist for your unit tests and
+any mock adapters you write. They're deliberately not re-exported
+from the top-level <code>agentkit</code> package — so a <code>from agentkit import
+FakeLLM</code> shape can't accidentally pin a fake into a real request
+path. Wiring them into a production <code>Invoker</code> is a real outage story.</p>
+<h3 id="do-use-a-real-llmport-in-production-wiring">Do: use a real <code>LLMPort</code> in production wiring.<a class="headerlink" href="#do-use-a-real-llmport-in-production-wiring" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># claude / openai / deepseek / openrouter presets — batteries-included Chat.</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">claude</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">async</span> <span class="k">with</span> <span class="n">claude</span><span class="p">(</span><span class="n">api_key</span><span class="o">=...</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">chat</span><span class="p">:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">chat</span><span class="p">(</span><span class="s2">&quot;hi&quot;</span><span class="p">,</span> <span class="n">system</span><span class="o">=</span><span class="s2">&quot;Answer briefly.&quot;</span><span class="p">)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1"># Or ClaudeCliCognition for a local CLI with no API key management.</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClaudeCliCognition</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="n">cognition</span><span class="o">=</span><span class="n">ClaudeCliCognition</span><span class="p">(</span><span class="o">...</span><span class="p">))</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="c1"># Or wire your own LLMPort — four async methods; extend as needed.</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyProviderLLM</span><span class="p">:</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">chat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">req</span><span class="p">:</span> <span class="n">ChatRequest</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Ctx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LLMResult</span><span class="p">:</span> <span class="o">...</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">req</span><span class="p">:</span> <span class="n">ChatRequest</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Ctx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="n">StreamEvent</span><span class="p">]:</span> <span class="o">...</span>
+</span></code></pre></div>
+<p><code>FakeLLM</code> and friends stay under <code>agentkit.testing.*</code> — a boundary
+you can grep for.</p>
+<hr />
+<h3 id="dont-import-cognitions-from-the-top-level-and-then-wonder-why-cognition-isnt-protocol-friendly">Don't: import cognitions from the top-level and then wonder why <code>Cognition</code> isn't <code>Protocol</code>-friendly<a class="headerlink" href="#dont-import-cognitions-from-the-top-level-and-then-wonder-why-cognition-isnt-protocol-friendly" title="Anchor link">&para;</a></h3>
+<p><code>Cognition</code> IS a <code>Protocol</code> — it lives at
+<code>agentkit.agents.cognition.Cognition</code>. But a random <code>class MyCog:
+async def drive(...): ...</code> isn't automatically recognised as one
+until you import the Protocol and inherit for <code>mypy --strict</code>, or
+duck-type check at wire-up. Missing the type import silently degrades
+your type coverage.</p>
+<h3 id="do-inherit-the-protocol-explicitly-when-you-add-a-cognition">Do: inherit the Protocol explicitly when you add a cognition.<a class="headerlink" href="#do-inherit-the-protocol-explicitly-when-you-add-a-cognition" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cognition</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">MyCognition</span><span class="p">(</span><span class="n">Cognition</span><span class="p">):</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">drive</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agent</span><span class="p">,</span> <span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>        <span class="o">...</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        <span class="k">yield</span> <span class="n">final_event</span>
+</span></code></pre></div>
+<p>Runtime works either way; type-check coverage doesn't.</p>
+<hr />
+<h3 id="dont-run-two-workers-on-the-same-run_id-against-the-same-checkpointport">Don't: run two workers on the same <code>run_id</code> against the same <code>CheckpointPort</code><a class="headerlink" href="#dont-run-two-workers-on-the-same-run_id-against-the-same-checkpointport" title="Anchor link">&para;</a></h3>
+<p>The checkpoint version numbering is monotonic per-run and the port
+assumes a single writer. Two workers on the same <code>run_id</code> will
+collide on <code>version</code> — one write will lose, the other will
+overwrite a snapshot mid-flight, and <code>resume(...)</code> will hydrate
+garbage.</p>
+<h3 id="do-enforce-a-lease-at-the-driver-one-worker-per-run_id">Do: enforce a lease at the driver, one worker per <code>run_id</code>.<a class="headerlink" href="#do-enforce-a-lease-at-the-driver-one-worker-per-run_id" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Pseudocode — however your infra names it:</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">lease</span> <span class="o">=</span> <span class="k">await</span> <span class="n">lock_manager</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;run-lease/</span><span class="si">{</span><span class="n">run_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">300</span><span class="p">)</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>   <span class="c1"># or agent.resume(...)</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">finally</span><span class="p">:</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="k">await</span> <span class="n">lease</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+</span></code></pre></div>
+<p>The next release will surface the collision as a clear error; today,
+the contract is on you.</p>
+<hr />
+<h3 id="dont-rely-on-agentresume-for-a-non-reactcognition-cognition">Don't: rely on <code>agent.resume(...)</code> for a non-<code>ReActCognition</code> cognition<a class="headerlink" href="#dont-rely-on-agentresume-for-a-non-reactcognition-cognition" title="Anchor link">&para;</a></h3>
+<p>Suspend/resume + checkpoint state live only in <code>ReActCognition</code>.
+Calling <code>agent.resume(...)</code> on an agent whose cognition is
+<code>SingleCallCognition</code>, <code>CoordinatorCognition</code>, <code>ClaudeCliCognition</code>,
+or your own custom cognition raises <code>RuntimeError</code> explicitly — the
+message names the offending cognition.</p>
+<h3 id="do-keep-agentresume-on-reactcognition-agents-suspend-other-cognitions-at-the-workflow-layer">Do: keep <code>agent.resume(...)</code> on <code>ReActCognition</code> agents; suspend other cognitions at the workflow layer.<a class="headerlink" href="#do-keep-agentresume-on-reactcognition-agents-suspend-other-cognitions-at-the-workflow-layer" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># HITL at the tool-loop level:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;briefer&quot;</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">]))</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># HITL at the workflow level — a human_gate node in a Workflow suspends</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># the workflow (not an individual cognition) with the same Suspended shape.</span>
+</span></code></pre></div>
+<hr />
+<h3 id="dont-set-an-empty-agentprompt-and-expect-useful-output">Don't: set an empty <code>agent.prompt</code> and expect useful output<a class="headerlink" href="#dont-set-an-empty-agentprompt-and-expect-useful-output" title="Anchor link">&para;</a></h3>
+<p><code>Agent(name="x", model="m")</code> (no prompt) constructs cleanly and runs,
+but the model has nothing to anchor on. You'll get plausible-looking
+gibberish that's very hard to debug because the trace shows the
+system message as <code>""</code>.</p>
+<h3 id="do-give-every-agent-a-purposeful-system-prompt">Do: give every agent a purposeful system prompt.<a class="headerlink" href="#do-give-every-agent-a-purposeful-system-prompt" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;briefer&quot;</span><span class="p">,</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;You are a terse briefer. Cite every claim with a URL + year.&quot;</span><span class="p">,</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">search</span><span class="p">]),</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>For anything real, promote the string to a <code>Prompt(id=..., version=...)</code>
+so template drift shows up as a version bump in the trace and in
+<code>AgentResult.prompt_version</code>.</p>
+<hr />
+<h3 id="dont-swallow-cancelled-in-a-broad-except">Don't: swallow <code>Cancelled</code> in a broad <code>except</code><a class="headerlink" href="#dont-swallow-cancelled-in-a-broad-except" title="Anchor link">&para;</a></h3>
+<p>The kernel's <code>Cancelled</code> (from <code>agentkit.kernel.concurrency</code>) is
+raised by <code>ctx.check_cancelled()</code> when the token has flipped. A
+naive <code>try: ... except Exception: pass</code> in a tool or middleware
+turns cooperative cancel into "the tool didn't stop". Every safe
+point in the tree suddenly no-ops.</p>
+<h3 id="do-let-cancelled-propagate-or-re-raise-it-deliberately">Do: let <code>Cancelled</code> propagate — or re-raise it deliberately.<a class="headerlink" href="#do-let-cancelled-propagate-or-re-raise-it-deliberately" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">risky_side_effecting_call</span><span class="p">()</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="k">except</span> <span class="n">Cancelled</span><span class="p">:</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="k">raise</span>                          <span class="c1"># never swallow cancellation</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;recovering: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">fallback_value</span>
+</span></code></pre></div>
+<p>Same rule for the middleware chain: any middleware that catches
+broadly must re-raise <code>asyncio.CancelledError</code>.</p>
+<hr />
+<h3 id="dont-put-meter-after-retry-in-the-chat-chain">Don't: put <code>meter()</code> after <code>retry()</code> in the chat chain<a class="headerlink" href="#dont-put-meter-after-retry-in-the-chat-chain" title="Anchor link">&para;</a></h3>
+<p>Middleware order is deterministic and outer-first. <code>retry</code> re-invokes
+<code>next</code> on transient failure. If <code>retry</code> sits <em>outside</em> <code>meter</code>, a
+retry loop hides its intermediate attempts from the meter — you'll
+overspend by the retry factor without the budget noticing.</p>
+<h3 id="do-tracing-compaction-meter-fallback-retry-memoize">Do: <code>tracing → compaction → meter → fallback → retry → memoize</code>.<a class="headerlink" href="#do-tracing-compaction-meter-fallback-retry-memoize" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">SlidingWindowCompactor</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.middlewares</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="n">tracing</span><span class="p">,</span> <span class="n">meter</span><span class="p">,</span> <span class="n">retry</span><span class="p">,</span> <span class="n">fallback</span><span class="p">,</span> <span class="n">compaction</span><span class="p">,</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="p">)</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="n">chat_middleware</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    <span class="n">tracing</span><span class="p">(),</span>                                          <span class="c1"># outermost — one span across the whole call</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    <span class="n">compaction</span><span class="p">(</span><span class="n">SlidingWindowCompactor</span><span class="p">(</span><span class="n">keep_recent</span><span class="o">=</span><span class="mi">10</span><span class="p">)),</span> <span class="c1"># shrink transcripts before meter counts them</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    <span class="n">meter</span><span class="p">(),</span>                                            <span class="c1"># guard + charge every ATTEMPT (including retries)</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    <span class="n">fallback</span><span class="p">(</span><span class="n">models</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;gpt-4o&quot;</span><span class="p">,</span> <span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">]),</span>         <span class="c1"># rewrite request.model on hard failures</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>    <span class="n">retry</span><span class="p">(),</span>                                            <span class="c1"># re-invoke on transient failures</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="p">]</span>
+</span></code></pre></div>
+<p><code>meter</code> above <code>retry</code> means every retried attempt gets charged, which
+is what you want: your provider bill counts retries; your budget had
+better too.</p>
+<hr />
+<h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
+<ul>
+<li><a href="../cheatsheet/">Cheatsheet</a> — the same primitives, invocation-form.</li>
+<li><a href="../recipes/">Recipes</a> — the same primitives, problem-form.</li>
+<li><a href="../concepts/agents/">Concepts › Agents</a> — the mental model of
+  <code>Agent</code> / <code>Cognition</code> and why the split is load-bearing.</li>
+</ul>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 02:02:48 UTC">August 6, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../concepts/middlewares/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Middlewares">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Middlewares
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../recipes/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Overview
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

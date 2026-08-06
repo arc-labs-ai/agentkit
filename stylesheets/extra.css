@@ -1,33 +1,989 @@
-/* agentkit docs — small theme polish over the Material defaults. */
+/* =============================================================================
+   agentkit — visual identity over mkdocs-material
+   -----------------------------------------------------------------------------
+   Layered top-down so overrides read in the order the browser applies them:
+     1. Palette (light + dark)         6. Nav (sidebar, tabs, TOC, search)
+     2. Typography                     7. Announcement bar
+     3. Hero (landing only)            8. Admonitions + tables
+     4. Card grid                      9. Mermaid diagrams
+     5. Code blocks                   10. Small dark-mode audits
+   All of this is additive — disabling this stylesheet must return the site
+   to a working (if plain) mkdocs-material.
+   ============================================================================= */
+
+
+/* -----------------------------------------------------------------------------
+   1. Palette
+   Slate primary + warm amber accent. Overrides mkdocs-material's Material Design
+   primary/accent color families. Every custom color has a dark counterpart.
+   ----------------------------------------------------------------------------- */
 
 :root {
-  --md-code-font: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --md-code-font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Brand tokens — reused by hero, cards, announce, mermaid, etc. */
+  --rio-slate-950: #0c0e13;
+  --rio-slate-900: #131922;
+  --rio-slate-800: #1e2a3a;
+  --rio-slate-700: #2b3a4e;
+  --rio-slate-500: #64748b;
+  --rio-slate-300: #94a3b8;
+  --rio-slate-100: #e2e8f0;
+  --rio-slate-50:  #f1f5f9;
+
+  --rio-amber-700: #b45309;
+  --rio-amber-600: #d97706;
+  --rio-amber-500: #f59e0b;
+  --rio-amber-400: #fbbf24;
+  --rio-amber-100: #fef3c7;
+
+  --rio-paper: #fafaf9;
+  --rio-paper-2: #f5f4f2;
+  --rio-ink:   #0c0e13;
+  --rio-ink-2: #131922;
+
+  --rio-radius: 8px;
+  --rio-radius-sm: 6px;
+  --rio-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06),
+                   0 1px 3px rgba(15, 23, 42, 0.05);
+  --rio-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08),
+                   0 2px 4px rgba(15, 23, 42, 0.05);
+  --rio-shadow-dark-sm: 0 1px 2px rgba(0, 0, 0, 0.4),
+                        0 0 0 1px rgba(255, 255, 255, 0.03);
+  --rio-shadow-dark-md: 0 6px 18px rgba(0, 0, 0, 0.55),
+                        0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-/* Slightly tighter, more readable code blocks. */
+/* Light mode ---------------------------------------------------------------- */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:         var(--rio-slate-800);
+  --md-primary-fg-color--light:  var(--rio-slate-700);
+  --md-primary-fg-color--dark:   var(--rio-ink);
+  --md-primary-bg-color:         var(--rio-paper);
+  --md-primary-bg-color--light:  rgba(250, 250, 249, 0.72);
+
+  --md-accent-fg-color:          var(--rio-amber-600);
+  --md-accent-fg-color--transparent: rgba(217, 119, 6, 0.08);
+  --md-accent-bg-color:          #ffffff;
+  --md-accent-bg-color--light:   rgba(255, 255, 255, 0.72);
+
+  --md-default-bg-color:         var(--rio-paper);
+  --md-default-fg-color:         #14181f;
+  --md-default-fg-color--light:  #4b5565;
+  --md-default-fg-color--lighter:#6b7480;
+  --md-default-fg-color--lightest: rgba(20, 24, 31, 0.07);
+
+  --md-typeset-color:            #14181f;
+  --md-typeset-a-color:          var(--rio-amber-700);
+
+  --md-code-fg-color:            #14181f;
+  --md-code-bg-color:            #f2ecdd80;         /* warm parchment tint */
+  --md-code-hl-color--light:     rgba(245, 158, 11, 0.18);
+
+  /* Admonitions (kept semantic, retinted toward the amber/slate family) */
+  --md-admonition-fg-color:      var(--md-default-fg-color);
+  --md-admonition-bg-color:      var(--rio-paper);
+
+  /* mermaid parity — see block 9 */
+  --md-mermaid-node-bg-color:    #eef2f7;
+  --md-mermaid-node-fg-color:    var(--rio-slate-800);
+  --md-mermaid-edge-color:       var(--rio-amber-600);
+  --md-mermaid-label-bg-color:   var(--rio-paper);
+  --md-mermaid-label-fg-color:   var(--rio-slate-800);
+}
+
+/* Dark mode ----------------------------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  --md-hue: 220;
+
+  --md-primary-fg-color:         #7c8ba1;
+  --md-primary-fg-color--light:  #98a4b8;
+  --md-primary-fg-color--dark:   #0c0e13;
+  --md-primary-bg-color:         #e8ecf1;
+  --md-primary-bg-color--light:  rgba(232, 236, 241, 0.72);
+
+  --md-accent-fg-color:          var(--rio-amber-400);
+  --md-accent-fg-color--transparent: rgba(251, 191, 36, 0.12);
+  --md-accent-bg-color:          #0c0e13;
+  --md-accent-bg-color--light:   rgba(12, 14, 19, 0.72);
+
+  --md-default-bg-color:         var(--rio-ink);
+  --md-default-fg-color:         #e2e8f0;
+  --md-default-fg-color--light:  #94a3b8;
+  --md-default-fg-color--lighter:#64748b;
+  --md-default-fg-color--lightest: rgba(226, 232, 240, 0.06);
+
+  --md-typeset-color:            #e2e8f0;
+  --md-typeset-a-color:          var(--rio-amber-400);
+
+  --md-code-fg-color:            #e2e8f0;
+  --md-code-bg-color:            #131922;
+  --md-code-hl-color--light:     rgba(251, 191, 36, 0.16);
+
+  --md-admonition-fg-color:      var(--md-default-fg-color);
+  --md-admonition-bg-color:      #131922;
+
+  --md-footer-bg-color:          #0a0c11;
+  --md-footer-bg-color--dark:    #05070a;
+
+  --md-mermaid-node-bg-color:    #182028;
+  --md-mermaid-node-fg-color:    #e8ecf1;
+  --md-mermaid-edge-color:       var(--rio-amber-400);
+  --md-mermaid-label-bg-color:   var(--rio-ink);
+  --md-mermaid-label-fg-color:   #e8ecf1;
+}
+
+/* Header + tab bar sit on the deep slate in both modes (looks like one tool
+   rather than a mode-switching palette). */
+.md-header,
+.md-tabs {
+  background-color: var(--rio-slate-900);
+  color: #e8ecf1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: #05070a;
+}
+.md-header__title,
+.md-header__topic > .md-ellipsis,
+.md-search__input,
+.md-search__input::placeholder {
+  color: #e8ecf1;
+}
+
+/* Selection */
+::selection {
+  background: rgba(245, 158, 11, 0.28);
+  color: inherit;
+}
+
+
+/* -----------------------------------------------------------------------------
+   2. Typography
+   Tighter modular scale than Material's default. Fluid h1/h2 for mobile.
+   Inter for prose, JetBrains Mono for code (both loaded by mkdocs-material).
+   ----------------------------------------------------------------------------- */
+
+:root {
+  --md-text-font-family: "Inter", ui-sans-serif, system-ui, -apple-system,
+                         "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* Base is 16px; tuning it here cascades to all rem-based Material tokens. */
+  --md-typeset-font-size: 0.82rem;
+}
+
+.md-typeset {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  line-height: 1.65;
+}
+
+.md-typeset p {
+  margin: 0 0 1.05em;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-family: var(--md-text-font-family);
+  color: var(--md-default-fg-color);
+  letter-spacing: -0.012em;
+  font-weight: 650;
+}
+
+.md-typeset h1 {
+  font-size: clamp(2.1rem, 1.6rem + 1.8vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin: 0 0 1.1rem;
+}
+
+.md-typeset h2 {
+  font-size: clamp(1.4rem, 1.1rem + 1.1vw, 1.65rem);
+  line-height: 1.25;
+  margin-top: 2.6rem;
+  margin-bottom: 0.9rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  letter-spacing: -0.015em;
+}
+.md-typeset h2:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 1.6rem;
+}
+
+.md-typeset h3 {
+  font-size: 1.12rem;
+  line-height: 1.35;
+  margin-top: 1.9rem;
+  margin-bottom: 0.6rem;
+}
+
+.md-typeset h4 {
+  font-size: 0.98rem;
+  line-height: 1.4;
+  margin-top: 1.4rem;
+  margin-bottom: 0.5rem;
+  color: var(--md-default-fg-color--light);
+  text-transform: none;
+  font-weight: 600;
+}
+
+.md-typeset a {
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.md-typeset a:hover {
+  border-bottom-color: currentColor;
+}
+
+.md-typeset strong { font-weight: 650; }
+.md-typeset em { font-style: italic; }
+
+
+/* -----------------------------------------------------------------------------
+   3. Hero (landing only)
+   Full-bleed banner rendered by overrides/main.html {% block hero %}.
+   Two drifting blobs + a static grid pattern read as motion without demanding
+   attention. Tuned to work equally well against both palettes.
+   ----------------------------------------------------------------------------- */
+
+.rio-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #e8ecf1;
+  background-color: var(--rio-slate-900);
+  padding: clamp(3rem, 6vw, 5.5rem) 0 clamp(3.2rem, 6vw, 5rem);
+}
+[data-md-color-scheme="default"] .rio-hero {
+  background-color: var(--rio-slate-800);
+}
+
+.rio-hero__bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(245, 158, 11, 0.05), transparent 60%),
+    linear-gradient(180deg, var(--rio-slate-900) 0%, var(--rio-ink) 100%);
+}
+
+.rio-hero__grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.6;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 45%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 45%, transparent 78%);
+}
+
+.rio-hero__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.rio-hero__blob--a {
+  width: 480px; height: 480px;
+  top: -140px; left: -120px;
+  background: radial-gradient(circle at 30% 30%, #f59e0b 0%, transparent 60%);
+  animation: rio-hero-drift-a 22s ease-in-out infinite alternate;
+}
+.rio-hero__blob--b {
+  width: 520px; height: 520px;
+  bottom: -180px; right: -160px;
+  background: radial-gradient(circle at 60% 60%, #3b82f6 0%, transparent 60%);
+  opacity: 0.30;
+  animation: rio-hero-drift-b 28s ease-in-out infinite alternate;
+}
+.rio-hero__blob--c {
+  width: 320px; height: 320px;
+  top: 30%; right: 15%;
+  background: radial-gradient(circle at 50% 50%, #d97706 0%, transparent 65%);
+  opacity: 0.22;
+  animation: rio-hero-drift-c 34s ease-in-out infinite alternate;
+}
+
+@keyframes rio-hero-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(60px, 40px, 0) scale(1.08); }
+}
+@keyframes rio-hero-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-80px, -50px, 0) scale(1.05); }
+}
+@keyframes rio-hero-drift-c {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-40px, 60px, 0) scale(0.95); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rio-hero__blob { animation: none !important; }
+}
+
+.rio-hero__inner {
+  position: relative;
+  max-width: 61rem;
+  margin: 0 auto;
+  padding-inline: 1rem;
+}
+
+.rio-hero__content {
+  max-width: 44rem;
+}
+
+.rio-hero__eyebrow {
+  font-family: var(--md-code-font);
+  font-size: 0.78rem;
+  color: var(--rio-amber-400);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 0.6rem;
+  opacity: 0.9;
+}
+
+.rio-hero__title {
+  font-family: var(--md-text-font-family);
+  font-size: clamp(3rem, 2rem + 5.2vw, 5rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-weight: 750;
+  color: #ffffff;
+  margin: 0 0 0.7rem;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+
+.rio-hero__tagline {
+  font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.3rem);
+  line-height: 1.45;
+  color: #c9d2df;
+  margin: 0 0 1.6rem;
+  max-width: 34rem;
+  font-weight: 400;
+}
+
+.rio-hero__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.55rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.7rem;
+}
+.rio-hero__pills li {
+  font-size: 0.76rem;
+  font-family: var(--md-code-font);
+  color: #c9d2df;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.005em;
+}
+.rio-hero__pills li code {
+  background: transparent;
+  color: var(--rio-amber-400);
+  padding: 0;
+  font-size: inherit;
+  border: 0;
+}
+
+.rio-hero__install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.55rem 0.55rem 0.9rem;
+  background: rgba(12, 14, 19, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--rio-radius);
+  font-family: var(--md-code-font);
+  font-size: 0.88rem;
+  margin: 0 0 1.6rem;
+  max-width: 100%;
+  backdrop-filter: blur(6px);
+}
+.rio-hero__prompt {
+  color: var(--rio-amber-400);
+  user-select: none;
+  font-weight: 500;
+}
+.rio-hero__install code {
+  background: transparent;
+  color: #eef2f7;
+  padding: 0;
+  font-size: inherit;
+  border: 0;
+  white-space: nowrap;
+}
+.rio-hero__copy {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #c9d2df;
+  border-radius: var(--rio-radius-sm);
+  padding: 0.32rem 0.65rem;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.rio-hero__copy:hover {
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--rio-amber-400);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.rio-hero__copy.is-copied {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.rio-hero__ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.rio-hero__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.72rem 1.25rem;
+  border-radius: var(--rio-radius);
+  font-size: 0.92rem;
+  font-weight: 550;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform 150ms ease, background 150ms ease,
+              color 150ms ease, border-color 150ms ease,
+              box-shadow 150ms ease;
+  border: 1px solid transparent;
+}
+.rio-hero__cta--primary {
+  background: var(--rio-amber-500);
+  color: #1a1206;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset,
+              0 4px 14px rgba(245, 158, 11, 0.28);
+}
+.rio-hero__cta--primary:hover {
+  background: var(--rio-amber-400);
+  transform: translateY(-1px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset,
+              0 6px 18px rgba(245, 158, 11, 0.36);
+}
+.rio-hero__cta--secondary {
+  color: #eef2f7;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: transparent;
+}
+.rio-hero__cta--secondary:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.05);
+}
+.rio-hero__cta-arrow {
+  display: inline-block;
+  transition: transform 150ms ease;
+}
+.rio-hero__cta:hover .rio-hero__cta-arrow {
+  transform: translateX(3px);
+}
+
+/* Push the first article's top padding a bit tighter under the hero. */
+.rio-hero + .md-container .md-main__inner,
+.md-container:has(.rio-hero) .md-content__inner {
+  /* No-op on browsers without :has; the default padding is fine. */
+}
+
+@media (max-width: 60em) {
+  .rio-hero { padding: 2.4rem 0 2.6rem; }
+  .rio-hero__pills { gap: 0.3rem 0.4rem; }
+  .rio-hero__install {
+    display: flex;
+    width: 100%;
+    max-width: 30rem;
+  }
+  .rio-hero__install code { white-space: normal; word-break: break-word; }
+}
+
+
+/* -----------------------------------------------------------------------------
+   4. Card grid — the landing's "four themes" and "where to next" panels.
+   ----------------------------------------------------------------------------- */
+
+.md-typeset .grid.cards > ul,
+.md-typeset .grid.cards {
+  gap: 1rem;
+}
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > .card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--rio-radius);
+  padding: 1.1rem 1.15rem;
+  background: var(--md-default-bg-color);
+  box-shadow: var(--rio-shadow-sm);
+  transition: box-shadow 160ms ease, border-color 160ms ease,
+              transform 160ms ease;
+}
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > .card {
+  background: #131922;
+  box-shadow: var(--rio-shadow-dark-sm);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > .card:hover {
+  border-color: var(--rio-amber-500);
+  box-shadow: var(--rio-shadow-md);
+  transform: translateY(-1px);
+}
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > .card:hover {
+  border-color: var(--rio-amber-400);
+  box-shadow: var(--rio-shadow-dark-md);
+}
+
+.md-typeset .grid.cards > ul > li > hr {
+  margin: 0.6rem -0.15rem;
+  border: 0;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset .grid.cards > ul > li > p:first-of-type strong,
+.md-typeset .grid.cards > ul > li > p:first-of-type {
+  font-size: 0.98rem;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--md-default-fg-color);
+}
+
+.md-typeset .grid.cards > ul > li > p:last-of-type a {
+  color: var(--md-accent-fg-color);
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-bottom: 0;
+}
+.md-typeset .grid.cards > ul > li > p:last-of-type a svg {
+  transition: transform 150ms ease;
+}
+.md-typeset .grid.cards > ul > li:hover > p:last-of-type a svg {
+  transform: translateX(4px);
+}
+
+
+/* -----------------------------------------------------------------------------
+   5. Code blocks
+   Chip-styled inline code, palette-matched scrollbars, subtle language label,
+   hover-highlight on individual lines.
+   ----------------------------------------------------------------------------- */
+
 .md-typeset pre > code,
 .md-typeset .highlight code {
-  font-size: 0.82rem;
-  line-height: 1.55;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.md-typeset .highlight,
+.md-typeset pre {
+  border-radius: var(--rio-radius);
+  margin: 1.1em 0;
 }
 
 .md-typeset .highlight {
-  border-radius: 6px;
-  margin: 1em 0;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+[data-md-color-scheme="slate"] .md-typeset .highlight {
+  border-color: rgba(255, 255, 255, 0.05);
 }
 
-/* Inline code — softer background so it doesn't shout. */
+/* Inline code — warm chip, contrasts clearly with prose in both modes. */
 .md-typeset code {
-  padding: 0.1em 0.35em;
-  border-radius: 3px;
-  font-size: 0.85em;
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  font-size: 0.86em;
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+  border: 1px solid rgba(245, 158, 11, 0.14);
+}
+[data-md-color-scheme="slate"] .md-typeset code {
+  background: rgba(251, 191, 36, 0.08);
+  color: var(--rio-amber-400);
+  border-color: rgba(251, 191, 36, 0.18);
+}
+/* Inside code fences, don't chip the code again. */
+.md-typeset pre code,
+.md-typeset .highlight code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border: 0;
+}
+/* Inside headings / links, don't chip. */
+.md-typeset h1 code,
+.md-typeset h2 code,
+.md-typeset h3 code,
+.md-typeset h4 code,
+.md-typeset a code {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 0.05em 0.25em;
 }
 
-/* Section headings — a touch more air above. */
-.md-typeset h2 { margin-top: 2.4em; }
-.md-typeset h3 { margin-top: 1.8em; }
+/* Language label (mkdocs-material puts it as .filename). */
+.md-typeset .highlight span.filename {
+  background: rgba(30, 42, 58, 0.06);
+  color: var(--md-default-fg-color--light);
+  font-family: var(--md-code-font);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  padding: 0.3rem 0.8rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--rio-radius) var(--rio-radius) 0 0;
+}
+[data-md-color-scheme="slate"] .md-typeset .highlight span.filename {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--md-default-fg-color--light);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
 
-/* Tables — de-emphasise the borders. */
+/* Line numbers gutter — muted, spaced. */
+.md-typeset .highlighttable .linenos {
+  background: transparent;
+  color: var(--md-default-fg-color--lightest);
+  border-right: 1px solid var(--md-default-fg-color--lightest);
+  padding-right: 0.6rem;
+  user-select: none;
+}
+
+/* Subtle hover on individual lines when line numbers are on. */
+.md-typeset .highlight .hll,
+.md-typeset .highlight [id^="__span"]:hover {
+  background: rgba(245, 158, 11, 0.06);
+}
+[data-md-color-scheme="slate"] .md-typeset .highlight [id^="__span"]:hover {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+/* Custom, thin, palette-matched scrollbars on code blocks. */
+.md-typeset pre,
+.md-typeset .highlight code,
+.md-typeset .highlighttable {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+.md-typeset pre::-webkit-scrollbar,
+.md-typeset .highlight code::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.md-typeset pre::-webkit-scrollbar-thumb,
+.md-typeset .highlight code::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+.md-typeset pre::-webkit-scrollbar-thumb:hover,
+.md-typeset .highlight code::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+/* Copy button hover picks up the accent. */
+.md-clipboard:hover {
+  color: var(--md-accent-fg-color) !important;
+}
+
+
+/* -----------------------------------------------------------------------------
+   6. Nav — left sidebar, tabs, right TOC, and search input.
+   ----------------------------------------------------------------------------- */
+
+.md-nav {
+  font-size: 0.78rem;
+}
+.md-nav__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+}
+.md-nav__item {
+  padding: 0.06rem 0;
+}
+.md-nav__link {
+  color: var(--md-default-fg-color--light);
+  transition: color 120ms ease, border-color 120ms ease;
+  border-left: 2px solid transparent;
+  padding-left: 0.55rem;
+  margin-left: -0.55rem;
+}
+.md-nav__link:hover {
+  color: var(--md-accent-fg-color);
+}
+.md-nav__item .md-nav__link--active,
+.md-nav__link--active,
+.md-nav__link.md-nav__link--active > code {
+  color: var(--md-accent-fg-color);
+  font-weight: 600;
+  border-left-color: var(--md-accent-fg-color);
+}
+
+/* Section groupings in the left rail read louder. */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__link,
+.md-nav--primary > .md-nav__list > .md-nav__item > label.md-nav__link {
+  font-weight: 600;
+  color: var(--md-default-fg-color);
+  letter-spacing: -0.005em;
+}
+
+/* Right-hand TOC */
+.md-nav--secondary .md-nav__title {
+  color: var(--md-default-fg-color--light);
+}
+.md-nav--secondary .md-nav__link--active {
+  color: var(--md-accent-fg-color);
+  border-left-color: var(--md-accent-fg-color);
+}
+
+/* Search input — palette-matched */
+.md-search__form {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  transition: background 120ms ease;
+}
+.md-search__form:hover,
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form {
+  background: rgba(255, 255, 255, 0.14);
+}
+.md-search__input {
+  color: #eef2f7;
+}
+.md-search__input::placeholder {
+  color: rgba(238, 242, 247, 0.6);
+}
+.md-search__icon {
+  color: rgba(238, 242, 247, 0.75);
+}
+
+/* Header repo/counters muted */
+.md-header__source .md-source {
+  color: #e8ecf1;
+}
+.md-source__fact {
+  color: rgba(232, 236, 241, 0.7);
+}
+
+
+/* -----------------------------------------------------------------------------
+   7. Announcement bar
+   Muted amber strip, single line on desktop. Dismissible via mkdocs-material's
+   built-in mechanism when `announce.dismiss` is in theme.features.
+   ----------------------------------------------------------------------------- */
+
+.md-banner {
+  background: linear-gradient(90deg,
+    rgba(245, 158, 11, 0.14) 0%,
+    rgba(245, 158, 11, 0.08) 100%);
+  color: var(--rio-slate-800);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.28);
+  font-size: 0.8rem;
+}
+[data-md-color-scheme="slate"] .md-banner {
+  background: linear-gradient(90deg,
+    rgba(251, 191, 36, 0.10) 0%,
+    rgba(251, 191, 36, 0.05) 100%);
+  color: #e8ecf1;
+  border-bottom-color: rgba(251, 191, 36, 0.22);
+}
+.md-banner__inner {
+  padding: 0.55rem 1rem;
+  line-height: 1.3;
+}
+.rio-announce {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.rio-announce__tag {
+  font-family: var(--md-code-font);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: var(--rio-amber-500);
+  color: #1a1206;
+}
+[data-md-color-scheme="slate"] .rio-announce__tag {
+  background: var(--rio-amber-400);
+  color: #1a1206;
+}
+.rio-announce__body a {
+  color: inherit;
+  border-bottom: 1px solid currentColor;
+  font-weight: 550;
+}
+.rio-announce__body a:hover {
+  color: var(--rio-amber-700);
+}
+[data-md-color-scheme="slate"] .rio-announce__body a:hover {
+  color: var(--rio-amber-400);
+}
+.md-banner__button {
+  color: currentColor;
+  opacity: 0.7;
+  transition: opacity 120ms ease;
+}
+.md-banner__button:hover { opacity: 1; }
+
+
+/* -----------------------------------------------------------------------------
+   8. Admonitions + tables
+   Retinted to the amber/slate family; kept semantic colors so notes/warnings
+   still read at a glance.
+   ----------------------------------------------------------------------------- */
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--rio-radius-sm);
+  border-left-width: 3px;
+  box-shadow: none;
+  font-size: 0.82rem;
+}
+.md-typeset .admonition-title,
+.md-typeset summary {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-left-color: #10b981;
+}
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-left-color: var(--rio-amber-500);
+}
+.md-typeset .admonition.danger,
+.md-typeset details.danger {
+  border-left-color: #ef4444;
+}
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-left-color: var(--rio-slate-500);
+}
+
+/* Tables — retire the heavy default border. */
 .md-typeset table:not([class]) {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  border-radius: var(--rio-radius-sm);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset table:not([class]) th {
+  background: rgba(30, 42, 58, 0.04);
+  font-weight: 650;
+  letter-spacing: 0.005em;
+}
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: rgba(255, 255, 255, 0.03);
+}
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th {
+  border: 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset table:not([class]) tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Tab labels (pymdownx tabbed) pick up the accent when active. */
+.md-typeset .tabbed-labels > label {
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .tabbed-set > input:checked + label {
+  color: var(--md-accent-fg-color);
+  border-bottom-color: var(--md-accent-fg-color);
+}
+
+
+/* -----------------------------------------------------------------------------
+   9. Mermaid — pick up palette via CSS variables. Additional theming happens
+   via window.mermaidConfig in overrides/main.html {% block extrahead %}.
+   ----------------------------------------------------------------------------- */
+
+.md-typeset .mermaid {
+  text-align: center;
+}
+.md-typeset .mermaid .node rect,
+.md-typeset .mermaid .node polygon,
+.md-typeset .mermaid .node circle {
+  stroke: var(--md-default-fg-color--lighter);
+}
+.md-typeset .mermaid .edgeLabel {
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+}
+.md-typeset .mermaid .flowchart-link {
+  stroke: var(--rio-amber-600);
+  stroke-width: 1.2;
+}
+[data-md-color-scheme="slate"] .md-typeset .mermaid .flowchart-link {
+  stroke: var(--rio-amber-400);
+}
+
+
+/* -----------------------------------------------------------------------------
+   10. Small dark-mode + a11y audit fixes
+   ----------------------------------------------------------------------------- */
+
+/* Focus rings on interactive brand elements — always visible. */
+.rio-hero__cta:focus-visible,
+.rio-hero__copy:focus-visible,
+.md-nav__link:focus-visible,
+.md-typeset a:focus-visible {
+  outline: 2px solid var(--rio-amber-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+[data-md-color-scheme="slate"] .rio-hero__cta:focus-visible,
+[data-md-color-scheme="slate"] .rio-hero__copy:focus-visible,
+[data-md-color-scheme="slate"] .md-nav__link:focus-visible,
+[data-md-color-scheme="slate"] .md-typeset a:focus-visible {
+  outline-color: var(--rio-amber-400);
+}
+
+/* Footer nav */
+.md-footer-meta {
+  background: #05070a;
+}
+.md-footer {
+  background: #0a0c11;
+}
+
+/* "Back to top" pill */
+.md-top {
+  background: var(--rio-slate-800);
+  color: #e8ecf1;
+  box-shadow: var(--rio-shadow-md);
+}
+.md-top:hover {
+  background: var(--rio-amber-500);
+  color: #1a1206;
 }
