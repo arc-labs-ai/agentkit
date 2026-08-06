@@ -1,18 +1,3 @@
-<div align="center" markdown>
-
-# agentkit
-
-**A low-level, composable framework for AI agents in Python.**
-
-<p>
-  <code>Python 3.12+</code> ·
-  <code>Apache-2.0</code> ·
-  <code>zero core deps</code> ·
-  <code>mypy --strict</code>
-</p>
-
-</div>
-
 ## The pain
 
 You've written an agent. It ran. Then one of these happened.
