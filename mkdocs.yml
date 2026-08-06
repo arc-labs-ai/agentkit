@@ -130,6 +130,8 @@ nav:
       - Parallel agents with cooperative cancellation: recipes/parallel-agents-with-cancellation.md
       - Write a custom middleware: recipes/custom-middleware.md
       - Wire OpenTelemetry: recipes/otel-tracing-and-metrics.md
+      - Plug the claude CLI into FastAPI code-gen: recipes/claude-cli-fastapi-code-gen.md
+      - Consume MCP tools from an agent: recipes/mcp-tools.md
   - API reference:
       - agents: api-reference/agents.md
       - runtime: api-reference/runtime.md

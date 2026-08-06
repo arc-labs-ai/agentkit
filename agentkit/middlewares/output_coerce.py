@@ -57,16 +57,21 @@ def _emit_coercion_failed(call: Call, exc: OutputCoercionError) -> None:
 
 
 def _resolve_adapter(call: Call) -> SchemaAdapter[Any] | None:
-    """Pick up the adapter the cognition threaded onto ``call.meta``.
+    """Pick up the adapter for this call.
 
-    Single source of truth. The cognition passes
-    ``meta={"output_adapter": adapter}`` to ``invoker.stream`` /
-    ``invoker.chat`` — the Invoker deposits it on ``Call.meta`` and this
-    middleware reads it here. Smuggling the adapter via a private
-    attribute on the shared ``RunContext`` would let two agents sharing
-    a ctx stomp on each other's adapter, and the ``Ctx`` Protocol never
-    declared the field."""
-    return call.meta.get("output_adapter") if call.meta else None
+    Primary source is ``call.meta["output_adapter"]`` — the cognition
+    threads it via ``meta=`` on ``invoker.stream`` / ``invoker.chat``.
+    Falls back to ``ctx._output_adapter`` for callers that bypass the
+    Agent and drive ``Invoker`` directly (tests, low-level integrations);
+    the module docstring documents that shape as the compatible surface.
+    Concurrent runs sharing a ctx must use the meta path — the fallback
+    is only for the direct-invoker case where meta is unset."""
+    adapter: SchemaAdapter[Any] | None = None
+    if call.meta:
+        adapter = call.meta.get("output_adapter")
+    if adapter is None:
+        adapter = getattr(call.ctx, "_output_adapter", None)
+    return adapter
 
 
 def output_coerce() -> Middleware:

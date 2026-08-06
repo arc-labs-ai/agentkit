@@ -173,9 +173,7 @@ def _coerce_value(tp: Any, value: Any, *, path: str) -> Any:
 
     if _is_attrs_class(tp):
         if not isinstance(value, dict):
-            raise ValueError(
-                f"{path}: expected object for {tp.__name__}, got {type(value).__name__}"
-            )
+            raise ValueError(f"{path}: expected object for {tp.__name__}, got {type(value).__name__}")
         return _coerce_attrs(tp, value, path=path)
 
     raise ValueError(f"{path}: cannot coerce into {tp!r}")
@@ -292,13 +290,13 @@ class AttrsAdapter(Generic[T]):
             return None
         try:
             inst = object.__new__(self._cls)
-            field_names = {f.name for f in attrs.fields(self._cls)}
-            for f in attrs.fields(self._cls):
+            field_names = {f.name for f in attrs.fields(self._cls)}  # type: ignore[arg-type]
+            for f in attrs.fields(self._cls):  # type: ignore[arg-type]
                 if f.default is attrs.NOTHING:
                     continue
                 # ``attrs.Factory`` defaults are wrapped — invoke if so.
                 default = f.default
-                if isinstance(default, attrs.Factory):
+                if isinstance(default, attrs.Factory):  # type: ignore[arg-type]
                     try:
                         object.__setattr__(inst, f.name, default.factory())
                     except Exception:
@@ -325,7 +323,7 @@ class AttrsAdapter(Generic[T]):
         and dicts."""
         import attrs
 
-        dumped: dict[str, Any] = attrs.asdict(value)
+        dumped: dict[str, Any] = attrs.asdict(value)  # type: ignore[arg-type]
         return dumped
 
     def validate(self, value: Any) -> T:

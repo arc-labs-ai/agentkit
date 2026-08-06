@@ -46,6 +46,7 @@ postgres = [
 redis = [
     "redis>=5.0",
 ]
+mcp = ["mcp>=1.28,<2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentkit"]
@@ -88,6 +89,12 @@ module = [
     "opentelemetry.*",
     "pgvector",
     "pgvector.*",
+    # attrs may or may not be installed (it's an optional shape supported by
+    # ``capabilities/output_schema``, and also comes in transitively via the
+    # ``mcp`` extra). Treat it as untyped either way so a strict typecheck
+    # doesn't flip behavior based on which extras happen to be present.
+    "attrs",
+    "attrs.*",
 ]
 ignore_missing_imports = true
 
@@ -99,6 +106,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = [
     "agentkit.adapters.*",
+    "agentkit.capabilities.output_schema.*",
+    "agentkit.integrations.mcp.*",
     "agentkit.kernel._json",
 ]
 warn_unused_ignores = false
@@ -114,6 +123,7 @@ dev = [
     "hypothesis>=6.100",
     "ruff>=0.6",
     "mypy>=1.11",
+    "mcp>=1.28,<2",
 ]
 docs = [
     "mkdocs>=1.6",
