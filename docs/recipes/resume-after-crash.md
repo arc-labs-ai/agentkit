@@ -14,16 +14,25 @@ successful tool-loop iteration. If a fresh `Agent` runs against the
 same `run_id` and the same `CheckpointPort`, it hydrates from the
 snapshot and continues from the next iteration.
 
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    Wired via `providers.claude(...)` on the `Invoker`. Swap for
+    `providers.openai` (and set `OPENAI_API_KEY`) if that's what you
+    have — the checkpoint plumbing is LLM-agnostic.
+
 ## Working code
 
 ```python
-import asyncio
+"""Requires ANTHROPIC_API_KEY in the environment."""
 
-from agentkit import Agent, ToolCall, tool
+import asyncio
+import os
+
+from agentkit import Agent, Scope, tool
 from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.adapters.llm import providers
 from agentkit.agents.cognition import ReActCognition
 from agentkit.capabilities import Checkpointer
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.runtime import Invoker, RunContext, Services
 
 
 @tool(side_effecting=False)
@@ -35,10 +44,19 @@ async def search(query: str) -> str:
 def build_agent() -> Agent:
     return Agent(
         name="briefer",
-        model="gpt-4o-mini",
-        prompt="Research the question. Use `search` before answering.",
+        model="claude-sonnet-4-6",
+        prompt="Research the question. Use `search` exactly once before answering.",
         cognition=ReActCognition(tools=[search]),
     )
+
+
+def build_ctx(checkpointer: Checkpointer, run_id: str) -> RunContext:
+    llm = providers.claude(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="claude-sonnet-4-6",
+    )
+    services = Services(invoker=Invoker(llm=llm), checkpointer=checkpointer)
+    return RunContext(correlation_id=run_id, scope=Scope(), services=services)
 
 
 async def main() -> None:
@@ -46,17 +64,11 @@ async def main() -> None:
     checkpointer = Checkpointer(port=port)
     run_id = "run-42"
 
-    # ── attempt 1: driver aborts after the first tool-loop iteration ──
+    # ── attempt 1: worker aborts after the first tool-loop iteration ──
     # A "step" event fires right AFTER the cognition has snapshotted state
     # for that iteration. Breaking on `step` is the cleanest way to model
     # a worker that crashed just after saving its progress.
-    llm = FakeLLM.script(
-        [
-            Turn(tool_calls=(ToolCall("c1", "search", {"query": "octopus"}),)),
-            Turn(content="never reached — worker died first"),
-        ]
-    )
-    ctx = make_test_ctx(llm=llm, checkpointer=checkpointer, correlation_id=run_id)
+    ctx = build_ctx(checkpointer, run_id)
     agent = build_agent()
     async for ev in agent.stream("Brief me on octopus cognition.", ctx):
         if ev.type == "step":
@@ -68,16 +80,14 @@ async def main() -> None:
     # ── attempt 2: a fresh worker picks up ────────────────────────────
     # Rebuilding the Agent + Ctx models a process restart — no in-memory
     # state carries over. The Checkpointer + run_id is the ONLY link.
-    llm2 = FakeLLM.script(
-        [Turn(content="Octopuses show distributed cognition (Science, 2023).")]
-    )
-    ctx2 = make_test_ctx(llm=llm2, checkpointer=checkpointer, correlation_id=run_id)
+    ctx2 = build_ctx(checkpointer, run_id)
     agent2 = build_agent()
     final = await agent2.run("Brief me on octopus cognition.", ctx2)
     print(f"[resumed] {final.output!r}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## How it works

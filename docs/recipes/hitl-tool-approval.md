@@ -9,16 +9,26 @@ run should **suspend to a checkpoint** and hand control back to your
 driver code, which decides whether to resume with `"approve"`,
 `"reject"`, or a modified argument list.
 
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    The snippet wires `providers.claude(...)` through an `Invoker` so
+    the reader sees the real shape they'll ship. Swap
+    `providers.claude` for `providers.openai` (and set
+    `OPENAI_API_KEY`) if that's what you have — nothing else changes.
+
 ## Working code
 
 ```python
-import asyncio
+"""Requires ANTHROPIC_API_KEY in the environment."""
 
-from agentkit import Agent, Suspended, ToolCall, tool
+import asyncio
+import os
+
+from agentkit import Agent, Scope, Suspended, tool
 from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.adapters.llm import providers
 from agentkit.agents.cognition import ReActCognition
 from agentkit.capabilities import Checkpointer
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.runtime import Invoker, RunContext, Services
 
 
 @tool(side_effecting=True)
@@ -28,32 +38,30 @@ async def send_email(to: str, subject: str) -> str:
 
 
 async def main() -> None:
-    llm = FakeLLM.script(
-        [
-            Turn(
-                tool_calls=(
-                    ToolCall("c1", "send_email", {"to": "team@x", "subject": "brief"}),
-                )
-            ),
-            Turn(content="Email sent."),
-        ]
+    llm = providers.claude(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="claude-sonnet-4-6",
     )
-    ctx = make_test_ctx(
-        llm=llm,
+    services = Services(
+        invoker=Invoker(llm=llm),
         checkpointer=Checkpointer(port=InMemoryCheckpointStore()),
-        autonomy="gated",  # gate every side_effecting tool
+    )
+    ctx = RunContext(
         correlation_id="run-1",
+        scope=Scope(),
+        services=services,
+        autonomy="gated",  # gate every side_effecting tool
     )
     agent = Agent(
         name="notifier",
-        model="gpt-4o-mini",
-        prompt="Draft and send.",
+        model="claude-sonnet-4-6",
+        prompt="Draft a one-line brief for the team, then call send_email exactly once.",
         cognition=ReActCognition(tools=[send_email]),
     )
 
     # First run — the loop suspends before send_email fires.
-    result = await agent.run("Send the team a brief.", ctx)
-    susp = result.evals["suspended"]
+    result = await agent.run("Send the team a brief about octopus cognition.", ctx)
+    susp = result.evals.get("suspended")
     assert isinstance(susp, Suspended)
     print(f"awaiting approval for: {[tc.name for tc in susp.pending]}")
 
@@ -66,7 +74,8 @@ async def main() -> None:
     print(f"final: {final.output!r}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## How it works

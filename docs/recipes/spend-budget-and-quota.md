@@ -16,28 +16,48 @@ Both hook in through the same `meter()` middleware in the chat chain.
 Overspend raises `MeterExceeded` — the invoker unwinds and the loop
 halts cleanly.
 
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    Wired via `providers.claude(...)` on the `Invoker`. Swap for
+    `providers.openai` (and set `OPENAI_API_KEY`) if that's what you
+    have — the rest of the wiring is unchanged.
+
 ## Working code
 
 ```python
+"""Requires ANTHROPIC_API_KEY in the environment.
+
+Demonstrates the halt path with `max_calls=1` — a `max_cost_usd`
+ceiling is set generously so cost is not what stops the loop; the
+per-call ceiling reliably trips on the second `invoker.chat(...)`."""
+
 import asyncio
+import os
 
 from agentkit import Budget, ChatRequest, Message, MeterExceeded, Quota, Scope
+from agentkit.adapters.llm import providers
 from agentkit.middlewares import meter
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.runtime import Invoker, RunContext, Services
 
 
 async def main() -> None:
-    llm = FakeLLM("ok")
+    llm = providers.claude(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="claude-sonnet-4-6",
+    )
+    services = Services(invoker=Invoker(llm=llm, chat_middleware=[meter()]))
 
-    ctx = make_test_ctx(
-        llm=llm,
+    ctx = RunContext(
+        correlation_id="run-1",
         scope=Scope(org_id="acme", domain_id="research"),
-        budget=Budget(max_cost_usd=0.00025),      # ~2 chat calls at $0.0001 each
-        meters=[Quota(max_rpm=3)],                # extra meter beyond Budget
-        chat_middleware=[meter()],
+        budget=Budget(max_cost_usd=0.10, max_calls=1),  # halts on the second call
+        meters=[Quota(max_rpm=3)],                       # extra per-tenant window
+        services=services,
     )
 
-    req = ChatRequest(messages=[Message("user", "hello")], model="m")
+    req = ChatRequest(
+        messages=[Message("user", "One short sentence about octopus cognition.")],
+        model="claude-sonnet-4-6",
+    )
     for i in range(1, 6):
         try:
             await ctx.invoker.chat(req, ctx)
@@ -47,7 +67,8 @@ async def main() -> None:
             break
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## How it works
@@ -59,7 +80,11 @@ workers.
 
 `Budget._check` uses **strict greater-than** (`spent > max`) — a call
 whose cost lands exactly on the ceiling completes; the next one trips
-`MeterExceeded`. `Budget` is also the run's depth + concurrency
+`MeterExceeded`. The same applies to `max_calls`: the first call
+lands on `calls == 1`, then the second call's `guard` sees `1 > 1`
+false, `charge` bumps to `2`, and the third call's `guard` trips.
+That's why `max_calls=1` above stops the loop on the second iteration,
+not the first. `Budget` is also the run's depth + concurrency
 authority: `max_depth` caps how deep the agent tree can spawn, and
 `semaphore()` bounds tree-wide concurrency (default 8).
 
@@ -84,10 +109,10 @@ differently to a token-out vs wall-out.
 
 ## Gotchas
 
-- **`meter()` is not on by default.** `make_test_ctx()` doesn't wire
-  a chat chain unless you pass one. In a real wire-up, put `meter()`
-  after `tracing()` and before caching / retry so the meter observes
-  every attempted call.
+- **`meter()` is not on by default.** You wire it into
+  `Invoker(chat_middleware=[..., meter(), ...])`. Put it after
+  `tracing()` and before caching / retry so the meter observes every
+  attempted call.
 - **`Budget.max_cost_usd=None` is unlimited.** Set both `max_cost_usd`
   and `max_calls` unless you have a reason to leave one open.
 - **`Quota` counts by attempted request, not by success.** A tenant

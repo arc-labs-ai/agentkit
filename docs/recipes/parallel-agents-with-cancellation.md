@@ -18,21 +18,56 @@ the raw `asyncio.gather` doesn't give you:
 pair (depth+1, sharing `budget` / `services` / `cancel` by reference)
 and calls `gather_bounded(...)` under the parent's semaphore.
 
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    The successful children run on `providers.claude(...)`. To
+    demonstrate sibling cancellation without hoping the model
+    misbehaves, the failing child uses a tiny `FailingCognition` that
+    raises immediately — cognitions are pure Protocol impls, so a
+    ~5-line one is a legitimate way to script a failure inside a real
+    wire-up. Swap `providers.claude` for `providers.openai` (and set
+    `OPENAI_API_KEY`) if that's what you have.
+
 ## Working code
 
 ```python
-import asyncio
+"""Requires ANTHROPIC_API_KEY in the environment."""
 
-from agentkit import Agent, CancellationToken, run_agents
-from agentkit.testing import FakeLLM, make_test_ctx
+import asyncio
+import os
+from collections.abc import AsyncIterator
+
+from agentkit import Agent, CancellationToken, Scope, StreamEvent, run_agents
+from agentkit.adapters.llm import providers
+from agentkit.runtime import Invoker, RunContext, Services
+
+
+class FailingCognition:
+    """A five-line cognition that raises immediately.
+
+    `Cognition` is a runtime-checkable Protocol — any object with a
+    `name: str` and a `drive(...)` async generator satisfies it, so
+    scripting a scripted-failure agent doesn't need a test double."""
+
+    name = "failing"
+
+    async def drive(self, agent, task, ctx, context) -> AsyncIterator[StreamEvent]:
+        raise RuntimeError("scripted failure")
+        yield  # unreachable — satisfies the async-generator signature
+
+
+def build_services() -> Services:
+    llm = providers.claude(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="claude-sonnet-4-6",
+    )
+    return Services(invoker=Invoker(llm=llm))
 
 
 async def demo_sibling_cancel() -> None:
     """One failing agent cancels the rest — TaskGroup semantics."""
-    llm = FakeLLM("ok", fail_times=1, fail_exc=RuntimeError("scripted failure"))
-    ctx = make_test_ctx(llm=llm)
-    a = Agent(name="a", model="m", prompt="brief")
-    b = Agent(name="b", model="m", prompt="brief")
+    ctx = RunContext(correlation_id="run-1", scope=Scope(), services=build_services())
+    a = Agent(name="a", model="claude-sonnet-4-6", prompt="Brief the topic in one line.")
+    b = Agent(name="b", model="claude-sonnet-4-6", prompt="unused", cognition=FailingCognition())
     try:
         await run_agents([(a, "topic-a"), (b, "topic-b")], ctx)
     except* RuntimeError as eg:
@@ -42,10 +77,9 @@ async def demo_sibling_cancel() -> None:
 
 async def demo_best_effort() -> None:
     """`best_effort=True` isolates failures into Failure objects."""
-    llm = FakeLLM("ok", fail_times=1, fail_exc=RuntimeError("scripted failure"))
-    ctx = make_test_ctx(llm=llm)
-    a = Agent(name="a", model="m", prompt="brief")
-    b = Agent(name="b", model="m", prompt="brief")
+    ctx = RunContext(correlation_id="run-2", scope=Scope(), services=build_services())
+    a = Agent(name="a", model="claude-sonnet-4-6", prompt="Brief the topic in one line.")
+    b = Agent(name="b", model="claude-sonnet-4-6", prompt="unused", cognition=FailingCognition())
     results = await run_agents([(a, "topic-a"), (b, "topic-b")], ctx, best_effort=True)
     for r in results:
         print(f"[best-effort] {type(r).__name__}: {r}")
@@ -55,7 +89,12 @@ async def demo_external_cancel() -> None:
     """External signal trips the token; the agent unwinds cooperatively."""
     from agentkit.kernel.concurrency import Cancelled
 
-    ctx = make_test_ctx(llm=FakeLLM("ok"), cancel=CancellationToken())
+    ctx = RunContext(
+        correlation_id="run-3",
+        scope=Scope(),
+        services=build_services(),
+        cancel=CancellationToken(),
+    )
 
     async def cancel_after(delay: float) -> None:
         await asyncio.sleep(delay)
@@ -81,7 +120,8 @@ async def main() -> None:
     await demo_external_cancel()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## How it works

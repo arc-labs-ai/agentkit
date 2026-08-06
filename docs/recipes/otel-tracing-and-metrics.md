@@ -11,35 +11,47 @@ bridges them to the OpenTelemetry SDK.
 Traces answer "what did *this* run do?". Metrics answer "what is the
 p99 first-token latency doing?". You almost always want both.
 
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    The demo wires `providers.claude(...)` behind the tracing
+    middleware so the spans are populated by a real chat call. Swap
+    for `providers.openai` (and set `OPENAI_API_KEY`) — the tracer
+    wiring is provider-neutral. Install the extra first:
+    `pip install "arc-agentkit[observability]"`.
+
 ## Working code
 
 ```python
+"""Requires ANTHROPIC_API_KEY in the environment and
+`pip install "arc-agentkit[observability]"`."""
+
 import asyncio
+import os
 
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from agentkit import ChatRequest, Message, RunContext, Scope, Services
+from agentkit.adapters.llm import providers
 from agentkit.adapters.observability import otel_tracer
 from agentkit.middlewares import meter, tracing
 from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM
 
 
 async def main() -> None:
-    # Build our own tracer provider so the test is hermetic — production
+    # Build our own tracer provider so the demo is hermetic — production
     # usually calls otel_exporter_otlp_http() at startup and lets the SDK's
     # global provider be picked up automatically.
     provider = TracerProvider()
     exporter = InMemorySpanExporter()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
 
+    llm = providers.claude(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="claude-sonnet-4-6",
+    )
     services = Services(
-        invoker=Invoker(
-            llm=FakeLLM("hello"),
-            chat_middleware=[tracing(), meter()],
-        ),
+        invoker=Invoker(llm=llm, chat_middleware=[tracing(), meter()]),
         trace=otel_tracer(provider),
         # metrics=otel_meter(meter_provider) would light up histograms too.
     )
@@ -49,7 +61,10 @@ async def main() -> None:
         services=services,
     )
 
-    req = ChatRequest(messages=[Message("user", "hi")], model="gpt-4o-mini")
+    req = ChatRequest(
+        messages=[Message("user", "One short sentence about octopus cognition.")],
+        model="claude-sonnet-4-6",
+    )
     await ctx.invoker.chat(req, ctx)
 
     for span in exporter.get_finished_spans():
@@ -57,7 +72,8 @@ async def main() -> None:
         print(f"[span] {span.name}  {gen_ai}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Production wire-up

@@ -10,10 +10,20 @@ with a header, cache on a custom key, add a stopwatch — write one too.
 There are two shapes, and picking the right one keeps the code
 straight.
 
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    The demo wires `providers.claude(...)` through an `Invoker` so
+    you see the real shape you'll ship. The middlewares themselves
+    are LLM-agnostic — swap `providers.claude` for `providers.openai`
+    (and set `OPENAI_API_KEY`) or any other `LLMPort` without
+    touching the middleware code.
+
 ## Working code
 
 ```python
+"""Requires ANTHROPIC_API_KEY in the environment."""
+
 import asyncio
+import os
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -25,9 +35,11 @@ from agentkit import (
     Handler,
     Message,
     MiddlewareContext,
+    Scope,
 )
+from agentkit.adapters.llm import providers
 from agentkit.middlewares import tracing
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.runtime import Invoker, RunContext, Services
 
 
 # ── Style 1: BaseMiddleware — for transform / guard / observe.
@@ -64,19 +76,25 @@ async def stopwatch(call: Call, nxt: Handler) -> AsyncIterator[Any]:
 
 
 async def main() -> None:
-    ctx = make_test_ctx(
-        llm=FakeLLM("ok"),
-        chat_middleware=[tracing(), stopwatch, Redact()],
+    llm = providers.claude(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="claude-sonnet-4-6",
     )
+    services = Services(
+        invoker=Invoker(llm=llm, chat_middleware=[tracing(), stopwatch, Redact()]),
+    )
+    ctx = RunContext(correlation_id="run-1", scope=Scope(), services=services)
+
     req = ChatRequest(
-        messages=[Message("user", "the code is SECRET, please echo")],
-        model="gpt-4o-mini",
+        messages=[Message("user", "the code is SECRET, please echo the redacted form")],
+        model="claude-sonnet-4-6",
     )
     result = await ctx.invoker.chat(req, ctx)
     print(f"[result] {result.content!r}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## How it works
