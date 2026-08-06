@@ -159,6 +159,31 @@ class ClaudeCliCognition:
         one and only one ``StreamEvent(type='final')`` regardless of
         outcome. On failure paths, ``AgentResult.partial=True`` and
         ``evals["stop_reason"]`` names the failure mode.
+
+        **`asyncio.CancelledError` semantics.** When the caller wraps this
+        in ``asyncio.wait_for(...)`` or a ``TaskGroup`` and cancels,
+        ``CancelledError`` is delivered mid-await. We terminate the
+        subprocess, yield the terminal ``final(stop_reason="cancelled")``,
+        AND re-raise ``CancelledError`` so the caller's cancel /
+        timeout mechanism sees the signal. Suppressing it (as
+        ``except BaseException`` would) breaks ``wait_for`` timeouts.
+
+        **What this cognition IGNORES from ``ctx`` and ``agent``.** By
+        design, this cognition delegates the whole loop to the CLI, so
+        several agentkit contracts do NOT apply:
+
+        - ``ctx.autonomy`` — the CLI's own ``permission_mode`` owns
+          permissions; agentkit's autonomy tier is not translated.
+        - ``agent.memory`` — the CLI manages its own context; the agent's
+          ``MemorySource`` (if any) is never queried.
+        - ``Agent.resume()`` — not supported (ReAct-only). The
+          ``evals["session_id"]`` value can be passed back as
+          ``ClaudeCliCognition(session_id=...)`` for a CLI-native resume.
+        - ``ctx.budget`` — the CLI's cost accounting is surfaced via
+          ``Usage.cost_usd`` on the final event but is NOT charged
+          against ``ctx.budget`` (the cognition bypasses the ``Invoker``
+          and its ``meter()`` middleware). Callers who need a hard
+          ceiling on CLI spend must impose it externally.
         """
         del context  # unused — the CLI owns its own transcript
 
@@ -186,6 +211,21 @@ class ClaudeCliCognition:
         # the message and fold it into the final event's ``stop_reason`` +
         # ``evals``. The generator still terminates normally.
         fatal_exc: BaseException | None = None
+        # Set when a caller-injected cancel (asyncio.CancelledError from
+        # wait_for / TaskGroup) arrives. We yield the terminal event first,
+        # then re-raise so the caller's cancel mechanism honours the signal.
+        # Suppressing would make wait_for timeouts silently return a partial
+        # result instead of raising TimeoutError.
+        should_reraise_cancel = False
+
+        # Pre-flight: if working_dir is set and doesn't exist, surface a
+        # distinct stop_reason so operators don't confuse it with a missing
+        # binary. `create_subprocess_exec` would raise FileNotFoundError
+        # either way but the reader loses the distinction.
+        if self.working_dir is not None and not self.working_dir.exists():
+            wd_missing = f"working_dir does not exist: {self.working_dir}"
+        else:
+            wd_missing = None
 
         try:
             # argv / env resolution can throw (e.g., ``Prompt.render()`` on a
@@ -193,7 +233,10 @@ class ClaudeCliCognition:
             # states). Inside the outer try so we always yield a final.
             system_prompt = self._resolve_system_prompt(agent.prompt)
             argv = self._build_argv(task, system_prompt=system_prompt)
-            env = self._build_env()
+            env = self._build_env(ctx=ctx)
+
+            if wd_missing is not None:
+                raise FileNotFoundError(wd_missing)
 
             async with sem:
                 proc = await asyncio.create_subprocess_exec(
@@ -241,33 +284,62 @@ class ClaudeCliCognition:
                             stderr_bytes = await proc.stderr.read()
                     with contextlib.suppress(Exception):
                         await proc.wait()
+        except asyncio.CancelledError:
+            cancelled = True
+            should_reraise_cancel = True
+            if proc is not None and proc.returncode is None:
+                await _terminate(proc, self.terminate_grace_s)
         except BaseException as exc:  # noqa: BLE001 — see terminal-event guarantee
-            # Anything that escapes to here (FileNotFoundError on missing
-            # ``claude`` binary, PermissionError, parse-time bug in
-            # _events_from_payload) becomes a final event with a
-            # ``spawn_failed`` / ``parse_failed`` stop_reason. We deliberately
-            # widen to ``BaseException`` so ``KeyboardInterrupt`` and
-            # ``SystemExit`` also produce a terminal event before propagating.
+            # Anything else that escapes to here (FileNotFoundError on
+            # missing ``claude`` binary, PermissionError, parse-time bug
+            # in _events_from_payload) becomes a final event with a
+            # ``spawn_failed`` / ``parse_failed`` stop_reason. We
+            # deliberately widen to ``BaseException`` so ``KeyboardInterrupt``
+            # and ``SystemExit`` also produce a terminal event before
+            # propagating. (``CancelledError`` is handled separately above
+            # so timeouts propagate correctly.)
             fatal_exc = exc
 
         return_code = proc.returncode if proc is not None else -1
 
         # Decide terminal stop_reason + partial flag.
-        # Priority (highest first): fatal exception → cancellation → CLI
+        # Priority (highest first): cancellation → fatal exception → CLI
         # non-zero exit → CLI semantic error (is_error) → success.
+        # Cancellation is above fatal_exc because a cancel that races with
+        # a fatal error should still surface as ``cancelled``.
         final_stop_reason: str | None
         final_partial: bool
-        if fatal_exc is not None:
-            final_stop_reason = "spawn_failed" if proc is None else "parse_failed"
-            final_partial = True
-        elif cancelled:
+        if cancelled:
             final_stop_reason = "cancelled"
+            final_partial = True
+        elif fatal_exc is not None:
+            # Distinguish working_dir_missing from spawn_failed for
+            # operator clarity (the CLI would raise FileNotFoundError for
+            # both, but the fix path differs).
+            if proc is None:
+                if isinstance(fatal_exc, FileNotFoundError) and str(fatal_exc).startswith(
+                    "working_dir does not exist:"
+                ):
+                    final_stop_reason = "working_dir_missing"
+                else:
+                    final_stop_reason = "spawn_failed"
+            else:
+                final_stop_reason = "parse_failed"
             final_partial = True
         elif return_code != 0:
             final_stop_reason = f"cli_exit_{return_code}"
             final_partial = True
         elif is_error:
-            final_stop_reason = stop_reason or "cli_reported_error"
+            # When the CLI signals ``is_error: true`` while exiting 0, the
+            # useful stop_reason is often on ``terminal_reason`` (e.g.,
+            # ``"api_error"``) rather than ``subtype`` (which can still
+            # read ``"success"``). We already prefer subtype in
+            # ``_events_from_payload`` — but when subtype is the useless
+            # ``"success"`` string, fall through to a generic marker.
+            if stop_reason == "success" or stop_reason is None:
+                final_stop_reason = "cli_reported_error"
+            else:
+                final_stop_reason = stop_reason
             final_partial = True
         else:
             final_stop_reason = stop_reason  # may still be None on clean success
@@ -278,6 +350,12 @@ class ClaudeCliCognition:
             "cli_duration_ms": duration_ms or 0,
             "cli_return_code": return_code,
         }
+        # Bridge agentkit's correlation_id into the final result so downstream
+        # observability can join on it (matching the env var we set on the
+        # subprocess via `CLAUDE_TRACE_EXTERNAL_ID`).
+        external_id = getattr(ctx, "correlation_id", None)
+        if external_id:
+            evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
         if accumulated_thinking:
@@ -303,6 +381,11 @@ class ClaudeCliCognition:
                 evals=evals,
             ),
         )
+        if should_reraise_cancel:
+            # Terminal event delivered; now propagate the cancel so
+            # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
+            # and TaskGroup cancels propagate to siblings.
+            raise asyncio.CancelledError()
 
     # ---- helpers ---------------------------------------------------------------------------
 
@@ -348,16 +431,26 @@ class ClaudeCliCognition:
         argv += list(self.extra_args)
         return argv
 
-    def _build_env(self) -> dict[str, str]:
+    def _build_env(self, *, ctx: Ctx | None = None) -> dict[str, str]:
         """Copy the process env; layer ``CLAUDE_CONFIG_DIR`` on top when the
         cognition was constructed with a ``config_dir`` (for isolated auth /
         settings, e.g. per-tenant server-side wrapper). Also default
         ``CLAUDE_ENABLE_STREAM_WATCHDOG=1`` to mitigate long-tail SSE hangs
-        (SDK issue #33949) unless the caller already set it explicitly."""
+        (SDK issue #33949) unless the caller already set it explicitly.
+
+        When ``ctx`` carries a ``correlation_id``, bridge it into the child
+        as ``CLAUDE_TRACE_EXTERNAL_ID`` so operators can join agentkit and
+        CLI traces on a single id. Idempotent under nested drives — a
+        caller-set value wins.
+        """
         env = os.environ.copy()
         if self.config_dir is not None:
             env["CLAUDE_CONFIG_DIR"] = str(self.config_dir)
         env.setdefault("CLAUDE_ENABLE_STREAM_WATCHDOG", "1")
+        if ctx is not None:
+            correlation_id = getattr(ctx, "correlation_id", None)
+            if correlation_id:
+                env.setdefault("CLAUDE_TRACE_EXTERNAL_ID", str(correlation_id))
         return env
 
 
