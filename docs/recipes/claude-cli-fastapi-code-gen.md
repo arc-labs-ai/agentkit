@@ -126,7 +126,7 @@ ClaudeCliCognition(
     disallowed_tools=("Bash",),        # -> --disallowed-tools Bash
     permission_mode="acceptEdits",     # -> --permission-mode acceptEdits
     max_turns=6,                       # -> --max-turns 6
-    session_id="ex-abcd-...",          # -> --session-id (for resume)
+    session_id="550e8400-e29b-41d4-a716-446655440000",  # UUID, from a prior run's evals["session_id"]
     extra_args=("--append-system-prompt", "no comments"),
     terminate_grace_s=5.0,             # SIGTERM grace before SIGKILL
     max_concurrent=8,                  # class-level BoundedSemaphore

@@ -22,7 +22,6 @@ from agentkit import Agent
 from agentkit.agents.cognition import ClaudeCliCognition
 from agentkit.agents.cognition.claude_cli import _get_semaphore
 from agentkit.context import WorkingContext
-from agentkit.kernel.errors import AgentkitError
 from agentkit.prompts.prompt import Prompt
 from agentkit.testing.fakes.ctx import FakeCtx
 
@@ -269,7 +268,10 @@ def test_session_id_lands_in_evals() -> None:
     assert final.result.evals["cli_duration_ms"] == 1234
 
 
-def test_non_zero_exit_raises_agentkit_error_with_stderr() -> None:
+def test_non_zero_exit_yields_final_with_stop_reason_and_stderr() -> None:
+    """Non-zero CLI exit does NOT raise. Per the terminal-event guarantee,
+    drive() must yield exactly one final event with partial=True,
+    stop_reason=cli_exit_<code>, and the captured stderr on evals."""
     proc = _FakeProcess(
         stdout_lines=[],
         stderr=b"auth: no OAuth token\n",
@@ -281,12 +283,106 @@ def test_non_zero_exit_raises_agentkit_error_with_stderr() -> None:
     ):
         cog = ClaudeCliCognition()
         agent = Agent(name="local", cognition=cog)
-        with pytest.raises(AgentkitError) as exc_info:
-            _drain(cog, agent, FakeCtx())
+        events = _drain(cog, agent, FakeCtx())
 
-    msg = str(exc_info.value)
-    assert "code 2" in msg
-    assert "auth: no OAuth token" in msg
+    final = events[-1]
+    assert final.type == "final"
+    assert final.result.partial is True
+    assert final.result.evals["stop_reason"] == "cli_exit_2"
+    assert "auth: no OAuth token" in final.result.evals["stderr"]
+    assert final.result.evals["cli_return_code"] == 2
+
+
+def test_thinking_block_folds_into_evals_and_emits_delta() -> None:
+    """Extended-thinking blocks surface as message_delta events for live
+    consumers AND fold into AgentResult.evals['thinking'] for run() callers.
+    They MUST NOT contaminate AgentResult.output — that's the response text."""
+    proc = _FakeProcess(
+        stdout_lines=[
+            _line({"type": "system", "session_id": "sess-t"}),
+            _line(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {"type": "thinking", "thinking": "Let me consider.", "signature": "s"},
+                            {"type": "text", "text": "Answer: 42"},
+                        ]
+                    },
+                }
+            ),
+            _line({"type": "result", "session_id": "sess-t", "duration_ms": 5, "usage": {}}),
+        ],
+        returncode=0,
+    )
+    with patch(
+        "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
+        new=AsyncMock(return_value=proc),
+    ):
+        cog = ClaudeCliCognition()
+        events = _drain(cog, Agent(name="local", cognition=cog), FakeCtx())
+
+    deltas = [e.text for e in events if e.type == "message_delta"]
+    assert "Let me consider." in deltas
+    assert "Answer: 42" in deltas
+    final = events[-1]
+    assert final.result.output == "Answer: 42"  # thinking NOT in output
+    assert final.result.evals["thinking"] == "Let me consider."
+
+
+def test_result_with_is_error_marks_partial_with_stop_reason() -> None:
+    """The CLI can exit 0 with is_error=true and a subtype like
+    error_max_turns. drive() must honour the semantic outcome, not just
+    the exit code."""
+    proc = _FakeProcess(
+        stdout_lines=[
+            _line({"type": "system", "session_id": "sess-e"}),
+            _line(
+                {
+                    "type": "result",
+                    "is_error": True,
+                    "subtype": "error_max_turns",
+                    "session_id": "sess-e",
+                    "duration_ms": 100,
+                    "usage": {},
+                }
+            ),
+        ],
+        returncode=0,
+    )
+    with patch(
+        "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
+        new=AsyncMock(return_value=proc),
+    ):
+        cog = ClaudeCliCognition()
+        events = _drain(cog, Agent(name="local", cognition=cog), FakeCtx())
+
+    final = events[-1]
+    assert final.result.partial is True
+    assert final.result.evals["stop_reason"] == "error_max_turns"
+
+
+def test_spawn_failure_yields_final_with_stop_reason_and_error() -> None:
+    """If the claude binary isn't on PATH, create_subprocess_exec raises
+    FileNotFoundError. drive() must still yield exactly one final event
+    (partial=True, stop_reason=spawn_failed, error message on evals)."""
+
+    async def _raise(*_a: object, **_kw: object) -> object:
+        raise FileNotFoundError("[Errno 2] No such file or directory: 'claude'")
+
+    with patch(
+        "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
+        new=_raise,
+    ):
+        cog = ClaudeCliCognition(claude_bin="claude")
+        events = _drain(cog, Agent(name="local", cognition=cog), FakeCtx())
+
+    assert len(events) == 1
+    final = events[-1]
+    assert final.type == "final"
+    assert final.result.partial is True
+    assert final.result.evals["stop_reason"] == "spawn_failed"
+    assert "FileNotFoundError" in final.result.evals["error"]
 
 
 def test_cancellation_terminates_process_and_still_emits_final() -> None:

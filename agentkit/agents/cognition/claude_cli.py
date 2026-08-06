@@ -36,12 +36,11 @@ import json
 import os
 import weakref
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from agentkit.agents.result import AgentResult
-from agentkit.kernel.errors import AgentkitError
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import StreamEvent, ToolCall, Usage
 from agentkit.prompts.prompt import Prompt
@@ -51,7 +50,15 @@ if TYPE_CHECKING:
     from agentkit.context import WorkingContext
 
 
-PermissionMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
+PermissionMode = Literal[
+    "default",
+    "acceptEdits",
+    "plan",
+    "bypassPermissions",
+    "auto",
+    "manual",
+    "dontAsk",
+]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -129,7 +136,6 @@ class ClaudeCliCognition:
     extra_args: tuple[str, ...] = ()  # escape hatch for future CLI flags
     terminate_grace_s: float = 5.0
     max_concurrent: int = 8  # class-level semaphore (see module doc)
-    _sem_ref: asyncio.BoundedSemaphore | None = field(default=None, init=False, repr=False)
 
     # ---- public surface --------------------------------------------------------------------
 
@@ -141,29 +147,55 @@ class ClaudeCliCognition:
         context: WorkingContext,
     ) -> AsyncIterator[StreamEvent]:
         """Run the CLI once, mapping its stream-json output to agentkit
-        ``StreamEvent``s. Guarantees one terminal ``final`` event on every
-        exit path — success, non-zero exit, cancellation."""
+        ``StreamEvent``s.
+
+        **Terminal event guarantee.** Exactly one ``final`` event is yielded
+        on every exit path — success, cancellation, non-zero CLI exit,
+        CLI-signalled semantic error (``is_error: true`` in the result
+        payload, e.g., ``error_max_turns``), and any exception raised
+        before or during the spawn (e.g., ``FileNotFoundError`` if the
+        ``claude`` binary isn't on PATH). Callers may drive the loop
+        with ``async for ev in agent.stream(...)`` and rely on seeing
+        one and only one ``StreamEvent(type='final')`` regardless of
+        outcome. On failure paths, ``AgentResult.partial=True`` and
+        ``evals["stop_reason"]`` names the failure mode.
+        """
         del context  # unused — the CLI owns its own transcript
-        system_prompt = self._resolve_system_prompt(agent.prompt)
-        argv = self._build_argv(task, system_prompt=system_prompt)
-        env = self._build_env()
 
         # Bounded-concurrency spawn guard. Held for the whole CLI lifetime so
         # concurrent drives don't race the subprocess table (SDK issue #728).
+        # The local ``sem`` reference keeps the WeakValueDictionary entry
+        # alive for the ``async with sem`` scope — no instance-field
+        # bookkeeping needed.
         cfg_dir = str(self.config_dir) if self.config_dir is not None else None
         sem = _get_semaphore(self.claude_bin, cfg_dir, self.max_concurrent)
-        self._sem_ref = sem  # keep alive for the WeakValueDictionary
 
         accumulated_text = ""
+        accumulated_thinking = ""
         usage = Usage()
         session_id: str | None = None
         duration_ms: int | None = None
         cancelled = False
+        is_error = False
+        stop_reason: str | None = None
         stderr_bytes: bytes = b""
         proc: asyncio.subprocess.Process | None = None
+        # ``fatal_exc`` records any exception raised before/during spawn or
+        # while parsing the CLI's output. We can't ``raise`` past the final
+        # yield without breaking the terminal-event guarantee, so we stash
+        # the message and fold it into the final event's ``stop_reason`` +
+        # ``evals``. The generator still terminates normally.
+        fatal_exc: BaseException | None = None
 
-        async with sem:
-            try:
+        try:
+            # argv / env resolution can throw (e.g., ``Prompt.render()`` on a
+            # malformed template, ``os.environ.copy()`` under bizarre OS
+            # states). Inside the outer try so we always yield a final.
+            system_prompt = self._resolve_system_prompt(agent.prompt)
+            argv = self._build_argv(task, system_prompt=system_prompt)
+            env = self._build_env()
+
+            async with sem:
                 proc = await asyncio.create_subprocess_exec(
                     *argv,
                     stdin=asyncio.subprocess.DEVNULL,
@@ -188,12 +220,18 @@ class ClaudeCliCognition:
                                 yield ev
                             if delta.text:
                                 accumulated_text += delta.text
+                            if delta.thinking:
+                                accumulated_thinking += delta.thinking
                             if delta.usage is not None:
                                 usage = delta.usage
                             if delta.session_id is not None:
                                 session_id = delta.session_id
                             if delta.duration_ms is not None:
                                 duration_ms = delta.duration_ms
+                            if delta.is_error:
+                                is_error = True
+                            if delta.stop_reason is not None:
+                                stop_reason = delta.stop_reason
                 finally:
                     if cancelled and proc.returncode is None:
                         await _terminate(proc, self.terminate_grace_s)
@@ -203,31 +241,57 @@ class ClaudeCliCognition:
                             stderr_bytes = await proc.stderr.read()
                     with contextlib.suppress(Exception):
                         await proc.wait()
-            finally:
-                self._sem_ref = None
+        except BaseException as exc:  # noqa: BLE001 — see terminal-event guarantee
+            # Anything that escapes to here (FileNotFoundError on missing
+            # ``claude`` binary, PermissionError, parse-time bug in
+            # _events_from_payload) becomes a final event with a
+            # ``spawn_failed`` / ``parse_failed`` stop_reason. We deliberately
+            # widen to ``BaseException`` so ``KeyboardInterrupt`` and
+            # ``SystemExit`` also produce a terminal event before propagating.
+            fatal_exc = exc
 
         return_code = proc.returncode if proc is not None else -1
-        if cancelled:
-            yield StreamEvent(
-                "final",
-                usage=usage,
-                result=AgentResult(
-                    output=accumulated_text,
-                    usage=usage,
-                    partial=True,
-                    evals={
-                        "stop_reason": "cancelled",
-                        "session_id": session_id or "",
-                        "cli_duration_ms": duration_ms or 0,
-                        "cli_return_code": return_code,
-                    },
-                ),
-            )
-            return
 
-        if return_code != 0:
+        # Decide terminal stop_reason + partial flag.
+        # Priority (highest first): fatal exception → cancellation → CLI
+        # non-zero exit → CLI semantic error (is_error) → success.
+        final_stop_reason: str | None
+        final_partial: bool
+        if fatal_exc is not None:
+            final_stop_reason = "spawn_failed" if proc is None else "parse_failed"
+            final_partial = True
+        elif cancelled:
+            final_stop_reason = "cancelled"
+            final_partial = True
+        elif return_code != 0:
+            final_stop_reason = f"cli_exit_{return_code}"
+            final_partial = True
+        elif is_error:
+            final_stop_reason = stop_reason or "cli_reported_error"
+            final_partial = True
+        else:
+            final_stop_reason = stop_reason  # may still be None on clean success
+            final_partial = False
+
+        evals: dict[str, Any] = {
+            "session_id": session_id or "",
+            "cli_duration_ms": duration_ms or 0,
+            "cli_return_code": return_code,
+        }
+        if final_stop_reason is not None:
+            evals["stop_reason"] = final_stop_reason
+        if accumulated_thinking:
+            # Reasoning chain from ``thinking`` blocks — separate from
+            # ``output`` (the final response). Live consumers already saw
+            # each chunk as a ``message_delta``; this is the folded copy for
+            # AgentResult callers.
+            evals["thinking"] = accumulated_thinking
+        if fatal_exc is not None:
+            evals["error"] = f"{type(fatal_exc).__name__}: {fatal_exc}"
+        if final_partial and stderr_bytes:
             stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
-            raise AgentkitError(f"claude CLI exited with code {return_code}: {stderr_text or '<no stderr>'}")
+            if stderr_text:
+                evals["stderr"] = stderr_text
 
         yield StreamEvent(
             "final",
@@ -235,10 +299,8 @@ class ClaudeCliCognition:
             result=AgentResult(
                 output=accumulated_text,
                 usage=usage,
-                evals={
-                    "session_id": session_id or "",
-                    "cli_duration_ms": duration_ms or 0,
-                },
+                partial=final_partial,
+                evals=evals,
             ),
         )
 
@@ -307,13 +369,20 @@ class ClaudeCliCognition:
 @dataclass(slots=True)
 class _EventDelta:
     """Small state-delta value returned alongside each yielded event so the
-    drive loop can fold ``usage`` / ``session_id`` / ``text`` without a
-    second parsing pass."""
+    drive loop can fold ``usage`` / ``session_id`` / ``text`` / ``thinking``
+    / ``is_error`` without a second parsing pass."""
 
     text: str = ""
+    thinking: str = ""
     usage: Usage | None = None
     session_id: str | None = None
     duration_ms: int | None = None
+    # Populated by the ``result`` payload — the CLI can exit 0 with
+    # ``is_error: true`` and a ``subtype`` like ``error_max_turns`` /
+    # ``error_during_execution``. Surface both so ``drive()`` can flip the
+    # ``AgentResult.partial`` flag and stamp a stop_reason.
+    is_error: bool = False
+    stop_reason: str | None = None
 
 
 def _parse_line(line: bytes) -> dict[str, Any] | None:
@@ -363,6 +432,19 @@ async def _events_from_payload(
                 text = str(block.get("text") or "")
                 if text:
                     yield StreamEvent("message_delta", text=text), _EventDelta(text=text)
+            elif btype == "thinking":
+                # Extended-thinking blocks (Opus / Sonnet with thinking on).
+                # Surface as a ``message_delta`` so live consumers see the
+                # reasoning chain in real time, but do NOT fold into
+                # ``accumulated_text`` — that's the response, not the
+                # reasoning. The drive loop tracks thinking separately and
+                # hands it back via ``AgentResult.evals["thinking"]``.
+                thinking = str(block.get("thinking") or "")
+                if thinking:
+                    yield (
+                        StreamEvent("message_delta", text=thinking),
+                        _EventDelta(thinking=thinking),
+                    )
             elif btype == "tool_use":
                 tc = ToolCall(
                     id=str(block.get("id") or ""),
@@ -408,12 +490,20 @@ async def _events_from_payload(
         )
         duration = payload.get("duration_ms")
         session_id = payload.get("session_id")
+        # The CLI can exit 0 with ``is_error: true`` and a ``subtype`` like
+        # ``error_max_turns`` / ``error_during_execution``. Surface both so
+        # ``drive()`` can honour the semantic outcome, not just the exit code.
+        is_error = bool(payload.get("is_error"))
+        subtype = payload.get("subtype")
+        stop_reason = str(subtype) if is_error and isinstance(subtype, str) else None
         yield (
             None,
             _EventDelta(
                 usage=usage,
                 session_id=str(session_id) if session_id else None,
                 duration_ms=int(duration) if duration is not None else None,
+                is_error=is_error,
+                stop_reason=stop_reason,
             ),
         )
         return
