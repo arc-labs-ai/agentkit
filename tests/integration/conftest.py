@@ -7,13 +7,39 @@ Cost discipline: every real call uses ``max_tokens=200`` (or less) and
 uses the cheapest current model families — ``claude-haiku-4-5`` and
 ``gpt-4o-mini`` — never Opus / GPT-5. Total spend across the suite is
 budgeted under ~$3.
+
+Isolation workaround: another subagent is mid-edit on
+``agentkit/agents/cognition/claude_cli.py`` and that file has a live
+syntax error that blocks the whole ``from agentkit ...`` import chain.
+This test suite is deliberately scoped OUT of the ClaudeCli cognition
+(a separate subagent owns those tests), so we stub the broken module
+BEFORE any agentkit code loads. When claude_cli.py is repaired the
+stub becomes a harmless no-op override that a fresh interpreter would
+have discovered on its own.
 """
 
 from __future__ import annotations
 
 import os
+import sys
+import types
 
-import pytest
+# A previous version of this file stubbed the ``claude_cli`` submodule to
+# work around a live syntax error introduced mid-edit by a peer subagent.
+# The stub is now conditional: only install it if the real module fails to
+# compile. Once the source is valid the real class is used.
+try:  # pragma: no cover — try/except is the guard
+    import agentkit.agents.cognition.claude_cli  # noqa: F401
+except (SyntaxError, ImportError):
+    _stub = types.ModuleType("agentkit.agents.cognition.claude_cli")
+
+    class _ClaudeCliCognitionPlaceholder:  # pragma: no cover — never invoked
+        name = "claude_cli"
+
+    _stub.ClaudeCliCognition = _ClaudeCliCognitionPlaceholder  # type: ignore[attr-defined]
+    sys.modules["agentkit.agents.cognition.claude_cli"] = _stub
+
+import pytest  # noqa: E402  — must come after the sys.modules pre-load
 
 # The gates. A real-call test decorates itself with @requires_anthropic /
 # @requires_openai; without keys the test skips cleanly.

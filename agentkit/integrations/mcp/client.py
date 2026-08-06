@@ -170,9 +170,21 @@ class MCPClient:
     # ---- tool surface ---------------------------------------------------------------------
 
     async def list_tools(self, *, force_refresh: bool = False) -> list[mcp_types.Tool]:
-        """Return the server's advertised tools, honoring a short client-side TTL cache."""
+        """Return the server's advertised tools, honoring a short client-side TTL cache.
+
+        The cache is only trusted while the session is live — after
+        ``__aexit__`` we always fall through to ``self.session``, which
+        raises ``RuntimeError("MCPClient not entered")``. This prevents
+        the cache from handing back tool metadata after the transport
+        has been torn down.
+        """
         now = monotonic()
-        if not force_refresh and self._tools_cache is not None and self._tools_cache.is_fresh(now):
+        if (
+            not force_refresh
+            and self._session is not None
+            and self._tools_cache is not None
+            and self._tools_cache.is_fresh(now)
+        ):
             return list(self._tools_cache.value)
         result = await self.session.list_tools()
         tools = list(result.tools)
@@ -200,8 +212,15 @@ class MCPClient:
     # ---- resource surface -----------------------------------------------------------------
 
     async def list_resources(self, *, force_refresh: bool = False) -> list[mcp_types.Resource]:
+        # Same defensive check as list_tools — the cache is trusted only
+        # while the session is live.
         now = monotonic()
-        if not force_refresh and self._resources_cache is not None and self._resources_cache.is_fresh(now):
+        if (
+            not force_refresh
+            and self._session is not None
+            and self._resources_cache is not None
+            and self._resources_cache.is_fresh(now)
+        ):
             return list(self._resources_cache.value)
         result = await self.session.list_resources()
         resources = list(result.resources)

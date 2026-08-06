@@ -222,8 +222,20 @@ def test_anthropic_asyncio_timeout_cancels_cleanly(anthropic_key: str) -> None:
 
 
 # ────────────────────────────────────────────────────────────────
-# OpenAI — happy path (skipped when billing/key invalid)
+# OpenAI — happy path.
+#
+# The OpenAI key on this workstation currently returns 429 with
+# ``type: billing_not_active`` — the account isn't billable, so real
+# calls can't complete. We catch that specific server body and skip so
+# the suite stays green while the finding lives in the report; when
+# the account is re-activated these light up unchanged.
 # ────────────────────────────────────────────────────────────────
+
+
+def _skip_if_billing_not_active(exc: Exception) -> None:
+    msg = str(exc).lower()
+    if "billing_not_active" in msg or "account is not active" in msg:
+        pytest.skip(f"openai account inactive (billing_not_active): {exc!s:.200}")
 
 
 @requires_openai
@@ -231,11 +243,15 @@ def test_openai_chat_returns_valid_llmresult(openai_key: str) -> None:
     async def go() -> None:
         llm = _openai(api_key=openai_key, model=OPENAI_MINI_MODEL)
         try:
-            res = await llm.chat(
-                messages=[Message("user", "Reply with the single word: hello")],
-                model=OPENAI_MINI_MODEL,
-                max_tokens=MAX_TOKENS,
-            )
+            try:
+                res = await llm.chat(
+                    messages=[Message("user", "Reply with the single word: hello")],
+                    model=OPENAI_MINI_MODEL,
+                    max_tokens=MAX_TOKENS,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _skip_if_billing_not_active(exc)
+                raise
             assert isinstance(res, LLMResult)
             assert res.content
             assert res.provider in {"openai", "openai-compatible", "openai_compat", "openai-compat"}
@@ -253,12 +269,16 @@ def test_openai_stream_yields_deltas_and_assembles(openai_key: str) -> None:
         llm = _openai(api_key=openai_key, model=OPENAI_MINI_MODEL)
         try:
             deltas: list[Delta] = []
-            async for d in llm.stream(
-                messages=[Message("user", "Say: hi")],
-                model=OPENAI_MINI_MODEL,
-                max_tokens=MAX_TOKENS,
-            ):
-                deltas.append(d)
+            try:
+                async for d in llm.stream(
+                    messages=[Message("user", "Say: hi")],
+                    model=OPENAI_MINI_MODEL,
+                    max_tokens=MAX_TOKENS,
+                ):
+                    deltas.append(d)
+            except Exception as exc:  # noqa: BLE001
+                _skip_if_billing_not_active(exc)
+                raise
             assert len(deltas) >= 1
             result = assemble_deltas(deltas)
             assert result.content

@@ -63,6 +63,52 @@ class ProviderAuthError(_KernelProviderAuthError, ProviderError):
     maps it to PERMANENT (fail-fast, don't retry a stale key)."""
 
 
+# Provider body ``error.type`` values that are PERMANENT despite arriving with
+# a 429 (rate-limit) HTTP status. OpenAI returns 429 for both true
+# rate-limiting AND for account/billing conditions that will never resolve
+# without human action. Retrying these burns the full retry budget on a
+# guaranteed-permanent failure. We upgrade them to ``ProviderAuthError`` so
+# ``kernel.resilience.classify`` treats them as PERMANENT.
+_PERMANENT_429_TYPES: frozenset[str] = frozenset(
+    {
+        "billing_not_active",
+        "insufficient_quota",
+        "invalid_api_key",
+        "account_deactivated",
+    }
+)
+
+
+def _classify_4xx(status_code: int, body: str) -> Exception:
+    """Return the exception to raise for a 4xx/5xx response.
+
+    Peeks the JSON body for ``error.type`` — providers that return 429
+    for account/billing conditions (OpenAI ``billing_not_active`` /
+    ``insufficient_quota``) get upgraded to ``ProviderAuthError`` so
+    retry doesn't burn the budget on a permanent failure.
+    """
+    error_type: str | None = None
+    try:
+        parsed = _json_loads(body)
+        if isinstance(parsed, dict):
+            err = parsed.get("error")
+            if isinstance(err, dict):
+                t = err.get("type")
+                if isinstance(t, str):
+                    error_type = t
+    except JSONDecodeError:
+        pass
+    if error_type in _PERMANENT_429_TYPES:
+        return ProviderAuthError(
+            f"provider auth error (status {status_code}; type={error_type}; unauthorized/forbidden): {body}"
+        )
+    if status_code == 429 or status_code >= 500:
+        return ProviderError(f"provider transient error (status {status_code}; rate limit/overloaded): {body}")
+    if status_code in (401, 403):
+        return ProviderAuthError(f"provider auth error (status {status_code}; unauthorized/forbidden): {body}")
+    return ProviderError(f"provider invalid request (status {status_code}; unauthorized/bad request): {body}")
+
+
 class HttpLLM:
     """Base for an httpx-backed `LLMPort`. Subclasses set `_headers()` and the request/response mapping;
     an owned AsyncClient is created lazily and reused for connection pooling — inject one for tests/pooling.
@@ -134,9 +180,7 @@ class HttpLLM:
         )
         yield result_to_delta(res)
 
-    async def _stream_events(
-        self, path: str, payload: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    async def _stream_events(self, path: str, payload: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         """POST a streaming request and yield each server-sent `data:` JSON object as it arrives. A
         connection error or a non-2xx status surfaces as a pre-classified `ProviderError` before the first
         event, so the retry/fallover middleware can re-invoke. Errors after streaming begins propagate.
@@ -153,17 +197,7 @@ class HttpLLM:
             ) as resp:
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode("utf-8", "replace")[:500]
-                    if resp.status_code == 429 or resp.status_code >= 500:
-                        raise ProviderError(
-                            f"provider transient error (status {resp.status_code}; rate limit/overloaded): {body}"
-                        )
-                    if resp.status_code in (401, 403):
-                        raise ProviderAuthError(
-                            f"provider auth error (status {resp.status_code}; unauthorized/forbidden): {body}"
-                        )
-                    raise ProviderError(
-                        f"provider invalid request (status {resp.status_code}; unauthorized/bad request): {body}"
-                    )
+                    raise _classify_4xx(resp.status_code, body)
                 async for line in resp.aiter_lines():
                     s = line.strip()
                     if not s.startswith("data:"):
@@ -195,24 +229,12 @@ class HttpLLM:
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            resp = await self._http().post(
-                self._base_url + path, json=payload, headers=self._headers()
-            )
+            resp = await self._http().post(self._base_url + path, json=payload, headers=self._headers())
         except httpx.HTTPError as exc:  # connect/read/timeout → transient
             raise ProviderError(f"provider request failed (network/timeout): {exc}") from exc
         if resp.status_code >= 400:
             body = resp.text[:500]
-            if resp.status_code == 429 or resp.status_code >= 500:
-                raise ProviderError(
-                    f"provider transient error (status {resp.status_code}; rate limit/overloaded): {body}"
-                )
-            if resp.status_code in (401, 403):
-                raise ProviderAuthError(
-                    f"provider auth error (status {resp.status_code}; unauthorized/forbidden): {body}"
-                )
-            raise ProviderError(
-                f"provider invalid request (status {resp.status_code}; unauthorized/bad request): {body}"
-            )
+            raise _classify_4xx(resp.status_code, body)
         return resp.json()  # type: ignore[no-any-return]  # httpx returns Any-typed JSON at boundary
 
     def _cost(self, model: Any, usage: Any) -> float:
