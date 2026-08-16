@@ -26,6 +26,16 @@ class MeterMiddleware(BaseMiddleware):
         usage = getattr(result, "usage", None)
         if usage is not None:
             for m in ctx.run.all_meters:
+                # The return value is a ``Charge`` verdict on first-party
+                # meters and ``None`` on a custom meter written against the
+                # older ``-> None`` signature. The middleware deliberately
+                # does NOT act on it: a middleware cannot write a checkpoint
+                # or shape a terminal event, and inventing a second
+                # stop-the-run mechanism here would compete with the
+                # cognition's. Under ``on_exceeded="raise"`` the meter raises
+                # and this is moot; under ``"stop"`` the cognition reads
+                # ``ctx.budget.exhausted()`` between units of work, where it
+                # still holds the state a clean stop needs.
                 await m.charge(ctx.call, usage)
             # Best-effort budget headroom event. We use ``budget.remaining_usd()``
             # which returns None when no ceiling is configured — only emit when a
