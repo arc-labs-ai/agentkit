@@ -61,11 +61,60 @@ If your change touches the public API surface (`agentkit/__init__.py`,
 `agentkit/client.py`, top-level module re-exports), add a test that imports
 and exercises the exact symbol as an external user would.
 
+### The runner is strict on purpose
+
+`pyproject.toml` configures pytest to fail on the things that normally slip
+past as green output. If one of these bites you, it has found something:
+
+- **Every warning is an error.** A `DeprecationWarning` from a dependency, or
+  one of the framework's own advisory warnings firing where it shouldn't, is a
+  test failure. Narrow allowances live in `filterwarnings` and each says why.
+- **`xfail` is strict.** A test marked broken that starts passing fails the
+  suite, so the marker gets removed instead of outliving the bug.
+- **Unknown markers are errors** (`--strict-markers`). `@pytest.mark.asyncioo`
+  is a test that silently never ran.
+- **`asyncio_mode = "strict"`.** An async test without `@pytest.mark.asyncio`
+  is skipped by pytest-asyncio with a warning — which, combined with the rule
+  above, is now a failure rather than a silent no-op.
+- **Every test has a 60-second timeout.** A hung test must name itself, not
+  burn a CI runner. Opt out per-test with `@pytest.mark.timeout(n)`.
+
+### Assertions that actually assert
+
+`tests/_assertions.py` holds helpers for cases where Python's `==` is too
+generous. Use `assert_money` for any monetary value:
+
+```python
+from _assertions import assert_money
+
+assert_money(budget.spent(), "1.00")     # asserts Decimal AND the value
+assert budget.spent() == Decimal("1.00") # DOES NOT catch a float regression
+```
+
+`Decimal("1.00") == 1.0` is `True`, so a plain equality passes against a
+ledger that regressed to floats. Worse, the leniency is inconsistent —
+`Decimal("0.1") == 0.1` is `False` — so whether a bug is caught depends on
+which number the test happened to pick.
+
+### Protocol implementations must pass the shared contract
+
+This framework's bet is that cross-cutting concerns are typed Protocols. The
+failure mode that invites is silent drift between implementations, which
+per-implementation test files structurally cannot catch.
+
+`tests/meta/test_protocol_conformance.py` holds one contract per Protocol,
+parametrized over every implementation. **If you add a `SchemaAdapter`, a
+`Meter`, or a `Cognition`, add it to the parameter list there.** A new
+implementation that does not pass the shared contract is not a conforming
+implementation.
+
 ## Code review checklist
 
 Before requesting review, walk through this list yourself:
 
-- [ ] `make check` is green locally (lint + typecheck + tests).
+- [ ] `make check` is green locally (lint + typecheck + coverage-gated tests).
+- [ ] `make mutants` is green if you touched money, HITL, streaming, or the
+      model registry — see below.
 - [ ] Public-surface symbols have docstrings and type hints; internal helpers
       at least have type hints.
 - [ ] No new sync I/O on hot paths — every I/O boundary is `async def` +
@@ -78,6 +127,9 @@ Before requesting review, walk through this list yourself:
       a framework; it should have no knowledge of any particular product.
 - [ ] Changelog entry added if the change is user-visible.
 - [ ] Docs under `docs/` updated if you added/renamed/removed a public symbol.
+      `tests/meta/test_docs_match_code.py` enforces that every symbol a
+      published snippet imports actually exists — but it cannot tell you that
+      your prose is *true*, only that it compiles.
 
 Reviewers will look for:
 
@@ -94,7 +146,39 @@ Every PR runs the following via `.github/workflows/ci.yml`:
 
 - `make lint` — `ruff check` on the whole tree.
 - `make typecheck` — `mypy --strict` on `agentkit/` (the public surface).
-- `make test` — `pytest` on Python 3.12 and 3.13.
+- `make mutants-verify` — every mutant anchor still resolves (fast; catches a
+  stale catalogue after a refactor).
+- `make cov` — `pytest` on Python 3.12 and 3.13, under branch coverage, failing
+  below the `fail_under` threshold in `pyproject.toml`. That threshold is a
+  ratchet: raise it when it is comfortably exceeded, never lower it to make a
+  red build green.
+- `make mutants` — the mutation catalogue, in its own job.
+
+### Mutation testing
+
+Coverage proves a line *ran*. It does not prove a test would *notice* if the
+line were wrong, and that gap is where the dangerous bugs live. It is
+measurable here: replacing `Budget.spent()`'s body with `float(self._spent)`
+once left all 78 protocol-conformance tests green.
+
+`scripts/mutants.py` holds a curated catalogue — each entry a real break of a
+real invariant, paired with the tests that should notice:
+
+```bash
+make mutants                       # the whole catalogue
+uv run python scripts/mutants.py -k money    # one tag
+uv run python scripts/mutants.py --list
+```
+
+A **surviving mutant is a finding**, not a nit: either the tests need
+sharpening, or the invariant is not load-bearing and the code can be
+simplified. When you add an invariant worth protecting, add a mutant for it.
+
+The script rewrites source in place and restores it afterwards, so it refuses
+to run on a dirty working tree. If a run is hard-killed mid-flight it leaves a
+snapshot in `.mutants-backup/`, and the next invocation restores from it
+automatically — but `make mutants-verify` is the cheap way to confirm nothing
+is left mutated.
 
 The `check` target is exactly what CI runs, so if `make check` is green locally
 it will be green on CI. If it fails on CI but passes locally, that is a bug —

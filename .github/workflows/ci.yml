@@ -43,7 +43,13 @@ jobs:
       - name: Typecheck
         run: make typecheck
 
+      - name: Verify the mutant catalogue is not stale
+        run: uv run python scripts/mutants.py --verify
+
       - name: Test with coverage
+        # `coverage report` exits non-zero below `fail_under` (pyproject).
+        # Previously coverage was measured and the result discarded, so a
+        # regression was invisible.
         run: |
           uv run --with coverage coverage run -m pytest
           uv run --with coverage coverage xml -o coverage.xml
@@ -57,3 +63,21 @@ jobs:
           path: coverage.xml
           if-no-files-found: warn
           retention-days: 14
+
+  mutants:
+    name: mutation testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+      - run: uv python install 3.12
+      - run: uv sync --all-extras
+      # A surviving mutant means a catalogued invariant is not actually
+      # enforced by any test. That is a review finding, not a nit.
+      - name: Run the mutant catalogue
+        run: uv run python scripts/mutants.py
