@@ -1,40 +1,103 @@
-# Python
+# What belongs in this repo: everything needed to build, test, document, and
+# release the package from a fresh clone — sources, tests, docs, examples,
+# `scripts/`, `uv.lock`, and `agentkit/py.typed`. Nothing below should ever
+# match one of those; `make check` and a clean `git status` after a full run
+# are the two things that prove it.
+
+# ── Python bytecode / native artifacts ──────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 
-# Distribution / packaging
+# ── Distribution / packaging ────────────────────────────────────────────────
 build/
 dist/
 *.egg-info/
 *.egg
 wheels/
+# `agentkit/py.typed` is a PACKAGED marker file (PEP 561) that tells type
+# checkers the wheel ships inline types. Nothing above matches it — this note
+# exists so a future broad pattern like `*.typed` is recognised as a mistake.
 
-# Virtualenvs
+# ── Virtualenvs ─────────────────────────────────────────────────────────────
 .venv/
 venv/
 env/
+.tox/
+.nox/
+# A locally pinned interpreter is a personal choice; CI installs its own via
+# `uv python install`, and the supported range lives in `pyproject.toml`.
+.python-version
 
-# Test + type caches
+# ── Test / type / lint caches ───────────────────────────────────────────────
 .hypothesis/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-coverage.xml
 
-# IDE
+# ── Coverage ────────────────────────────────────────────────────────────────
+# `[tool.coverage.run] parallel = true` makes coverage write per-process data
+# files named `.coverage.<host>.<pid>.<random>` alongside the combined
+# `.coverage`. A bare `.coverage` pattern does NOT match those, so every
+# `make cov` run would otherwise leave a fistful of untracked binaries.
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+
+# ── Mutation testing ────────────────────────────────────────────────────────
+# `scripts/mutants.py` snapshots the files it rewrites here so a hard-killed
+# run is recoverable (the next invocation restores from it automatically). It
+# only exists mid-run, or after a crash — never something to commit.
+.mutants-backup/
+
+# ── Credentials and local environment ───────────────────────────────────────
+# This framework resolves provider keys from the environment
+# (ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, OPENROUTER_API_KEY),
+# so contributors WILL create local env files while working on the registry
+# and the provider adapters. A key committed to a public repo is the single
+# worst thing this file can fail to prevent — the patterns below are
+# deliberately broad, with an explicit escape hatch for a committed template.
+.env
+.env.*
+*.env
+.envrc
+!.env.example
+!.env.template
+secrets/
+secrets.*
+*.pem
+*.key
+*.p12
+credentials.json
+service-account*.json
+
+# ── mkdocs build output ─────────────────────────────────────────────────────
+site/
+
+# ── Editors ─────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+*.sublime-workspace
+*.sublime-project
 *.swp
+*.swo
+*~
+
+# Claude Code: project-shared settings (`.claude/settings.json`) are worth
+# committing; per-developer overrides are not.
+.claude/settings.local.json
+
+# ── OS cruft ────────────────────────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+Desktop.ini
 
-# Env files
-.env
-.env.local
-
-# mkdocs build output
-site/
+# ── Merge / patch leftovers ─────────────────────────────────────────────────
+# Committing one of these silently ships conflict markers as real code.
+*.orig
+*.rej
+*.bak
