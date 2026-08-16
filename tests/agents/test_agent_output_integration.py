@@ -14,6 +14,14 @@ These tests pin the round trip the Track B3b plan documents:
 
 The tests use the canonical ``FakeLLM`` / ``make_test_ctx`` fixtures so the
 focus is on Agent-layer wiring, not provider behaviour.
+
+Deliberately NO ``output_coerce()`` in the chain: this module pins that the
+strict ``AgentResult.parsed`` path works on the Agent's own
+``parse``-and-repair loop, independent of the middleware. That wiring makes
+the Agent emit its "no output_coerce, so no streamed partials" warning,
+which is correct here and suppressed below. The middleware-wired path —
+including that the two compose without breaking repair — is covered in
+``tests/agents/test_stream_partial_output.py``.
 """
 
 from __future__ import annotations
@@ -29,6 +37,8 @@ from agentkit.context import WorkingContext
 from agentkit.testing import FakeLLM, Turn, make_test_ctx
 
 pydantic = pytest.importorskip("pydantic")
+
+pytestmark = pytest.mark.filterwarnings("ignore:agent .* has no output_coerce:UserWarning")
 
 
 class PlannerOutput(pydantic.BaseModel):

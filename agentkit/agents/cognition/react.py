@@ -11,11 +11,26 @@ is hit.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+import time
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agentkit.agents._agent_helpers import _assistant, _final_events, _to_text
+from agentkit.agents._agent_helpers import (
+    _assistant,
+    _final_events,
+    _last_assistant,
+    _parse_args,
+    _to_text,
+)
+from agentkit.agents.control.elicitation import (
+    Decision,
+    Elicitation,
+    coerce_decision,
+    elicit,
+    is_context_tainted,
+    resolve_asker,
+)
 from agentkit.agents.control.gate import should_gate
 from agentkit.agents.result import AgentResult, Suspended
 from agentkit.capabilities.checkpointer import (
@@ -28,6 +43,7 @@ from agentkit.capabilities.checkpointer import (
     tc_to_dict,
     usage_to_dict,
 )
+from agentkit.capabilities.output_schema import OutputCoercionError
 from agentkit.kernel.concurrency import gather_bounded
 from agentkit.kernel.ports import CheckpointStatus
 from agentkit.kernel.protocols import Ctx
@@ -75,6 +91,13 @@ class ReActCognition:
     termination: TerminationCondition | None = None
     guardrail: Any = None
     checkpointer: Checkpointer | None = None
+    # Deadline, in seconds, on waiting for a human approval. Applies to the
+    # PARK path (an ``Asker`` wired on the ctx) — the wait is bounded and an
+    # expiry degrades the run instead of hanging it. Also stamped onto
+    # ``Suspended.deadline_at`` on the return-and-resume path so an operator UI
+    # can render a countdown and a late decision can be refused.
+    # ``None`` (default) = wait indefinitely, exactly today's behaviour.
+    approval_deadline_s: float | None = None
     name: str = field(default="react")
 
     def __post_init__(self) -> None:
@@ -134,17 +157,25 @@ class ReActCognition:
         self,
         agent: Agent,
         run_id: str,
-        decisions: dict[str, str],
+        decisions: Mapping[str, str | Decision],
         ctx: Ctx,
     ) -> AgentResult:
         """Resume a suspended tool-loop with per-call human decisions.
 
-        For each pending ``ToolCall``, the matching entry in
-        ``decisions`` controls dispatch: ``"approve"`` invokes the
-        tool with the model's args verbatim; ``"reject"`` / ``"deny"``
-        injects a DENIED tool message; any other string is parsed as
-        a JSON ``arguments`` override and invoked with the modified
-        args. The loop then continues from the post-tool position.
+        Accepts BOTH shapes. A typed :class:`~agentkit.agents.control.elicitation.Decision`
+        carries the actor and timestamp an audit trail needs; the legacy
+        ``str`` form is coerced through ``coerce_decision`` so every existing
+        caller keeps working from the same call site:
+
+            ``"approve"``         → invoke with the model's args verbatim
+            ``"reject"``/``"deny"`` → inject a DENIED tool message
+            anything else         → parsed as a JSON ``arguments`` override
+
+        The loop then continues from the post-tool position.
+
+        A missing entry defaults to a denial, not an approval — an operator
+        who answered three of four gates has not implicitly approved the
+        fourth.
         """
         request_builder = agent._resolve_request_builder()
         saved = await self._load(ctx, run_id)
@@ -163,26 +194,50 @@ class ReActCognition:
 
         import copy as _copy
 
-        from agentkit.agents._agent_helpers import _parse_args
-
         # Drive-local clone (mirrors ``drive``): resume also mutates
         # termination state via ``_iterate`` and must not leak counters
         # onto ``self.termination`` when the cognition is shared.
         termination = _copy.deepcopy(self.termination) if self.termination is not None else None
 
+        # A deadline that passed while the run sat suspended. DEGRADE, don't
+        # die: every pending call becomes ``expired`` and the loop continues,
+        # so an operator who answers an hour late gets a run that completed
+        # without their tool call rather than a silent success that acted on a
+        # decision nobody was still entitled to make. Distinct wording from
+        # DENIED so the transcript says which of the two happened.
+        deadline_at = saved.state.get("deadline_at")
+        expired = deadline_at is not None and time.time() > deadline_at
+        if expired:
+            await ctx.emit(
+                "gate.check",
+                render="resume arrived after the approval deadline; treating as expired",
+                payload={"run_id": run_id, "deadline_at": deadline_at},
+            )
+
         for tc in pending:
             ctx.check_cancelled()
-            decision = decisions.get(tc.id, "reject")
-            if decision in ("reject", "deny"):
+            decision = (
+                Decision(kind="expired", note="approval deadline passed while suspended")
+                if expired
+                else coerce_decision(decisions.get(tc.id, "reject"))
+            )
+            if decision.kind == "expired":
                 context.append(
-                    self._tool_message(tc, "DENIED: tool call rejected by human approval")
+                    self._tool_message(
+                        tc, "EXPIRED: the approval deadline passed; treated as not approved"
+                    )
                 )
                 continue
-            call = (
-                tc
-                if decision == "approve"
-                else ToolCall(tc.id, tc.name, _parse_args(decision, tc.arguments))
-            )
+            if not decision.approved:
+                # The actor is named in the transcript the model sees, so a
+                # later turn can reason about WHO refused — impossible when the
+                # decision was a bare string.
+                who = decision.actor or "human approval"
+                context.append(self._tool_message(tc, f"DENIED: tool call rejected by {who}"))
+                continue
+            call = tc
+            if decision.kind == "modify" and decision.value is not None:
+                call = ToolCall(tc.id, tc.name, _parse_args(str(decision.value), tc.arguments))
             result = await self._invoke_tool_safe(ctx, call)
             context.append(self._tool_message(call, result))
 
@@ -222,6 +277,25 @@ class ReActCognition:
 
         for i in range(start_i, self.max_iterations):
             ctx.check_cancelled()
+
+            # Pre-flight budget check. The post-call check further down is
+            # what catches a ceiling crossed BY this run; this one catches a
+            # ceiling that was ALREADY crossed when the loop started —
+            # specifically, a resume against a budget nobody raised.
+            #
+            # Without it, ``guard()`` returns a not-ok verdict that the meter
+            # middleware deliberately ignores (it cannot write a checkpoint,
+            # so acting on the verdict is the cognition's job), the chat call
+            # goes out anyway, and every retry of an exhausted run burns
+            # another full call before noticing. Checked here, a resume
+            # against an unraised ceiling costs nothing.
+            if self._budget_exhausted(ctx):
+                last = _last_assistant(context)
+                await self._save(ctx, run_id, context, usage, i, repaired, status="suspended")
+                async for ev in self._budget_final(ctx, last, usage, prompt_version):
+                    yield ev
+                return
+
             req = ChatRequest(
                 messages=context.assembled(),
                 model=agent.model or "",
@@ -231,14 +305,58 @@ class ReActCognition:
                 max_tokens=agent.max_tokens,
             )
             deltas = []
-            async for d in ctx.invoker.stream(
-                req, ctx, meta={"output_adapter": agent._output_adapter}
-            ):
-                if d.text:
-                    yield StreamEvent("message_delta", text=d.text)
-                deltas.append(d)
+            try:
+                async for d in ctx.invoker.stream(
+                    req, ctx, meta={"output_adapter": agent._output_adapter}
+                ):
+                    if d.text:
+                        # Forward the in-progress typed object verbatim. See
+                        # ``SingleCallCognition.drive`` for the same three lines
+                        # and ``StreamEvent.partial_output`` for the contract.
+                        yield StreamEvent("message_delta", text=d.text, partial_output=d.partial)
+                    deltas.append(d)
+            except OutputCoercionError:
+                # Same contract as ``SingleCallCognition.drive`` — see the long
+                # comment there. ``output_coerce()``'s strict end-of-stream parse
+                # must not escape past this loop's validate-and-repair branch
+                # below, or a single malformed response aborts the whole run.
+                if agent.parse is None:
+                    raise
             res = assemble_deltas(deltas)
             usage = usage + res.usage
+
+            # ── budget exhaustion: checkpoint BEFORE stopping ──────────────
+            #
+            # This is the whole point of ``Budget.on_exceeded="stop"``. Under
+            # the default ``"raise"``, ``MeterExceeded`` comes out of the
+            # ``invoker.stream`` call above and unwinds past every ``_save``
+            # below — so the run aborts holding a checkpoint from the PREVIOUS
+            # iteration, this turn's spend is unrecorded, and a resume
+            # re-enters a budget that is still over its ceiling and raises
+            # again on the first guard. Everything spent is unrecoverable.
+            #
+            # With ``"stop"`` the meter records the spend and returns a
+            # verdict instead, and control reaches here — where the cognition
+            # still holds the live context and can write a ``suspended``
+            # checkpoint carrying the CURRENT state. The operator raises the
+            # ceiling and resumes; nothing is lost.
+            #
+            # This is the POST-call check — the meter has just charged, so it
+            # catches a ceiling crossed BY this call. The pre-flight at the top
+            # of the loop catches one that was already crossed on entry. Both
+            # are needed: without this one an overspend goes unnoticed until
+            # the next iteration, and without the pre-flight every retry of an
+            # already-stopped run buys one more call to rediscover it.
+            #
+            # Stopping here means at most one call's overshoot, which is the
+            # same bound the ceiling always had (see ``Budget``'s "known
+            # property" note).
+            if self._budget_exhausted(ctx):
+                context.append(_assistant(res))
+                await self._save(ctx, run_id, context, usage, i + 1, repaired, status="suspended")
+                async for ev in self._budget_final(ctx, res.content, usage, prompt_version):
+                    yield ev
+                return
 
             if termination is not None:  # smart stop on the assistant delta (drive-local clone)
                 stop = await termination([_assistant(res)], ctx)
@@ -268,7 +386,34 @@ class ReActCognition:
                     "gate.check",
                     payload={"autonomy": str(ctx.autonomy), "gated": gated},
                 )
+                if gated and resolve_asker(ctx) is not None:
+                    # ── PARK IN PLACE ─────────────────────────────────────
+                    #
+                    # An ``Asker`` is wired, so we await the person from
+                    # inside this coroutine. Nothing unwinds: ``context``,
+                    # ``usage``, the termination clone, and every local stay
+                    # exactly where they are. That is the requirement a
+                    # production caller holding live, unserialisable state
+                    # could not meet through ``resume()``, which forces the
+                    # whole loop to exit and be rebuilt from a snapshot.
+                    #
+                    # The return-and-resume path below is untouched and still
+                    # runs whenever no asker is present, so callers that CAN
+                    # serialise lose nothing.
+                    for tc in res.tool_calls:
+                        yield StreamEvent("interrupt", tool_call=tc)
+                    async for ev in self._park(ctx, context, res.tool_calls, agent, run_id):
+                        yield ev
+                    await self._save(ctx, run_id, context, usage, i + 1, repaired)
+                    yield StreamEvent("step", text=f"iteration:{i + 1}")
+                    continue
+
                 if gated:
+                    deadline_at = (
+                        None
+                        if self.approval_deadline_s is None
+                        else time.time() + self.approval_deadline_s
+                    )
                     await self._save(
                         ctx,
                         run_id,
@@ -278,10 +423,19 @@ class ReActCognition:
                         repaired,
                         status="suspended",
                         pending=res.tool_calls,
+                        deadline_at=deadline_at,
                     )
                     for tc in res.tool_calls:
                         yield StreamEvent("interrupt", tool_call=tc)
-                    susp = Suspended(run_id=run_id, pending=tuple(res.tool_calls))
+                    susp = Suspended(
+                        run_id=run_id,
+                        pending=tuple(res.tool_calls),
+                        # Absolute wall-clock expiry, so an operator UI renders
+                        # a countdown and a decision arriving after it can be
+                        # refused. ``None`` when no deadline is configured —
+                        # today's unbounded behaviour, unchanged.
+                        deadline_at=deadline_at,
+                    )
                     yield StreamEvent(
                         "final",
                         usage=usage,
@@ -291,6 +445,9 @@ class ReActCognition:
                             partial=True,
                             evals={"stop_reason": "awaiting_approval", "suspended": susp},
                             prompt_version=prompt_version,
+                            # Typed so a reader can branch WITHOUT reaching into
+                            # the ``evals`` bag: parked on a human, not broken.
+                            stop_reason="suspended",
                         ),
                     )
                     return
@@ -362,13 +519,125 @@ class ReActCognition:
 
         # Tool-loop ceiling reached → partial.
         await self._clear(ctx, run_id)
-        last = next((m.content for m in reversed(context.messages) if m.role == "assistant"), "")
+        last = _last_assistant(context)
         for ev in _final_events(
             last,
             usage,
             partial=True,
             reason="max_iterations",
             prompt_version=prompt_version,
+        ):
+            yield ev
+
+    # ---- human-in-the-loop: park in place ---------------------------------------------------
+
+    async def _park(
+        self,
+        ctx: Any,
+        context: Any,
+        tool_calls: Sequence[ToolCall],
+        agent: Agent,
+        run_id: str,
+    ) -> AsyncIterator[StreamEvent]:
+        """Await a person for each gated tool call, without unwinding the loop.
+
+        One :class:`Elicitation` per pending call, each carrying
+        ``self.approval_deadline_s``. The four outcomes:
+
+        * ``approve``  — run the tool with the model's arguments verbatim.
+        * ``modify``   — run it with the person's replacement arguments.
+        * ``deny``     — inject a DENIED tool message; the model sees the
+                         refusal and reacts on its next turn.
+        * ``expired``  — the deadline passed. DEGRADE, don't die: treated as a
+                         denial so the loop continues, but the message says
+                         "expired" so an operator can tell "someone said no"
+                         from "nobody was there". That distinction is the
+                         abandoned-tab case, and it is why expiry is an
+                         ordinary recorded outcome rather than a hang.
+
+        Emits ``tool_result`` per call, exactly like the ungated path, so a
+        consumer's event handling is identical whether or not a human was
+        involved.
+        """
+        for tc in tool_calls:
+            request = Elicitation(
+                id=tc.id,
+                prompt=f"Approve tool {tc.name!r}?",
+                kind="approval",
+                tool_call=tc,
+                deadline_s=self.approval_deadline_s,
+                run_id=run_id,
+                agent=agent.name,
+            )
+            decision = await elicit(ctx, request, context=context)
+            if decision.approved:
+                # Emitted only once the human said yes, but emitted — a
+                # consumer that counts ``tool_call`` events to render "running
+                # X…" must see the same sequence here as on the ungated path.
+                yield StreamEvent("tool_call", tool_call=tc)
+            if decision.kind == "expired":
+                result: Any = (
+                    f"EXPIRED: no human answered within {self.approval_deadline_s}s; "
+                    "treated as not approved"
+                )
+                context.append(self._tool_message(tc, result))
+            elif not decision.approved:
+                note = f" ({decision.note})" if decision.note else ""
+                result = f"DENIED: tool call rejected by {decision.actor or 'human'}{note}"
+                context.append(self._tool_message(tc, result))
+            else:
+                call = tc
+                if decision.kind == "modify" and decision.value is not None:
+                    call = ToolCall(tc.id, tc.name, _parse_args(str(decision.value), tc.arguments))
+                result = await self._invoke_tool_safe(ctx, call)
+                context.append(self._tool_message(call, result))
+            yield StreamEvent("tool_result", tool_call=tc, tool_result=result)
+
+    # ---- budget exhaustion ------------------------------------------------------------------
+
+    @staticmethod
+    def _budget_exhausted(ctx: Any) -> bool:
+        """Has a ceiling been crossed on a budget configured to stop rather than raise?
+
+        Reads through ``getattr`` so a ``NullCtx`` or a structural test stub
+        without a real ``Budget`` is simply "not exhausted" rather than an
+        ``AttributeError`` inside the loop. A budget left on the default
+        ``on_exceeded="raise"`` never reaches this check — it has already
+        raised — so gating on the setting keeps the two modes from
+        double-handling the same event.
+        """
+        budget = getattr(ctx, "budget", None)
+        if budget is None or getattr(budget, "on_exceeded", "raise") != "stop":
+            return False
+        check = getattr(budget, "exhausted", None)
+        return bool(check()) if callable(check) else False
+
+    async def _budget_final(
+        self, ctx: Any, content: str, usage: Usage, prompt_version: str
+    ) -> AsyncIterator[StreamEvent]:
+        """Terminal event for a budget-exhausted run.
+
+        ``partial=True`` because the answer is unfinished, and
+        ``stop_reason="budget_exhausted"`` — which
+        ``AgentResult.is_resumable`` reports as recoverable, distinguishing it
+        from both a completed run and a crash. The verdict's reason string
+        lands in ``evals["error"]`` so an operator sees the actual numbers
+        without re-deriving them.
+        """
+        budget = getattr(ctx, "budget", None)
+        verdict = budget.verdict() if budget is not None else None
+        await ctx.emit(
+            "budget.exhausted",
+            render="run stopped on a budget ceiling; checkpoint written",
+            payload={"reason": verdict.reason if verdict else "", "calls": usage.total_tokens},
+        )
+        for ev in _final_events(
+            content,
+            usage,
+            partial=True,
+            reason="budget_exhausted",
+            prompt_version=prompt_version,
+            error=verdict.reason if verdict else "budget exhausted",
         ):
             yield ev
 
@@ -494,10 +763,33 @@ class ReActCognition:
         *,
         status: str = "running",
         pending: tuple[Any, ...] = (),
+        deadline_at: float | None = None,
     ) -> None:
         """Snapshot the loop state. ``status`` is the suspended/running flag the
         resume gate reads; ``pending`` is the suspended-on-approval tool-call list
-        ``resume()`` decisions are applied to."""
+        ``resume()`` decisions are applied to.
+
+        A context TAINTED by a secret is never snapshotted. Once a one-time
+        code has entered ``context.messages`` — as an elicited value or a tool
+        result derived from one — persisting the state would write the
+        credential into Postgres, where it outlives by weeks the ten minutes it
+        was valid for. Losing durability for the rest of that run is a real
+        cost and the correct trade: an un-resumable run can be re-run, a leaked
+        credential cannot be un-leaked.
+
+        The refusal itself is enforced one layer down, in
+        ``Checkpointer.snapshot`` — the taint marker rides along inside
+        ``context.scratchpad``, which every producer serialises into its state
+        blob, so the rule holds for the coordinator policies too rather than
+        only for this loop. We emit the observation here because this is where
+        the run context is in hand.
+        """
+        if is_context_tainted(context):
+            await ctx.emit(
+                "gate.check",
+                render="checkpoint skipped: working context holds an elicited secret",
+                payload={"run_id": run_id, "skipped": True},
+            )
         cp = self._resolve_checkpointer(ctx)
         if cp is None:
             return
@@ -513,6 +805,12 @@ class ReActCognition:
                 "iteration": next_i,
                 "repaired": repaired,
                 "pending": [tc_to_dict(t) for t in pending],
+                # Absolute wall-clock expiry for a suspended run. Persisted
+                # (not just returned on ``Suspended``) because the process that
+                # resumes is usually not the process that suspended — an
+                # in-memory deadline would be gone by then, which is exactly
+                # the abandoned-tab case the deadline exists for.
+                "deadline_at": deadline_at,
             },
             status=CheckpointStatus(status),
             ctx=ctx,

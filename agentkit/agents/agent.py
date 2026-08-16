@@ -26,7 +26,7 @@ reflect-and-retry budget.
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -34,14 +34,18 @@ if TYPE_CHECKING:
     from agentkit.agents.control.safety import RunPolicy
 
 from agentkit.agents._agent_helpers import (
+    _chain_has_output_coerce,
+    _derived_capabilities,
     _infer_response_format,
     _stamp_terminal_span_attrs,
+    _warn_missing_output_coerce,
 )
 from agentkit.agents.cognition import (
     Cognition,
     ReActCognition,
     SingleCallCognition,
 )
+from agentkit.agents.control.elicitation import Decision
 from agentkit.agents.result import AgentResult
 from agentkit.capabilities.output_schema import SchemaAdapter, adapt
 from agentkit.capabilities.request_builder import RequestBuilder
@@ -129,10 +133,40 @@ class Agent:
     # ``agents.control.channel`` (which would drag the observation/signal
     # tree into every ``Agent`` import).
     channel: Any = field(default=None)
+    # ---- model capability contract (Brief 5) ------------------------------------------
+    # Capabilities this agent's job REQUIRES of whatever model it is bound to —
+    # names from ``adapters.llm.model_registry.CAPABILITY_NAMES``, e.g.
+    # ``requires=("vision", "tools")``. Checked in ``__post_init__``, i.e. at
+    # construction, BEFORE any spend: the whole value of the check is catching
+    # the mismatch before money moves, so doing it on the call would be
+    # pointless. A capability the model declares as unsupported raises
+    # ``CapabilityMismatch``; one it doesn't declare at all is governed by
+    # ``on_unknown`` below. A tool-using cognition implies ``"tools"``
+    # automatically — see ``_derived_capabilities``.
+    requires: tuple[str, ...] = ()
+    # Minimum context window in tokens, when the job needs one. ``None`` skips
+    # the check entirely.
+    min_context_window: int | None = None
+    # What to do when the registry has never heard of this model, so its
+    # capabilities are UNKNOWN rather than declared:
+    #   "warn"   (default) — say so, once, and continue. Existing wiring with
+    #                        self-hosted / fine-tuned / brand-new model names
+    #                        must keep working; refusing by default would
+    #                        break all of it on upgrade.
+    #   "refuse" — raise. Correct for a production service that pins models:
+    #              turns "we don't know" into a deployment-time stop.
+    #   "allow"  — silence, for a caller who verified out of band.
+    # UNKNOWN is NEVER treated as present under any setting.
+    on_unknown_capability: str = "warn"
     # Set in __post_init__ from `output=`; threaded through the chat-using cognitions'
     # parse-and-repair loops. None when no output schema was declared — every
     # output-related code path then short-circuits to the unstructured behaviour.
     _output_adapter: SchemaAdapter[Any] | None = field(default=None, init=False, repr=False)
+    # One-shot latch for the "output schema declared but output_coerce() is
+    # missing from the chain" warning. Per-instance rather than module-global
+    # so two differently-wired agents in one process each get told once, and
+    # so a test can construct a fresh Agent to observe the warning again.
+    _warned_no_coerce: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         # Structured output: build the adapter once. adapt() raises TypeError /
@@ -152,8 +186,43 @@ class Agent:
         # their provider better than the heuristic does.
         if self._output_adapter is not None and self.response_format is None:
             self.response_format = _infer_response_format(self.model, self._output_adapter)
+        # Capability contract. Runs LAST in __post_init__ so the cognition and
+        # output adapter are already settled and the derived requirements
+        # (``tools`` from a tool-holding cognition) are accurate. Refusing here
+        # means a mismatch is a startup error, not a plausible empty answer
+        # discovered after a bill.
+        self.check_capabilities()
 
     # ---- public surfaces -------------------------------------------------------------------
+
+    def check_capabilities(self) -> None:
+        """Refuse this agent's model if it lacks a capability the agent needs.
+
+        Called automatically at the end of ``__post_init__`` — construction IS
+        the bind, because the model is a field on the Agent. Exposed publicly
+        so a caller who mutates ``agent.model`` after construction (or swaps a
+        cognition in) can re-assert the contract:
+
+            agent.model = "deepseek-reasoner"
+            agent.check_capabilities()        # raises: reasoner has tools=NO
+
+        A no-op when the agent has no model yet (a chat-less agent, or one
+        whose model is injected later) — there is nothing to check against.
+        Requirements come from ``requires=`` plus anything the wiring implies;
+        ``on_unknown_capability`` governs the unregistered-model case.
+        """
+        if not self.model:
+            return
+        from agentkit.adapters.llm.model_registry import require_capabilities
+
+        require_capabilities(
+            self.model,
+            tuple(self.requires),
+            derived=_derived_capabilities(self),
+            min_context_window=self.min_context_window,
+            on_unknown=self.on_unknown_capability,
+            subject=self.name,
+        )
 
     async def run(
         self, task: str, ctx: Ctx, *, context: WorkingContext | None = None
@@ -183,48 +252,91 @@ class Agent:
         coordinator paths where a parent dispatched us under a bounded semaphore.
         """
         dispatch_started = time.perf_counter()
+        # One-shot per Agent instance: a declared output schema with no
+        # output_coerce() in the chain streams no partials. Guarded by the
+        # instance flag so a hot loop over ``stream()`` warns once, not
+        # once per call.
+        if (
+            self._output_adapter is not None
+            and not self._warned_no_coerce
+            and not _chain_has_output_coerce(ctx)
+        ):
+            self._warned_no_coerce = True
+            _warn_missing_output_coerce(self.name)
         with ctx.trace.span("invoke_agent", "client", **self._span_attrs(ctx)) as span:
             span.set(
                 "agentkit.agent.queue_wait_ms",
                 (time.perf_counter() - dispatch_started) * 1000,
             )
-            # Pre-run trifecta gate. Fires ONCE before the first cognition drive so a
-            # deny-mode policy raises ``PermissionError`` before any LLM/tool call.
-            # In flag mode a flagged verdict (``allowed=False``) is stamped as a
-            # ``policy.flagged`` observation for the operator, and the run continues.
-            if self.policy is not None:
-                with ctx.trace.span("policy.check", "internal") as policy_span:
-                    tool_list: list[Any] = []
-                    cog = self.cognition
-                    if isinstance(cog, ReActCognition) and cog.tools is not None:
-                        tool_list = cog.tools.tools()
-                    verdict = self.policy.check(tool_list)
-                    policy_span.set("agentkit.policy.mode", self.policy.mode)
-                    policy_span.set("agentkit.policy.capabilities", ",".join(verdict.capabilities))
-                    policy_span.set("agentkit.policy.allowed", verdict.allowed)
-                    if not verdict.allowed:
-                        await ctx.emit(
-                            "policy.flagged",
-                            render="RunPolicy flagged the lethal trifecta on this tool set",
-                            payload={
-                                "capabilities": list(verdict.capabilities),
-                                "reason": verdict.reason,
-                                "mode": self.policy.mode,
-                            },
-                            agent=self.name,
-                        )
+            await self._run_policy_gate(ctx)
             async for ev in self.cognition.drive(self, task, ctx, context or WorkingContext()):
                 if ev.type == "final" and ev.result is not None:
                     _stamp_terminal_span_attrs(span, ev.result)
                 yield ev
 
-    async def resume(self, run_id: str, decisions: dict[str, str], ctx: Ctx) -> AgentResult:
-        """Resume a suspended tool-loop run with human approval decisions per pending tool call.
+    async def _run_policy_gate(self, ctx: Ctx) -> None:
+        """Fire the pre-run lethal-trifecta gate, if one is configured.
+
+        Deny mode raises ``PermissionError`` before any LLM/tool call. Flag
+        mode stamps a ``policy.flagged`` observation for the operator and the
+        run continues.
+
+        Called from BOTH ``stream()`` and ``resume()``. It used to live inline
+        in ``stream()`` only, which meant a resumed run skipped the gate
+        entirely: an agent whose tool set combines private-data access,
+        untrusted-content ingestion, and egress would be denied on
+        ``run()`` and then execute that exact tool on ``resume()``. That is
+        the worst possible place for the gate to be missing — resume is the
+        path a human has just approved something on, and approving one tool
+        call is not approval of the capability combination.
+        """
+        if self.policy is None:
+            return
+        with ctx.trace.span("policy.check", "internal") as policy_span:
+            tool_list: list[Any] = []
+            cog = self.cognition
+            if isinstance(cog, ReActCognition) and cog.tools is not None:
+                tool_list = cog.tools.tools()
+            verdict = self.policy.check(tool_list)
+            policy_span.set("agentkit.policy.mode", self.policy.mode)
+            policy_span.set("agentkit.policy.capabilities", ",".join(verdict.capabilities))
+            policy_span.set("agentkit.policy.allowed", verdict.allowed)
+            if not verdict.allowed:
+                await ctx.emit(
+                    "policy.flagged",
+                    render="RunPolicy flagged the lethal trifecta on this tool set",
+                    payload={
+                        "capabilities": list(verdict.capabilities),
+                        "reason": verdict.reason,
+                        "mode": self.policy.mode,
+                    },
+                    agent=self.name,
+                )
+
+    async def resume(
+        self, run_id: str, decisions: Mapping[str, str | Decision], ctx: Ctx
+    ) -> AgentResult:
+        """Resume a suspended tool-loop run with human decisions per pending tool call.
+
+        Accepts a typed ``Decision`` (carrying actor + timestamp for the audit
+        trail) or the legacy ``str`` form (``"approve"`` / ``"reject"`` /
+        ``"deny"`` / a JSON arguments override), which is coerced. Both work
+        from the same call site, so no existing caller has to change.
+
+        Declared as ``Mapping``, not ``dict``: ``dict`` is invariant in its
+        value type, so a caller holding a plain ``dict[str, str]`` — i.e.
+        everyone who wrote against the old signature — would fail type-checking
+        against ``dict[str, str | Decision]``. ``Mapping`` is covariant and
+        accepts both.
 
         Only supported when ``self.cognition`` is a ``ReActCognition`` — that's
         where suspend/resume + checkpoint state live. Calling ``resume`` on any
         other cognition is a contract violation; raised explicitly so the
         caller's bug surfaces immediately.
+
+        For a run that PARKED rather than suspended (an ``Asker`` wired on the
+        ctx) there is nothing to resume — the run never unwound. See
+        ``agentkit.agents.control.elicitation``.
         """
         cognition = self.cognition
         if not isinstance(cognition, ReActCognition):
@@ -233,6 +345,10 @@ class Agent:
                 "— only tool-loop (ReAct) agents can be resumed"
             )
         with ctx.trace.span("invoke_agent", "client", **self._span_attrs(ctx)) as span:
+            # The gate fires here too. A resumed run reaches the same tools
+            # through the same registry, so skipping it would make ``resume``
+            # a way around the policy. See ``_run_policy_gate``.
+            await self._run_policy_gate(ctx)
             final = await cognition.resume(self, run_id, decisions, ctx)
             _stamp_terminal_span_attrs(span, final)
             return final
