@@ -67,6 +67,87 @@ ignore = ["UP046", "UP047"]
 # that assume every import is used-inline don't fit.
 "agentkit/**/__init__.py" = ["F401", "E402"]
 
+# ── pytest ───────────────────────────────────────────────────────────────────
+# The suite is the contract for an open-source framework other people build on,
+# so the runner is configured to FAIL on the things that normally slip through
+# silently rather than to be pleasant.
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    # A mistyped marker (`@pytest.mark.asyncioo`) is a test that silently never
+    # runs the way its author thought. Unknown markers are errors.
+    "--strict-markers",
+    # An unknown key in THIS config block is an error, not a shrug — a typo'd
+    # setting reads as "strictness enabled" while doing nothing.
+    "--strict-config",
+    # Import test modules by path, not by mutating sys.path. Keeps two
+    # same-named test modules in different directories from shadowing.
+    "--import-mode=importlib",
+    # Show the slowest tests; a unit suite that starts sleeping is a suite
+    # that will start flaking.
+    "--durations=10",
+]
+
+# No single test may hang the suite. This is not hypothetical: a mutation run
+# that removed the elicitation deadline turned a test whose fake asker sleeps
+# for an hour into an hour-long CI job. A hung test must fail fast and name
+# itself, not burn a runner. Individual slow tests opt out with
+# `@pytest.mark.timeout(n)`.
+timeout = 60
+timeout_method = "thread"
+
+# An unmarked async test is the sharpest silent hole in an async codebase:
+# pytest-asyncio skips it with a warning and the suite still reports green.
+asyncio_mode = "strict"
+
+# `xfail` without `strict` lets a test that STARTS PASSING stay marked broken,
+# so the fix is never noticed and the marker never removed.
+xfail_strict = true
+
+# Every warning is an error. This is the setting that would have caught the
+# framework's own "output schema declared but no output_coerce()" warning the
+# moment it started firing in six unrelated tests, instead of it scrolling past
+# as green output. Allowances below are narrow and each says why.
+filterwarnings = [
+    "error",
+    # Third-party deprecations we do not control and must not fail CI on.
+    # Scoped to the emitting module so our own DeprecationWarnings stay fatal.
+    "default::DeprecationWarning:pydantic.*",
+    "default::DeprecationWarning:attr.*",
+    "default::DeprecationWarning:attrs.*",
+]
+
+# Declared so `--strict-markers` has something to check against.
+markers = [
+    "asyncio: an async test driven by pytest-asyncio",
+    "integration: needs a real backend (postgres / redis / a provider key)",
+    "slow: takes more than a second; excluded from the fast inner loop",
+]
+
+# ── coverage ─────────────────────────────────────────────────────────────────
+# Measured on the LIBRARY only. Including `tests/` inflates the number with the
+# tests' own executed lines and hides gaps in the code that ships.
+[tool.coverage.run]
+source = ["agentkit"]
+branch = true          # line coverage alone calls a half-tested `if` covered
+parallel = true
+
+[tool.coverage.report]
+# A ratchet, not an aspiration: raise it when it is comfortably exceeded, never
+# lower it to make a red build green. Set just under the measured baseline so
+# a regression fails while honest refactors do not.
+fail_under = 85
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.$",            # Protocol method bodies
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -120,6 +201,7 @@ build-backend = "hatchling.build"
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.3",
     "hypothesis>=6.100",
     "ruff>=0.6",
     "mypy>=1.11",

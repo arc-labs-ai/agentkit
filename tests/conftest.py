@@ -17,3 +17,14 @@ from pathlib import Path
 _AGENTKIT_ROOT = Path(__file__).resolve().parent.parent
 if str(_AGENTKIT_ROOT) not in sys.path:
     sys.path.insert(0, str(_AGENTKIT_ROOT))
+
+# The tests directory itself, so shared test-only helpers import by bare name
+# (`from _assertions import assert_money`). Needed because the suite runs under
+# `--import-mode=importlib`, which deliberately does NOT put a test module's
+# own directory on `sys.path` — that is the behaviour which lets two
+# same-named test modules coexist in different packages, and it is worth
+# keeping. Helper modules are underscore-prefixed so pytest never collects
+# them as tests.
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))
