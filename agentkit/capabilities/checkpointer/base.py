@@ -26,7 +26,39 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from agentkit.kernel.ports import Checkpoint, CheckpointPort, CheckpointStatus, ClockPort
+from agentkit.kernel.ports import (
+    Checkpoint,
+    CheckpointPort,
+    CheckpointStatus,
+    ClockPort,
+)
+
+# Duplicated from ``agents.control.elicitation.SECRET_TAINT_KEY`` rather than
+# imported: ``capabilities`` sits BELOW ``agents`` and importing upward would
+# invert the layering (and drag the agents tree into every checkpoint wiring).
+# ``tests/agents/test_hitl_elicitation.py`` pins the two constants equal, so
+# the duplication cannot drift silently.
+_SECRET_TAINT_KEY = "_agentkit_secret_taint"
+
+
+def _is_tainted(state: dict[str, Any]) -> bool:
+    """Does this state blob carry a secret-taint marker?
+
+    The marker is set on a ``WorkingContext.scratchpad`` by
+    ``agents.control.elicitation.mark_context_tainted`` when a person supplies a
+    value to a ``secret=True`` elicitation. Producers serialise the scratchpad
+    into ``state``, so the marker travels with the thing that must not be
+    persisted — which is why the check can live at this single seam instead of
+    being re-implemented at all seven ``snapshot`` call sites.
+
+    Checks the top level AND a nested ``scratchpad`` because producers differ:
+    the tool loop nests it under ``"scratchpad"``, a caller passing a bare
+    scratchpad as the whole state would have it flat.
+    """
+    if state.get(_SECRET_TAINT_KEY):
+        return True
+    nested = state.get("scratchpad")
+    return bool(isinstance(nested, dict) and nested.get(_SECRET_TAINT_KEY))
 
 
 def _snapshot_span(ctx: Any, run_id: str, status: CheckpointStatus | str) -> Any:
@@ -104,7 +136,15 @@ class Checkpointer:
         around the save so operators can see checkpoint activity in the
         trace timeline. Callers without a ctx (bare unit tests, offline
         replayers) leave it unset and the span helper degrades to a
-        ``nullcontext``."""
+        ``nullcontext``.
+
+        **A SECRET-TAINTED state is never persisted** — see
+        :func:`_is_tainted`. This check lives here, at the single seam
+        every producer passes through, rather than in each cognition or
+        policy: there are seven ``snapshot`` call sites across the tool
+        loop and the coordinator policies, and a containment rule that
+        has to be re-implemented at each one is a rule that will be
+        missed at the eighth."""
         # The per-run lock scopes to ONE Checkpointer instance in
         # one process; cross-process concurrent producers still race
         # (the docstring warns "one producer per run_id"), but the
@@ -113,6 +153,19 @@ class Checkpointer:
         # branches both writing at a phase boundary — is closed
         # here so callers can compose without threading a lock
         # through their own code.
+        if _is_tainted(state):
+            # Refuse the write and return the shape the caller expects, so a
+            # producer that never opted into secrets needs no new branch. The
+            # run continues; only its durability is given up — an un-resumable
+            # run can be re-run, a leaked one-time code cannot be un-leaked.
+            return Checkpoint(
+                run_id=run_id,
+                version=0,  # 0 = never persisted; a real version starts at 1
+                state={},
+                status=status,
+                created_at=self.clock.now() if self.clock is not None else time.time(),
+                metadata={"skipped": "secret_taint"},
+            )
         with _snapshot_span(ctx, run_id, status):
             lock = self._run_locks.setdefault(run_id, asyncio.Lock())
             async with lock:

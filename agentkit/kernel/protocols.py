@@ -54,6 +54,11 @@ class Ctx(Protocol):
     invoker: Any  # `.chat(req, ctx)` / `.stream(req, ctx)` / `.invoke_tool(req, ctx)`
     store: Any | None  # StorePort or None — generic KV (cache / idempotency / audit)
     checkpointer: Any | None  # `Checkpointer` over CheckpointPort, for durable run state
+    asker: Any | None  # `agents.control.elicitation.Asker` or None — the human transport. When
+    # present a cognition PARKS on it (awaits in place, keeping live
+    # state); when absent it falls back to checkpoint-and-suspend.
+    # Framework code reads it via ``getattr(ctx, "asker", None)`` so a
+    # NullCtx / structural stub predating this field still works.
 
     # COOPERATIVE CONTROL -------------------------------------------------------------------
     def check_cancelled(self) -> None:

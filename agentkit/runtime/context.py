@@ -93,6 +93,16 @@ class Services:
     # tests stay green; production overrides with ``TraceIdRatioSampler``
     # once traffic outpaces the trace backend.
     sampler: SamplerPort = field(default_factory=AlwaysOnSampler)
+    # Human-in-the-loop transport (``agents.control.elicitation.Asker``). The one
+    # seam that turns a suspend into a PARK: when set, a cognition awaits the
+    # asker in place — the coroutine keeps its live, unserialisable state and
+    # nothing unwinds. When unset (the default), the classic
+    # checkpoint-and-return-and-resume path runs exactly as before, so this is
+    # purely additive. Terminal / HTTP / queue / Slack are all the same to the
+    # runtime: it never branches on transport, it only awaits ``ask``.
+    # Declared ``Any`` to keep the runtime free of an import from the agents
+    # layer (which imports the runtime).
+    asker: Any = None
 
 
 @dataclass
@@ -145,6 +155,11 @@ class RunContext:
     @property
     def vector(self) -> Any:
         return self.services.vector
+
+    @property
+    def asker(self) -> Any:
+        """The run's human transport, or ``None``. See ``Services.asker``."""
+        return self.services.asker
 
     @property
     def observer(self) -> ObserverPort:

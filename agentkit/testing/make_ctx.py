@@ -27,6 +27,7 @@ def make_test_ctx(
     store: Any = None,
     vector: Any = None,
     checkpointer: Any = None,
+    asker: Any = None,
     observer: Any = None,
     trace: Any = None,
     cancel: CancellationToken | None = None,
@@ -48,6 +49,11 @@ def make_test_ctx(
 
     ``Scope()`` is the zero-tenant default. Override with
     ``scope=Scope(org_id, domain_id)`` for tenant-isolation tests.
+
+    ``asker`` wires the human-in-the-loop transport
+    (``agents.control.elicitation.Asker``). When set, a gated tool call PARKS —
+    the cognition awaits it in place instead of checkpointing and unwinding.
+    ``None`` (default) keeps the classic suspend-and-resume path.
 
     ``observer`` / ``trace`` / ``checkpointer`` / ``store`` / ``vector``
     default to ``None`` here, which we *omit* when constructing
@@ -76,6 +82,7 @@ def make_test_ctx(
         store=store,
         vector=vector,
         checkpointer=checkpointer,
+        asker=asker,
         **extra,
     )
     return RunContext(

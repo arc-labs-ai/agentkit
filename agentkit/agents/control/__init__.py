@@ -8,6 +8,20 @@ safety/autonomy policies.
 
 from agentkit.agents.control.budget import ActorBudget, BudgetExhausted
 from agentkit.agents.control.channel import MergeInbox, SignalChannel
+from agentkit.agents.control.elicitation import (
+    Asker,
+    Decision,
+    Elicitation,
+    ElicitationExpired,
+    SecretValue,
+    ask_human_tool,
+    coerce_decision,
+    elicit,
+    elicit_or_raise,
+    is_context_tainted,
+    mark_context_tainted,
+    resolve_asker,
+)
 from agentkit.agents.control.gate import Autonomy, should_gate
 from agentkit.agents.control.handoff import (
     HANDOFF_MARKER,
@@ -53,6 +67,7 @@ from agentkit.agents.control.termination import (
 __all__ = [
     "ActorBudget",
     "AsyncSelector",
+    "Asker",
     "Autonomy",
     "BlockedSignal",
     "BudgetExhausted",
@@ -89,5 +104,16 @@ __all__ = [
     "handoff_tool",
     "parse_handoff",
     "route_by_handoff",
+    "Decision",
+    "Elicitation",
+    "ElicitationExpired",
+    "SecretValue",
+    "ask_human_tool",
+    "coerce_decision",
+    "elicit",
+    "elicit_or_raise",
+    "is_context_tainted",
+    "mark_context_tainted",
+    "resolve_asker",
     "should_gate",
 ]
