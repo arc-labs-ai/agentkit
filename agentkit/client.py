@@ -114,4 +114,46 @@ def openrouter(*, api_key: str, model: str | None = None, **chat_opts: Any) -> C
     return Chat(_provider("openrouter", api_key=api_key, model=model), model=model, **chat_opts)
 
 
-__all__ = ["Chat", "claude", "openai", "deepseek", "openrouter"]
+def from_env(
+    model: str | None = None,
+    *,
+    provider: str | None = None,
+    fallback: str | None = None,
+    **chat_opts: Any,
+) -> Chat:
+    """The zero-bootstrap preset: pick the provider from the model name and read
+    the credential from the environment.
+
+        async with from_env("claude-sonnet-4-6") as chat:   # ANTHROPIC_API_KEY
+            print((await chat("hi")).content)
+
+    This is the last mile every application was writing by hand — read the
+    key, pick the provider, handle the optional-extra ImportError, decide what
+    to do when nothing is configured. It composes with the explicit factories
+    rather than replacing them: ``claude(api_key=...)`` is untouched and stays
+    the right call when the caller already holds the credential.
+
+    ``fallback="fake"`` degrades to a canned LLM (warning once) instead of
+    raising when no credential is present — opt-in only, because a fake
+    quietly serving production traffic is worse than a startup crash. See
+    ``adapters.llm.model_registry.ModelRegistry.resolve``.
+
+    Raises ``UnknownModel`` / ``ProviderNotConfigured`` / ``MissingProviderExtra``
+    — all subclasses of ``RegistryError``, so one ``except`` covers the whole
+    bootstrap.
+    """
+    from agentkit.adapters.llm.model_registry import registry as _registry
+
+    reg = _registry()
+    llm = reg.resolve(model, provider=provider, fallback=fallback)
+    # Resolve the model the Chat will send. An explicit model wins; otherwise
+    # fall back to the provider's declared default so ``from_env(provider="…")``
+    # doesn't produce a Chat that raises "no model" on first call.
+    resolved = model
+    if resolved is None and provider is not None:
+        entry = reg.provider_entry(provider)
+        resolved = entry.default_model if entry is not None else None
+    return Chat(llm, model=resolved, **chat_opts)
+
+
+__all__ = ["Chat", "claude", "openai", "deepseek", "openrouter", "from_env"]
