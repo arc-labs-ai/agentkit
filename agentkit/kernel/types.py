@@ -37,9 +37,27 @@ class Scope:
 
 @dataclass(frozen=True)
 class Usage:
+    """Per-call resource consumption. Token counts are exact; ``cost_usd`` is a
+    running APPROXIMATION — see the field note below.
+
+    ``Budget`` accumulates a ``Usage`` for the token totals and keeps its own
+    exact ``Decimal`` ledger for money. ``Budget.spent()`` is what a run
+    reconciles against; summing ``usage.cost_usd`` is not.
+    """
+
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: float = 0.0  # APPROXIMATE. ``__add__`` re-rounds to 6dp on every
+    # addition, so this field is neither associative nor
+    # identity-preserving: ``Usage(cost_usd=1.4296875) + Usage()``
+    # yields 1.429688. It also rounds HALF_EVEN (Python's
+    # ``round``) while ``Budget``'s ledger quantizes HALF_UP, so
+    # on an exact tie the two differ by one unit in the last
+    # place. Neither matters while ``pricing.cost()`` emits
+    # 6-decimal values and ``Budget.spent()`` is the authority —
+    # it matters a lot if you start summing THIS field and
+    # expecting cents to balance. Pinned by
+    # ``tests/runtime/test_money_properties.py``.
     cache_read_tokens: int = 0  # prompt-cache hits (billed cheaper) — for cache-aware costing
     cache_write_tokens: int = 0  # prompt-cache writes (billed once, sometimes a premium)
 
@@ -139,6 +157,38 @@ class StreamEvent:
     tool_result: Any = None
     result: Any = None  # AgentResult on a "final" event
     usage: Usage | None = None
+    partial_output: Any = None  # the IN-PROGRESS typed object, forwarded verbatim from
+    # ``Delta.partial`` on ``message_delta`` events. Non-None only
+    # when BOTH an output schema is declared on the Agent (``output=``)
+    # AND ``output_coerce()`` sits in the chat middleware chain — the
+    # middleware is what runs the tolerant ``partial_parse``. Stays
+    # ``None`` for every unstructured run, so a consumer reading only
+    # ``text`` is unaffected.
+    #
+    # NOT named ``partial``: ``AgentResult.partial`` is a ``bool``
+    # meaning "this run terminated incompletely", and the same code
+    # paths emit both. ``ev.partial_output`` (a typed object) and
+    # ``ev.result.partial`` (a failure flag) must not be confusable.
+    #
+    # CONSUMER CONTRACT — this object is built through the type's
+    # bypass-init path (``model_construct`` / ``object.__new__``), so
+    # REQUIRED FIELDS MAY BE UNSET. Never trust plain attribute
+    # access; gate on what has actually arrived::
+    #
+    #     if ev.partial_output is not None:
+    #         if "title" in ev.partial_output.model_fields_set:
+    #             render(ev.partial_output.title)
+    #
+    # For dataclass / attrs shapes the equivalent guard is
+    # ``getattr(obj, "title", None)`` — an unset field is genuinely
+    # absent from ``__dict__``, so attribute access raises
+    # ``AttributeError`` rather than returning a default.
+    #
+    # The value REFRESHES per event and is only stamped when the
+    # partial changed (``output_coerce`` compares against the last one),
+    # so consecutive ``message_delta``s may carry ``None`` even
+    # mid-structured-stream. Hold the last non-None value; do not
+    # treat a ``None`` as "the object went away".
 
 
 @dataclass(frozen=True)
@@ -169,7 +219,23 @@ class Delta:
 
 def assemble_deltas(deltas: list[Delta]) -> LLMResult:
     """Pure reducer: fold streamed `Delta`s into the final `LLMResult` (content concatenated; usage /
-    finish_reason / model / provider / tool_calls / parsed taken from the deltas that carry them)."""
+    finish_reason / model / provider / tool_calls / parsed taken from the deltas that carry them).
+
+    ``Delta.partial`` is deliberately DROPPED here, and that is not an
+    oversight — do not "fix" it. ``partial`` is a per-delta,
+    in-progress value produced by a *tolerant* parse; ``parsed`` is the
+    single strict-validated result. Lifting both onto ``LLMResult``
+    would give the result type two competing typed fields where the
+    tolerant one (with possibly-unset required fields) could shadow the
+    strict one. This reducer only ever runs on a COMPLETE delta list,
+    so by the time it is called there is no in-progress state left to
+    carry: ``parsed`` is the answer.
+
+    In-flight partials reach consumers through the streaming path
+    instead — the cognitions forward ``Delta.partial`` onto
+    ``StreamEvent.partial_output`` per ``message_delta``. See
+    :class:`StreamEvent`.
+    """
     content: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
     usage, finish, model, provider = Usage(), None, None, None

@@ -28,6 +28,15 @@ class Invoker:
         self, *, llm: Any, chat_middleware: Sequence[Any] = (), tool_middleware: Sequence[Any] = ()
     ):
         self._llm = llm
+        # Keep the composed lists addressable. ``chain()`` closes over them
+        # and returns an opaque callable, so without this the wiring is
+        # write-only — nothing downstream can answer "is output_coerce in
+        # this chain?", and a missing middleware becomes a silent behavioural
+        # hole instead of a diagnosable one (see ``Agent._warn_if_no_coerce``).
+        # Tuples, not lists: introspection must not be able to mutate the
+        # chain that was already composed above.
+        self.chat_middleware: tuple[Any, ...] = tuple(chat_middleware)
+        self.tool_middleware: tuple[Any, ...] = tuple(tool_middleware)
         self._chat = chain(list(chat_middleware), self._terminal_chat)
         self._tool = chain(list(tool_middleware), self._terminal_tool)
 
