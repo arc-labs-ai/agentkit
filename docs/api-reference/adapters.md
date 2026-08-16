@@ -16,6 +16,21 @@ its own subpackage. Reference them directly:
       show_source: false
       members_order: source
 
+## Model registry
+
+The from-configuration layer above the explicit provider factories:
+model name → provider → wired `LLMPort` (credential from the
+environment), plus per-model capability declaration so a mismatch is
+refused at bind time rather than surfacing as a plausible empty
+answer. See the
+[recipe](../recipes/provider-from-env.md) for the mental model.
+
+::: agentkit.adapters.llm.model_registry
+    options:
+      show_root_heading: false
+      show_source: false
+      members_order: source
+
 ::: agentkit.adapters.store
     options:
       show_root_heading: false

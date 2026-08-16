@@ -11,6 +11,22 @@ want the tightest possible menu, use the
 [Cheatsheet](../cheatsheet.md). This page is what you reach for after
 you've hit one specific wall.
 
+## I need to wire a provider from configuration
+
+Read the key from the environment, pick the provider from the model
+name, and refuse a model that can't do the job — before any spend.
+One registry: `resolve_llm`, `from_env`, `Capability`, `requires=`.
+
+[Pick a provider from config, catch a bad model :octicons-arrow-right-24:](provider-from-env.md)
+
+## I need to render a typed object while it's still being written
+
+`output=MyModel` gives you `AgentResult.parsed` at the end.
+`StreamEvent.partial_output` gives you the in-progress object on every
+delta, through `Agent.stream` alone.
+
+[Stream a typed object as it generates :octicons-arrow-right-24:](stream-typed-output.md)
+
 ## I need to control cost
 
 Hard ceiling on a single run and a rolling window per tenant.
@@ -25,6 +41,14 @@ should not run without a human saying yes. Real pause, snapshot,
 resume from a fresh process.
 
 [Human-in-the-loop tool approval :octicons-arrow-right-24:](hitl-tool-approval.md)
+
+## I need a person to supply a *value*, not just say yes
+
+A one-time code mid-journey, nowhere near a tool call. Parkable in
+place (your live state survives), deadlined (no abandoned-tab hang),
+typed (who answered, and when), and secret-safe.
+
+[Elicit a value from a human :octicons-arrow-right-24:](elicit-a-value-from-a-human.md)
 
 ## I need to survive a crash
 

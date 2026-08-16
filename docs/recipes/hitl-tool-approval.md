@@ -1,5 +1,14 @@
 # How do I pause a tool for human approval?
 
+!!! tip "Need a *value*, not a yes/no?"
+    This page is approve/deny with a serialisable run — the simplest
+    correct thing, and unchanged. If you need a person to **supply a
+    value** (a one-time code), to **park in place** because your
+    coroutine holds live unserialisable state, or to put a **deadline**
+    on the wait, see
+    [Elicit a value from a human](elicit-a-value-from-a-human.md).
+    That path is a superset and does not change this one.
+
 ## When you'd want this
 
 Any tool that mutates the world — publishing content, spending money,

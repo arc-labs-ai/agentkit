@@ -275,6 +275,48 @@ try:
     await agent.run(task, ctx)
 except MeterExceeded as exc:
     ...  # the run halted cleanly at the ceiling
+
+# Money is Decimal. `spent_usd` is a float MIRROR, fine for display.
+budget.spent()         # Decimal("0.4831") — exact, reconciles to the cent
+budget.spent_cents()   # Decimal("0.48")   — quantize once, at read time
+budget.usage           # cumulative Usage: input/output/cache tokens, whole tree
+
+# Recoverable exhaustion: return a verdict instead of raising, so the
+# cognition can write a checkpoint BEFORE it stops.
+budget = Budget(max_cost_usd="1.00", on_exceeded="stop")
+result = await agent.run(task, ctx)
+if result.stop_reason == "budget_exhausted":
+    assert result.is_resumable      # a current checkpoint exists
+```
+
+## Provider from the environment + model capabilities
+
+```python
+from agentkit.adapters.llm import (
+    Capability, ModelCapabilities, ModelEntry,
+    model_capabilities, register_model, register_rule, resolve_llm,
+)
+from agentkit.client import from_env
+
+# Provider picked from the model name; credential read from the env.
+# Raises ProviderNotConfigured if unkeyed — pass fallback="fake" to degrade.
+llm = resolve_llm("claude-sonnet-4-6")          # -> LLMPort
+async with from_env("gpt-4o-mini") as chat:      # -> Chat
+    ...
+
+# Capabilities are declared per model, never guessed from the name.
+model_capabilities("claude-sonnet-4-6").vision   # Capability.YES
+model_capabilities("who-knows").vision           # Capability.UNKNOWN (never True)
+
+# Refused at CONSTRUCTION — before any spend.
+agent = Agent("ocr", "claude-sonnet-4-6", requires=("vision",),
+              min_context_window=100_000,
+              on_unknown_capability="warn")       # "refuse" | "allow"
+
+# Declare your own model / routing rule.
+register_model(ModelEntry("acme-v3", provider="openai",
+                          capabilities=ModelCapabilities(tools=Capability.YES)))
+register_rule(lambda name: "openai" if name.startswith("acme-") else None)
 ```
 
 ## Batteries-included LLM presets
@@ -346,6 +388,13 @@ agent = Agent(
 result = await agent.run("brief on octopus cognition", ctx)
 result.parsed  # -> Answer(summary=..., confidence=...)
 
+# Stream the object AS IT IS WRITTEN. Needs output_coerce() in the chat
+# chain (the Agent warns once if it's missing).
+async for ev in agent.stream(task, ctx):
+    p = ev.partial_output          # None for unstructured runs
+    if p is not None and "summary" in p.model_fields_set:
+        render(p.summary)          # required fields MAY BE UNSET — always gate
+
 # Or on a Tool:
 @tool(side_effecting=False, output_schema=Answer)
 async def brief(topic: str) -> Answer:
@@ -406,3 +455,35 @@ ctx = make_test_ctx(
 Test doubles live under `agentkit.testing.*` on purpose — a
 `from agentkit import FakeLLM` shape would let production code
 accidentally pin a fake. The import boundary is the guardrail.
+
+## Human-in-the-loop (elicit a value, park, deadline)
+
+```python
+from agentkit.agents.control.elicitation import (
+    Decision, Elicitation, ask_human_tool, elicit,
+)
+
+class MyAsker:                       # terminal / HTTP / queue — runtime doesn't care
+    async def ask(self, request: Elicitation) -> Decision:
+        return Decision(kind="value", value=await prompt_user(request.prompt),
+                        actor="alice@corp")
+
+# Wired on Services -> a gated tool call PARKS in place (live state survives)
+# instead of checkpointing and unwinding. Unset -> classic suspend/resume.
+services = Services(invoker=invoker, asker=MyAsker())
+
+# Ask from ANY cognition — no tool call needed.
+d = await elicit(ctx, Elicitation(id="otp", prompt="code?", kind="value",
+                                  secret=True, deadline_s=120))
+d.kind      # "value" | "approve" | "deny" | "modify" | "expired"
+d.actor, d.at                        # who answered, and when
+d.value                              # SecretValue when secret=True; .reveal() to read
+
+# Let the MODEL ask.
+ReActCognition(tools=[ask_human_tool(secret=True)], approval_deadline_s=120)
+
+# Terminal state is a closed Literal, so suspended != failed.
+result.stop_reason   # complete | suspended | expired | budget_exhausted
+                     # | max_iterations | invalid_output | terminated
+result.is_suspended, result.is_resumable
+```

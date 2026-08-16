@@ -41,6 +41,28 @@ vocabulary; policy is what higher layers add.
 - **Observation** — the shape of the trace / metric events every layer
   emits, so observers stay adapter-agnostic.
 
+## `Delta` vs `StreamEvent` — two levels of "streaming"
+
+A `Delta` is one transport increment of a **single LLM response**. A
+`StreamEvent` marks a step in the **run**: a token, a tool call, an
+interrupt, the final result. `assemble_deltas()` reduces a list of
+`Delta`s back to an `LLMResult`, so a chat result is just the
+collected stream.
+
+Both carry an in-progress typed object when an output schema is
+declared: `Delta.partial` is set by the `output_coerce()` middleware,
+and the cognitions forward it verbatim onto
+`StreamEvent.partial_output` — that is how an application streams a
+typed object through `Agent.stream` alone. See
+[the recipe](../recipes/stream-typed-output.md).
+
+`assemble_deltas` deliberately **drops** `partial`. It only ever runs
+on a complete delta list, so by then there is no in-progress state
+left to carry: `parsed` (the strict, validated object) is the answer.
+Lifting both onto `LLMResult` would give the result type two competing
+typed fields where the tolerant one — which may have unset required
+fields — could shadow the strict one.
+
 ## The invariants it enforces
 
 1. **No provider dependency.** Importing `agentkit.kernel` never
@@ -51,6 +73,9 @@ vocabulary; policy is what higher layers add.
 3. **One vocabulary.** Every layer that talks about a "usage" or a
    "budget" reuses the kernel type. There is no parallel `Usage` type
    in `runtime/` or `middlewares/`.
+4. **Additive fields only.** A new field on a value type carries a
+   default and changes nothing for a consumer that doesn't read it.
+   `StreamEvent.partial_output` is `None` for every unstructured run.
 
 ## Related deep dive
 

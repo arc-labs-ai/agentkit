@@ -12,3 +12,15 @@ See the [Agents concept](../concepts/agents.md) for the mental model.
       show_root_heading: false
       show_source: false
       members_order: source
+
+## Human-in-the-loop
+
+`Elicitation` / `Decision` / `Asker` — pausing a run for a person as a
+**value request**, parkable in place, deadlined, and typed. See the
+[recipe](../recipes/elicit-a-value-from-a-human.md).
+
+::: agentkit.agents.control.elicitation
+    options:
+      show_root_heading: false
+      show_source: false
+      members_order: source

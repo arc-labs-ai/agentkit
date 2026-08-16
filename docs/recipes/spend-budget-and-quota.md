@@ -13,8 +13,20 @@ one Protocol:
   tenant.
 
 Both hook in through the same `meter()` middleware in the chat chain.
-Overspend raises `MeterExceeded` — the invoker unwinds and the loop
-halts cleanly.
+By default overspend raises `MeterExceeded` — the invoker unwinds and
+the loop halts. With `on_exceeded="stop"` it returns a **verdict**
+instead, and the run stops *after* writing a checkpoint, so the spend
+is recoverable. See
+[Making exhaustion recoverable](#making-exhaustion-recoverable).
+
+Money is `Decimal`, not `float`. Binary floating point cannot
+represent `0.01`, so a hundred one-cent charges summed as floats land
+at `1.0000000000000007` and a metered run cannot be reconciled to the
+cent. `Budget` keeps an exact ledger — read it with `budget.spent()`
+(`Decimal`) or `budget.spent_cents()` for invoicing.
+`budget.spent_usd` is still there and is a float *mirror* of the
+ledger, kept in sync after every charge: fine for display, not for
+summing.
 
 !!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
     Wired via `providers.claude(...)` on the `Invoker`. Swap for
@@ -94,6 +106,70 @@ the way in, not after the fact. The in-memory implementation is fine
 for a single process; a multi-process deployment wants a Redis-backed
 Quota (write your own `Meter` impl behind the same Protocol).
 
+## Making exhaustion recoverable
+
+The default `on_exceeded="raise"` has a sharp edge worth knowing
+about. `MeterExceeded` is raised from inside `charge()`, which runs in
+the meter middleware's `on_response`, which is inside
+`ctx.invoker.stream(...)` — so it unwinds **past every checkpoint
+write in the loop**. A tool-loop run that crosses its ceiling on the
+second turn aborts holding the *first* turn's checkpoint: marked
+`running` rather than `suspended`, and recording only half the money
+that actually left the account.
+
+`on_exceeded="stop"` fixes that. The meter records the spend and
+returns a `Charge` verdict; control reaches the cognition, which still
+holds the live context and writes a current `suspended` checkpoint
+before ending the run:
+
+```python
+budget = Budget(max_cost_usd="1.00", on_exceeded="stop")
+result = await agent.run(task, ctx)
+
+if result.stop_reason == "budget_exhausted":
+    assert result.is_resumable                  # a checkpoint exists, and it's current
+    raise_the_ceiling_and_requeue(ctx.correlation_id)
+```
+
+Both cognitions also **pre-flight** the budget at the top of each
+iteration, so retrying a run whose ceiling nobody raised costs nothing
+— it stops before making a call rather than after. And
+`budget.max_cost_usd = 10.0` after construction really does raise the
+ceiling; the normalised value re-derives on assignment.
+
+Raising is still the **default**, deliberately. Flipping it would
+silently change control flow in every existing wiring: a run that used
+to abort would continue past its ceiling in any caller that ignores
+the return value — a worse failure than the one being fixed.
+
+The verdict itself is useful even when you keep raising:
+
+```python
+verdict = await budget.charge(call, usage)
+verdict.ok            # False when a ceiling was crossed
+verdict.reason        # "cost $1.2 > $1"
+verdict.spent         # Decimal — exact (Budget.spent_usd is the float mirror)
+verdict.remaining     # Decimal | None
+verdict.usage         # cumulative Usage — input/output/cache tokens, not just cost
+verdict.raise_if_exceeded()   # back to the old control flow, at one site
+```
+
+## Token counts, not just cost
+
+`Budget.usage` accumulates the whole `Usage` — input, output,
+cache-read and cache-write tokens. Because `Budget` is shared **by
+reference** across `ctx.child()`, a whole agent tree rolls up into
+one object:
+
+```python
+budget.usage.input_tokens        # across every agent in the tree
+budget.usage.cache_read_tokens   # cache effectiveness, for free
+budget.usage.total_tokens
+```
+
+Applications used to re-aggregate this from spans or from their own
+callbacks. They no longer need to.
+
 ## Per-agent budgets
 
 For multi-agent runs, `ActorBudget` gives each child agent its own
@@ -123,6 +199,25 @@ differently to a token-out vs wall-out.
   `MeterExceeded` (from `agentkit.runtime.meter`) is the per-run
   ceiling; `BudgetExhausted` (from `agentkit.agents.control.budget`)
   is the per-actor `ActorBudget` signal. Catch each where it fires.
+- **A budget is always overrun by at most one call's cost.** `_check`
+  compares `spent > ceiling` *after* the work has run; there is no
+  pre-flight estimate. Set the ceiling slightly below your true limit,
+  and use `on_exceeded="stop"` so the overshoot is recoverable rather
+  than fatal.
+- **An unregistered model costs `$0.00`.** `pricing.cost()` returns
+  zero for a model it doesn't know, so a ceiling never fires and the
+  run is effectively unbounded. Declare the model in the
+  [model registry](provider-from-env.md) — the same table that routes
+  a name to a provider.
+- **An over-precise *ceiling* is refused; an over-precise *charge* is
+  quantized.** `Budget(max_cost_usd="0.0000001")` raises
+  `MoneyPrecisionError` at construction, because a ceiling is your
+  stated intent and rounding it changes what you asked for. A charge
+  is a measurement, so it is recorded at 6dp rather than aborting a
+  run mid-flight.
+- **Quantize at read, not per charge.** `budget.spent_cents()` rounds
+  once, at the end. Rounding each charge to cents would round every
+  sub-cent call to zero and undercount the whole run.
 
 ## Related
 

@@ -53,6 +53,31 @@ gets tracing / metering / retry / caching by editing one list.
 scope-partitioned ceiling (per tenant, per org). `Meter` is the
 middleware that accrues `Usage` and enforces both.
 
+Three properties worth knowing:
+
+- **Money is `Decimal`.** Binary floating point cannot represent
+  `0.01`, so a float ledger cannot be reconciled to the cent. Read
+  `budget.spent()` (exact) or `budget.spent_cents()` (invoicing);
+  `budget.spent_usd` is a float mirror kept in sync for display.
+- **The whole `Usage` accumulates**, not just a cost scalar.
+  `budget.usage` carries input / output / cache-read / cache-write
+  tokens for the entire agent tree, because `Budget` is shared by
+  reference across `ctx.child()`.
+- **`charge()` returns a `Charge` verdict.** Raising is still the
+  default, but `on_exceeded="stop"` lets the caller act on exhaustion
+  instead — which is what allows a tool-loop run to write a checkpoint
+  *before* it stops. See
+  [the recipe](../recipes/spend-budget-and-quota.md#making-exhaustion-recoverable).
+
+### `Services.asker`
+
+The human-in-the-loop transport (`agents.control.elicitation.Asker`). When
+set, a cognition **parks** on a gated decision — it awaits the person
+from inside its own coroutine, so live unserialisable state survives.
+When unset, the classic checkpoint-and-resume path runs unchanged. The
+runtime never branches on transport; implementing `async def ask` is
+the whole integration.
+
 ### `EventBus`
 
 Fan-out for lifecycle and observation events, kept in-process by
@@ -75,6 +100,12 @@ can call the middleware chain without wiring a full services bundle.
    `MeterExceeded` (from `agentkit.runtime.meter`) and unwinds the
    call — it doesn't just warn. (Distinct from `BudgetExhausted` in
    `agentkit.agents`, which is a per-actor `ActorBudget` signal.)
+   Under `on_exceeded="stop"` the enforcement is a returned verdict
+   rather than an exception — still enforced, but recoverable.
+4. **Enforcement is post-hoc by one call.** `spent > ceiling` is
+   evaluated after the work runs; there is no pre-flight estimate, so
+   a budget is always overrun by at most one call's cost. Set the
+   ceiling below your true limit.
 
 ## API
 

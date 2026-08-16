@@ -132,7 +132,10 @@ nav:
   - Anti-patterns: anti-patterns.md
   - Recipes:
       - Overview: recipes/index.md
+      - Pick a provider from config: recipes/provider-from-env.md
+      - Stream a typed object: recipes/stream-typed-output.md
       - Human-in-the-loop tool approval: recipes/hitl-tool-approval.md
+      - Elicit a value from a human: recipes/elicit-a-value-from-a-human.md
       - Resume from a checkpoint after a crash: recipes/resume-after-crash.md
       - Cap spend with Budget and Quota: recipes/spend-budget-and-quota.md
       - Parallel agents with cooperative cancellation: recipes/parallel-agents-with-cancellation.md

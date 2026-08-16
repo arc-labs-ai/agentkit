@@ -100,6 +100,44 @@ about the others. Workflow's `human_gate` node suspends the workflow
   `"gated"`, or `"manual"`. Read by tools and cognitions that gate on
   human approval; the tier + `@tool(side_effecting=..., requires_approval=...)`
   together decide whether a specific tool call suspends.
+- **`Elicitation` / `Decision` / `Asker`** — pausing for a person as a
+  **value request**, not only a veto. `Asker` is injected on
+  `Services`; when present a gated decision **parks in place** (the
+  coroutine awaits, live state survives) instead of unwinding to a
+  checkpoint. Deadlined, and typed with `actor` + `at`. Works from any
+  cognition, because `elicit(ctx, ...)` takes a `Ctx`, not an `Agent`.
+  See [the recipe](../recipes/elicit-a-value-from-a-human.md).
+
+### How a run ends
+
+`AgentResult.stop_reason` is a closed `Literal`, so the terminal state
+is something you branch on rather than sniff out of a dict:
+
+| `stop_reason` | Meaning |
+|---|---|
+| `complete` | The model produced a final answer |
+| `suspended` | **Waiting on a person.** Resumable, and not a failure |
+| `expired` | A human-gate deadline passed; the run degraded and continued |
+| `budget_exhausted` | A meter ceiling hit. A checkpoint was written *before* stopping |
+| `max_iterations` | The tool-loop ceiling was reached with no final answer |
+| `invalid_output` | Parse-and-repair exhausted |
+| `terminated` | A `TerminationCondition` fired (its own wording is in `evals["stop_reason"]`) |
+
+`result.is_suspended` and `result.is_resumable` are the two
+convenience reads. A run that **failed** produces no `AgentResult` at
+all — the exception propagates — which is exactly what makes
+"waiting for you" and "it fell over" distinguishable.
+
+### Model capability contract
+
+`Agent(requires=("vision",), min_context_window=100_000)` is checked
+at **construction**, against the
+[model registry](../recipes/provider-from-env.md) — before any spend,
+because catching it after the bill is worthless. A capability the
+model declares as unsupported raises `CapabilityMismatch`; one it
+doesn't declare at all is `UNKNOWN` and governed by
+`on_unknown_capability` (`"warn"` by default, `"refuse"` for a
+service that pins its models). `UNKNOWN` is never treated as present.
 
 ## The invariants it enforces
 
@@ -112,6 +150,13 @@ about the others. Workflow's `human_gate` node suspends the workflow
    leak.
 4. **Handoff transfers ownership.** After a `Handoff`, the source
    agent stops emitting; there is no shared write.
+5. **Suspended is not failed.** A parked run returns a typed
+   `AgentResult`; a broken one raises. A reader must be able to tell
+   them apart without parsing a message.
+6. **A capability is declared, never inferred from a name.** An
+   unregistered model reports `UNKNOWN`, never `True` — guessing
+   `True` reintroduces the silent, well-formed wrong answer the check
+   exists to catch.
 
 ## Related deep dive
 
