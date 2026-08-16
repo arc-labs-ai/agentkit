@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/provider-from-env/">
       
       
-        <link rel="prev" href="../stream-typed-output/">
+        <link rel="prev" href="../">
       
       
-        <link rel="next" href="../elicit-a-value-from-a-human/">
+        <link rel="next" href="../stream-typed-output/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Human-in-the-loop tool approval - agentkit</title>
+        <title>Pick a provider from config - agentkit</title>
       
     
     
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-do-i-pause-a-tool-for-human-approval" class="md-skip">
+        <a href="#how-do-i-pick-a-provider-from-configuration-and-catch-a-bad-model-before-i-pay-for-it" class="md-skip">
           Skip to content
         </a>
       
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Human-in-the-loop tool approval
+              Pick a provider from config
             
           </span>
         </div>
@@ -821,62 +821,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../provider-from-env/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Pick a provider from config
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../stream-typed-output/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Stream a typed object
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -896,7 +840,7 @@
   <span class="md-ellipsis">
     
   
-    Human-in-the-loop tool approval
+    Pick a provider from config
   
 
     
@@ -914,7 +858,7 @@
   <span class="md-ellipsis">
     
   
-    Human-in-the-loop tool approval
+    Pick a provider from config
   
 
     
@@ -962,10 +906,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#resolution-what-happens-in-order" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it works
+        Resolution: what happens, in order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-declared-never-guessed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities: declared, never guessed
       
     </span>
   </a>
@@ -998,6 +953,62 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stream-typed-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream a typed object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hitl-tool-approval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1875,10 +1886,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#resolution-what-happens-in-order" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it works
+        Resolution: what happens, in order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-declared-never-guessed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities: declared, never guessed
       
     </span>
   </a>
@@ -1927,154 +1949,169 @@
   
 
 
-<h1 id="how-do-i-pause-a-tool-for-human-approval">How do I pause a tool for human approval?<a class="headerlink" href="#how-do-i-pause-a-tool-for-human-approval" title="Anchor link">&para;</a></h1>
-<div class="admonition tip">
-<p class="admonition-title">Need a <em>value</em>, not a yes/no?</p>
-<p>This page is approve/deny with a serialisable run — the simplest
-correct thing, and unchanged. If you need a person to <strong>supply a
-value</strong> (a one-time code), to <strong>park in place</strong> because your
-coroutine holds live unserialisable state, or to put a <strong>deadline</strong>
-on the wait, see
-<a href="../elicit-a-value-from-a-human/">Elicit a value from a human</a>.
-That path is a superset and does not change this one.</p>
-</div>
+<h1 id="how-do-i-pick-a-provider-from-configuration-and-catch-a-bad-model-before-i-pay-for-it">How do I pick a provider from configuration, and catch a bad model before I pay for it?<a class="headerlink" href="#how-do-i-pick-a-provider-from-configuration-and-catch-a-bad-model-before-i-pay-for-it" title="Anchor link">&para;</a></h1>
 <h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
-<p>Any tool that mutates the world — publishing content, spending money,
-sending a message, filing a ticket, running a shell command — should
-not run without a human saying yes when the run is being watched. The
-run should <strong>suspend to a checkpoint</strong> and hand control back to your
-driver code, which decides whether to resume with <code>"approve"</code>,
-<code>"reject"</code>, or a modified argument list.</p>
-<div class="admonition note">
-<p class="admonition-title">Assumes <code>ANTHROPIC_API_KEY</code> in the environment</p>
-<p>The snippet wires <code>providers.claude(...)</code> through an <code>Invoker</code> so
-the reader sees the real shape they'll ship. Swap
-<code>providers.claude</code> for <code>providers.openai</code> (and set
-<code>OPENAI_API_KEY</code>) if that's what you have — nothing else changes.</p>
-</div>
+<p>Two problems that turn out to be one problem.</p>
+<p><strong>The last mile.</strong> Every explicit factory — <code>claude()</code>, <code>openai()</code>,
+<code>deepseek()</code>, <code>openrouter()</code> — requires an <code>api_key=</code>. So every
+application writes the same bootstrap: read the key, pick the
+provider from the model name, handle the optional-extra <code>ImportError</code>,
+decide what to do when nothing is configured. Measured in one
+production codebase that was ~710 lines, and the only domain-free
+code in its engine.</p>
+<p><strong>The silent capability failure.</strong> A model is a string.
+<code>claude(model="claude-sonnet-4-6")</code> says nothing about what it can do,
+so nothing catches a role bound to a model that lacks a needed
+capability. An agent asked to read images, bound to a model that
+cannot see, returns a structurally valid answer citing evidence it
+never read. Nothing downstream can tell.</p>
+<p>Both are answered by knowing things about a model name, so both read
+one table: the <strong>model registry</strong>.</p>
 <h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Requires ANTHROPIC_API_KEY in the environment.&quot;&quot;&quot;</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Requires ANTHROPIC_API_KEY (or OPENAI_API_KEY, or …) in the environment.&quot;&quot;&quot;</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">,</span> <span class="n">tool</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">providers</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpointer</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Send an email. Side-effecting — always gated under Autonomy.GATED.&quot;&quot;&quot;</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;sent to </span><span class="si">{</span><span class="n">to</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">subject</span><span class="si">!r}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">providers</span><span class="o">.</span><span class="n">claude</span><span class="p">(</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ANTHROPIC_API_KEY&quot;</span><span class="p">],</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="p">)</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="n">invoker</span><span class="o">=</span><span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">),</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="n">checkpointer</span><span class="o">=</span><span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">InMemoryCheckpointStore</span><span class="p">()),</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="p">)</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="n">services</span><span class="o">=</span><span class="n">services</span><span class="p">,</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">,</span>  <span class="c1"># gate every side_effecting tool</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">Capability</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">ModelCapabilities</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">ModelEntry</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">register_model</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">resolve_llm</span><span class="p">,</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_env</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="c1"># 1. The one-liner. Provider picked from the model name, credential read</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="c1">#    from the environment. No api_key= anywhere in application code.</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">from_env</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">chat</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="nb">print</span><span class="p">((</span><span class="k">await</span> <span class="n">chat</span><span class="p">(</span><span class="s2">&quot;Say hi in five words.&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="c1"># 2. The port, for when you&#39;re wiring an Invoker yourself.</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">invoker</span> <span class="o">=</span> <span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">resolve_llm</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">))</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">Services</span><span class="p">(</span><span class="n">invoker</span><span class="o">=</span><span class="n">invoker</span><span class="p">))</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="c1"># 3. Declare what the ROLE needs. Refused at construction — before spend.</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="n">reader</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;ocr&quot;</span><span class="p">,</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Describe the attached image.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="n">requires</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;vision&quot;</span><span class="p">,),</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="n">min_context_window</span><span class="o">=</span><span class="mi">100_000</span><span class="p">,</span>
 </span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="p">)</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;notifier&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Draft a one-line brief for the team, then call send_email exactly once.&quot;</span><span class="p">,</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">send_email</span><span class="p">]),</span>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="p">)</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="c1"># First run — the loop suspends before send_email fires.</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Send the team a brief about octopus cognition.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;suspended&quot;</span><span class="p">)</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;awaiting approval for: </span><span class="si">{</span><span class="p">[</span><span class="n">tc</span><span class="o">.</span><span class="n">name</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">tc</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>    <span class="c1"># Driver decides. Decisions are keyed by ToolCall.id:</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>    <span class="c1">#   &quot;approve&quot;          — run with the model&#39;s args</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="c1">#   &quot;reject&quot; / &quot;deny&quot;  — inject a DENIED tool result, keep the loop going</span>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="c1">#   any other string   — parsed as a JSON args override, then run</span>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>    <span class="n">decisions</span> <span class="o">=</span> <span class="p">{</span><span class="n">tc</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="s2">&quot;approve&quot;</span> <span class="k">for</span> <span class="n">tc</span> <span class="ow">in</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">}</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>    <span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">susp</span><span class="o">.</span><span class="n">run_id</span><span class="p">,</span> <span class="n">decisions</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;final: </span><span class="si">{</span><span class="n">final</span><span class="o">.</span><span class="n">output</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>
-</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>
-</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">reader</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Describe it.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">))</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    <span class="c1"># 4. Declare your own model. Registering a row turns &quot;we don&#39;t know&quot;</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="c1">#    into a real check — including a real refusal.</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    <span class="n">register_model</span><span class="p">(</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="n">ModelEntry</span><span class="p">(</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;acme-internal-v3&quot;</span><span class="p">,</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>            <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span>  <span class="c1"># OpenAI-compatible endpoint</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>            <span class="n">capabilities</span><span class="o">=</span><span class="n">ModelCapabilities</span><span class="p">(</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>                <span class="n">tools</span><span class="o">=</span><span class="n">Capability</span><span class="o">.</span><span class="n">YES</span><span class="p">,</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>                <span class="n">vision</span><span class="o">=</span><span class="n">Capability</span><span class="o">.</span><span class="n">NO</span><span class="p">,</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>                <span class="n">context_window</span><span class="o">=</span><span class="mi">32_000</span><span class="p">,</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>            <span class="p">),</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        <span class="p">)</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>    <span class="p">)</span>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="n">Agent</span><span class="p">(</span><span class="s2">&quot;ocr2&quot;</span><span class="p">,</span> <span class="s2">&quot;acme-internal-v3&quot;</span><span class="p">,</span> <span class="n">requires</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;vision&quot;</span><span class="p">,))</span>  <span class="c1"># CapabilityMismatch</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
-<p><code>Autonomy</code> is a run-wide tier carried on <code>RunContext.autonomy</code>.
-<code>should_gate(autonomy, requires_approval, key_step)</code> is the shared
-policy every gating surface consults:</p>
+<h2 id="resolution-what-happens-in-order">Resolution: what happens, in order<a class="headerlink" href="#resolution-what-happens-in-order" title="Anchor link">&para;</a></h2>
+<ol>
+<li>An explicit <code>provider=</code> wins.</li>
+<li>Otherwise a registered <code>ModelEntry</code> names the provider.</li>
+<li>Otherwise the name→provider <strong>rules</strong> run, in registration order.
+   Register your own so an internal convention routes without forking
+   a prefix table:</li>
+</ol>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_rule</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">register_rule</span><span class="p">(</span><span class="k">lambda</span> <span class="n">name</span><span class="p">:</span> <span class="s2">&quot;openai&quot;</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;acme-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+</span></code></pre></div>
+4. The provider's environment variables are checked in order
+   (<code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>,
+   <code>OPENROUTER_API_KEY</code>). An empty string counts as absent.
+5. The factory is imported <strong>lazily</strong>, by dotted path. Registering a
+   provider costs no import, so the registry stays usable on a
+   zero-dependency install.</p>
+<p>Dated release ids normalise: <code>claude-haiku-4-5-20251001</code> and
+<code>anthropic/claude-sonnet-4-6</code> both resolve to their family row.</p>
+<h2 id="capabilities-declared-never-guessed">Capabilities: declared, never guessed<a class="headerlink" href="#capabilities-declared-never-guessed" title="Anchor link">&para;</a></h2>
+<p><code>Capability</code> is <strong>three-valued</strong> — <code>YES</code>, <code>NO</code>, <code>UNKNOWN</code> — and the
+third value is the whole point. A <code>bool</code> forces every unrecognised
+model into either "has it" (silent wrong answers) or "doesn't"
+(refuses everything custom).</p>
 <table>
 <thead>
 <tr>
-<th>Autonomy</th>
-<th>Gates</th>
+<th>Declared</th>
+<th>What happens</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>"auto"</code></td>
-<td>Only tools explicitly marked <code>requires_approval=True</code></td>
+<td><code>NO</code></td>
+<td>Always raises <code>CapabilityMismatch</code>, naming the capability and the model</td>
 </tr>
 <tr>
-<td><code>"gated"</code></td>
-<td>Also every <code>side_effecting=True</code> tool (key step)</td>
+<td><code>YES</code></td>
+<td>Silent</td>
 </tr>
 <tr>
-<td><code>"manual"</code></td>
-<td>Every tool call</td>
+<td><code>UNKNOWN</code></td>
+<td>Governed by <code>on_unknown_capability</code> on the Agent</td>
 </tr>
 </tbody>
 </table>
-<p>When the <code>ReActCognition</code> sees a gated tool call, it snapshots its
-state through the <code>Checkpointer</code> (status <code>"suspended"</code>), emits an
-<code>interrupt</code> event per pending tool call, and returns an <code>AgentResult</code>
-with <code>partial=True</code> and a <code>Suspended</code> value in
-<code>evals["suspended"]</code>. <code>Suspended.pending</code> is a <strong>frozen tuple</strong> of
-<code>ToolCall</code>s — the operator UI reads it and the resume path threads it
-back verbatim, so a mutable list can't desync the two ends of the
-handshake.</p>
-<p><code>agent.resume(run_id, decisions, ctx)</code> loads the snapshot, applies
-your per-call decisions, appends the tool results to the transcript,
-and drives the loop to a final answer. You can call it from an
-entirely fresh process — that's the point of the checkpointer.</p>
+<p><code>on_unknown_capability</code> is <code>"warn"</code> by default: say so once, and
+continue. Refusing by default would break every self-hosted,
+fine-tuned, or brand-new model name on upgrade. Set <code>"refuse"</code> in a
+production service that pins its models — it turns "we don't know"
+into a deployment-time stop:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Agent</span><span class="p">(</span><span class="s2">&quot;ocr&quot;</span><span class="p">,</span> <span class="s2">&quot;our-finetune-v2&quot;</span><span class="p">,</span> <span class="n">requires</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;vision&quot;</span><span class="p">,),</span> <span class="n">on_unknown_capability</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Declarable capabilities: <code>tools</code>, <code>structured_output</code>,
+<code>native_json_schema</code>, <code>streaming</code>, <code>vision</code>, plus <code>context_window</code>
+(an int, requested via <code>min_context_window=</code>).</p>
+<p><strong>A tool-using cognition implies <code>tools</code> automatically.</strong> You don't
+declare it. That derived requirement only ever fires against a model
+declared <code>tools=NO</code> — it stays silent on <code>UNKNOWN</code>, so a made-up model
+name in development doesn't produce a warning nobody can act on.</p>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
-<ul>
-<li><strong><code>side_effecting=</code> is required on every <code>@tool</code>.</strong> The framework
-  fails at decoration time (not at call time) if you forget — because
-  the gating and idempotency primitives cannot guess.</li>
-<li><strong>You must wire a checkpointer for <code>resume(...)</code> to work.</strong>
-  Without one, the loop still emits <code>Suspended</code>, but the state isn't
-  persisted, so <code>resume</code> raises <code>ValueError("no suspended run … to
-  resume")</code>. <code>InMemoryCheckpointStore</code> is fine for tests; production
-  wants <code>PostgresCheckpointStore</code> (extra: <code>arc-agentkit[postgres]</code>).</li>
-<li><strong><code>agent.resume(...)</code> only works on a <code>ReActCognition</code>.</strong> Calling it
-  on a <code>SingleCallCognition</code> or a coordinator is a contract violation
-  and raises <code>RuntimeError</code> explicitly.</li>
-<li><strong>A <code>Suspended</code> result has <code>partial=True</code> and an empty
-  <code>output</code>.</strong> The final text comes from <code>resume(...)</code>, not the
-  original <code>run(...)</code>.</li>
-</ul>
+<p><strong>Fallback is opt-in.</strong> <code>resolve_llm("...")</code> with no credential
+<strong>raises</strong> <code>ProviderNotConfigured</code>. Pass <code>fallback="fake"</code> to degrade
+to a canned LLM instead, which warns exactly once. This is deliberate:
+in a server process a <code>UserWarning</code> goes to a log nobody reads, and
+the outcome is fabricated completions served as real answers. The
+escape hatch stays one keyword away for a notebook; it just isn't the
+accident.</p>
+<p><strong>A missing extra is fatal, never a downgrade.</strong> No <code>httpx</code> installed
+raises <code>MissingProviderExtra</code> naming the pip extra — even when
+<code>fallback="fake"</code> was requested. A broken install must not masquerade
+as a missing credential.</p>
+<p><strong>Credentials never appear in a message.</strong> Not in an error, not in a
+warning, not in a <code>repr</code>. Pinned by test.</p>
+<p><strong>The built-in table will go stale.</strong> It is a convenience default,
+like the price table beside it. <code>register_model</code> replaces by name, so
+pin your own truth over it at startup.</p>
+<p><strong><code>Agent</code> is a mutable dataclass.</strong> Swapping <code>agent.model</code> after
+construction bypasses <code>__post_init__</code>. Re-assert with
+<code>agent.check_capabilities()</code>.</p>
+<p><strong>The explicit factories are untouched.</strong> <code>claude(api_key=...)</code> still
+works exactly as before. This is a layer above them, not a
+replacement.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
-<li><a href="../../tutorial/#step-5-pause-for-human-approval-before-publishing">Tutorial · Step 5</a>
-  — the same primitive introduced inside a full walkthrough.</li>
-<li><a href="../resume-after-crash/">Resume after a crash</a> — the checkpointer's
-  other job.</li>
-<li><a href="../../concepts/agents/">Concepts · Agents</a> — the mental model of
-  <code>Cognition</code> and the control primitives.</li>
+<li><a href="../spend-budget-and-quota/">Cap spend with Budget and Quota</a> — an
+  unregistered model also has no price, so it silently costs <code>$0.00</code></li>
+<li><a href="../stream-typed-output/">Stream a typed object</a> —
+  <code>native_json_schema</code> is what decides whether provider-native strict
+  mode gets wired</li>
 </ul>
 
 
@@ -2134,7 +2171,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../stream-typed-output/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Stream a typed object">
+          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2144,20 +2181,20 @@ entirely fresh process — that's the point of the checkpointer.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Stream a typed object
+                Overview
               </div>
             </div>
           </a>
         
         
           
-          <a href="../elicit-a-value-from-a-human/" class="md-footer__link md-footer__link--next" aria-label="Next: Elicit a value from a human">
+          <a href="../stream-typed-output/" class="md-footer__link md-footer__link--next" aria-label="Next: Stream a typed object">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Elicit a value from a human
+                Stream a typed object
               </div>
             </div>
             <div class="md-footer__button md-icon">

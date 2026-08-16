@@ -822,6 +822,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../../recipes/provider-from-env/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pick a provider from config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/stream-typed-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream a typed object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../recipes/hitl-tool-approval/" class="md-nav__link">
         
   
@@ -830,6 +886,34 @@
     
   
     Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/elicit-a-value-from-a-human/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Elicit a value from a human
   
 
     
@@ -2603,6 +2687,13 @@ around the save so operators can see checkpoint activity in the
 trace timeline. Callers without a ctx (bare unit tests, offline
 replayers) leave it unset and the span helper degrades to a
 <code>nullcontext</code>.</p>
+<p><strong>A SECRET-TAINTED state is never persisted</strong> — see
+:func:<code>_is_tainted</code>. This check lives here, at the single seam
+every producer passes through, rather than in each cognition or
+policy: there are seven <code>snapshot</code> call sites across the tool
+loop and the coordinator policies, and a containment rule that
+has to be re-implemented at each one is a rule that will be
+missed at the eighth.</p>
 
 
     </div>

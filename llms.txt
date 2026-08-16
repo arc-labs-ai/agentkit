@@ -21,8 +21,11 @@ Organized around four themes: cognition (how the agent decides), control (what l
 - [Prompts](https://arc-labs-ai.github.io/agentkit/concepts/prompts/): versioned Prompt values.
 
 ## Recipes (indexed by problem)
+- [Pick a provider from config](https://arc-labs-ai.github.io/agentkit/recipes/provider-from-env/): model registry — from-env provider resolution + per-model capability declaration refused at bind time.
+- [Stream a typed object](https://arc-labs-ai.github.io/agentkit/recipes/stream-typed-output/): StreamEvent.partial_output — the in-progress typed object on every delta, via Agent.stream alone.
 - [Control cost](https://arc-labs-ai.github.io/agentkit/recipes/spend-budget-and-quota/): Budget + Quota, MeterExceeded.
 - [Pause for a human](https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/): Autonomy tier + Suspended + resume().
+- [Elicit a value from a human](https://arc-labs-ai.github.io/agentkit/recipes/elicit-a-value-from-a-human/): Elicitation/Decision/Asker — value requests, parkable in place, deadlined, typed, secret-safe.
 - [Survive a crash](https://arc-labs-ai.github.io/agentkit/recipes/resume-after-crash/): Checkpointer + resume-after-crash pattern.
 - [Parallel agents with cancellation](https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/): gather_bounded / run_agents / CancellationToken.
 - [Custom middleware](https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/): (call, next) contract, BaseMiddleware.

@@ -613,6 +613,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#delta-vs-streamevent-two-levels-of-streaming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta vs StreamEvent — two levels of "streaming"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-invariants-it-enforces" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -915,6 +926,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../../recipes/provider-from-env/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pick a provider from config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/stream-typed-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream a typed object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../recipes/hitl-tool-approval/" class="md-nav__link">
         
   
@@ -923,6 +990,34 @@
     
   
     Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/elicit-a-value-from-a-human/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Elicit a value from a human
   
 
     
@@ -1769,6 +1864,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#delta-vs-streamevent-two-levels-of-streaming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta vs StreamEvent — two levels of "streaming"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-invariants-it-enforces" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1862,6 +1968,24 @@ vocabulary; policy is what higher layers add.</p>
 <li><strong>Observation</strong> — the shape of the trace / metric events every layer
   emits, so observers stay adapter-agnostic.</li>
 </ul>
+<h2 id="delta-vs-streamevent-two-levels-of-streaming"><code>Delta</code> vs <code>StreamEvent</code> — two levels of "streaming"<a class="headerlink" href="#delta-vs-streamevent-two-levels-of-streaming" title="Anchor link">&para;</a></h2>
+<p>A <code>Delta</code> is one transport increment of a <strong>single LLM response</strong>. A
+<code>StreamEvent</code> marks a step in the <strong>run</strong>: a token, a tool call, an
+interrupt, the final result. <code>assemble_deltas()</code> reduces a list of
+<code>Delta</code>s back to an <code>LLMResult</code>, so a chat result is just the
+collected stream.</p>
+<p>Both carry an in-progress typed object when an output schema is
+declared: <code>Delta.partial</code> is set by the <code>output_coerce()</code> middleware,
+and the cognitions forward it verbatim onto
+<code>StreamEvent.partial_output</code> — that is how an application streams a
+typed object through <code>Agent.stream</code> alone. See
+<a href="../../recipes/stream-typed-output/">the recipe</a>.</p>
+<p><code>assemble_deltas</code> deliberately <strong>drops</strong> <code>partial</code>. It only ever runs
+on a complete delta list, so by then there is no in-progress state
+left to carry: <code>parsed</code> (the strict, validated object) is the answer.
+Lifting both onto <code>LLMResult</code> would give the result type two competing
+typed fields where the tolerant one — which may have unset required
+fields — could shadow the strict one.</p>
 <h2 id="the-invariants-it-enforces">The invariants it enforces<a class="headerlink" href="#the-invariants-it-enforces" title="Anchor link">&para;</a></h2>
 <ol>
 <li><strong>No provider dependency.</strong> Importing <code>agentkit.kernel</code> never
@@ -1872,6 +1996,9 @@ vocabulary; policy is what higher layers add.</p>
 <li><strong>One vocabulary.</strong> Every layer that talks about a "usage" or a
    "budget" reuses the kernel type. There is no parallel <code>Usage</code> type
    in <code>runtime/</code> or <code>middlewares/</code>.</li>
+<li><strong>Additive fields only.</strong> A new field on a value type carries a
+   default and changes nothing for a consumer that doesn't read it.
+   <code>StreamEvent.partial_output</code> is <code>None</code> for every unstructured run.</li>
 </ol>
 <h2 id="related-deep-dive">Related deep dive<a class="headerlink" href="#related-deep-dive" title="Anchor link">&para;</a></h2>
 <p>See the internal
@@ -1901,7 +2028,7 @@ modes when they slip. The kernel is load-bearing in all four models.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 05:26:44 UTC">August 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 16, 2026 20:55:51 UTC">August 16, 2026</span>
   </span>
 
     

@@ -741,6 +741,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#how-a-run-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a run ends
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-capability-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model capability contract
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -965,6 +987,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../../recipes/provider-from-env/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pick a provider from config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/stream-typed-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream a typed object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../recipes/hitl-tool-approval/" class="md-nav__link">
         
   
@@ -973,6 +1051,34 @@
     
   
     Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/elicit-a-value-from-a-human/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Elicit a value from a human
   
 
     
@@ -1863,6 +1969,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#how-a-run-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a run ends
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-capability-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model capability contract
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2010,7 +2138,68 @@ about the others. Workflow's <code>human_gate</code> node suspends the workflow
   <code>"gated"</code>, or <code>"manual"</code>. Read by tools and cognitions that gate on
   human approval; the tier + <code>@tool(side_effecting=..., requires_approval=...)</code>
   together decide whether a specific tool call suspends.</li>
+<li><strong><code>Elicitation</code> / <code>Decision</code> / <code>Asker</code></strong> — pausing for a person as a
+  <strong>value request</strong>, not only a veto. <code>Asker</code> is injected on
+  <code>Services</code>; when present a gated decision <strong>parks in place</strong> (the
+  coroutine awaits, live state survives) instead of unwinding to a
+  checkpoint. Deadlined, and typed with <code>actor</code> + <code>at</code>. Works from any
+  cognition, because <code>elicit(ctx, ...)</code> takes a <code>Ctx</code>, not an <code>Agent</code>.
+  See <a href="../../recipes/elicit-a-value-from-a-human/">the recipe</a>.</li>
 </ul>
+<h3 id="how-a-run-ends">How a run ends<a class="headerlink" href="#how-a-run-ends" title="Anchor link">&para;</a></h3>
+<p><code>AgentResult.stop_reason</code> is a closed <code>Literal</code>, so the terminal state
+is something you branch on rather than sniff out of a dict:</p>
+<table>
+<thead>
+<tr>
+<th><code>stop_reason</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>complete</code></td>
+<td>The model produced a final answer</td>
+</tr>
+<tr>
+<td><code>suspended</code></td>
+<td><strong>Waiting on a person.</strong> Resumable, and not a failure</td>
+</tr>
+<tr>
+<td><code>expired</code></td>
+<td>A human-gate deadline passed; the run degraded and continued</td>
+</tr>
+<tr>
+<td><code>budget_exhausted</code></td>
+<td>A meter ceiling hit. A checkpoint was written <em>before</em> stopping</td>
+</tr>
+<tr>
+<td><code>max_iterations</code></td>
+<td>The tool-loop ceiling was reached with no final answer</td>
+</tr>
+<tr>
+<td><code>invalid_output</code></td>
+<td>Parse-and-repair exhausted</td>
+</tr>
+<tr>
+<td><code>terminated</code></td>
+<td>A <code>TerminationCondition</code> fired (its own wording is in <code>evals["stop_reason"]</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><code>result.is_suspended</code> and <code>result.is_resumable</code> are the two
+convenience reads. A run that <strong>failed</strong> produces no <code>AgentResult</code> at
+all — the exception propagates — which is exactly what makes
+"waiting for you" and "it fell over" distinguishable.</p>
+<h3 id="model-capability-contract">Model capability contract<a class="headerlink" href="#model-capability-contract" title="Anchor link">&para;</a></h3>
+<p><code>Agent(requires=("vision",), min_context_window=100_000)</code> is checked
+at <strong>construction</strong>, against the
+<a href="../../recipes/provider-from-env/">model registry</a> — before any spend,
+because catching it after the bill is worthless. A capability the
+model declares as unsupported raises <code>CapabilityMismatch</code>; one it
+doesn't declare at all is <code>UNKNOWN</code> and governed by
+<code>on_unknown_capability</code> (<code>"warn"</code> by default, <code>"refuse"</code> for a
+service that pins its models). <code>UNKNOWN</code> is never treated as present.</p>
 <h2 id="the-invariants-it-enforces">The invariants it enforces<a class="headerlink" href="#the-invariants-it-enforces" title="Anchor link">&para;</a></h2>
 <ol>
 <li><strong>No agent subclassing.</strong> New shapes are new <code>Cognition</code> /
@@ -2022,6 +2211,13 @@ about the others. Workflow's <code>human_gate</code> node suspends the workflow
    leak.</li>
 <li><strong>Handoff transfers ownership.</strong> After a <code>Handoff</code>, the source
    agent stops emitting; there is no shared write.</li>
+<li><strong>Suspended is not failed.</strong> A parked run returns a typed
+   <code>AgentResult</code>; a broken one raises. A reader must be able to tell
+   them apart without parsing a message.</li>
+<li><strong>A capability is declared, never inferred from a name.</strong> An
+   unregistered model reports <code>UNKNOWN</code>, never <code>True</code> — guessing
+   <code>True</code> reintroduces the silent, well-formed wrong answer the check
+   exists to catch.</li>
 </ol>
 <h2 id="related-deep-dive">Related deep dive<a class="headerlink" href="#related-deep-dive" title="Anchor link">&para;</a></h2>
 <p>The
@@ -2051,7 +2247,7 @@ make it correct.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 05:26:44 UTC">August 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 16, 2026 20:55:51 UTC">August 16, 2026</span>
   </span>
 
     

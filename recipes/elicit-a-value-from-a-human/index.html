@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/elicit-a-value-from-a-human/">
       
       
-        <link rel="prev" href="../stream-typed-output/">
+        <link rel="prev" href="../hitl-tool-approval/">
       
       
-        <link rel="next" href="../elicit-a-value-from-a-human/">
+        <link rel="next" href="../resume-after-crash/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Human-in-the-loop tool approval - agentkit</title>
+        <title>Elicit a value from a human - agentkit</title>
       
     
     
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-do-i-pause-a-tool-for-human-approval" class="md-skip">
+        <a href="#how-do-i-pause-a-run-to-ask-a-person-for-a-value" class="md-skip">
           Skip to content
         </a>
       
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Human-in-the-loop tool approval
+              Elicit a value from a human
             
           </span>
         </div>
@@ -877,6 +877,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../hitl-tool-approval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -896,7 +924,7 @@
   <span class="md-ellipsis">
     
   
-    Human-in-the-loop tool approval
+    Elicit a value from a human
   
 
     
@@ -914,7 +942,7 @@
   <span class="md-ellipsis">
     
   
-    Human-in-the-loop tool approval
+    Elicit a value from a human
   
 
     
@@ -962,10 +990,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#park-or-suspend" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it works
+        Park, or suspend?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deadlines-expiry-is-an-outcome-not-an-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deadlines: expiry is an outcome, not an error
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suspended-is-not-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suspended is not failed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
       
     </span>
   </a>
@@ -998,34 +1059,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../elicit-a-value-from-a-human/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Elicit a value from a human
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1875,10 +1908,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#park-or-suspend" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it works
+        Park, or suspend?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deadlines-expiry-is-an-outcome-not-an-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deadlines: expiry is an outcome, not an error
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suspended-is-not-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suspended is not failed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
       
     </span>
   </a>
@@ -1927,154 +1993,211 @@
   
 
 
-<h1 id="how-do-i-pause-a-tool-for-human-approval">How do I pause a tool for human approval?<a class="headerlink" href="#how-do-i-pause-a-tool-for-human-approval" title="Anchor link">&para;</a></h1>
-<div class="admonition tip">
-<p class="admonition-title">Need a <em>value</em>, not a yes/no?</p>
-<p>This page is approve/deny with a serialisable run — the simplest
-correct thing, and unchanged. If you need a person to <strong>supply a
-value</strong> (a one-time code), to <strong>park in place</strong> because your
-coroutine holds live unserialisable state, or to put a <strong>deadline</strong>
-on the wait, see
-<a href="../elicit-a-value-from-a-human/">Elicit a value from a human</a>.
-That path is a superset and does not change this one.</p>
-</div>
+<h1 id="how-do-i-pause-a-run-to-ask-a-person-for-a-value">How do I pause a run to ask a person for a value?<a class="headerlink" href="#how-do-i-pause-a-run-to-ask-a-person-for-a-value" title="Anchor link">&para;</a></h1>
 <h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
-<p>Any tool that mutates the world — publishing content, spending money,
-sending a message, filing a ticket, running a shell command — should
-not run without a human saying yes when the run is being watched. The
-run should <strong>suspend to a checkpoint</strong> and hand control back to your
-driver code, which decides whether to resume with <code>"approve"</code>,
-<code>"reject"</code>, or a modified argument list.</p>
-<div class="admonition note">
-<p class="admonition-title">Assumes <code>ANTHROPIC_API_KEY</code> in the environment</p>
-<p>The snippet wires <code>providers.claude(...)</code> through an <code>Invoker</code> so
-the reader sees the real shape they'll ship. Swap
-<code>providers.claude</code> for <code>providers.openai</code> (and set
-<code>OPENAI_API_KEY</code>) if that's what you have — nothing else changes.</p>
-</div>
+<p>Approve/deny answers one question: <em>may this tool run?</em> It cannot
+express the other one: <em>what is the code they just texted you?</em></p>
+<p>That second shape needs four things the approval gate doesn't have:</p>
+<ul>
+<li><strong>elicitation</strong> — the run names what it needs, a person supplies a
+  value, and there may be no tool call anywhere nearby;</li>
+<li><strong>parking in place</strong> — your coroutine holds live, unserialisable
+  state, so unwinding to a checkpoint and re-entering via <code>resume()</code>
+  is impossible;</li>
+<li><strong>a deadline</strong> — the abandoned-tab case, so a suspended run
+  degrades instead of hanging forever;</li>
+<li><strong>a typed decision</strong> — carrying who answered and when, because
+  <code>dict[str, str]</code> carries neither.</li>
+</ul>
+<p>If you only need approve/deny with a serialisable run, the
+<a href="../hitl-tool-approval/">tool-approval recipe</a> is simpler and still
+correct. This page is the superset.</p>
 <h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Requires ANTHROPIC_API_KEY in the environment.&quot;&quot;&quot;</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">,</span> <span class="n">tool</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">providers</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpointer</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_email</span><span class="p">(</span><span class="n">to</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">subject</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Send an email. Side-effecting — always gated under Autonomy.GATED.&quot;&quot;&quot;</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;sent to </span><span class="si">{</span><span class="n">to</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">subject</span><span class="si">!r}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_llm</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReActCognition</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.control.elicitation</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decision</span><span class="p">,</span> <span class="n">Elicitation</span><span class="p">,</span> <span class="n">ask_human_tool</span><span class="p">,</span> <span class="n">elicit</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">TerminalAsker</span><span class="p">:</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The whole HITL integration: one method.</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="sd">    The runtime never learns whether this is a terminal, an HTTP round</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="sd">    trip, a queue, or a Slack bot — it only awaits `ask`. Swap this for</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="sd">    your transport and nothing else changes.</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="sd">    &quot;&quot;&quot;</span>
 </span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">providers</span><span class="o">.</span><span class="n">claude</span><span class="p">(</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ANTHROPIC_API_KEY&quot;</span><span class="p">],</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="p">)</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="n">invoker</span><span class="o">=</span><span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">),</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="n">checkpointer</span><span class="o">=</span><span class="n">Checkpointer</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">InMemoryCheckpointStore</span><span class="p">()),</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="p">)</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="n">services</span><span class="o">=</span><span class="n">services</span><span class="p">,</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">,</span>  <span class="c1"># gate every side_effecting tool</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">Elicitation</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Decision</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="n">answer</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">prompt</span><span class="si">}</span><span class="s2"> &gt; &quot;</span><span class="p">)</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            <span class="k">return</span> <span class="n">Decision</span><span class="p">(</span><span class="n">kind</span><span class="o">=</span><span class="s2">&quot;value&quot;</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">answer</span><span class="p">,</span> <span class="n">actor</span><span class="o">=</span><span class="s2">&quot;terminal-user&quot;</span><span class="p">)</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>        <span class="k">return</span> <span class="n">Decision</span><span class="p">(</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>            <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;approve&quot;</span> <span class="k">if</span> <span class="n">answer</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;yes&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;deny&quot;</span><span class="p">,</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>            <span class="n">actor</span><span class="o">=</span><span class="s2">&quot;terminal-user&quot;</span><span class="p">,</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="p">)</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="n">invoker</span><span class="o">=</span><span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">resolve_llm</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">)),</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="n">asker</span><span class="o">=</span><span class="n">TerminalAsker</span><span class="p">(),</span>  <span class="c1"># &lt;- the one seam that turns a suspend into a park</span>
 </span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="p">)</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;notifier&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Draft a one-line brief for the team, then call send_email exactly once.&quot;</span><span class="p">,</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">send_email</span><span class="p">]),</span>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="p">)</span>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="c1"># First run — the loop suspends before send_email fires.</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Send the team a brief about octopus cognition.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="n">susp</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;suspended&quot;</span><span class="p">)</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">susp</span><span class="p">,</span> <span class="n">Suspended</span><span class="p">)</span>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;awaiting approval for: </span><span class="si">{</span><span class="p">[</span><span class="n">tc</span><span class="o">.</span><span class="n">name</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">tc</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>    <span class="c1"># Driver decides. Decisions are keyed by ToolCall.id:</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>    <span class="c1">#   &quot;approve&quot;          — run with the model&#39;s args</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="c1">#   &quot;reject&quot; / &quot;deny&quot;  — inject a DENIED tool result, keep the loop going</span>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="c1">#   any other string   — parsed as a JSON args override, then run</span>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>    <span class="n">decisions</span> <span class="o">=</span> <span class="p">{</span><span class="n">tc</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="s2">&quot;approve&quot;</span> <span class="k">for</span> <span class="n">tc</span> <span class="ow">in</span> <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">}</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>    <span class="n">final</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">resume</span><span class="p">(</span><span class="n">susp</span><span class="o">.</span><span class="n">run_id</span><span class="p">,</span> <span class="n">decisions</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;final: </span><span class="si">{</span><span class="n">final</span><span class="o">.</span><span class="n">output</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>
-</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>
-</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">services</span><span class="p">,</span> <span class="n">autonomy</span><span class="o">=</span><span class="s2">&quot;gated&quot;</span><span class="p">)</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    <span class="c1"># (1) The MODEL asks, when it decides it needs something only a person has.</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;verifier&quot;</span><span class="p">,</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Verify the user. Ask them for the one-time code, then confirm.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ReActCognition</span><span class="p">(</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>            <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">ask_human_tool</span><span class="p">(</span><span class="n">secret</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">deadline_s</span><span class="o">=</span><span class="mi">120</span><span class="p">)],</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>            <span class="n">approval_deadline_s</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>        <span class="p">),</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="p">)</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;Verify me.&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">stop_reason</span><span class="p">)</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="c1"># (2) YOUR CODE asks, from anywhere — no tool call involved, any cognition.</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="n">decision</span> <span class="o">=</span> <span class="k">await</span> <span class="n">elicit</span><span class="p">(</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>        <span class="n">ctx</span><span class="p">,</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>        <span class="n">Elicitation</span><span class="p">(</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;confirm-amount&quot;</span><span class="p">,</span>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>            <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Confirm the transfer amount&quot;</span><span class="p">,</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>            <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;value&quot;</span><span class="p">,</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>            <span class="n">deadline_s</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>        <span class="p">),</span>
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>    <span class="p">)</span>
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>    <span class="k">if</span> <span class="n">decision</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;expired&quot;</span><span class="p">:</span>
+</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;nobody answered; degrading&quot;</span><span class="p">)</span>
+</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>    <span class="k">else</span><span class="p">:</span>
+</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">decision</span><span class="o">.</span><span class="n">actor</span><span class="si">}</span><span class="s2"> said </span><span class="si">{</span><span class="n">decision</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2"> at </span><span class="si">{</span><span class="n">decision</span><span class="o">.</span><span class="n">at</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>
+</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>
+</span><span id="__span-0-66"><a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
-<p><code>Autonomy</code> is a run-wide tier carried on <code>RunContext.autonomy</code>.
-<code>should_gate(autonomy, requires_approval, key_step)</code> is the shared
-policy every gating surface consults:</p>
+<h2 id="park-or-suspend">Park, or suspend?<a class="headerlink" href="#park-or-suspend" title="Anchor link">&para;</a></h2>
+<p>One flag decides, and it's whether an <code>Asker</code> is on the context.</p>
 <table>
 <thead>
 <tr>
-<th>Autonomy</th>
-<th>Gates</th>
+<th></th>
+<th><code>Services(asker=...)</code> set</th>
+<th>not set</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>"auto"</code></td>
-<td>Only tools explicitly marked <code>requires_approval=True</code></td>
+<td>Gated tool call</td>
+<td><strong>Parks.</strong> The loop awaits the person from inside its own coroutine. Nothing unwinds.</td>
+<td><strong>Suspends.</strong> Checkpoint written, <code>AgentResult(stop_reason="suspended")</code> returned, <code>Agent.resume(...)</code> continues it.</td>
 </tr>
 <tr>
-<td><code>"gated"</code></td>
-<td>Also every <code>side_effecting=True</code> tool (key step)</td>
+<td>Live unserialisable state</td>
+<td>Survives — it's the same objects</td>
+<td>Lost — the loop is rebuilt from a snapshot</td>
 </tr>
 <tr>
-<td><code>"manual"</code></td>
-<td>Every tool call</td>
+<td>Needs a checkpointer</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Survives a process restart</td>
+<td>No</td>
+<td>Yes</td>
 </tr>
 </tbody>
 </table>
-<p>When the <code>ReActCognition</code> sees a gated tool call, it snapshots its
-state through the <code>Checkpointer</code> (status <code>"suspended"</code>), emits an
-<code>interrupt</code> event per pending tool call, and returns an <code>AgentResult</code>
-with <code>partial=True</code> and a <code>Suspended</code> value in
-<code>evals["suspended"]</code>. <code>Suspended.pending</code> is a <strong>frozen tuple</strong> of
-<code>ToolCall</code>s — the operator UI reads it and the resume path threads it
-back verbatim, so a mutable list can't desync the two ends of the
-handshake.</p>
-<p><code>agent.resume(run_id, decisions, ctx)</code> loads the snapshot, applies
-your per-call decisions, appends the tool results to the transcript,
-and drives the loop to a final answer. You can call it from an
-entirely fresh process — that's the point of the checkpointer.</p>
+<p>Neither is better; they trade durability against the ability to hold
+live state. The suspend path is <strong>completely unchanged</strong> — this is
+additive.</p>
+<h2 id="deadlines-expiry-is-an-outcome-not-an-error">Deadlines: expiry is an outcome, not an error<a class="headerlink" href="#deadlines-expiry-is-an-outcome-not-an-error" title="Anchor link">&para;</a></h2>
+<p><code>Elicitation.deadline_s</code> (or <code>ReActCognition(approval_deadline_s=...)</code>)
+bounds the wait. When it passes, <code>elicit</code> returns
+<code>Decision(kind="expired")</code> and the run <strong>degrades and continues</strong> —
+the model sees an <code>EXPIRED:</code> tool message, distinct from <code>DENIED:</code>,
+because "nobody was there" and "someone said no" call for different
+operator responses.</p>
+<p>For a caller that genuinely cannot continue, <code>elicit_or_raise</code> raises
+<code>ElicitationExpired</code> instead.</p>
+<p>On the suspend path there is no coroutine to time out, so the deadline
+is <strong>persisted with the checkpoint</strong> as absolute wall-clock expiry, and
+surfaced on <code>Suspended.deadline_at</code> for an operator UI to render a
+countdown. A <code>resume()</code> arriving after it degrades the same way: every
+pending call becomes <code>expired</code>, the loop continues, and the tool does
+<strong>not</strong> run. Approving an hour late does not move the money.</p>
+<div class="admonition danger">
+<p class="admonition-title">Your <code>ask</code> must not block the event loop</p>
+<p>Scheduling is cooperative. A synchronous wait — <code>input()</code>,
+<code>requests.get()</code>, <code>time.sleep()</code> — never yields, so the timeout
+coroutine never gets to run and <code>deadline_s</code> <strong>silently becomes an
+unbounded hang</strong>: exactly the failure the deadline exists to
+prevent. Wrap it:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">answer</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">prompt</span><span class="si">}</span><span class="s2"> &gt; &quot;</span><span class="p">)</span>
+</span></code></pre></div>
+</div>
+<h2 id="suspended-is-not-failed">Suspended is not failed<a class="headerlink" href="#suspended-is-not-failed" title="Anchor link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">is_suspended</span><span class="p">:</span>      <span class="c1"># stop_reason == &quot;suspended&quot; — waiting for a person</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">park_in_operator_queue</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="p">[</span><span class="s2">&quot;suspended&quot;</span><span class="p">])</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">elif</span> <span class="n">result</span><span class="o">.</span><span class="n">is_resumable</span><span class="p">:</span>    <span class="c1"># e.g. &quot;budget_exhausted&quot; — raise the ceiling and retry</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">escalate_for_more_budget</span><span class="p">()</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="k">else</span><span class="p">:</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">ship</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+</span></code></pre></div>
+<p><code>AgentResult.stop_reason</code> is a closed <code>Literal</code>, so a typo type-checks
+as an error rather than reading as <code>None</code> at 3am. A run that actually
+<strong>failed</strong> raises and produces no <code>AgentResult</code> at all — that is the
+distinction.</p>
+<p>Values: <code>complete</code>, <code>suspended</code>, <code>expired</code>, <code>budget_exhausted</code>,
+<code>max_iterations</code>, <code>invalid_output</code>, <code>terminated</code>. The free-form detail
+string is still in <code>evals["stop_reason"]</code>.</p>
+<h2 id="secrets">Secrets<a class="headerlink" href="#secrets" title="Anchor link">&para;</a></h2>
+<p>Mark the request <code>secret=True</code> and three things happen:</p>
+<ol>
+<li>The answer is wrapped in <code>SecretValue</code>, whose <code>repr</code> and <code>str</code> are
+   both <code>'***'</code> — so it survives an f-string in a log line, an
+   exception message, and a debugger pane. <code>reveal()</code> is the one
+   explicit, greppable way out.</li>
+<li>The prompt itself is redacted in observations ("enter the code we
+   texted to +44…" is revealing too).</li>
+<li>The working context is <strong>tainted</strong>, and a tainted context is never
+   checkpointed again for the rest of the run.</li>
+</ol>
+<p>That third one is a real trade, and it's the right one. A one-time
+code injected as a tool message would otherwise be serialised into
+Postgres, where it outlives by weeks the ten minutes it was valid
+for. An un-resumable run can be re-run; a leaked credential cannot be
+un-leaked.</p>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
-<ul>
-<li><strong><code>side_effecting=</code> is required on every <code>@tool</code>.</strong> The framework
-  fails at decoration time (not at call time) if you forget — because
-  the gating and idempotency primitives cannot guess.</li>
-<li><strong>You must wire a checkpointer for <code>resume(...)</code> to work.</strong>
-  Without one, the loop still emits <code>Suspended</code>, but the state isn't
-  persisted, so <code>resume</code> raises <code>ValueError("no suspended run … to
-  resume")</code>. <code>InMemoryCheckpointStore</code> is fine for tests; production
-  wants <code>PostgresCheckpointStore</code> (extra: <code>arc-agentkit[postgres]</code>).</li>
-<li><strong><code>agent.resume(...)</code> only works on a <code>ReActCognition</code>.</strong> Calling it
-  on a <code>SingleCallCognition</code> or a coordinator is a contract violation
-  and raises <code>RuntimeError</code> explicitly.</li>
-<li><strong>A <code>Suspended</code> result has <code>partial=True</code> and an empty
-  <code>output</code>.</strong> The final text comes from <code>resume(...)</code>, not the
-  original <code>run(...)</code>.</li>
-</ul>
+<p><strong>The <code>RunPolicy</code> trifecta gate fires on <code>resume()</code> too.</strong> Approving
+one tool <em>call</em> is not approval of the capability <em>combination</em>, so a
+deny-mode policy refuses a resume the same way it refuses a fresh run.</p>
+<p><strong>No <code>Asker</code> wired + direct <code>elicit</code> = denial.</strong> A gate with no human
+attached must not silently pass. (The ReAct gate checks for an asker
+first and falls back to suspend, so this only affects direct calls.)</p>
+<p><strong>A missing entry in <code>resume(decisions)</code> defaults to deny.</strong> An
+operator who answered three of four gates has not implicitly approved
+the fourth.</p>
+<p><strong><code>ask_human_tool</code> defaults to a 5-minute deadline</strong>, not <code>None</code>. A
+model-initiated ask is the most likely to hit an abandoned tab, and an
+unbounded default would make the hang the easy path.</p>
+<p><strong><code>resume</code> accepts both shapes.</strong> Typed <code>Decision</code> for the audit
+trail; the legacy <code>"approve"</code> / <code>"reject"</code> / JSON-args strings are
+coerced. Same call site.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
-<li><a href="../../tutorial/#step-5-pause-for-human-approval-before-publishing">Tutorial · Step 5</a>
-  — the same primitive introduced inside a full walkthrough.</li>
-<li><a href="../resume-after-crash/">Resume after a crash</a> — the checkpointer's
-  other job.</li>
-<li><a href="../../concepts/agents/">Concepts · Agents</a> — the mental model of
-  <code>Cognition</code> and the control primitives.</li>
+<li><a href="../hitl-tool-approval/">Human-in-the-loop tool approval</a> — the
+  simpler approve/deny path</li>
+<li><a href="../resume-after-crash/">Resume from a checkpoint after a crash</a></li>
+<li><a href="../spend-budget-and-quota/">Cap spend with Budget and Quota</a> —
+  <code>budget_exhausted</code> is the other resumable stop reason</li>
 </ul>
 
 
@@ -2134,7 +2257,7 @@ entirely fresh process — that's the point of the checkpointer.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../stream-typed-output/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Stream a typed object">
+          <a href="../hitl-tool-approval/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Human-in-the-loop tool approval">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2144,20 +2267,20 @@ entirely fresh process — that's the point of the checkpointer.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Stream a typed object
+                Human-in-the-loop tool approval
               </div>
             </div>
           </a>
         
         
           
-          <a href="../elicit-a-value-from-a-human/" class="md-footer__link md-footer__link--next" aria-label="Next: Elicit a value from a human">
+          <a href="../resume-after-crash/" class="md-footer__link md-footer__link--next" aria-label="Next: Resume from a checkpoint after a crash">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Elicit a value from a human
+                Resume from a checkpoint after a crash
               </div>
             </div>
             <div class="md-footer__button md-icon">

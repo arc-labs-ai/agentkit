@@ -824,6 +824,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../provider-from-env/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pick a provider from config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stream-typed-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream a typed object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../hitl-tool-approval/" class="md-nav__link">
         
   
@@ -832,6 +888,34 @@
     
   
     Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../elicit-a-value-from-a-human/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Elicit a value from a human
   
 
     
@@ -966,6 +1050,28 @@
     <span class="md-ellipsis">
       
         How it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#making-exhaustion-recoverable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Making exhaustion recoverable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#token-counts-not-just-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token counts, not just cost
       
     </span>
   </a>
@@ -1813,6 +1919,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#making-exhaustion-recoverable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Making exhaustion recoverable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#token-counts-not-just-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token counts, not just cost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#per-agent-budgets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1878,8 +2006,19 @@ one Protocol:</p>
   tenant.</li>
 </ul>
 <p>Both hook in through the same <code>meter()</code> middleware in the chat chain.
-Overspend raises <code>MeterExceeded</code> — the invoker unwinds and the loop
-halts cleanly.</p>
+By default overspend raises <code>MeterExceeded</code> — the invoker unwinds and
+the loop halts. With <code>on_exceeded="stop"</code> it returns a <strong>verdict</strong>
+instead, and the run stops <em>after</em> writing a checkpoint, so the spend
+is recoverable. See
+<a href="#making-exhaustion-recoverable">Making exhaustion recoverable</a>.</p>
+<p>Money is <code>Decimal</code>, not <code>float</code>. Binary floating point cannot
+represent <code>0.01</code>, so a hundred one-cent charges summed as floats land
+at <code>1.0000000000000007</code> and a metered run cannot be reconciled to the
+cent. <code>Budget</code> keeps an exact ledger — read it with <code>budget.spent()</code>
+(<code>Decimal</code>) or <code>budget.spent_cents()</code> for invoicing.
+<code>budget.spent_usd</code> is still there and is a float <em>mirror</em> of the
+ledger, kept in sync after every charge: fine for display, not for
+summing.</p>
 <div class="admonition note">
 <p class="admonition-title">Assumes <code>ANTHROPIC_API_KEY</code> in the environment</p>
 <p>Wired via <code>providers.claude(...)</code> on the <code>Invoker</code>. Swap for
@@ -1952,6 +2091,55 @@ made (not just completed), so a burst that overshoots RPM is caught on
 the way in, not after the fact. The in-memory implementation is fine
 for a single process; a multi-process deployment wants a Redis-backed
 Quota (write your own <code>Meter</code> impl behind the same Protocol).</p>
+<h2 id="making-exhaustion-recoverable">Making exhaustion recoverable<a class="headerlink" href="#making-exhaustion-recoverable" title="Anchor link">&para;</a></h2>
+<p>The default <code>on_exceeded="raise"</code> has a sharp edge worth knowing
+about. <code>MeterExceeded</code> is raised from inside <code>charge()</code>, which runs in
+the meter middleware's <code>on_response</code>, which is inside
+<code>ctx.invoker.stream(...)</code> — so it unwinds <strong>past every checkpoint
+write in the loop</strong>. A tool-loop run that crosses its ceiling on the
+second turn aborts holding the <em>first</em> turn's checkpoint: marked
+<code>running</code> rather than <code>suspended</code>, and recording only half the money
+that actually left the account.</p>
+<p><code>on_exceeded="stop"</code> fixes that. The meter records the spend and
+returns a <code>Charge</code> verdict; control reaches the cognition, which still
+holds the live context and writes a current <code>suspended</code> checkpoint
+before ending the run:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">budget</span> <span class="o">=</span> <span class="n">Budget</span><span class="p">(</span><span class="n">max_cost_usd</span><span class="o">=</span><span class="s2">&quot;1.00&quot;</span><span class="p">,</span> <span class="n">on_exceeded</span><span class="o">=</span><span class="s2">&quot;stop&quot;</span><span class="p">)</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">stop_reason</span> <span class="o">==</span> <span class="s2">&quot;budget_exhausted&quot;</span><span class="p">:</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">is_resumable</span>                  <span class="c1"># a checkpoint exists, and it&#39;s current</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">raise_the_ceiling_and_requeue</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">correlation_id</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Both cognitions also <strong>pre-flight</strong> the budget at the top of each
+iteration, so retrying a run whose ceiling nobody raised costs nothing
+— it stops before making a call rather than after. And
+<code>budget.max_cost_usd = 10.0</code> after construction really does raise the
+ceiling; the normalised value re-derives on assignment.</p>
+<p>Raising is still the <strong>default</strong>, deliberately. Flipping it would
+silently change control flow in every existing wiring: a run that used
+to abort would continue past its ceiling in any caller that ignores
+the return value — a worse failure than the one being fixed.</p>
+<p>The verdict itself is useful even when you keep raising:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">verdict</span> <span class="o">=</span> <span class="k">await</span> <span class="n">budget</span><span class="o">.</span><span class="n">charge</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">usage</span><span class="p">)</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">verdict</span><span class="o">.</span><span class="n">ok</span>            <span class="c1"># False when a ceiling was crossed</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">verdict</span><span class="o">.</span><span class="n">reason</span>        <span class="c1"># &quot;cost $1.2 &gt; $1&quot;</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">verdict</span><span class="o">.</span><span class="n">spent</span>         <span class="c1"># Decimal — exact (Budget.spent_usd is the float mirror)</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">verdict</span><span class="o">.</span><span class="n">remaining</span>     <span class="c1"># Decimal | None</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">verdict</span><span class="o">.</span><span class="n">usage</span>         <span class="c1"># cumulative Usage — input/output/cache tokens, not just cost</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">verdict</span><span class="o">.</span><span class="n">raise_if_exceeded</span><span class="p">()</span>   <span class="c1"># back to the old control flow, at one site</span>
+</span></code></pre></div>
+<h2 id="token-counts-not-just-cost">Token counts, not just cost<a class="headerlink" href="#token-counts-not-just-cost" title="Anchor link">&para;</a></h2>
+<p><code>Budget.usage</code> accumulates the whole <code>Usage</code> — input, output,
+cache-read and cache-write tokens. Because <code>Budget</code> is shared <strong>by
+reference</strong> across <code>ctx.child()</code>, a whole agent tree rolls up into
+one object:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">budget</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">input_tokens</span>        <span class="c1"># across every agent in the tree</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">budget</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cache_read_tokens</span>   <span class="c1"># cache effectiveness, for free</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">budget</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">total_tokens</span>
+</span></code></pre></div>
+<p>Applications used to re-aggregate this from spans or from their own
+callbacks. They no longer need to.</p>
 <h2 id="per-agent-budgets">Per-agent budgets<a class="headerlink" href="#per-agent-budgets" title="Anchor link">&para;</a></h2>
 <p>For multi-agent runs, <code>ActorBudget</code> gives each child agent its own
 four-axis envelope (<code>tokens</code>, <code>cost_usd</code>, <code>steps</code>, <code>wall_seconds</code>) with
@@ -1979,6 +2167,25 @@ differently to a token-out vs wall-out.</p>
   <code>MeterExceeded</code> (from <code>agentkit.runtime.meter</code>) is the per-run
   ceiling; <code>BudgetExhausted</code> (from <code>agentkit.agents.control.budget</code>)
   is the per-actor <code>ActorBudget</code> signal. Catch each where it fires.</li>
+<li><strong>A budget is always overrun by at most one call's cost.</strong> <code>_check</code>
+  compares <code>spent &gt; ceiling</code> <em>after</em> the work has run; there is no
+  pre-flight estimate. Set the ceiling slightly below your true limit,
+  and use <code>on_exceeded="stop"</code> so the overshoot is recoverable rather
+  than fatal.</li>
+<li><strong>An unregistered model costs <code>$0.00</code>.</strong> <code>pricing.cost()</code> returns
+  zero for a model it doesn't know, so a ceiling never fires and the
+  run is effectively unbounded. Declare the model in the
+  <a href="../provider-from-env/">model registry</a> — the same table that routes
+  a name to a provider.</li>
+<li><strong>An over-precise <em>ceiling</em> is refused; an over-precise <em>charge</em> is
+  quantized.</strong> <code>Budget(max_cost_usd="0.0000001")</code> raises
+  <code>MoneyPrecisionError</code> at construction, because a ceiling is your
+  stated intent and rounding it changes what you asked for. A charge
+  is a measurement, so it is recorded at 6dp rather than aborting a
+  run mid-flight.</li>
+<li><strong>Quantize at read, not per charge.</strong> <code>budget.spent_cents()</code> rounds
+  once, at the end. Rounding each charge to cents would round every
+  sub-cent call to zero and undercount the whole run.</li>
 </ul>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
@@ -2009,7 +2216,7 @@ differently to a token-out vs wall-out.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 06:02:21 UTC">August 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 16, 2026 20:55:51 UTC">August 16, 2026</span>
   </span>
 
     
