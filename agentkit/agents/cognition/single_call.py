@@ -18,7 +18,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from agentkit.agents._agent_helpers import _final_events, _last_assistant
+from agentkit.agents._agent_helpers import (
+    _exhausted_ceiling,
+    _final_events,
+    _last_assistant,
+)
 from agentkit.agents.result import AgentResult
 from agentkit.capabilities.output_schema import OutputCoercionError
 from agentkit.kernel.protocols import Ctx
@@ -72,14 +76,6 @@ class SingleCallCognition:
         max_iter = agent.max_repairs + 1
         single_call_attempt = 0
 
-        # Narrowed to a single ``Budget | None``: this cognition only acts on
-        # a budget configured to STOP. One left on the default ``"raise"`` has
-        # already raised by the time control could reach a check here, so
-        # treating it as absent keeps the two modes from double-handling the
-        # same event — and gives the type checker one thing to narrow.
-        budget = getattr(ctx, "budget", None)
-        if getattr(budget, "on_exceeded", "raise") != "stop":
-            budget = None
 
         for _i in range(max_iter):
             ctx.check_cancelled()
@@ -89,14 +85,15 @@ class SingleCallCognition:
             # nobody raised the ceiling for) so we don't spend one more call
             # just to discover it. The post-call check below catches a ceiling
             # crossed BY this call.
-            if budget is not None and budget.exhausted():
+            ceiling = _exhausted_ceiling(ctx)
+            if ceiling is not None:
                 for ev in _final_events(
                     _last_assistant(context),
                     usage,
                     partial=True,
                     reason="budget_exhausted",
                     prompt_version=prompt_version,
-                    error=budget.verdict().reason,
+                    error=ceiling,
                 ):
                     yield ev
                 return
@@ -144,24 +141,6 @@ class SingleCallCognition:
             res = assemble_deltas(deltas)
             usage = usage + res.usage
 
-            # Budget exhaustion under ``Budget(on_exceeded="stop")``. There is
-            # no checkpointer on this cognition — a single call has no
-            # mid-flight state worth resuming — so "recoverable" here means the
-            # caller gets a typed terminal event with the partial text and the
-            # spend recorded, instead of an exception that discards both.
-            if budget is not None and budget.exhausted():
-                context.append(Message("assistant", res.content))
-                for ev in _final_events(
-                    res.content,
-                    usage,
-                    partial=True,
-                    reason="budget_exhausted",
-                    prompt_version=prompt_version,
-                    error=budget.verdict().reason,
-                ):
-                    yield ev
-                return
-
             if agent.parse is None:
                 context.append(Message("assistant", res.content))
                 yield StreamEvent(
@@ -197,6 +176,25 @@ class SingleCallCognition:
                         reason="invalid_output",
                         prompt_version=prompt_version,
                         error=str(exc),
+                    ):
+                        yield ev
+                    return
+
+                # A repair costs another call, so this is the one place a
+                # post-call ceiling matters on this cognition. Checked BEFORE
+                # re-prompting and never before returning an answer: a closing
+                # call that lands exactly on the cap must still yield its
+                # result, not a `budget_exhausted` for work already paid for.
+                ceiling = _exhausted_ceiling(ctx)
+                if ceiling is not None:
+                    context.append(Message("assistant", res.content))
+                    for ev in _final_events(
+                        res.content,
+                        usage,
+                        partial=True,
+                        reason="budget_exhausted",
+                        prompt_version=prompt_version,
+                        error=ceiling,
                     ):
                         yield ev
                     return

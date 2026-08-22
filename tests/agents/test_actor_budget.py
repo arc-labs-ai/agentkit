@@ -189,3 +189,133 @@ def test_budget_exhausted_carries_axis():
         b.reserve_for_child(tokens=200, cost_usd=0.0, steps=0)
     assert info.value.axis == "tokens"
     assert "tokens=200" in str(info.value)
+
+
+# ── the envelope must actually constrain spend ───────────────────────────────
+
+
+def test_the_actor_envelope_is_charged_by_the_meter_middleware() -> None:
+    """`ActorBudget` was an INERT feature.
+
+    Nothing in the framework ever charged it: the meter middleware charges
+    `ctx.run.all_meters` — the run `Budget` plus any `Quota` — and
+    `ActorBudget` is not a `Meter` (four axes, a sync `charge`, no
+    guard/charge protocol), so it was never in that list. The only thing that
+    ever touched the envelope was `run_agents` reserving slices and then
+    releasing them with zero usage.
+
+    Measured before the fix: $3.00 of real spend against a $1.00 cap left
+    `used_cost` at zero and `exhausted()` False, while the run-scoped Budget
+    correctly recorded $3.00. A documented safety mechanism that did nothing.
+    """
+    import asyncio
+    from decimal import Decimal
+
+    from agentkit import Agent, Budget
+    from agentkit.agents.control.budget import ActorBudget
+    from agentkit.kernel.types import Delta, Usage
+    from agentkit.middlewares import meter
+    from agentkit.testing import make_test_ctx
+
+    class _Pricey:
+        async def stream(self, **_k):
+            yield Delta(text="ok", model="m", provider="f")
+            yield Delta(
+                usage=Usage(1000, 100, 0.50), finish_reason="stop", model="m", provider="f"
+            )
+
+    actor = ActorBudget(
+        max_tokens=10_000, max_cost_usd="1.00", max_steps=100, max_wall_seconds=1e9
+    )
+    ctx = make_test_ctx(llm=_Pricey(), budget=Budget(), chat_middleware=[meter()])
+    ctx.actor_budget = actor
+
+    asyncio.run(Agent("a", "m").run("go", ctx))
+
+    assert actor.used_cost() == Decimal("0.50"), "the envelope was not charged"
+    assert actor.used_tokens == 1100
+    assert actor.used_steps == 1, "one model call is one step on the actor's books"
+
+
+def test_an_exhausted_actor_envelope_stops_the_run() -> None:
+    """The other half of the missing wiring: nothing consulted
+    `exhausted()`, even though `ActorBudget.charge` is documented as
+    soft-exceed-then-stop precisely because "the loop checks `exhausted()`
+    and stops cleanly". No loop did.
+
+    Note there is no `on_exceeded` opt-in here, unlike the run-scoped
+    `Budget`: soft-exceed-then-stop IS the ActorBudget contract, so an
+    exhausted envelope always stops the loop.
+    """
+    import asyncio
+    from decimal import Decimal
+
+    from agentkit import Agent, Budget
+    from agentkit.agents.control.budget import ActorBudget
+    from agentkit.kernel.types import Delta, Usage
+    from agentkit.middlewares import meter
+    from agentkit.testing import make_test_ctx
+
+    calls = {"n": 0}
+
+    class _Pricey:
+        async def stream(self, **_k):
+            calls["n"] += 1
+            yield Delta(text="ok", model="m", provider="f")
+            yield Delta(
+                usage=Usage(1000, 100, 0.50), finish_reason="stop", model="m", provider="f"
+            )
+
+    actor = ActorBudget(
+        max_tokens=10_000, max_cost_usd="0.50", max_steps=100, max_wall_seconds=1e9
+    )
+    run_budget = Budget()
+    agent = Agent("a", "m")
+
+    def fresh_ctx():
+        c = make_test_ctx(llm=_Pricey(), budget=run_budget, chat_middleware=[meter()])
+        c.actor_budget = actor
+        return c
+
+    first = asyncio.run(agent.run("go", fresh_ctx()))
+    assert first.stop_reason == "complete"
+    assert actor.exhausted() is True
+
+    # The envelope is spent, so a second run must not buy another call.
+    second = asyncio.run(agent.run("go", fresh_ctx()))
+    assert second.stop_reason == "budget_exhausted"
+    assert calls["n"] == 1, "an exhausted actor envelope still paid for a call"
+    assert run_budget.spent() == Decimal("0.50"), "spend was capped by the envelope"
+    # The terminal event names WHICH axis ran out — a token-out and a wall-out
+    # call for different operator responses.
+    assert "cost_usd" in second.evals["error"]
+
+
+def test_the_named_axis_matches_the_one_that_ran_out() -> None:
+    """`exhausted()` alone cannot tell a caller whether to wind down or hard
+    cancel, so the stop reason names the axis."""
+    from agentkit.agents._agent_helpers import _tightest_exhausted_axis
+    from agentkit.agents.control.budget import ActorBudget
+
+    def fresh(**kw):
+        base = dict(
+            max_tokens=100, max_cost_usd="1.00", max_steps=5, max_wall_seconds=1e9
+        )
+        base.update(kw)
+        return ActorBudget(**base)
+
+    spent_tokens = fresh()
+    spent_tokens.charge(tokens=100)
+    assert _tightest_exhausted_axis(spent_tokens) == "tokens"
+
+    spent_cost = fresh()
+    spent_cost.charge(cost_usd=1.0)
+    assert _tightest_exhausted_axis(spent_cost) == "cost_usd"
+
+    spent_steps = fresh()
+    spent_steps.charge(steps=5)
+    assert _tightest_exhausted_axis(spent_steps) == "steps"
+
+    assert _tightest_exhausted_axis(fresh(max_wall_seconds=0.0)) == "wall_seconds"
+    # Nothing exhausted -> no axis to name.
+    assert _tightest_exhausted_axis(fresh()) == "unknown"

@@ -37,6 +37,25 @@ class MeterMiddleware(BaseMiddleware):
                 # ``ctx.budget.exhausted()`` between units of work, where it
                 # still holds the state a clean stop needs.
                 await m.charge(ctx.call, usage)
+            # The per-actor envelope. NOT in ``all_meters``: ``ActorBudget`` is
+            # not a ``Meter`` (four axes, a sync ``charge``, no guard/charge
+            # protocol), so it has to be charged explicitly — and it never was.
+            # The consequence was a documented safety mechanism that did
+            # nothing: $3.00 of measured spend against a $1.00 ActorBudget cap
+            # left ``used_cost`` at zero and ``exhausted()`` False, because the
+            # only thing that ever touched the envelope was ``run_agents``
+            # reserving and then releasing slices with zero usage.
+            #
+            # ``ActorBudget.charge`` is sync and documented never to raise: it
+            # soft-exceeds the cap so the in-flight call completes, and the
+            # cognition's next pre-flight check stops the loop.
+            actor = getattr(ctx.run, "actor_budget", None)
+            if actor is not None:
+                actor.charge(
+                    tokens=usage.total_tokens,
+                    cost_usd=usage.cost_usd,
+                    steps=1,  # one model call = one step on the actor's books
+                )
             # Best-effort budget headroom event. We use ``budget.remaining_usd()``
             # which returns None when no ceiling is configured — only emit when a
             # real ceiling is set so a dev-default zero-budget call doesn't carry

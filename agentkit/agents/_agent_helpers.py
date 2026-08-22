@@ -134,6 +134,64 @@ _REASON_TO_STOP: dict[str, AgentStopReason] = {
 }
 
 
+def _exhausted_ceiling(ctx: Any) -> str | None:
+    """The first ceiling telling this run to stop, as a reason string, or None.
+
+    Two INDEPENDENT ceilings, with deliberately different policies:
+
+    * The run-scoped ``Budget`` — consulted only when ``on_exceeded="stop"``.
+      Under the default ``"raise"`` it has already raised inside the invoker,
+      so checking here would double-handle the same event.
+    * The per-actor ``ActorBudget`` — always consulted. Its documented contract
+      is soft-exceed-then-stop: ``charge`` never raises so the in-flight call
+      completes, and "the loop checks ``exhausted()`` and stops cleanly". No
+      loop was checking it, which is half of why the envelope was inert.
+
+    Read through ``getattr`` so a ``NullCtx`` or a structural stub without
+    either field is simply "no ceiling reached".
+    """
+    budget = getattr(ctx, "budget", None)
+    if (
+        budget is not None
+        and getattr(budget, "on_exceeded", "raise") == "stop"
+        and budget.exhausted()
+    ):
+        verdict = budget.verdict()
+        return str(getattr(verdict, "reason", "") or "run budget exhausted")
+
+    actor = getattr(ctx, "actor_budget", None)
+    if actor is not None and actor.exhausted():
+        # Name the axis: a token-out is a "wind down gracefully" signal while a
+        # wall-out may warrant a hard cancel, and a caller cannot tell them
+        # apart from a bare "exhausted".
+        return f"actor budget exhausted on {_tightest_exhausted_axis(actor)}"
+    return None
+
+
+def _tightest_exhausted_axis(actor: Any) -> str:
+    """Which ActorBudget axis ran out. Falls back to ``"unknown"`` rather than
+    guessing, so a future fifth axis reads as unnamed instead of mislabelled."""
+    # ``(axis, accessor-name, spent-when)`` rather than lambdas so mypy can see
+    # the call is typed; the accessor is resolved by name because a structural
+    # stub may not implement every axis.
+    checks: tuple[tuple[str, str, float], ...] = (
+        ("tokens", "remaining_tokens", 0.0),
+        ("cost_usd", "remaining_cost", 0.0),
+        ("steps", "remaining_steps", 0.0),
+        ("wall_seconds", "remaining_wall_seconds", 1e-9),
+    )
+    for axis, accessor, floor in checks:
+        probe = getattr(actor, accessor, None)
+        if not callable(probe):
+            continue
+        try:
+            if float(probe()) <= floor:
+                return axis
+        except Exception:  # noqa: BLE001 — a stub axis must not break the stop path
+            continue
+    return "unknown"
+
+
 _OUTPUT_COERCE_MODULE = "agentkit.middlewares.output_coerce"
 
 

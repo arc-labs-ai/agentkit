@@ -371,23 +371,60 @@ def test_a_stopped_run_can_be_resumed_after_the_ceiling_is_raised() -> None:
         assert len(resumed.state["messages"]) > messages_at_stop, "the run restarted from scratch"
 
 
-def test_single_call_cognition_also_stops_cleanly() -> None:
-    """No checkpointer on this cognition — a single call has no mid-flight
-    state worth resuming — so "recoverable" means a typed terminal event with
-    the text and the spend, instead of an exception discarding both."""
+def test_a_call_that_blows_the_budget_still_returns_its_answer() -> None:
+    """A ceiling crossed by the CLOSING call must not discard the answer.
+
+    The post-call check used to fire immediately after every chat call, so a
+    run whose final call happened to exhaust the budget reported
+    `budget_exhausted` with `partial=True` — for work already paid for, with a
+    perfectly good result in hand. The overspend is a fact either way; throwing
+    away what it bought is a second loss.
+
+    The ceiling now only stops the loop where it is about to spend MORE (a
+    repair retry here, a tool dispatch in the tool loop).
+    """
 
     class _Pricey:
         async def stream(self, **_kw):
-            yield Delta(text="partial answer", model="p", provider="fake")
+            yield Delta(text="the answer", model="p", provider="fake")
             yield Delta(usage=Usage(10, 5, 5.0), finish_reason="stop", model="p", provider="fake")
 
     budget = Budget(max_cost_usd="1.00", on_exceeded="stop")
     ctx = make_test_ctx(llm=_Pricey(), budget=budget, chat_middleware=[meter()])
     result = asyncio.run(Agent("a", "m").run("go", ctx))
 
+    assert result.stop_reason == "complete"
+    assert result.output == "the answer"
+    assert result.partial is False
+    assert_money(budget.spent(), "5.00")  # the overspend is still recorded
+
+
+def test_an_exhausted_budget_blocks_a_repair_retry() -> None:
+    """The repair path is where a post-call ceiling earns its place on this
+    cognition: another attempt is another paid call."""
+    pydantic = pytest.importorskip("pydantic")
+
+    class Out(pydantic.BaseModel):
+        x: int
+
+    calls = {"n": 0}
+
+    class _BadAndPricey:
+        async def stream(self, **_kw):
+            calls["n"] += 1
+            yield Delta(text="not json", model="p", provider="fake")
+            yield Delta(usage=Usage(10, 5, 5.0), finish_reason="stop", model="p", provider="fake")
+
+    from agentkit.middlewares import output_coerce
+
+    budget = Budget(max_cost_usd="1.00", on_exceeded="stop")
+    ctx = make_test_ctx(
+        llm=_BadAndPricey(), budget=budget, chat_middleware=[output_coerce(), meter()]
+    )
+    result = asyncio.run(Agent("a", "m", output=Out, max_repairs=3).run("go", ctx))
+
     assert result.stop_reason == "budget_exhausted"
-    assert result.output == "partial answer"
-    assert_money(budget.spent(), "5.00")
+    assert calls["n"] == 1, "a repair was attempted on an exhausted budget"
 
 
 # ── Quota keeps protocol parity ──────────────────────────────────────────────
@@ -643,10 +680,9 @@ def test_spent_cents_rounds_half_up_not_down() -> None:
 # ── the sibling budget: ActorBudget's float axes ─────────────────────────────
 
 
-def test_actor_budget_reports_exhausted_when_a_float_axis_is_spent() -> None:
-    """`Budget` got an exact Decimal ledger; its sibling `ActorBudget` kept
-    float axes and an `== 0.0` exhaustion check, which does not survive float
-    arithmetic:
+def test_actor_budget_cost_ledger_is_exact() -> None:
+    """`ActorBudget` kept float axes and an `== 0.0` exhaustion check, which
+    does not survive float arithmetic:
 
         max_cost_usd=1.0, charged ten times at 0.10
           -> used 0.9999999999999999, remaining 1.11e-16, exhausted() False
@@ -654,8 +690,12 @@ def test_actor_budget_reports_exhausted_when_a_float_axis_is_spent() -> None:
     The dollar was gone and the agent loop kept going. `remaining_*` clamps
     with `max(0.0, ...)`, which catches an OVERSHOOT but not an undershoot, so
     the residue slipped through as "budget left". It was also inconsistent:
-    0.1 + 0.2 against a 0.3 cap happens to land exactly on zero, so whether
-    the bug appeared depended on which numbers a caller picked.
+    0.1 + 0.2 against a 0.3 cap lands exactly on zero, so whether the bug
+    appeared depended on which numbers a caller picked.
+
+    Now an exact Decimal ledger, mirroring the run-scoped `Budget`, so the
+    property is exactness rather than a tolerance — no residue exists to
+    threshold away.
     """
     from agentkit.agents.control.budget import ActorBudget
 
@@ -665,9 +705,93 @@ def test_actor_budget_reports_exhausted_when_a_float_axis_is_spent() -> None:
     for _ in range(10):
         b.charge(cost_usd=0.1)
 
-    assert b.remaining_cost_usd() > 0.0, "precondition: a float residue is present"
-    assert b.remaining_cost_usd() < 1e-9, "precondition: the residue is sub-nanodollar"
+    assert_money(b.used_cost(), "1.00", label="ten dimes")
+    assert_money(b.remaining_cost(), "0", label="headroom")
     assert b.exhausted() is True, "a spent dollar must read as exhausted"
+    # The float attribute survives as a readable mirror of the ledger.
+    assert b.used_cost_usd == float(b.used_cost())
+
+
+def test_actor_budget_records_a_sub_cent_charge_against_a_large_balance() -> None:
+    """Kills: ActorBudget's cost accumulating through `float`.
+
+    Cent-scale tests cannot see that mutation — a float round-trip through
+    six-decimal quantization recovers the same value at small magnitudes.
+    Float64 carries ~15-16 significant digits, so the error only appears once
+    the integer part crowds the fraction out:
+
+        Decimal path : 10000000000.000001
+        float   path : 10000000000.000002
+
+    A long-running coordinator that has spent five figures and is still being
+    charged per child lands exactly here.
+    """
+    from agentkit.agents.control.budget import ActorBudget
+
+    b = ActorBudget(
+        max_tokens=10**12, max_cost_usd="20000000000", max_steps=10**9, max_wall_seconds=1e9
+    )
+    b.charge(cost_usd=10_000_000_000.0)
+    b.charge(cost_usd=0.000001)
+    assert_money(b.used_cost(), "10000000000.000001", label="big balance + sub-cent charge")
+
+
+def test_actor_budget_float_mirrors_track_the_ledger() -> None:
+    """`max_cost_usd` / `used_cost_usd` / `reserved_cost_usd` stay readable
+    floats so `run_agents` and existing callers are untouched. If they can
+    drift from the ledger, every dashboard reading them is lying."""
+    from agentkit.agents.control.budget import ActorBudget
+
+    b = ActorBudget(
+        max_tokens=10**9, max_cost_usd="2.50", max_steps=10**6, max_wall_seconds=1e9
+    )
+    for _ in range(7):
+        b.charge(cost_usd=0.13)
+    b.reserve_for_child(tokens=1, cost_usd=0.25, steps=1)
+
+    assert b.used_cost_usd == float(b.used_cost())
+    assert b.reserved_cost_usd == float(b.reserved_cost())
+    assert b.max_cost_usd == float(b.max_cost())
+    assert b.remaining_cost_usd() == float(b.remaining_cost())
+
+
+def test_actor_budget_settlement_is_exact() -> None:
+    """Reservation accounting is where a float ledger drifts worst: reserve,
+    settle, reserve again, over and over across a fan-out. Each cycle must
+    return the books to exactly where they started."""
+    from agentkit.agents.control.budget import ActorBudget
+
+    parent = ActorBudget(
+        max_tokens=10**9, max_cost_usd="1.00", max_steps=10**6, max_wall_seconds=1e9
+    )
+    for _ in range(30):
+        parent.reserve_for_child(tokens=1, cost_usd=0.01, steps=1)
+        parent.settle_child(
+            reserved_tokens=1,
+            reserved_cost_usd=0.01,
+            reserved_steps=1,
+            used_tokens=1,
+            used_cost_usd=0.01,
+            used_steps=1,
+        )
+    assert_money(parent.used_cost(), "0.30", label="30 x $0.01 settled")
+    assert_money(parent.reserved_cost(), "0", label="nothing left reserved")
+    assert_money(parent.remaining_cost(), "0.70", label="headroom")
+
+
+def test_actor_budget_tighten_never_drops_below_what_is_committed() -> None:
+    """Lowering a cap must not retroactively make spent-plus-reserved read as
+    an overdraft, and the comparison happens in Decimal so a
+    float-representable cap cannot land a hair under the committed total."""
+    from agentkit.agents.control.budget import ActorBudget
+
+    b = ActorBudget(
+        max_tokens=100, max_cost_usd="1.00", max_steps=10, max_wall_seconds=1e9
+    )
+    b.charge(cost_usd=0.6)
+    b.tighten(new_max_cost_usd=0.1)  # below what is already spent
+    assert_money(b.max_cost(), "0.60", label="clamped to committed spend")
+    assert_money(b.remaining_cost(), "0", label="no phantom headroom")
 
 
 def test_actor_budget_is_not_exhausted_while_real_budget_remains() -> None:
