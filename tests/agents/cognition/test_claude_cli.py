@@ -232,7 +232,7 @@ def test_happy_path_emits_all_events_in_order() -> None:
     assert "--output-format" in argv and "stream-json" in argv
     assert "--verbose" in argv
     assert "--model" in argv and "claude-opus-4-5" in argv
-    assert "--system-prompt" in argv and "You are helpful." in argv
+    assert "--append-system-prompt" in argv and "You are helpful." in argv
 
 
 def test_cost_extraction_from_result_message() -> None:
@@ -441,7 +441,9 @@ def test_cancellation_terminates_process_and_still_emits_final() -> None:
 
 def test_prompt_instance_is_rendered() -> None:
     """When ``agent.prompt`` is a ``Prompt`` (versioned), the cognition MUST
-    call ``.render()`` and pass the rendered text via ``--system-prompt``."""
+    call ``.render()`` and pass the rendered text through the system-prompt
+    flag — ``--append-system-prompt`` by default, so the CLI keeps its own
+    system prompt (and therefore its tool guidance) underneath."""
     proc = _FakeProcess(stdout_lines=_happy_path_lines())
     with patch(
         "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
@@ -453,9 +455,10 @@ def test_prompt_instance_is_rendered() -> None:
         _drain(cog, agent, FakeCtx())
 
     argv = spawn.await_args.args
-    idx = argv.index("--system-prompt")
+    idx = argv.index("--append-system-prompt")
     # ``Prompt.render()`` strips surrounding whitespace.
     assert argv[idx + 1] == "Concise assistant."
+    assert "--system-prompt" not in argv
 
 
 def test_config_dir_landing_in_env() -> None:

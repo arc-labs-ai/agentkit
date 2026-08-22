@@ -57,9 +57,13 @@ CoordinatorCognition(
 ClaudeCliCognition(
     model="claude-sonnet-4-6",
     permission_mode="acceptEdits",
-    allowed_tools=("Read", "Grep", "Bash"),
+    tools=("Read", "Grep", "Bash"),          # what the session HAS
+    allowed_tools=("Read", "Grep"),          # ...and what runs unprompted
     max_concurrent=8,
 )
+# agent.prompt is APPENDED to the CLI's own system prompt (--append-system-prompt);
+# system_prompt_mode="replace" opts into overriding it. Resume a prior run with
+# resume_session_id=<evals["session_id"]> — session_id= NAMES a new session.
 ```
 
 ## Tools

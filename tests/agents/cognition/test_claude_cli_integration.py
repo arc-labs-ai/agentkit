@@ -305,7 +305,14 @@ def test_A5_empty_task_surfaces_stderr_partial() -> None:
 
 def test_A6_invalid_session_id_partial_with_stderr() -> None:
     """Real CLI observed: exit=1, stderr='Error: Invalid session ID...'.
-    The drive should map that to cli_exit_1 + stderr surfaced."""
+    The drive should map that to cli_exit_1 + stderr surfaced.
+
+    The trigger is now an unknown ``resume_session_id`` rather than a malformed
+    ``session_id``: a malformed one is refused at CONSTRUCTION (see
+    ``test_a_non_uuid_session_id_is_refused_at_construction``), which is
+    strictly better than spending a subprocess spawn to learn it. The contract
+    under test here is the runtime one — a non-zero CLI exit still lands the
+    terminal event with the stderr attached."""
     proc = _FakeProcess(
         stdout_lines=[],
         stderr=b"Error: Invalid session ID. Must be a valid UUID.\n",
@@ -315,7 +322,7 @@ def test_A6_invalid_session_id_partial_with_stderr() -> None:
         "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
         new=AsyncMock(return_value=proc),
     ):
-        cog = ClaudeCliCognition(session_id="foo")
+        cog = ClaudeCliCognition(resume_session_id="no-such-session")
         agent = Agent(name="local", cognition=cog)
         events = asyncio.run(_drain_async(cog.drive(agent, "hi", FakeCtx(), WorkingContext())))
 

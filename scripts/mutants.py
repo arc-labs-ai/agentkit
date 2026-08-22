@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
 FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
     "tests/tools/test_tool_call_contract.py",
@@ -144,6 +145,55 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the CLI cognition's flags mean what the CLI says they mean ──────────
+    Mutant(
+        tag="cliflags",
+        why="agent.prompt REPLACES the CLI's system prompt, stripping its tool guidance",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='            flag = "--system-prompt" if self.system_prompt_mode == "replace" else (',
+        after='            flag = "--system-prompt" if True else (',
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="a resume id is passed as --session-id, silently starting a fresh session",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='            argv += ["--resume", self.resume_session_id]',
+        after='            argv += ["--session-id", self.resume_session_id]',
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="a non-UUID session_id burns a subprocess spawn to learn it is invalid",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.session_id is not None:\n            try:\n                uuid.UUID(str(self.session_id))",
+        after="        if False:\n            try:\n                uuid.UUID(str(self.session_id))",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="a restricted tool set is silently not passed, leaving every tool available",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.tools is not None:",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="tools=() emits a bare --tools flag the CLI rejects",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.tools == ():",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="fork_session without a resume reaches the CLI and errors there",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.fork_session and not (self.continue_session or self.resume_session_id):",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
     # ── the memory tool's path confinement is its security boundary ─────────
     Mutant(
         tag="filetool",

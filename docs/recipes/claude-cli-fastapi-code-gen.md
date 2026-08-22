@@ -110,7 +110,7 @@ Cost, session id, and duration are lifted onto `AgentResult`:
 ```python
 final = await agent.run("write a REST client", ctx)
 final.usage.cost_usd            # CLI-side estimate (see below)
-final.evals["session_id"]       # for CLI --session-id resumption
+final.evals["session_id"]       # pass back as resume_session_id= (NOT session_id=)
 final.evals["cli_duration_ms"]  # end-to-end CLI wall time
 ```
 
@@ -122,12 +122,14 @@ ClaudeCliCognition(
     model="claude-opus-4-5",           # -> --model
     working_dir=Path("/tmp/sandbox"),  # subprocess cwd; --add-dir surface
     config_dir=Path("/var/claude"),    # CLAUDE_CONFIG_DIR — isolated auth
-    allowed_tools=("Read", "Grep"),    # -> --allowed-tools Read,Grep
+    system_prompt_mode="append",       # agent.prompt -> --append-system-prompt
+    tools=("Read", "Grep"),            # -> --tools Read Grep   (what EXISTS)
+    allowed_tools=("Read", "Grep"),    # -> --allowed-tools     (what runs unprompted)
     disallowed_tools=("Bash",),        # -> --disallowed-tools Bash
     permission_mode="acceptEdits",     # -> --permission-mode acceptEdits
     max_turns=6,                       # -> --max-turns 6
-    session_id="550e8400-e29b-41d4-a716-446655440000",  # UUID, from a prior run's evals["session_id"]
-    extra_args=("--append-system-prompt", "no comments"),
+    resume_session_id=prior_evals["session_id"],  # -> --resume  (continue that run)
+    extra_args=("--fallback-model", "claude-sonnet-4-6"),
     terminate_grace_s=5.0,             # SIGTERM grace before SIGKILL
     max_concurrent=8,                  # class-level BoundedSemaphore
 )
@@ -135,6 +137,20 @@ ClaudeCliCognition(
 
 ## Gotchas
 
+- **`tools` and `allowed_tools` are different flags.** `--tools` decides
+  which built-in tools the session *has*; `--allowed-tools` decides which
+  run *without a permission prompt*. Listing three tools in
+  `allowed_tools` alone leaves every other tool — Bash included —
+  available and merely prompting. If you mean a sandbox, set `tools=`.
+- **`agent.prompt` is APPENDED, not substituted.** `--system-prompt`
+  replaces Claude Code's entire system prompt, tool guidance included, so
+  a one-line persona used to turn a capable coding agent into a chat model
+  holding tools it no longer knew how to drive. Pass
+  `system_prompt_mode="replace"` if you genuinely want that.
+- **`session_id` names a session; `resume_session_id` continues one.**
+  `--session-id` assigns a UUID to a *new* conversation. To pick up a
+  previous run, pass its `evals["session_id"]` as `resume_session_id=`.
+  A non-UUID `session_id` is refused at construction.
 - **Cold start is real.** First subprocess per config_dir is 2–5s of
   CLI warmup even before the model call. Second-and-later calls are
   faster if you keep the same `config_dir`.

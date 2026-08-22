@@ -22,10 +22,16 @@ Wire it like any other cognition:
             model="claude-opus-4-5",
             permission_mode="acceptEdits",
             working_dir=Path("/tmp/sandbox"),
-            allowed_tools=("Read", "Grep"),
+            tools=("Read", "Grep"),           # the session HAS only these
+            allowed_tools=("Read", "Grep"),   # ...and runs them without prompting
         ),
     )
     result = await agent.run("Summarize README.md", ctx)
+
+``tools`` and ``allowed_tools`` are different flags and mixing them up is the
+easy mistake: ``--tools`` restricts what the session has, ``--allowed-tools``
+auto-approves what it may run unprompted. Naming three tools in
+``allowed_tools`` alone leaves every other tool — Bash included — available.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ import asyncio
 import contextlib
 import json
 import os
+import uuid
 import weakref
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -126,8 +133,9 @@ class ClaudeCliCognition:
     per ``agent.run(...)`` / ``agent.stream(...)``. Uses whatever auth the
     CLI resolves — no API key handling on agentkit's side.
 
-    Read from the agent: ``prompt`` (used as system prompt via
-    ``--system-prompt``), ``model`` (via ``--model`` when set on the
+    Read from the agent: ``prompt`` (APPENDED to the CLI's own system prompt
+    via ``--append-system-prompt``; set ``system_prompt_mode="replace"`` to
+    override the CLI's prompt entirely instead), ``model`` (via ``--model`` when set on the
     cognition — the agent's ``model`` field is NOT consulted; the cognition's
     own ``model`` wins so a caller can point the CLI at a different model
     than the rest of the agentkit chain).
@@ -147,16 +155,93 @@ class ClaudeCliCognition:
     name: str = "claude_cli"
     claude_bin: str = "claude"
     model: str | None = None
+    # How ``agent.prompt`` reaches the CLI. ``--system-prompt`` REPLACES the
+    # entire Claude Code system prompt — tool guidance, environment info, the
+    # lot — so wiring an agentkit prompt straight into it turned a capable
+    # coding agent into a bare chat model that still had tools it no longer
+    # knew how to use. ``--append-system-prompt`` is what the CLI docs
+    # recommend for "add instructions while keeping Claude Code's default
+    # behavior", and is the default here. Choose ``"replace"`` deliberately.
+    system_prompt_mode: Literal["append", "replace"] = "append"
     working_dir: Path | None = None
     config_dir: Path | None = None  # → CLAUDE_CONFIG_DIR
+    # ``--allowed-tools``: tools that run WITHOUT a permission prompt. This is
+    # an auto-approve list, NOT a restriction — naming three tools here leaves
+    # every other tool available and merely prompting. To restrict what exists
+    # at all, use ``tools`` below. The CLI reference is explicit about the
+    # split ("To restrict which tools are available, use --tools instead") and
+    # conflating them is how a supposedly sandboxed agent keeps Bash.
     allowed_tools: tuple[str, ...] = ()
     disallowed_tools: tuple[str, ...] = ()
+    # ``--tools``: the built-in tools the session HAS. ``()`` (the default)
+    # passes the flag at all, leaving the CLI's own default set; ``("",)`` is
+    # the CLI's spelling of "disable all tools"; a tuple of names restricts to
+    # exactly those.
+    tools: tuple[str, ...] | None = None
     permission_mode: PermissionMode = "default"
+    permission_prompt_tool: str | None = None  # → --permission-prompt-tool (an MCP tool)
     max_turns: int | None = None
-    session_id: str | None = None  # resume an existing session
+
+    # ── session identity ────────────────────────────────────────────────────
+    # Three DIFFERENT things the CLI keeps separate, and so must we:
+    #
+    #   session_id         --session-id <uuid>   NAME a fresh session
+    #   resume_session_id  --resume <id>         CONTINUE a specific session
+    #   continue_session   --continue            CONTINUE the latest one here
+    #
+    # ``session_id`` used to be documented as "resume an existing session",
+    # which it has never been: the CLI reference says "Use a specific session
+    # ID for the conversation (must be a valid UUID)", i.e. it names a NEW
+    # session. Passing a finished run's id back through it does not resume it.
+    session_id: str | None = None
+    resume_session_id: str | None = None
+    continue_session: bool = False
+    fork_session: bool = False  # → --fork-session (only with resume/continue)
     extra_args: tuple[str, ...] = ()  # escape hatch for future CLI flags
     terminate_grace_s: float = 5.0
     max_concurrent: int = 8  # class-level semaphore (see module doc)
+
+    def __post_init__(self) -> None:
+        """Refuse combinations the CLI itself refuses, at construction.
+
+        Every one of these is cheaper to catch here than as a subprocess that
+        exits non-zero three seconds later with a message the caller has to
+        parse out of stderr — and ``session_id`` in particular fails in the
+        least helpful way, because an invalid UUID is only rejected once the
+        binary starts.
+        """
+        if self.session_id is not None and self.resume_session_id is not None:
+            raise ValueError(
+                "ClaudeCliCognition: session_id names a NEW session and "
+                "resume_session_id continues an existing one — pass one, not both"
+            )
+        if self.continue_session and self.resume_session_id is not None:
+            raise ValueError(
+                "ClaudeCliCognition: continue_session resumes the latest session in "
+                "working_dir and resume_session_id resumes a specific one — pass one, not both"
+            )
+        if self.fork_session and not (self.continue_session or self.resume_session_id):
+            raise ValueError(
+                "ClaudeCliCognition: fork_session only applies when resuming "
+                "(set resume_session_id= or continue_session=True)"
+            )
+        if self.tools == ():
+            # ``--tools`` is variadic and needs at least one value, so an empty
+            # tuple would emit a bare flag the CLI rejects. It is also
+            # genuinely ambiguous between the two things a reader might mean.
+            raise ValueError(
+                "ClaudeCliCognition: tools=() is ambiguous — pass tools=None to leave the "
+                "CLI's default tool set alone, or tools=('',) to disable every tool"
+            )
+        if self.session_id is not None:
+            try:
+                uuid.UUID(str(self.session_id))
+            except ValueError:
+                raise ValueError(
+                    f"ClaudeCliCognition: session_id must be a valid UUID, got "
+                    f"{self.session_id!r}. To CONTINUE a previous run, use "
+                    "resume_session_id= instead — that is the flag that resumes."
+                ) from None
 
     # ---- public surface --------------------------------------------------------------------
 
@@ -197,9 +282,10 @@ class ClaudeCliCognition:
           permissions; agentkit's autonomy tier is not translated.
         - ``agent.memory`` — the CLI manages its own context; the agent's
           ``MemorySource`` (if any) is never queried.
-        - ``Agent.resume()`` — not supported (ReAct-only). The
-          ``evals["session_id"]`` value can be passed back as
-          ``ClaudeCliCognition(session_id=...)`` for a CLI-native resume.
+        - ``Agent.resume()`` — not supported (ReAct-only). For a CLI-native
+          resume, pass the ``evals["session_id"]`` value back as
+          ``ClaudeCliCognition(resume_session_id=...)`` — NOT ``session_id=``,
+          which names a new session rather than continuing an old one.
         - ``ctx.budget`` — the CLI's cost accounting is surfaced via
           ``Usage.cost_usd`` on the final event but is NOT charged
           against ``ctx.budget`` (the cognition bypasses the ``Invoker``
@@ -445,17 +531,33 @@ class ClaudeCliCognition:
         if self.model is not None:
             argv += ["--model", self.model]
         if system_prompt:
-            argv += ["--system-prompt", system_prompt]
+            flag = "--system-prompt" if self.system_prompt_mode == "replace" else (
+                "--append-system-prompt"
+            )
+            argv += [flag, system_prompt]
         if self.allowed_tools:
             argv += ["--allowed-tools", ",".join(self.allowed_tools)]
         if self.disallowed_tools:
             argv += ["--disallowed-tools", ",".join(self.disallowed_tools)]
+        if self.tools is not None:
+            # ``--tools`` is variadic on the CLI; each name is its own argv
+            # entry. ``("",)`` — the documented "disable all tools" spelling —
+            # therefore survives as a single empty argument.
+            argv += ["--tools", *self.tools]
         if self.permission_mode != "default":
             argv += ["--permission-mode", self.permission_mode]
+        if self.permission_prompt_tool is not None:
+            argv += ["--permission-prompt-tool", self.permission_prompt_tool]
         if self.max_turns is not None:
             argv += ["--max-turns", str(self.max_turns)]
         if self.session_id is not None:
             argv += ["--session-id", self.session_id]
+        if self.resume_session_id is not None:
+            argv += ["--resume", self.resume_session_id]
+        if self.continue_session:
+            argv += ["--continue"]
+        if self.fork_session:
+            argv += ["--fork-session"]
         argv += list(self.extra_args)
         return argv
 

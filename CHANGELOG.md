@@ -11,6 +11,35 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — `ClaudeCliCognition` flags meant something other than they said
+
+Three mappings were wrong against the CLI reference, each producing a run that
+looks fine.
+
+- **`agent.prompt` went to `--system-prompt`, which REPLACES the entire Claude
+  Code system prompt** — tool guidance, environment info, all of it. An agent
+  given a one-line persona silently became a bare chat model still holding
+  tools it no longer knew how to drive. It now goes to
+  `--append-system-prompt`, which the CLI docs recommend for exactly this;
+  `system_prompt_mode="replace"` opts into the old behaviour. **This changes
+  the default behaviour of an existing field.**
+
+- **`session_id` was documented as "resume an existing session"** and passed
+  `--session-id`, which *names a new session* and must be a valid UUID.
+  Following that docstring produced a fresh conversation with no history and no
+  error. Added `resume_session_id` (`--resume`), `continue_session`
+  (`--continue`) and `fork_session` (`--fork-session`); impossible combinations
+  and a non-UUID `session_id` are now refused at construction, with the error
+  pointing at `resume_session_id`.
+
+- **`allowed_tools` reads like a sandbox and is not one.** `--allowed-tools` is
+  an auto-approve list: every unnamed tool stays available and merely prompts.
+  Added `tools` for `--tools`, which is the flag that restricts what the
+  session has, plus `permission_prompt_tool` for `--permission-prompt-tool`.
+
+A real-CLI test now spawns the binary with the full flag set and asserts it
+accepts the argv — the one thing a mocked subprocess can never tell us.
+
 ### Hardened — the memory tool's path confinement
 
 - `FileTool._confine` now refuses a **backslash** and a **NUL byte** outright.
