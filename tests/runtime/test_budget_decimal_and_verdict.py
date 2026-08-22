@@ -638,3 +638,116 @@ def test_spent_cents_rounds_half_up_not_down() -> None:
     assert_money(b2.spent_cents(), "1.23", label="ordinary truncation-vs-rounding case")
     b3 = Budget(spent_usd=1.235)
     assert_money(b3.spent_cents(), "1.24", label="round-half-up at the cent boundary")
+
+
+# ── the sibling budget: ActorBudget's float axes ─────────────────────────────
+
+
+def test_actor_budget_reports_exhausted_when_a_float_axis_is_spent() -> None:
+    """`Budget` got an exact Decimal ledger; its sibling `ActorBudget` kept
+    float axes and an `== 0.0` exhaustion check, which does not survive float
+    arithmetic:
+
+        max_cost_usd=1.0, charged ten times at 0.10
+          -> used 0.9999999999999999, remaining 1.11e-16, exhausted() False
+
+    The dollar was gone and the agent loop kept going. `remaining_*` clamps
+    with `max(0.0, ...)`, which catches an OVERSHOOT but not an undershoot, so
+    the residue slipped through as "budget left". It was also inconsistent:
+    0.1 + 0.2 against a 0.3 cap happens to land exactly on zero, so whether
+    the bug appeared depended on which numbers a caller picked.
+    """
+    from agentkit.agents.control.budget import ActorBudget
+
+    b = ActorBudget(
+        max_tokens=10**9, max_cost_usd=1.0, max_steps=10**6, max_wall_seconds=1e9
+    )
+    for _ in range(10):
+        b.charge(cost_usd=0.1)
+
+    assert b.remaining_cost_usd() > 0.0, "precondition: a float residue is present"
+    assert b.remaining_cost_usd() < 1e-9, "precondition: the residue is sub-nanodollar"
+    assert b.exhausted() is True, "a spent dollar must read as exhausted"
+
+
+def test_actor_budget_is_not_exhausted_while_real_budget_remains() -> None:
+    """The threshold must not swallow spendable budget. One cent is money."""
+    from agentkit.agents.control.budget import ActorBudget
+
+    b = ActorBudget(
+        max_tokens=10**9, max_cost_usd=1.0, max_steps=10**6, max_wall_seconds=1e9
+    )
+    b.charge(cost_usd=0.99)
+    assert b.exhausted() is False
+    assert b.remaining_cost_usd() == pytest.approx(0.01)
+
+
+def test_actor_budget_exhaustion_holds_on_every_axis() -> None:
+    """Tokens and steps are ints and were already fine; the comparison moved
+    from `== 0` to `<= 0`, so pin that nothing regressed."""
+    from agentkit.agents.control.budget import ActorBudget
+
+    def fresh(**kw):
+        base = dict(
+            max_tokens=100, max_cost_usd=1.0, max_steps=5, max_wall_seconds=1e9
+        )
+        base.update(kw)
+        return ActorBudget(**base)
+
+    b = fresh()
+    b.charge(tokens=100)
+    assert b.exhausted() is True
+
+    b = fresh()
+    b.charge(steps=5)
+    assert b.exhausted() is True
+
+    # A zero-wall budget is exhausted from birth.
+    assert fresh(max_wall_seconds=0.0).exhausted() is True
+
+
+def test_quota_evicts_tenants_whose_window_has_expired() -> None:
+    """`Quota` partitions its rolling windows by `Scope.key()` and never
+    removed a key.
+
+    `_prune` only ever touched the key being guarded, so a tenant that went
+    quiet was never revisited. Measured: 5000 distinct scopes left 5000
+    retained dict entries long after every window had expired. That is a slow
+    leak in exactly the deployment the class exists for — and it is worse than
+    "one entry per customer", because a scope carrying a per-user or
+    per-request id is the whole point of a tenant key.
+    """
+    clock = [1000.0]
+    q = Quota(max_rpm=1000, window=60.0, clock=lambda: clock[0])
+
+    def call_for(org: int):
+        ctx = RunContext("r", Scope(org, 1))
+        return Call("chat", ChatRequest(messages=[Message("user", "hi")], model="m"), ctx)
+
+    for org in range(500):
+        _run(q.guard(call_for(org)))
+        _run(q.charge(call_for(org), Usage(1, 1, 0.001)))
+    assert len(q._reqs) == 500, "precondition: every tenant is tracked while live"
+
+    clock[0] += 10_000  # every window long expired
+    _run(q.guard(call_for(0)))  # one more call triggers the sweep
+
+    assert len(q._reqs) == 1, f"expired tenants not evicted: {len(q._reqs)} keys retained"
+    assert len(q._charges) <= 1
+
+
+def test_quota_sweeping_does_not_evict_a_live_tenant() -> None:
+    """The eviction must not cost anyone their window. A tenant inside the
+    window keeps its entries, and its rate limit keeps working."""
+    clock = [1000.0]
+    q = Quota(max_rpm=2, window=60.0, clock=lambda: clock[0])
+
+    def call_for(org: int):
+        ctx = RunContext("r", Scope(org, 1))
+        return Call("chat", ChatRequest(messages=[Message("user", "hi")], model="m"), ctx)
+
+    _run(q.guard(call_for(1)))
+    clock[0] += 1  # still well inside the 60s window
+    _run(q.guard(call_for(1)))
+    with pytest.raises(MeterExceeded):
+        _run(q.guard(call_for(1)))  # 2 rpm cap still enforced after a sweep

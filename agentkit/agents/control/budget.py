@@ -47,6 +47,31 @@ def _monotonic_seconds() -> float:
     return time.monotonic()
 
 
+# Below these residues an axis is spent. Both exist because the axes are
+# floats and `remaining == 0.0` does not survive float arithmetic:
+#
+#     ActorBudget(max_cost_usd=1.0) charged ten times at 0.10
+#       -> used 0.9999999999999999, remaining 1.11e-16, exhausted() False
+#
+# The dollar is gone and the loop kept going. `remaining_*` clamps at zero
+# with `max(0.0, ...)`, which catches an OVERSHOOT but not an undershoot, so
+# the residue slips through as "budget left". It is also inconsistent —
+# 0.1 + 0.2 against a 0.3 cap happens to land exactly on zero — which makes
+# the bug depend on which numbers a caller picked.
+#
+# `_COST_EPSILON` is one unit at `runtime.meter.MONEY_SCALE`: money finer than
+# a millionth of a dollar is not spendable budget. `_WALL_EPSILON` is a
+# nanosecond, far below any clock's resolution.
+#
+# The run-scoped `Budget` solved this properly, with an exact Decimal ledger.
+# ActorBudget's reservation API is float-typed across `charge` /
+# `reserve_for_child` / `settle_child` and is consumed by `run_agents` with
+# float share arithmetic, so a threshold is the targeted fix; converting the
+# axis to Decimal is a larger change worth doing on its own.
+_COST_EPSILON = 1e-6
+_WALL_EPSILON = 1e-9
+
+
 class ActorBudget:
     """Per-agent four-axis budget with reservation accounting.
 
@@ -117,10 +142,10 @@ class ActorBudget:
         """True if any axis has nothing left to give. The agent loop
         checks this at the top of every iteration."""
         return (
-            self.remaining_tokens() == 0
-            or self.remaining_cost_usd() == 0.0
-            or self.remaining_steps() == 0
-            or self.remaining_wall_seconds() == 0.0
+            self.remaining_tokens() <= 0
+            or self.remaining_cost_usd() <= _COST_EPSILON
+            or self.remaining_steps() <= 0
+            or self.remaining_wall_seconds() <= _WALL_EPSILON
         )
 
     # ── spend ────────────────────────────────────────────────────────
