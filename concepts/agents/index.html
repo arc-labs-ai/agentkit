@@ -742,6 +742,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#durable-state-one-slot-per-producer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durable state: one slot per producer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#how-a-run-ends" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1970,6 +1981,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#durable-state-one-slot-per-producer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durable state: one slot per producer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#how-a-run-ends" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2146,6 +2168,22 @@ about the others. Workflow's <code>human_gate</code> node suspends the workflow
   cognition, because <code>elicit(ctx, ...)</code> takes a <code>Ctx</code>, not an <code>Agent</code>.
   See <a href="../../recipes/elicit-a-value-from-a-human/">the recipe</a>.</li>
 </ul>
+<h3 id="durable-state-one-slot-per-producer">Durable state: one slot per producer<a class="headerlink" href="#durable-state-one-slot-per-producer" title="Anchor link">&para;</a></h3>
+<p>Every producer that checkpoints — the tool loop, <code>Workflow</code>, the coordinator
+policies — resolves its durable seam through the same order: an explicit
+<code>checkpointer=</code> on the cognition, then <code>ctx.checkpointer</code>, then a bridge over
+<code>ctx.store</code>. Three separate orders is how a <code>Services(store=...)</code> wiring ended
+up giving durable tool-loop runs, durable workflow gates, and coordinator runs
+that persisted nothing.</p>
+<p>Slots are namespaced per producer, so they cannot collide. The tool loop owns
+<code>ReActCognition.checkpoint_slot(run_id, agent_name)</code> —
+<code>"{run_id}:agent:{name}"</code> — while a coordinator owns the bare run id. Without
+that, a coordinator and its children shared one slot, and a child finishing
+normally called <code>delete(run_id)</code> and took the coordinator's in-progress state
+with it.</p>
+<p><code>Suspended.run_id</code> still carries the plain run id you pass back to
+<code>Agent.resume</code>; the slot is re-derived internally. Two children sharing one
+agent <em>name</em> in a single run still share a slot — name them distinctly.</p>
 <h3 id="how-a-run-ends">How a run ends<a class="headerlink" href="#how-a-run-ends" title="Anchor link">&para;</a></h3>
 <p><code>AgentResult.stop_reason</code> is a closed <code>Literal</code>, so the terminal state
 is something you branch on rather than sniff out of a dict:</p>
@@ -2247,7 +2285,7 @@ make it correct.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 16, 2026 20:55:51 UTC">August 16, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 21:47:32 UTC">August 22, 2026</span>
   </span>
 
     
