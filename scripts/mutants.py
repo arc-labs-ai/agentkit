@@ -115,6 +115,10 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+ROUTING_TESTS = (
+    "tests/agents/test_routing_accuracy.py",
+    "tests/agents/test_handoff.py",
+)
 PLAN_GATE_TESTS = (
     "tests/agents/test_plan_durable_gate.py",
     "tests/agents/test_plan_policy.py",
@@ -130,6 +134,87 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── routing: who speaks next is who the model named ─────────────────────
+    Mutant(
+        tag="routing",
+        why="the roster is scanned in its own order, so a negated name wins",
+        path="agentkit/agents/policies/selector_policy.py",
+        before="        if best is None or cand[:2] > best[:2]:",
+        after="        if best is None:",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="substring matching, so 'bob' is found inside 'nobody' and 'bobby'",
+        path="agentkit/agents/policies/selector_policy.py",
+        before='        for m in re.finditer(rf"(?<!\\w){re.escape(n)}(?!\\w)", reply):',
+        after="        for m in re.finditer(re.escape(n), reply):",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="the FIRST mention wins, so reasoning-aloud beats the conclusion",
+        path="agentkit/agents/policies/selector_policy.py",
+        before="            last = m.start()",
+        after="            last = m.start() if last is None else last",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="an exact reply loses to a longer roster entry containing it",
+        path="agentkit/agents/policies/selector_policy.py",
+        before="    stripped = reply.strip()\n    for n in names:\n        if stripped == n:\n            return n\n",
+        after="",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="an invented handoff target is returned verbatim, ignoring the default",
+        path="agentkit/agents/control/handoff.py",
+        before="        resolved = _resolve_target(ho.target, agents)",
+        after="        resolved = ho.target",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="an invented target falls back in silence",
+        path="agentkit/agents/control/handoff.py",
+        before="        if ho.target not in warned:",
+        after="        if False:",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="the same hallucination warns once per turn",
+        path="agentkit/agents/control/handoff.py",
+        before="            warned.add(ho.target)",
+        after="            pass",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="an ambiguous case-fold is GUESSED instead of deferring to the default",
+        path="agentkit/agents/control/handoff.py",
+        before="    return folded[0] if len(folded) == 1 else None",
+        after="    return folded[0] if folded else None",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="an empty roster rejects every target, breaking direct callers",
+        path="agentkit/agents/control/handoff.py",
+        before="    if not names:\n        return target",
+        after="    if not names:\n        return None",
+        tests=ROUTING_TESTS,
+    ),
+    Mutant(
+        tag="routing",
+        why="trailing punctuation stays on the target, matching no roster entry",
+        path="agentkit/agents/control/handoff.py",
+        before='    target = parts[0].rstrip(".,;:!?)\\"\'")',
+        after="    target = parts[0]",
+        tests=ROUTING_TESTS,
+    ),
     # ── the plan's human gate must be durable on a REAL store ───────────────
     Mutant(
         tag="plangate",

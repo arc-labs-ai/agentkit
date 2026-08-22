@@ -57,13 +57,16 @@ class Handoff:
     next turn should be `target`, with this context." The coordinator's SelectorPolicy
     interprets it; the receiving agent inherits the transcript and the shared scratchpad.
 
-    `target` — the name of the receiving agent. Must exist in the coordinator's roster; an
-        unknown target falls back to the selector's default (never stalls the run).
+    `target` — the name of the receiving agent. Must exist in the coordinator's roster;
+        ``route_by_handoff`` checks it and falls back to the selector's default (never
+        stalls the run), warning once per invented name. Matching is exact, or a unique
+        case-insensitive match — so ``HANDOFF:Bob`` still reaches a child named ``bob``.
     `reason` — a short human-readable reason for the transfer. Goes into traces and the
         rendered marker so the receiving agent sees *why* it was handed control.
-    `message` — optional text the orchestrator wants the receiving agent to see as the next
-        user turn. If empty, the receiving agent just inherits the transcript with no fresh
-        task framing. Multi-line is fine; it's wrapped inside the marker render.
+    `message` — optional text for the receiving agent. It is appended to the rendered
+        marker on its own line, so it reaches the next agent inside the rendered transcript
+        — NOT as a separate user message. If empty, the receiving agent just inherits the
+        transcript with no fresh task framing. Multi-line is fine.
     """
 
     target: str
@@ -106,7 +109,14 @@ def parse_handoff(text: str, *, marker: str = HANDOFF_MARKER) -> Handoff | None:
     parts = first_line.split(None, 1)  # split on any whitespace, max 2 tokens
     if not parts:
         return None
-    target = parts[0]
+    # Strip trailing sentence punctuation from the target token. "HANDOFF:bob."
+    # is what a model actually writes when it ends a sentence, and a target of
+    # ``"bob."`` matches no roster entry — so the handoff was silently lost.
+    # Only TRAILING punctuation goes: an agent name is free to contain dots or
+    # dashes internally (``team.research-v2``).
+    target = parts[0].rstrip(".,;:!?)\"'")
+    if not target:
+        return None
     reason = parts[1].strip() if len(parts) > 1 else ""
     message = rest.strip()
     return Handoff(target=target, reason=reason, message=message)
@@ -182,14 +192,24 @@ def route_by_handoff(default: str = "", *, marker: str = HANDOFF_MARKER) -> Sele
     """Build a coordinator selector (a `Selector` per `agents/control/selector.py`) that routes by `Handoff`.
 
     Reads the LAST assistant-or-tool message in the transcript. If it carries a Handoff
-    (parsed via `parse_handoff`), routes to the named target. Otherwise returns `default` —
-    or, when `default == ""`, returns `None` so the coordinator falls back to round-robin
-    (never stalls the run).
+    (parsed via `parse_handoff`) naming a child that IS on the roster, routes there.
+    Otherwise returns `default` — or, when `default == ""`, returns `None` so the
+    coordinator falls back to round-robin (never stalls the run).
+
+    The roster check is the part that was missing. An invented target used to be returned
+    verbatim, and ``SelectorPolicy`` — which cannot route a name it does not have —
+    discarded it and fell back to round-robin by turn index. So a pinned ``default`` never
+    got the turn precisely when it was needed most: the model had just named an agent that
+    does not exist. Each distinct invented name now warns once.
 
     This supersedes `handoff_selector` for new code: same wire format (the `HANDOFF:` marker),
     but it returns a typed `Handoff` internally and degrades gracefully when no default is
     pinned. Keep using `handoff_selector` if you specifically want the always-fallback-to-a-
     pinned-default behaviour the older signature codifies."""
+
+    # Distinct invented targets already reported, so a model looping on the same
+    # hallucination warns once rather than once per turn.
+    warned: set[str] = set()
 
     def _select(transcript: Sequence[Message], agents: Sequence[Any]) -> str | None:
         # Read the LAST message in the transcript, regardless of role — matches the existing
@@ -197,11 +217,56 @@ def route_by_handoff(default: str = "", *, marker: str = HANDOFF_MARKER) -> Sele
         # the first turn. The marker is what matters, not the role that wrote it.
         last_text = transcript[-1].content if transcript else ""
         ho = parse_handoff(last_text or "", marker=marker)
-        if ho is not None:
-            return ho.target
-        return default or None  # "" → None → coordinator's own round-robin fallback
+        if ho is None:
+            return default or None  # "" → None → coordinator's own round-robin fallback
+        resolved = _resolve_target(ho.target, agents)
+        if resolved is not None:
+            return resolved
+        if ho.target not in warned:
+            warned.add(ho.target)
+            import warnings
+
+            roster = sorted(_roster_names(agents))
+            warnings.warn(
+                f"handoff target {ho.target!r} is not on the coordinator's roster "
+                f"({roster or ['<empty>']}); falling back to "
+                + (f"{default!r}" if default else "the coordinator's round-robin")
+                + ". The model named an agent that does not exist — constrain it with "
+                "handoff_tool(targets=[...]), whose schema enum makes that impossible.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return default or None
 
     return _select
+
+
+def _roster_names(agents: Sequence[Any]) -> list[str]:
+    """The coordinator's child names, as the selector sees them. Children are
+    duck-typed (anything with ``.name`` + ``.run``), so read defensively."""
+    return [n for n in (getattr(a, "name", "") for a in agents) if n]
+
+
+def _resolve_target(target: str, agents: Sequence[Any]) -> str | None:
+    """Resolve a marker's target against the roster, or ``None`` if it is not there.
+
+    An **empty roster** resolves everything: a caller invoking the selector
+    directly (a unit test, a custom loop that passes no agents) must keep the
+    pre-validation behaviour rather than have every target rejected.
+
+    An exact name wins. Failing that, a UNIQUE case-insensitive match wins —
+    ``HANDOFF:Bob`` for a child named ``bob`` has exactly one possible meaning,
+    and canonicalising it is not a guess. Two children differing only by case
+    make it ambiguous, and ambiguity is not resolved: the caller's ``default``
+    takes over.
+    """
+    names = _roster_names(agents)
+    if not names:
+        return target
+    if target in names:
+        return target
+    folded = [n for n in names if n.casefold() == target.casefold()]
+    return folded[0] if len(folded) == 1 else None
 
 
 __all__ = [

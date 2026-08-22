@@ -89,6 +89,23 @@ about the others. Workflow's `human_gate` node suspends the workflow
   `EscalateSignal`, …). `Handoff` is separate: it's a routing verb
   consumed by `SelectorPolicy` / `route_by_handoff`, not a member of
   the progress/done data-signal family.
+- **`Handoff` + routing** — `route_by_handoff(default=...)` reads the
+  `HANDOFF:<target>` marker off the last message and routes to that
+  child. The target is **checked against the roster**: an invented name
+  falls back to `default` (warning once per name) rather than being
+  passed to a policy that cannot route it, and matching tolerates a
+  case difference and trailing sentence punctuation, because
+  `HANDOFF:Bob.` is what a model actually writes. Constrain the model
+  properly with `handoff_tool(targets=[...])` — its schema enum makes
+  an invented target impossible in the first place.
+- **`llm_selector`** — asks a model who speaks next. It resolves the
+  reply by *exact match*, else the **last whole-word mention**, longest
+  name winning a tie. Reading the last mention follows `parse_handoff`'s
+  `rfind` precedent: a model that reasons aloud commits at the end. The
+  earlier version scanned the roster in its own order for a substring,
+  so `"Not alice — bob should go next"` routed to **alice** and a roster
+  name living inside an ordinary word (`ed` in `proceed`) counted as a
+  choice.
 - **`RunPolicy`** — global lethal-trifecta gate (no tool can *both*
   read external content, write it, and send network calls without
   explicit approval). Fires once before the first cognition drive.

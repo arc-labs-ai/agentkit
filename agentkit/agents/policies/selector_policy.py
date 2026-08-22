@@ -13,6 +13,7 @@ Also hosts ``llm_selector`` — the LLM-driven who-speaks-next selector — and
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -248,7 +249,15 @@ class SelectorPolicy:
 
 def handoff_selector(default: str, *, marker: str = "HANDOFF:") -> Selector:
     """Build a swarm-style handoff selector. The next speaker is named on the **last
-    message** as ``HANDOFF:<name>``; absent a marker, ``default`` speaks."""
+    message** as ``HANDOFF:<name>``; absent a marker, ``default`` speaks.
+
+    LEGACY. It does not check the named target against the roster, so an
+    invented name reaches ``SelectorPolicy``, which discards it and falls back
+    to round-robin by turn index — the pinned ``default`` never gets the turn.
+    :func:`~agentkit.agents.control.handoff.route_by_handoff` validates, and is
+    what new code should use. Kept as-is because callers depend on this exact
+    (unvalidated) behaviour.
+    """
 
     def _select(transcript: Sequence[Message], agents: Sequence[Any]) -> str | None:
         content = transcript[-1].content if transcript else ""
@@ -260,6 +269,48 @@ def handoff_selector(default: str, *, marker: str = "HANDOFF:") -> Selector:
         return default
 
     return _select
+
+
+def _resolve_roster_name(reply: str, names: Sequence[str]) -> str | None:
+    """Which roster name did this model reply name, if any?
+
+    Three rules, in order, each fixing a way the naive
+    ``next(n for n in names if n in out)`` got it wrong:
+
+    1. **An exact reply wins.** The instruction asks for ONLY a name, so a
+       stripped reply that equals a roster name is unambiguous — including when
+       one name is a prefix of another. Substring scanning answered ``"bob"``
+       for a reply of ``"bobby"`` off a ``["bob", "bobby"]`` roster.
+    2. **Otherwise the LAST whole-word mention wins.** Scanning names in ROSTER
+       order answered ``"alice"`` for ``"Not alice — bob should go next"``: the
+       first roster entry that appeared anywhere in the reply, regardless of
+       where or why. Reading the last mention follows the precedent
+       ``parse_handoff`` already sets with its ``rfind`` — a model that reasons
+       aloud and then commits does so at the end. Whole-word matching (rather
+       than ``in``) is what stops ``"planner"`` from being read as ``"plan"``.
+    3. **Ties at the same offset go to the longest name**, so ``"bobby"`` beats
+       the ``"bob"`` inside it.
+
+    Returns ``None`` when no roster name is mentioned, which the policy treats
+    as "fall back to round-robin".
+    """
+    stripped = reply.strip()
+    for n in names:
+        if stripped == n:
+            return n
+    best: tuple[int, int, str] | None = None
+    for n in names:
+        if not n:
+            continue
+        last = None
+        for m in re.finditer(rf"(?<!\w){re.escape(n)}(?!\w)", reply):
+            last = m.start()
+        if last is None:
+            continue
+        cand = (last, len(n), n)
+        if best is None or cand[:2] > best[:2]:
+            best = cand
+    return best[2] if best is not None else None
 
 
 def llm_selector(
@@ -281,7 +332,7 @@ def llm_selector(
             f"Conversation so far:\n{render_transcript(list(transcript))}\n\n{instruction}"
         )
         out = (await chooser.run(prompt, ctx.child())).output or ""
-        return next((n for n in names if n in out), None)
+        return _resolve_roster_name(out, names)
 
     return _select
 

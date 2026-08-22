@@ -11,6 +11,35 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — routing picks the agent the model actually named
+
+- **`llm_selector` scanned the roster in its own order for a substring.** The
+  whole selector was `next((n for n in names if n in out), None)`, so a reply of
+  `"Not alice — bob should go next"` routed to **alice** — the first roster entry
+  appearing anywhere in the reply, regardless of where or why. A roster name
+  living inside an ordinary word counted as a choice (`ed` inside `proceed`), and
+  a `["bob", "bobby"]` roster resolved a reply of `"bobby"` to **bob**.
+
+  Resolution is now: an exact reply wins; otherwise the LAST whole-word mention
+  wins, longest name breaking a tie at the same offset. Reading the last mention
+  follows the precedent `parse_handoff` already sets with its `rfind` — a model
+  that reasons aloud commits at the end.
+
+- **`route_by_handoff` never checked its target against the roster,** though the
+  docstring said it did. An invented name was returned verbatim; `SelectorPolicy`
+  cannot route a name it does not have, so it discarded the choice and fell back
+  to round-robin by turn index — meaning the operator's pinned `default` was
+  ignored at exactly the moment it mattered most. Targets are now resolved
+  against the roster (exact, or a unique case-insensitive match, so `HANDOFF:Bob`
+  still reaches `bob`), with a one-shot warning per invented name. An ambiguous
+  case-fold is not guessed, and an empty roster keeps the old behaviour so direct
+  callers are unaffected.
+
+- **`parse_handoff` kept trailing punctuation on the target.** `HANDOFF:bob.`
+  yielded `target="bob."`, which matches no roster entry — so the handoff a model
+  wrote at the end of a sentence was silently lost. Internal punctuation
+  survives, since `team.research-v2` is a legal agent name.
+
 ### Fixed — the plan human-gate is durable on a real store
 
 - **The gate checkpoint held live dataclasses.** `PlanPolicy` put `Step`,
