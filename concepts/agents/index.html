@@ -764,6 +764,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#plan-shape-is-checked-before-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plan shape is checked before dispatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#model-capability-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2003,6 +2014,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#plan-shape-is-checked-before-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plan shape is checked before dispatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#model-capability-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2184,6 +2206,45 @@ with it.</p>
 <p><code>Suspended.run_id</code> still carries the plain run id you pass back to
 <code>Agent.resume</code>; the slot is re-derived internally. Two children sharing one
 agent <em>name</em> in a single run still share a slot — name them distinctly.</p>
+<table>
+<thead>
+<tr>
+<th>Producer</th>
+<th>Slot</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tool loop (<code>ReActCognition</code>)</td>
+<td><code>{run_id}:agent:{name}</code></td>
+</tr>
+<tr>
+<td>Coordinator policies</td>
+<td><code>{run_id}</code></td>
+</tr>
+<tr>
+<td><code>PlanPolicy</code> human gate</td>
+<td><code>{run_id}:plan</code></td>
+</tr>
+<tr>
+<td><code>Workflow</code></td>
+<td><code>{run_id}</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Durable state is encoded, not stored raw.</strong> A producer writes JSON-safe
+dicts even when the backing store would happily hold live objects. That is
+not ceremony: <code>PlanPolicy</code> used to put <code>Step</code> / <code>Usage</code> / <code>AgentResult</code>
+instances straight into <code>ctx.store.set</code>, so its human gate tested green on
+<code>InMemoryStore</code> and raised <code>TypeError: Object of type Step is not JSON
+serializable</code> on a <code>FileStore</code> — the feature did not work on the
+persistence anyone deploys. Encoding unconditionally is what keeps an
+in-memory test honest about the wire.</p>
+<p>One consequence worth knowing: a child result's <code>evals</code> / <code>parsed</code> can hold
+anything. If they will not serialize, the plan drops those two fields with a
+warning rather than letting the suspend itself raise — losing the whole run
+at the gate is the worst available outcome. Return JSON-safe values from
+<code>output=</code> parsers to keep them.</p>
 <h3 id="how-a-run-ends">How a run ends<a class="headerlink" href="#how-a-run-ends" title="Anchor link">&para;</a></h3>
 <p><code>AgentResult.stop_reason</code> is a closed <code>Literal</code>, so the terminal state
 is something you branch on rather than sniff out of a dict:</p>
@@ -2221,14 +2282,70 @@ is something you branch on rather than sniff out of a dict:</p>
 </tr>
 <tr>
 <td><code>terminated</code></td>
-<td>A <code>TerminationCondition</code> fired (its own wording is in <code>evals["stop_reason"]</code>)</td>
+<td>Stopped deliberately: a <code>TerminationCondition</code> fired, a person declined at a gate, a run was cancelled (the exact wording is in <code>evals["stop_reason"]</code>)</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>The run errored and the cognition reported it as <em>data</em> rather than raising — only <code>ClaudeCliCognition</code> does this, so its guarantee of a terminal event survives a subprocess that never starts</td>
 </tr>
 </tbody>
 </table>
 <p><code>result.is_suspended</code> and <code>result.is_resumable</code> are the two
-convenience reads. A run that <strong>failed</strong> produces no <code>AgentResult</code> at
-all — the exception propagates — which is exactly what makes
-"waiting for you" and "it fell over" distinguishable.</p>
+convenience reads. A run that <strong>failed</strong> usually produces no
+<code>AgentResult</code> at all — the exception propagates — which is what makes
+"waiting for you" and "it fell over" distinguishable. <code>failed</code> covers
+the one deliberate exception to that rule.</p>
+<p><strong>Every producer maps onto this table</strong>, coordinators included. A
+policy's own vocabulary is richer than the taxonomy — a plan says
+<code>awaiting_decision</code>, a ledger says <code>max_rounds</code>, a round-robin says
+<code>max_turns</code> — so each keeps its exact word in <code>evals["stop_reason"]</code>
+and maps the category onto the typed field with
+<code>agentkit.agents.result.stop_reason_for</code>. The mapping is <em>total</em>: an
+unrecognised reason (a custom <code>TerminationCondition</code>'s wording)
+becomes <code>terminated</code> rather than a guess.</p>
+<p>That mapping is not decoration. While the policies skipped it, a plan
+parked on a human gate reported <code>stop_reason="complete"</code> and
+<code>is_suspended is False</code> with its checkpoint sitting in the store — so
+an application branching on the typed field never asked its human and
+never resumed. If you write your own policy, map the reason; a
+source-level test refuses a new framework reason that is categorised
+nowhere.</p>
+<h3 id="plan-shape-is-checked-before-dispatch">Plan shape is checked before dispatch<a class="headerlink" href="#plan-shape-is-checked-before-dispatch" title="Anchor link">&para;</a></h3>
+<p><code>PlanPolicy</code> validates a plan against the coordinator's child roster
+<em>before</em> the first step runs, raising <code>PlanShapeError</code> (a <code>ValueError</code>)
+on three shapes:</p>
+<table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Why it is refused</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A step naming a child that isn't on the coordinator</td>
+<td>Under <code>best_effort=False</code> there is nothing to dispatch. It used to raise a bare <code>KeyError('reseacher')</code> from inside the dispatch loop — after the earlier groups had run and spent, and with their results unreachable</td>
+</tr>
+<tr>
+<td>A step with neither an <code>agent</code> nor a <code>gate_name</code></td>
+<td>Nothing to dispatch and nothing to wait for</td>
+</tr>
+<tr>
+<td>A gate sharing a group with dispatch steps</td>
+<td>A gate suspends its whole group <em>before</em> any step runs, and resume continues at the group <strong>after</strong> it — so those steps were announced in the trace and then never ran, on approve <em>and</em> on reject. Whether the work belongs before or after the decision is exactly what the plan failed to say</td>
+</tr>
+</tbody>
+</table>
+<p><code>best_effort=True</code> treats only the first of those as data, not an
+error: a live <code>Planner</code> names the child it wants, so an unknown name
+can be a runtime answer rather than a typo. It lands in
+<code>evals["errors"]</code> as a <code>PERMANENT</code> <code>Failure</code> — re-dispatching a name
+that isn't on the roster cannot succeed — and the rest of the plan
+runs. That is the mode's whole promise, and a mid-loop <code>KeyError</code>
+could not keep it.</p>
+<p><code>resume</code> re-validates, because the roster is re-supplied by the caller
+and a service that rebuilds its coordinator from config can lose a
+child between suspend and resume.</p>
 <h3 id="model-capability-contract">Model capability contract<a class="headerlink" href="#model-capability-contract" title="Anchor link">&para;</a></h3>
 <p><code>Agent(requires=("vision",), min_context_window=100_000)</code> is checked
 at <strong>construction</strong>, against the
@@ -2285,7 +2402,7 @@ make it correct.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 21:47:32 UTC">August 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 22:14:06 UTC">August 22, 2026</span>
   </span>
 
     
