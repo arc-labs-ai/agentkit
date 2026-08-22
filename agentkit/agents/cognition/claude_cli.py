@@ -183,9 +183,11 @@ class ClaudeCliCognition:
     own ``model`` wins so a caller can point the CLI at a different model
     than the rest of the agentkit chain).
 
-    Emits: ``message_delta`` for token chunks (one per ``assistant`` message
-    text block streamed by the CLI), ``tool_call`` / ``tool_result`` for each
-    CLI tool event, exactly one terminal ``final`` event carrying
+    Emits: ``message_delta`` per completed assistant text block — or per TOKEN
+    with ``partial_messages=True``, which turns on the CLI's
+    ``--include-partial-messages`` and streams the provider's own deltas;
+    ``tool_call`` / ``tool_result`` for each CLI tool event; ``step`` for a
+    provider retry; exactly one terminal ``final`` event carrying
     ``AgentResult(output=<accumulated assistant text>, usage=<Usage>,
     evals={"session_id": ..., "cli_duration_ms": ...})``.
 
@@ -234,6 +236,15 @@ class ClaudeCliCognition:
     # Set explicitly to override, or to ``{}``-free JSON Schema for an agent
     # that declares no ``output=``.
     json_schema: dict[str, Any] | None = None
+
+    # ``--include-partial-messages``: token-level streaming. Without it the CLI
+    # emits one ``assistant`` message per completed block, so a
+    # ``message_delta`` arrives per PARAGRAPH, not per token — fine for a
+    # backend, wrong for a UI with a cursor in it. With it on, the deltas come
+    # from ``stream_event`` payloads and the completed ``assistant`` message is
+    # used only to accumulate the authoritative text (never re-emitted, or the
+    # consumer would see every sentence twice).
+    partial_messages: bool = False
 
     # ── environment: what the session can reach ─────────────────────────────
     # ``--add-dir``: directories outside ``working_dir`` the session may read
@@ -437,6 +448,8 @@ class ClaudeCliCognition:
         is_error = False
         stop_reason: str | None = None
         structured_output: Any = None
+        init_info: dict[str, Any] = {}
+        api_retries: list[dict[str, Any]] = []
         # Set once the schema is resolved. Initialised False so a spawn that
         # dies before resolution still reaches the terminal event.
         schema_requested = False
@@ -500,7 +513,9 @@ class ClaudeCliCognition:
                         payload = _parse_line(line)
                         if payload is None:
                             continue
-                        async for ev, delta in _events_from_payload(payload):
+                        async for ev, delta in _events_from_payload(
+                            payload, partial=self.partial_messages
+                        ):
                             if ev is not None:
                                 yield ev
                             if delta.text:
@@ -519,6 +534,10 @@ class ClaudeCliCognition:
                                 stop_reason = delta.stop_reason
                             if delta.structured_output is not None:
                                 structured_output = delta.structured_output
+                            if delta.init:
+                                init_info = delta.init
+                            if delta.api_retry is not None:
+                                api_retries.append(delta.api_retry)
                 finally:
                     if cancelled and proc.returncode is None:
                         await _terminate(proc, self.terminate_grace_s)
@@ -647,6 +666,17 @@ class ClaudeCliCognition:
             evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
+        if init_info:
+            # Startup facts an operator needs when a run behaves oddly: which
+            # model actually ran, which MCP servers connected — and which were
+            # SKIPPED. ``mcp_server_errors`` / ``plugin_errors`` appear only
+            # when non-empty, so their presence is the CI gate the CLI docs
+            # recommend.
+            evals["cli_init"] = init_info
+        if api_retries:
+            # The CLI retried the provider. A run that took 40s with one API
+            # call is explained by this and nothing else in the result.
+            evals["api_retries"] = api_retries
         if structured_output is not None:
             # The RAW validated dict, alongside the typed ``parsed`` object. A
             # caller that declared no Python type still wants the data.
@@ -853,6 +883,8 @@ class ClaudeCliCognition:
             # entry. ``("",)`` — the documented "disable all tools" spelling —
             # therefore survives as a single empty argument.
             argv += ["--tools", *self.tools]
+        if self.partial_messages:
+            argv += ["--include-partial-messages"]
         if self.bare:
             argv += ["--bare"]
         if self.stable_prompt_prefix:
@@ -988,6 +1020,8 @@ class _EventDelta:
     # explicitly, so ``None`` here is meaningful and the drive loop needs to
     # distinguish "never asked for one" from "asked and did not get one".
     structured_output: Any = None
+    init: dict[str, Any] | None = None  # ``system/init`` startup metadata
+    api_retry: dict[str, Any] | None = None  # one ``system/api_retry`` payload
 
 
 def _parse_line(line: bytes) -> dict[str, Any] | None:
@@ -1010,7 +1044,7 @@ def _parse_line(line: bytes) -> dict[str, Any] | None:
 
 
 async def _events_from_payload(
-    payload: dict[str, Any],
+    payload: dict[str, Any], *, partial: bool = False
 ) -> AsyncIterator[tuple[StreamEvent | None, _EventDelta]]:
     """Translate one stream-json payload into zero or more
     ``(StreamEvent | None, _EventDelta)`` tuples.
@@ -1022,9 +1056,65 @@ async def _events_from_payload(
     ptype = payload.get("type")
 
     if ptype == "system":
-        # init metadata — capture session_id, no user-facing event
         sid = payload.get("session_id")
+        subtype = payload.get("subtype")
+        if subtype == "api_retry":
+            # The CLI retrying a failed API request. Surfaced as a ``step`` so
+            # an operator watching a stream sees WHY a run went quiet for
+            # thirty seconds instead of guessing.
+            attempt = payload.get("attempt")
+            retries = payload.get("max_retries")
+            reason = payload.get("error") or "unknown"
+            yield (
+                StreamEvent("step", text=f"api_retry:{reason} ({attempt}/{retries})"),
+                _EventDelta(session_id=str(sid) if sid else None, api_retry=dict(payload)),
+            )
+            return
+        if subtype == "init":
+            # Startup metadata: which model, which MCP servers connected, which
+            # ones were SKIPPED. The error keys are omitted entirely when empty,
+            # so their presence is the signal — that is what the CLI docs
+            # recommend gating CI on.
+            yield None, _EventDelta(
+                session_id=str(sid) if sid else None,
+                init={
+                    k: payload[k]
+                    for k in (
+                        "model",
+                        "mcp_servers",
+                        "mcp_server_errors",
+                        "plugin_errors",
+                        "claude_code_version",
+                        "permissionMode",
+                        "apiKeySource",
+                    )
+                    if k in payload
+                },
+            )
+            return
         yield None, _EventDelta(session_id=str(sid) if sid else None)
+        return
+
+    if ptype == "stream_event":
+        # Only present with ``--include-partial-messages``. One payload per
+        # provider SSE event; the only ones a consumer can render are the
+        # content deltas (``signature_delta`` / ``input_json_delta`` carry
+        # cryptographic and tool-argument fragments, which are not text).
+        event = payload.get("event") or {}
+        if event.get("type") != "content_block_delta":
+            return
+        delta = event.get("delta") or {}
+        dtype = delta.get("type")
+        if dtype == "text_delta":
+            chunk = str(delta.get("text") or "")
+            if chunk:
+                # NOT accumulated: the completed ``assistant`` message is the
+                # authoritative copy and folds the same text once.
+                yield StreamEvent("message_delta", text=chunk), _EventDelta()
+        elif dtype == "thinking_delta":
+            chunk = str(delta.get("thinking") or "")
+            if chunk:
+                yield StreamEvent("message_delta", text=chunk), _EventDelta()
         return
 
     if ptype == "assistant":
@@ -1036,7 +1126,14 @@ async def _events_from_payload(
             if btype == "text":
                 text = str(block.get("text") or "")
                 if text:
-                    yield StreamEvent("message_delta", text=text), _EventDelta(text=text)
+                    # Under partial streaming the consumer has already seen
+                    # this text token by token; re-emitting the whole block
+                    # would show every sentence twice. The state delta still
+                    # flows, because this message is the authoritative copy.
+                    yield (
+                        None if partial else StreamEvent("message_delta", text=text),
+                        _EventDelta(text=text),
+                    )
             elif btype == "thinking":
                 # Extended-thinking blocks (Opus / Sonnet with thinking on).
                 # Surface as a ``message_delta`` so live consumers see the
@@ -1047,7 +1144,7 @@ async def _events_from_payload(
                 thinking = str(block.get("thinking") or "")
                 if thinking:
                     yield (
-                        StreamEvent("message_delta", text=thinking),
+                        None if partial else StreamEvent("message_delta", text=thinking),
                         _EventDelta(thinking=thinking),
                     )
             elif btype == "tool_use":

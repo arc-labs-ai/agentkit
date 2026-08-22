@@ -11,6 +11,31 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — token streaming and startup diagnostics for the CLI cognition
+
+- **`partial_messages=True`** (`--include-partial-messages`) streams the
+  provider's own token deltas. Without it the CLI emits one `assistant` message
+  per *completed* block, so `message_delta` arrived per paragraph — the class
+  docstring called these "token chunks", which they were not.
+
+  Turning it on creates a duplication hazard, because the same text arrives
+  twice: once as `stream_event` deltas and again in the completed `assistant`
+  message. The rule is that deltas are for EMITTING and the completed message
+  is for ACCUMULATING, so a consumer sees each token once and
+  `AgentResult.output` is written once. Non-text deltas (`signature_delta`,
+  `input_json_delta`) are ignored rather than rendered as assistant text.
+
+- **`evals["cli_init"]`** carries the `system/init` startup facts: the model
+  that actually ran, which MCP servers connected, and — only when non-empty —
+  `mcp_server_errors` / `plugin_errors`. The CLI validates each `--mcp-config`
+  entry, skips the invalid ones and runs anyway, exiting cleanly, so their
+  presence is the signal and the CI gate the CLI docs recommend. All of it was
+  previously discarded.
+
+- **`evals["api_retries"]`** records each `system/api_retry`, and each one is
+  also emitted live as a `step` event — the only thing in the payload that
+  explains a run which went quiet for forty seconds.
+
 ### Added — the CLI flags a service actually ships with
 
 Reachable before only through `extra_args` — hand-written CLI syntax inside

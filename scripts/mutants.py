@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
 CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
 CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
 CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
@@ -147,6 +148,62 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── token streaming, without showing every sentence twice ───────────────
+    Mutant(
+        tag="clistream",
+        why="the completed block is re-emitted, so a UI renders every sentence twice",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                        None if partial else StreamEvent(\"message_delta\", text=text),",
+        after="                        StreamEvent(\"message_delta\", text=text),",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="token deltas also accumulate, doubling AgentResult.output",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta()\n        elif dtype == \"thinking_delta\":",
+        after="                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta(text=chunk)\n        elif dtype == \"thinking_delta\":",
+        tests=CLI_STREAM_TESTS,
+    ),
+    # NOTE: "non-text deltas are ignored" has no mutant. Each branch reads its
+    # OWN field (``delta["text"]`` / ``delta["thinking"]``), so a signature or
+    # tool-argument delta yields an empty string no matter which branch it
+    # reaches — every single-token mutation of that dispatch is equivalent. The
+    # behaviour is enforced by structure, and pinned by
+    # ``test_non_text_deltas_are_ignored``; forcing a kill here would mean
+    # adding a decision point that exists only to be mutated.
+    Mutant(
+        tag="clistream",
+        why="the partial-messages flag is never passed, so no tokens ever arrive",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='        if self.partial_messages:\n            argv += ["--include-partial-messages"]\n',
+        after="",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="a skipped MCP server is discarded with the rest of the init payload",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if init_info:\n            # Startup facts an operator needs",
+        after="        if False:\n            # Startup facts an operator needs",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="an empty error list is manufactured, so presence stops being the signal",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                    if k in payload\n                },",
+        after="                },",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="provider retries are invisible, leaving a 40s pause unexplained",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='        if subtype == "api_retry":',
+        after="        if False:",
+        tests=CLI_STREAM_TESTS,
+    ),
     # ── the flags a service ships with ──────────────────────────────────────
     Mutant(
         tag="cliops",

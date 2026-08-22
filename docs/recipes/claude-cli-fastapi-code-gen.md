@@ -181,6 +181,40 @@ ctx.budget.remaining()  # Decimal('1.750000')
 `Usage.cost_usd` remains a CLI-side estimate, so the ledger it feeds is an
 estimate too.
 
+## Streaming tokens
+
+By default the CLI emits one `assistant` message per **completed** content
+block, so `message_delta` arrives per paragraph. For a UI with a cursor in it,
+turn on partial messages:
+
+```python
+ClaudeCliCognition(partial_messages=True)   # --include-partial-messages
+```
+
+Each provider token then arrives as its own `message_delta`. The completed
+block still arrives too — the cognition uses it to accumulate
+`AgentResult.output` and does *not* re-emit it, so a consumer sees each token
+exactly once and the final text is written once. Thinking deltas stream the
+same way and stay out of `output` (they land in `evals["thinking"]`).
+
+## Diagnostics in the result
+
+```python
+result.evals["cli_init"]      # model, mcp_servers, mcp_server_errors, plugin_errors, version
+result.evals["api_retries"]   # one entry per provider retry (also emitted live as `step` events)
+result.evals["cli_duration_ms"]
+```
+
+`mcp_server_errors` and `plugin_errors` appear **only when non-empty** — the
+CLI validates each `--mcp-config` entry, skips invalid ones and runs anyway,
+exiting cleanly. Their presence is the signal, which makes them the CI gate
+the CLI docs recommend:
+
+```python
+if result.evals.get("cli_init", {}).get("mcp_server_errors"):
+    raise SystemExit("an MCP server did not load")
+```
+
 ## Running it as a service
 
 Four flags matter once this is behind an API rather than on your laptop.
