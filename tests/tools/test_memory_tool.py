@@ -265,3 +265,84 @@ def test_file_tool_satisfies_tool_protocol():
     from agentkit.tools.base import Tool
 
     assert isinstance(FileTool(), Tool)
+
+
+# ── Path confinement is the tool's security boundary ────────────────────────
+#
+# ``FileTool`` is designed to take an INJECTED backend, so ``_confine`` is what
+# stops a filesystem-backed one from becoming an arbitrary read/write/delete
+# primitive. The lexical traversal checks were already right; these pin the two
+# characters that slipped through and the honesty of the guarantee.
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "../etc/passwd",
+        "/etc/passwd",
+        "/memories/../etc/passwd",
+        "/memories/./../../etc",
+        "..",
+        "/",
+        "/memoriesX/secret",  # a sibling that merely shares the prefix
+        "/memories/a/../../../etc/shadow",
+        "/memories/..",
+    ],
+)
+def test_traversal_and_absolute_escapes_are_refused(path: str) -> None:
+    with pytest.raises(PermissionError):
+        FileTool()._confine(path)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("subdir/note.md", "/memories/subdir/note.md"),  # relative → under root
+        ("/memories//deep///note.md", "/memories/deep/note.md"),  # collapsed
+        ("/memories", "/memories"),  # the root itself is listable
+        ("/memories/ok.md", "/memories/ok.md"),
+    ],
+)
+def test_legitimate_paths_survive_normalisation(path: str, expected: str) -> None:
+    assert FileTool()._confine(path) == expected
+
+
+def test_a_backslash_is_refused() -> None:
+    r"""``posixpath`` reads ``\..\etc`` as one ordinary filename, so it passed
+    the traversal check — and then meant traversal to a backend running on
+    Windows. Refusing the character makes the guarantee platform-independent
+    rather than true only where it was tested."""
+    with pytest.raises(PermissionError, match="backslash"):
+        FileTool()._confine("\\..\\etc")
+    with pytest.raises(PermissionError, match="backslash"):
+        FileTool()._confine("/memories/win\\path")
+
+
+def test_a_nul_byte_is_refused() -> None:
+    """The classic C-level truncation trick. Python's own ``open`` rejects it,
+    but the backend is injected and need not be Python's."""
+    with pytest.raises(PermissionError, match="NUL"):
+        FileTool()._confine("/memories/a\x00b")
+
+
+def test_rename_confines_both_ends() -> None:
+    """The destination is a path too — confining only the source would make
+    ``rename`` the escape hatch for everything the other commands refuse."""
+    tool = FileTool()
+    asyncio.run(tool.run({"command": "create", "path": "/memories/a.md", "file_text": "x"}, None))
+    with pytest.raises(PermissionError):
+        asyncio.run(
+            tool.run({"command": "rename", "path": "/memories/a.md", "new_path": "/etc/evil"}, None)
+        )
+
+
+def test_delete_refuses_to_wipe_the_root() -> None:
+    """The backend deletes by prefix, so one ``delete("/memories")`` would erase
+    every note. The trailing-slash spelling must be refused too — it normalises
+    to the same path."""
+    tool = FileTool()
+    asyncio.run(tool.run({"command": "create", "path": "/memories/a.md", "file_text": "x"}, None))
+    for spelling in ("/memories", "/memories/"):
+        with pytest.raises(PermissionError):
+            asyncio.run(tool.run({"command": "delete", "path": spelling}, None))
+    assert asyncio.run(tool.run({"command": "view", "path": "/memories"}, None)) == "/memories/a.md"

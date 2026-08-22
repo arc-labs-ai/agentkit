@@ -11,6 +11,23 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Hardened — the memory tool's path confinement
+
+- `FileTool._confine` now refuses a **backslash** and a **NUL byte** outright.
+  `posixpath` reads `\..\etc` as one ordinary filename, so it passed the
+  traversal check — and then meant traversal to a backend running on Windows.
+  The guarantee is now platform-independent rather than true only where it was
+  tested. (The lexical `..`/absolute-escape checks were already correct; they
+  are now pinned by tests and mutants, including the sibling-prefix case
+  `/memoriesX` vs root `/memories`, and `rename` confining both ends.)
+
+- The docstring now states plainly that confinement is **lexical**: a symlink
+  inside the root that points outside it still escapes, because this check
+  cannot see the filesystem. A filesystem-backed implementation must re-check
+  after `os.path.realpath`. The previous wording promised that an injected
+  backend "can't be turned into an arbitrary read/write/delete primitive",
+  which was more than the code could deliver.
+
 ### Fixed — a tool call is checked against the schema the model was shown
 
 - **Unknown argument names were dropped silently.** A parameter with a DEFAULT

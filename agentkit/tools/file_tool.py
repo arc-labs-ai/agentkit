@@ -149,12 +149,41 @@ class FileTool:
             raise ValueError(f"memory {cmd!r}: missing required arg(s) {missing}")
 
     def _confine(self, path: Any) -> str:
-        """Normalize `path` and assert it stays under `self.root` — blocks `..` traversal and absolute
-        escapes (`/etc/passwd`) before any command reaches the backend, so an injected filesystem backend
-        can't be turned into an arbitrary read/write/delete primitive."""
+        r"""Normalize `path` and assert it stays under `self.root`.
+
+        Blocks ``..`` traversal and absolute escapes (``/etc/passwd``) before any
+        command reaches the backend, so an injected filesystem backend can't be
+        turned into an arbitrary read/write/delete primitive.
+
+        Two characters are refused outright rather than normalised:
+
+        * A **backslash**. ``posixpath`` treats ``\..\etc`` as one ordinary
+          filename, so it passed the check — and then meant traversal to a
+          backend running on Windows. The rejection makes the guarantee
+          platform-independent instead of true only where it was tested.
+        * A **NUL byte**, the classic C-level path truncation trick. Python's
+          own open() raises on it, but the backend is injected and need not be
+          Python's.
+
+        .. warning::
+           Confinement here is **lexical**. It cannot see the filesystem, so a
+           SYMLINK inside the root that points outside it still escapes — the
+           normalised path looks perfectly confined. A filesystem-backed
+           implementation must re-check after resolution
+           (``os.path.realpath``) before it opens anything. The in-memory
+           backend has no such concept and is unaffected.
+        """
         if not path:
             raise ValueError("memory: 'path' is required")
-        base = path if str(path).startswith("/") else posixpath.join(self.root, str(path))
+        raw = str(path)
+        if "\x00" in raw:
+            raise PermissionError("memory path contains a NUL byte")
+        if "\\" in raw:
+            raise PermissionError(
+                f"memory path {path!r} contains a backslash; paths are POSIX-style "
+                "('/memories/notes/x.md') and a backslash is traversal on some backends"
+            )
+        base = raw if raw.startswith("/") else posixpath.join(self.root, raw)
         norm = posixpath.normpath(base)
         if norm != self.root and not norm.startswith(self.root + "/"):
             raise PermissionError(f"memory path {path!r} escapes root {self.root!r}")

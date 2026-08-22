@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
     "tests/tools/test_tool_call_contract.py",
     "tests/tools/test_function_tool.py",
@@ -143,6 +144,47 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the memory tool's path confinement is its security boundary ─────────
+    Mutant(
+        tag="filetool",
+        why="a backslash path reaches the backend (traversal on a Windows-hosted one)",
+        path="agentkit/tools/file_tool.py",
+        before='        if "\\\\" in raw:',
+        after="        if False:",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="a NUL byte reaches the backend (C-level path truncation)",
+        path="agentkit/tools/file_tool.py",
+        before='        if "\\x00" in raw:',
+        after="        if False:",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="a sibling directory sharing the root's prefix passes confinement",
+        path="agentkit/tools/file_tool.py",
+        before='        if norm != self.root and not norm.startswith(self.root + "/"):',
+        after="        if norm != self.root and not norm.startswith(self.root):",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="rename confines only its source, becoming the escape hatch",
+        path="agentkit/tools/file_tool.py",
+        before='        return await self._fs.rename(path, self._confine(args.get("new_path")))',
+        after='        return await self._fs.rename(path, args.get("new_path"))',
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="delete wipes the whole root by prefix in one call",
+        path="agentkit/tools/file_tool.py",
+        before="            if path == self.root:",
+        after="            if False:",
+        tests=FILETOOL_TESTS,
+    ),
     # ── a tool call is checked against the schema the model was shown ───────
     Mutant(
         tag="toolargs",
