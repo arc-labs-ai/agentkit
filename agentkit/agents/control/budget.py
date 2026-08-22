@@ -82,6 +82,11 @@ class ActorBudget:
     "now - started_at" exceeds ``max_wall_seconds`` even without
     explicit ticks.
 
+    Every money-bearing parameter accepts anything ``to_money`` accepts —
+    ``float`` / ``int`` / ``str`` / ``Decimal`` — so a caller holding an exact
+    amount (``run_agents`` slices in ``Decimal``) is not forced through float
+    and back. Values are normalised on the way in.
+
     Concurrency: not thread-safe; assumed owned by a single agent's
     loop. Cross-agent budget interactions (parent's spawn /
     settlement of children) happen at well-defined transitions and
@@ -110,7 +115,7 @@ class ActorBudget:
         self,
         *,
         max_tokens: int,
-        max_cost_usd: float,
+        max_cost_usd: float | int | str | Decimal,
         max_steps: int,
         max_wall_seconds: float,
         clock: Callable[[], float] = _monotonic_seconds,
@@ -193,7 +198,7 @@ class ActorBudget:
         self,
         *,
         tokens: int = 0,
-        cost_usd: float = 0.0,
+        cost_usd: float | int | str | Decimal = 0.0,
         steps: int = 0,
     ) -> None:
         """Record actual spend. Soft-exceeds the cap (lets the
@@ -213,7 +218,7 @@ class ActorBudget:
         self,
         *,
         request_tokens: int,
-        request_cost_usd: float,
+        request_cost_usd: float | int | str | Decimal,
         request_steps: int,
     ) -> bool:
         """Precheck — would the requested slice fit?
@@ -231,7 +236,7 @@ class ActorBudget:
         self,
         *,
         tokens: int,
-        cost_usd: float,
+        cost_usd: float | int | str | Decimal,
         steps: int,
     ) -> None:
         """Move a slice from "available" to "reserved".
@@ -250,7 +255,7 @@ class ActorBudget:
             raise BudgetExhausted(
                 axis,
                 f"insufficient budget to spawn child requesting "
-                f"tokens={tokens} cost=${cost_usd:.4f} steps={steps}; "
+                f"tokens={tokens} cost=${float(cost_usd):.4f} steps={steps}; "
                 f"remaining tokens={self.remaining_tokens()} "
                 f"cost=${self.remaining_cost_usd():.4f} "
                 f"steps={self.remaining_steps()}",
@@ -264,10 +269,10 @@ class ActorBudget:
         self,
         *,
         reserved_tokens: int,
-        reserved_cost_usd: float,
+        reserved_cost_usd: float | int | str | Decimal,
         reserved_steps: int,
         used_tokens: int,
-        used_cost_usd: float,
+        used_cost_usd: float | int | str | Decimal,
         used_steps: int,
     ) -> None:
         """Settle a child's reservation against its actual usage.
@@ -301,7 +306,7 @@ class ActorBudget:
         self,
         *,
         new_max_tokens: int | None = None,
-        new_max_cost_usd: float | None = None,
+        new_max_cost_usd: float | int | str | Decimal | None = None,
         new_max_steps: int | None = None,
         new_max_wall_seconds: float | None = None,
     ) -> None:
@@ -333,15 +338,23 @@ class ActorBudget:
     # ── helpers ──────────────────────────────────────────────────────
 
     def _tightest_axis(
-        self, request_tokens: int, request_cost_usd: float, request_steps: int
+        self, request_tokens: int, request_cost_usd: float | int | str | Decimal, request_steps: int
     ) -> str:
         """Which axis would block a spawn first? Diagnostic for
-        ``BudgetExhausted`` so the error message points at the real
-        cause."""
+        ``BudgetExhausted`` so the error message points at the real cause.
+
+        The cost slack is computed in ``Decimal`` and then compared as a float.
+        Two reasons: a caller may hand us either a float or a ``Decimal``
+        (``run_agents`` now slices exactly, in Decimal), and mixing the two
+        raises ``TypeError`` — ``float - Decimal`` is unsupported, which turned
+        a diagnostic into a crash on the very path it exists to explain. The
+        comparison itself is a float because the three axes are different units
+        and only their relative slack matters here.
+        """
         slack = {
-            "tokens": self.remaining_tokens() - request_tokens,
-            "cost_usd": self.remaining_cost_usd() - request_cost_usd,
-            "steps": self.remaining_steps() - request_steps,
+            "tokens": float(self.remaining_tokens() - request_tokens),
+            "cost_usd": float(self.remaining_cost() - to_money(request_cost_usd)),
+            "steps": float(self.remaining_steps() - request_steps),
         }
         return min(slack, key=lambda k: slack[k])
 

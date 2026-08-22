@@ -12,11 +12,23 @@ import asyncio
 import concurrent.futures
 import contextvars
 from collections.abc import Awaitable, Coroutine
+from decimal import Decimal
 from typing import Any, TypeVar
 
 from agentkit.kernel.errors import Failure
 
 R = TypeVar("R")
+
+def _at_least_one(units: int) -> int:
+    """Floor-divided slice, never zero.
+
+    A zero-sized slice reserves nothing, so the reservation "succeeds" and the
+    child is handed an already-exhausted envelope — a fan-out that appears to
+    run and does nothing. Forcing one unit makes N children against fewer than
+    N units over-commit, which is what surfaces as ``BudgetExhausted`` before
+    any child starts.
+    """
+    return max(1, units)
 
 
 class _NeverRaised(Exception):
@@ -159,7 +171,7 @@ async def run_agents(
     # is fail-fast BEFORE we spawn any coroutines.
     parent_actor_budget: Any = getattr(ctx, "actor_budget", None)
     child_actor_budgets: list[Any] = [None] * n
-    reserved_slices: list[tuple[int, float, int] | None] = [None] * n
+    reserved_slices: list[tuple[int, Decimal, int] | None] = [None] * n
 
     if parent_actor_budget is not None and n > 0:
         # Late import — the runtime layer doesn't own ActorBudget, and eager
@@ -167,18 +179,56 @@ async def run_agents(
         # kernel's import chain.
         from agentkit.agents.control.budget import ActorBudget, BudgetExhausted
 
-        share = 1.0 / n
+        # Also lazy, and for the same reason: the KERNEL must not import the
+        # runtime at module scope. ``kernel.concurrency`` -> ``runtime.meter``
+        # pulls in ``runtime/__init__`` -> ``runtime.context`` ->
+        # ``kernel.concurrency``, which is a genuine cycle
+        # ("cannot import name 'CancellationToken' from partially initialized
+        # module"). Inside the function the runtime is fully built.
+        from agentkit.runtime.meter import MONEY_SCALE, to_money
+
+        # The smallest slice worth carving on the money axis — one unit at the
+        # ledger's scale. A slice rounding below this is starvation, not a
+        # budget.
+        money_unit = to_money(Decimal(1).scaleb(-MONEY_SCALE))
+
+        # An already-spent envelope cannot be carved at all, and saying so is
+        # better than the alternative. Without this, a fully-spent axis yields
+        # zero-sized slices, every reservation of zero "succeeds", and the
+        # caller gets N children that each stop on their first pre-flight —
+        # a fan-out that looks like it ran and did nothing. ``exhausted()`` is
+        # an OR across axes, so passing it guarantees EVERY axis has room and
+        # every ``base_*`` below is positive.
+        if parent_actor_budget.exhausted():
+            from agentkit.agents._agent_helpers import _tightest_exhausted_axis
+
+            raise BudgetExhausted(
+                _tightest_exhausted_axis(parent_actor_budget),
+                f"cannot fan out {n} child(ren): the parent actor budget is already "
+                f"exhausted on {_tightest_exhausted_axis(parent_actor_budget)}",
+            )
+
         base_tokens = parent_actor_budget.remaining_tokens()
-        base_cost = parent_actor_budget.remaining_cost_usd()
+        base_cost = parent_actor_budget.remaining_cost()  # exact, not the float mirror
         base_steps = parent_actor_budget.remaining_steps()
         base_wall = parent_actor_budget.remaining_wall_seconds()
-        slice_tokens = max(0, int(base_tokens * share))
-        slice_cost = base_cost * share
-        # ``max(1, …)`` on steps means "N children with < N remaining steps"
-        # over-commits by design — the tail of the reservation loop raises
-        # ``BudgetExhausted``, which is the fail-fast signal the caller wants
-        # instead of silently starving each child of any step budget.
-        slice_steps = max(1, int(base_steps * share)) if base_steps > 0 else 0
+
+        # Equal slices, so the order reservations happen in cannot skew
+        # fairness. Floor division strands at most n-1 of the smallest unit on
+        # each axis (a micro-dollar, a token, a step) until the next fan-out
+        # re-reads ``remaining_*`` — accepted deliberately, because handing the
+        # remainder to whichever child happens to be first is a worse property
+        # than leaving a rounding crumb.
+        #
+        # ``_at_least_one`` is what makes a STARVED axis fail fast rather than
+        # silently starve: N children against fewer than N units over-commits,
+        # so the reservation loop below raises ``BudgetExhausted`` before any
+        # child runs. Previously only ``steps`` did this — tokens and cost
+        # floored to zero, producing exactly the no-op children described
+        # above, on two of the three axes.
+        slice_tokens = _at_least_one(base_tokens // n)
+        slice_steps = _at_least_one(base_steps // n)
+        slice_cost = max(money_unit, to_money(base_cost / n))
 
         try:
             for idx in range(n):
@@ -191,11 +241,17 @@ async def run_agents(
                 child_actor_budgets[idx] = ActorBudget(
                     max_tokens=slice_tokens,
                     max_cost_usd=slice_cost,
-                    max_steps=max(slice_steps, 1),
+                    # Exactly what was reserved — no ``max(slice_steps, 1)``
+                    # floor. Granting a step that was never reserved let a
+                    # child spend on an axis the parent had not committed, and
+                    # ``settle_child`` caps usage at the reservation, so that
+                    # spend was invisible on the parent's books. The slice is
+                    # already >= 1 by construction.
+                    max_steps=slice_steps,
                     # Wall isn't a reservation axis on the parent — pass the
                     # parent's remaining wall_seconds so the child's clock
                     # respects the same deadline without double-counting.
-                    max_wall_seconds=base_wall if base_wall > 0 else 1.0,
+                    max_wall_seconds=base_wall,
                 )
         except BudgetExhausted:
             # Release the already-reserved slices so the parent's books
