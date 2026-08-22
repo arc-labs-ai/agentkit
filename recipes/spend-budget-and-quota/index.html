@@ -2163,9 +2163,19 @@ never raises, so an in-flight call always completes, and the cognition's
 next pre-flight stops the loop with <code>stop_reason="budget_exhausted"</code> naming
 the axis that ran out. A token-out is a "wind down" signal; a wall-out may
 warrant a hard cancel, and the reason string tells you which.</p>
-<p><code>BudgetExhausted</code> (distinct from <code>Budget</code>'s <code>MeterExceeded</code>) is raised by
-<code>reserve_for_child</code> when a fan-out cannot be carved at all — fail-fast,
-before any child runs.</p>
+<p><code>BudgetExhausted</code> (distinct from <code>Budget</code>'s <code>MeterExceeded</code>) is raised when a
+fan-out cannot be carved — <strong>fail-fast, before any child runs</strong>, on any of the
+three reservation axes:</p>
+<ul>
+<li>the parent envelope is already exhausted, or</li>
+<li>a slice would round to nothing (N children against fewer than N tokens,
+  steps, or micro-dollars).</li>
+</ul>
+<p>Both cases used to produce N children that each stopped on their first check —
+a fan-out that looked like it ran and did nothing. The exception names the
+axis. Slices are equal (so reservation order cannot skew fairness) and the
+money axis is carved in <code>Decimal</code>, so nothing is lost to float rounding; each
+child is granted exactly what was reserved for it and no more.</p>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong><code>meter()</code> is not on by default.</strong> You wire it into
@@ -2231,7 +2241,7 @@ before any child runs.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 20:33:40 UTC">August 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 20:52:43 UTC">August 22, 2026</span>
   </span>
 
     
