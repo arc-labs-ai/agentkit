@@ -18,12 +18,27 @@ class Egress(BaseMiddleware):
     """A tool with `request.url_arg` set has that URL checked (SSRF + allowlist) before it can run."""
 
     def __init__(self, guardrail: Any) -> None:
+        # A security control that can be constructed inert is worse than one
+        # that is absent: the chain LOOKS guarded. `egress(config.guardrail)`
+        # with an unset config silently disabled every SSRF and allowlist
+        # check, with no signal anywhere. Fail at wiring time instead.
+        if guardrail is None:
+            raise ValueError(
+                "egress() requires a Guardrail — it is the thing that performs the SSRF and "
+                "allowlist checks. Passing None would leave the middleware in the chain while "
+                "checking nothing. Drop egress() entirely if that is genuinely what you want."
+            )
+        if not callable(getattr(guardrail, "check_url", None)):
+            raise TypeError(
+                f"egress() needs an object with a check_url(url) method; "
+                f"{type(guardrail).__name__} has none, so no URL would ever be checked."
+            )
         self._guardrail = guardrail
 
     async def on_request(self, ctx: MiddlewareContext) -> None:
         r = ctx.request
         url_arg = getattr(r, "url_arg", None)
-        if url_arg and self._guardrail is not None:
+        if url_arg:
             url = r.arguments.get(url_arg)
             if url is not None:
                 self._guardrail.check_url(url)  # raises on a blocked URL — before any side effect

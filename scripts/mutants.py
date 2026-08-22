@@ -103,6 +103,11 @@ MONEY_TESTS = (
 HITL_TESTS = ("tests/agents/test_hitl_elicitation.py",)
 STREAM_TESTS = ("tests/agents/test_stream_partial_output.py",)
 CONCURRENCY_TESTS = ("tests/kernel/test_nested_concurrency.py",)
+SECURITY_TESTS = (
+    "tests/middlewares/test_memoize_scope_isolation.py",
+    "tests/observability/test_observability_cache.py",
+)
+RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
 WORKFLOW_TESTS = ("tests/agents/test_workflow.py",)
 REGISTRY_TESTS = (
     "tests/adapters/test_model_registry.py",
@@ -313,6 +318,39 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        self._used_cost += to_money(cost_usd)",
         after="        self._used_cost = to_money(float(self._used_cost) + cost_usd)",
         tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+    ),
+    # ── isolation + resilience ───────────────────────────────────────────────
+    Mutant(
+        tag="security",
+        why="cache keys stop being tenant-partitioned (cross-tenant answer leak)",
+        path="agentkit/middlewares/memoize.py",
+        before="        cache_key = _scoped(call, key(call))",
+        after="        cache_key = key(call)",
+        tests=SECURITY_TESTS,
+    ),
+    Mutant(
+        tag="security",
+        why="the default cache key ignores the model (a cheap answer served as a good one)",
+        path="agentkit/middlewares/memoize.py",
+        before='            "model": getattr(r, "model", None),',
+        after='            "model": None,',
+        tests=SECURITY_TESTS,
+    ),
+    Mutant(
+        tag="security",
+        why="egress can be constructed inert, silently disabling every URL check",
+        path="agentkit/middlewares/security.py",
+        before="        if guardrail is None:",
+        after="        if False:",
+        tests=SECURITY_TESTS,
+    ),
+    Mutant(
+        tag="resilience",
+        why="a late success closes an OPEN breaker, bypassing the cooldown",
+        path="agentkit/kernel/resilience.py",
+        before='        if self.state == "open":\n            return',
+        after='        if False:\n            return',
+        tests=RESILIENCE_TESTS,
     ),
     # ── workflow ─────────────────────────────────────────────────────────────
     Mutant(

@@ -351,7 +351,7 @@ llm.cache = InMemoryCache()
 
 # agentkit:
 from agentkit.middlewares import memoize
-chat_middleware = [tracing(), meter(), retry(), memoize(key=lambda c: c.request.messages[-1].content or "")]
+chat_middleware = [tracing(), meter(), retry(), memoize()]
 ```
 
 `memoize` is scope-aware — cache keys are hashed with the run's

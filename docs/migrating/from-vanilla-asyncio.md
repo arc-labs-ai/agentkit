@@ -249,7 +249,7 @@ parallel meant another 40 lines and no sibling-cancel.
 
 ### Cache identical requests
 
-`memoize()` middleware skips the LLM on a scope-aware content-hash
+`memoize()` middleware skips the LLM on a scope-partitioned content-hash
 hit. Free RUM for a chat call your test suite repeats a hundred
 times.
 

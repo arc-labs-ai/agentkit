@@ -149,7 +149,7 @@ chat_middleware = [
     meter(),                                            # guard/charge Budget + Quota on every call
     fallback(models=["gpt-4o", "gpt-4o-mini"]),         # rewrite request.model on hard failures
     retry(),                                            # re-invoke on transient failures + optional CircuitBreaker
-    memoize(key=lambda call: call.request.messages[-1].content or ""),  # cache identical last-message calls
+    memoize(),                     # exact-match cache; every key is scope-partitioned
 ]
 
 # Custom transform/guard/observe middleware.

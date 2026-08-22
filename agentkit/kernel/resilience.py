@@ -132,6 +132,29 @@ class CircuitBreaker:
         return False  # open, still cooling down
 
     def record_success(self) -> None:
+        """A success closes the breaker from CLOSED or HALF_OPEN — never from OPEN.
+
+        The class docstring describes the state machine as
+        ``CLOSED -> OPEN -> (cooldown) -> HALF_OPEN -> CLOSED``. There is no
+        ``OPEN -> CLOSED`` edge, and there was one in the code: this method
+        set ``state = "closed"`` unconditionally.
+
+        That edge is reachable at any concurrency above one, which is the
+        normal case for the documented pattern of ONE breaker shared per
+        dependency (``client.py`` builds ``CircuitBreaker("agentkit.llm")``
+        once). Several calls are in flight, enough fail to trip the breaker,
+        and then a straggler that started BEFORE the trip finishes
+        successfully and reports it — reopening the gate and sending the herd
+        straight back at the failing provider. Measured: a 300-second cooldown
+        skipped entirely by one late success.
+
+        Ignoring the report while OPEN is the honest reading of it: that call
+        was admitted under the old state, so it is evidence about the past,
+        not about whether the dependency has recovered. Only the single probe
+        admitted after the cooldown speaks to that.
+        """
+        if self.state == "open":
+            return
         self._fails = 0
         self.state = "closed"
 

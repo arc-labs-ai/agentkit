@@ -181,3 +181,81 @@ def test_compose_all_none_or_empty_returns_none():
 
     assert compose_failures([]) is None
     assert compose_failures([None, None, None]) is None
+
+
+# ── CircuitBreaker: the state machine has no OPEN -> CLOSED edge ─────────────
+
+
+def test_a_late_success_cannot_close_an_open_breaker() -> None:
+    """`record_success` set `state = "closed"` unconditionally, adding an
+    `OPEN -> CLOSED` edge the class docstring says does not exist
+    (`CLOSED -> OPEN -> cooldown -> HALF_OPEN -> CLOSED`).
+
+    Reachable at any concurrency above one, which is the normal case for the
+    documented pattern of ONE breaker shared per dependency: several calls in
+    flight, enough fail to trip the breaker, then a straggler that started
+    BEFORE the trip finishes successfully and reports it. Measured through the
+    real `retry()` middleware: a 300-second cooldown skipped by one late
+    success, sending the herd straight back at the failing provider.
+
+    A call admitted under the old state is evidence about the past, not about
+    whether the dependency recovered — only the post-cooldown probe is.
+    """
+    from agentkit.kernel.resilience import CircuitBreaker
+
+    clock = [1000.0]
+    cb = CircuitBreaker("dep", fail_threshold=2, cooldown=300.0, clock=lambda: clock[0])
+    cb.record_failure()
+    cb.record_failure()
+    assert cb.state == "open" and cb.allow() is False
+
+    cb.record_success()  # the straggler
+    assert cb.state == "open", "a late success reopened the gate"
+    assert cb.allow() is False, "the cooldown was bypassed"
+
+
+def test_the_documented_recovery_path_still_works() -> None:
+    """Closing must remain possible — through the cooldown and the probe, which
+    is the only edge that speaks to whether the dependency recovered."""
+    from agentkit.kernel.resilience import CircuitBreaker
+
+    clock = [1000.0]
+    cb = CircuitBreaker("dep", fail_threshold=2, cooldown=10.0, clock=lambda: clock[0])
+    cb.record_failure()
+    cb.record_failure()
+    assert cb.allow() is False
+
+    clock[0] += 11
+    assert cb.allow() is True and cb.state == "half_open"  # exactly one probe admitted
+    assert cb.allow() is False, "a second caller slipped past the single-probe gate"
+
+    cb.record_success()  # the probe succeeded
+    assert cb.state == "closed" and cb.allow() is True
+
+
+def test_a_failed_probe_reopens_the_breaker() -> None:
+    """The other half of the HALF_OPEN branch."""
+    from agentkit.kernel.resilience import CircuitBreaker
+
+    clock = [1000.0]
+    cb = CircuitBreaker("dep", fail_threshold=1, cooldown=5.0, clock=lambda: clock[0])
+    cb.record_failure()
+    clock[0] += 6
+    assert cb.allow() is True and cb.state == "half_open"
+    cb.record_failure()
+    assert cb.state == "open" and cb.allow() is False
+
+
+def test_a_success_while_closed_still_resets_the_failure_count() -> None:
+    """Consecutive-failure counting is what `fail_threshold` means; an
+    intervening success must clear it or an old failure eventually trips a
+    healthy dependency."""
+    from agentkit.kernel.resilience import CircuitBreaker
+
+    cb = CircuitBreaker("dep", fail_threshold=3)
+    cb.record_failure()
+    cb.record_failure()
+    cb.record_success()  # closed -> reset
+    cb.record_failure()
+    cb.record_failure()
+    assert cb.state == "closed", "failures were not consecutive but tripped anyway"

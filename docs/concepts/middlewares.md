@@ -52,7 +52,7 @@ result.
 | `meter`            | Accumulate `Usage` and enforce `Budget` / `Quota`.                    |
 | `retry`            | Provider-aware retry with jitter and optional circuit breaker.        |
 | `fallback`         | Try a next LLM when the primary raises a terminal error.              |
-| `memoize`          | Cache identical requests, keyed by scope-aware content hash.          |
+| `memoize`          | Exact-match cache. Every key is namespaced by `ctx.scope.key()` **inside** the middleware, so an entry can never cross a tenant boundary regardless of the `key` you pass. Defaults to a content hash over the fields that change the answer. |
 | `idempotent`       | Deduplicate calls that carry an idempotency key.                      |
 | `semantic_memoize` | Vector-similarity cache for near-duplicate requests.                  |
 | `output_coerce`    | Coerce free-form output into a typed shape (`SchemaAdapter`).         |

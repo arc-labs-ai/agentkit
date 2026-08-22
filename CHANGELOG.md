@@ -11,6 +11,50 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — tenant isolation, and two fail-open controls
+
+- **`memoize` leaked cached answers across tenants.** `Scope`'s own docstring
+  calls itself the key "threaded through every memory recall / cache key /
+  meter / callback", but `memoize` took an arbitrary `key` callable and added
+  nothing to it — so isolation depended on every caller remembering. They did
+  not, because the key the cheatsheet and the LangChain migration guide TAUGHT
+  was `lambda c: c.request.messages[-1].content`, which ignores the model, the
+  tools, the temperature and the tenant. Measured: two tenants asking the same
+  question, one provider call, and tenant 999 receiving tenant 1's answer.
+  Every key is now namespaced by `ctx.scope.key()` **inside** the middleware —
+  a boundary that relies on a caller-supplied key is not a boundary.
+- **`memoize()` now works with no arguments** and defaults to an exact-match
+  key over the fields that change the answer (model, messages, tool names,
+  response_format, temperature, max_tokens). `key` was required, which pushed
+  the most dangerous decision in a cache — what counts as "the same call" —
+  onto every caller. Two docs pages already showed a bare `memoize()`, which
+  raised `TypeError`. Tool schemas reduce to their names, so editing a
+  description does not invalidate the cache.
+- **`egress(None)` built a security control that checked nothing.** It sat in
+  the chain with every SSRF and allowlist check silently off, which is how
+  `egress(config.guardrail)` behaves when the config is unset. Now raises at
+  wiring time, along with a `TypeError` for an object that has no `check_url`.
+- **A late success closed an OPEN circuit breaker**, adding an `OPEN → CLOSED`
+  edge the class docstring says does not exist (`CLOSED → OPEN → cooldown →
+  HALF_OPEN → CLOSED`). Reachable at any concurrency above one — the normal
+  case for the documented pattern of one breaker shared per dependency: enough
+  in-flight calls fail to trip it, then a straggler that started before the
+  trip reports success and reopens the gate. Measured through the real
+  `retry()` middleware: a 300-second cooldown skipped by one late success,
+  sending the herd back at a failing provider. A call admitted under the old
+  state is evidence about the past; only the post-cooldown probe speaks to
+  recovery.
+
+### Checked and found sound
+
+- The SSRF host blocker was audited against the classic bypasses and blocks
+  all of them: decimal (`2130706433`), hex, octal, short-form (`127.1`), IPv6
+  loopback, IPv4-mapped IPv6 (`[::ffff:127.0.0.1]`), userinfo
+  (`user@127.0.0.1`), cloud metadata (`169.254.169.254`), RFC1918, and
+  unspecified. A hostname that RESOLVES to a private IP is allowed, which is
+  documented behaviour — name resolution is the injected `url_check`'s job.
+- `SlidingWindowCompactor` preserves the system prompt when trimming.
+
 ### Fixed — the fan-out reservation path
 
 - **A starved fan-out silently produced no-op children on two of three axes.**

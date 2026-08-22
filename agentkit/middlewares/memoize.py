@@ -17,9 +17,59 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from agentkit.kernel.middleware import Call, Handler, Middleware, _assemble, _result_to_stream
-from agentkit.kernel.resilience import idempotency_key
+from agentkit.kernel.resilience import idempotency_key, stable_hash
 from agentkit.kernel.resilience import stable_hash as _hash
 from agentkit.kernel.types import Chunk, LLMResult, Usage
+
+
+def default_key(call: Call) -> str:
+    """The exact-match cache key for a chat call: every field that changes the
+    answer, and nothing else.
+
+    Exists so ``memoize()`` works with no arguments. It previously required a
+    ``key=`` callable, which pushed the single most dangerous decision in a
+    cache — what counts as "the same call" — onto every caller, and the key the
+    docs taught (``lambda c: c.request.messages[-1].content``) ignored the
+    model, the tools, the temperature AND the tenant.
+
+    Tools are reduced to their names: two registries advertising the same tools
+    should share a cache entry, and a schema's description text changing does
+    not change the answer.
+    """
+    r = call.request
+    return "memo:" + stable_hash(
+        {
+            "model": getattr(r, "model", None),
+            "messages": [
+                (getattr(m, "role", ""), getattr(m, "content", "")) for m in getattr(r, "messages", []) or []
+            ],
+            "tools": sorted(getattr(t, "name", "") for t in (getattr(r, "tools", None) or ())),
+            "response_format": getattr(r, "response_format", None),
+            "temperature": getattr(r, "temperature", None),
+            "max_tokens": getattr(r, "max_tokens", None),
+        },
+        length=24,
+    )
+
+
+def _scoped(call: Call, raw: str) -> str:
+    """Namespace a cache key by tenant.
+
+    The framework's own ``Scope`` docstring calls itself the key "threaded
+    through every memory recall / cache key / meter / callback" — but
+    ``memoize`` took an arbitrary ``key`` callable and added nothing, so
+    isolation depended on every caller remembering. They did not: the key in
+    the cheatsheet and the LangChain migration guide was the last message's
+    text, which meant two tenants asking the same question shared one cached
+    LLM response. Measured: tenant 999 received tenant 1's answer, one provider
+    call for both.
+
+    Partitioning here rather than documenting harder is the point. A
+    tenant-isolation boundary that relies on a caller-supplied key is not a
+    boundary. A caller who genuinely wants cross-tenant sharing uses a
+    scope-less store or a shared ``Scope``, which is an explicit act.
+    """
+    return f"{call.ctx.scope.key()}:{raw}"
 
 
 def _emit_cache_hit(call: Call, key: str) -> None:
@@ -37,7 +87,7 @@ def _emit_cache_hit(call: Call, key: str) -> None:
 
 def memoize(
     *,
-    key: Callable[[Call], str],
+    key: Callable[[Call], str] = default_key,
     store: Any = None,
     ttl: int | None = None,
     when: Callable[[Call], bool] | None = None,
@@ -45,7 +95,13 @@ def memoize(
     """Single-flight, never-cache-failure reuse over `StorePort.get_or_set`: the producer
     *collects* the inner stream to the assembled result and stores it; a hit re-emits the stored result as
     a one-shot stream. Memoized calls are therefore not incremental — the correctness of single-flight +
-    a raised producer never being stored wins over incremental delivery for a cache layer."""
+    a raised producer never being stored wins over incremental delivery for a cache layer.
+
+    Every key is namespaced by ``ctx.scope.key()`` before it reaches the store,
+    so a cache entry can never cross a tenant boundary regardless of what
+    ``key`` returns — see :func:`_scoped`. ``key`` defaults to
+    :func:`default_key`, an exact match over the fields that change the answer.
+    """
 
     async def mw(call: Call, nxt: Handler) -> AsyncIterator[Any]:
         if (when is not None and not when(call)) or (store or call.ctx.store) is None:
@@ -61,7 +117,7 @@ def memoize(
                 call, [x async for x in nxt(call)]
             )  # a raised stream propagates → unstored
 
-        cache_key = key(call)
+        cache_key = _scoped(call, key(call))
         result = await s.get_or_set(cache_key, produce, ttl=ttl)
         if not ran["v"]:
             call.meta["cache_hit"] = True  # signal a hit to outer middlewares (audit → "deduped")

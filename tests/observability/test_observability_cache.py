@@ -111,4 +111,7 @@ def test_memoize_hit_drops_cache_hit_span_event():
     second = _chat_span(exporter)
     hit_events = [e for e in second.events if e.name == "cache.hit"]
     assert len(hit_events) == 1
-    assert hit_events[0].attributes.get("cache_key") == "fixed-cache-key"
+    # The span reports the key ACTUALLY used against the store, which is
+    # namespaced by tenant — `memoize` scope-partitions every key so a cache
+    # entry cannot cross a tenant boundary regardless of what `key` returns.
+    assert hit_events[0].attributes.get("cache_key") == "org1:dom2:fixed-cache-key"
