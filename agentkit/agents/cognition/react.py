@@ -138,7 +138,7 @@ class ReActCognition:
         termination = _copy.deepcopy(self.termination) if self.termination is not None else None
         run_id = ctx.correlation_id
 
-        saved = await self._load(ctx, run_id)
+        saved = await self._load(ctx, run_id, agent)
         if saved is not None and saved.status != "suspended":
             context, usage, start_i, repaired = rehydrate(saved.state)  # durable resume
             prompt_version = request_builder.prompt.version
@@ -179,7 +179,7 @@ class ReActCognition:
         fourth.
         """
         request_builder = agent._resolve_request_builder()
-        saved = await self._load(ctx, run_id)
+        saved = await self._load(ctx, run_id, agent)
         if not saved or saved.status != "suspended":
             raise ValueError(f"no suspended run {run_id!r} to resume")
         context, usage, i, repaired = rehydrate(saved.state)
@@ -293,7 +293,7 @@ class ReActCognition:
             ceiling = self._budget_exhausted(ctx)
             if ceiling is not None:
                 last = _last_assistant(context)
-                await self._save(ctx, run_id, context, usage, i, repaired, status="suspended")
+                await self._save(ctx, run_id, agent, context, usage, i, repaired, status="suspended")
                 async for ev in self._budget_final(ctx, last, usage, prompt_version, ceiling):
                     yield ev
                 return
@@ -347,7 +347,7 @@ class ReActCognition:
                 stop = await termination([_assistant(res)], ctx)
                 if stop is not None:
                     context.append(_assistant(res))
-                    await self._clear(ctx, run_id)
+                    await self._clear(ctx, run_id, agent)
                     for ev in _final_events(
                         res.content,
                         usage,
@@ -372,7 +372,7 @@ class ReActCognition:
                 if ceiling is not None:
                     context.append(_assistant(res))
                     await self._save(
-                        ctx, run_id, context, usage, i + 1, repaired, status="suspended"
+                        ctx, run_id, agent, context, usage, i + 1, repaired, status="suspended"
                     )
                     async for ev in self._budget_final(
                         ctx, res.content, usage, prompt_version, ceiling
@@ -409,7 +409,7 @@ class ReActCognition:
                         yield StreamEvent("interrupt", tool_call=tc)
                     async for ev in self._park(ctx, context, res.tool_calls, agent, run_id):
                         yield ev
-                    await self._save(ctx, run_id, context, usage, i + 1, repaired)
+                    await self._save(ctx, run_id, agent, context, usage, i + 1, repaired)
                     yield StreamEvent("step", text=f"iteration:{i + 1}")
                     continue
 
@@ -422,6 +422,7 @@ class ReActCognition:
                     await self._save(
                         ctx,
                         run_id,
+                        agent,
                         context,
                         usage,
                         i,
@@ -466,7 +467,7 @@ class ReActCognition:
                 for tc, r in zip(res.tool_calls, results, strict=False):
                     context.append(self._tool_message(tc, r))
                     yield StreamEvent("tool_result", tool_call=tc, tool_result=r)
-                await self._save(ctx, run_id, context, usage, i + 1, repaired)
+                await self._save(ctx, run_id, agent, context, usage, i + 1, repaired)
                 yield StreamEvent("step", text=f"iteration:{i + 1}")
                 continue
 
@@ -485,10 +486,10 @@ class ReActCognition:
                                 f"Return only output matching the required format.",
                             )
                         )
-                        await self._save(ctx, run_id, context, usage, i + 1, repaired)
+                        await self._save(ctx, run_id, agent, context, usage, i + 1, repaired)
                         yield StreamEvent("step", text="repair")
                         continue
-                    await self._clear(ctx, run_id)
+                    await self._clear(ctx, run_id, agent)
                     for ev in _final_events(
                         res.content,
                         usage,
@@ -499,7 +500,7 @@ class ReActCognition:
                     ):
                         yield ev
                     return
-                await self._clear(ctx, run_id)
+                await self._clear(ctx, run_id, agent)
                 context.append(Message("assistant", res.content))
                 yield StreamEvent(
                     "final",
@@ -513,7 +514,7 @@ class ReActCognition:
                 )
                 return
 
-            await self._clear(ctx, run_id)
+            await self._clear(ctx, run_id, agent)
             context.append(Message("assistant", res.content))
             yield StreamEvent(
                 "final",
@@ -523,7 +524,7 @@ class ReActCognition:
             return
 
         # Tool-loop ceiling reached → partial.
-        await self._clear(ctx, run_id)
+        await self._clear(ctx, run_id, agent)
         last = _last_assistant(context)
         for ev in _final_events(
             last,
@@ -728,22 +729,73 @@ class ReActCognition:
         """
         return resolve_checkpointer(ctx, self.checkpointer)
 
-    async def _load(self, ctx: Any, run_id: str) -> Any:
+    @staticmethod
+    def checkpoint_slot(run_id: str, agent_name: str) -> str:
+        """The checkpoint slot a tool loop owns for ``agent_name`` within ``run_id``.
+
+        Public because "where is this agent's checkpoint?" is an operator
+        question — an admin tool listing or clearing durable state needs the
+        same derivation the loop uses, and hardcoding the format in two places
+        is how they drift.
+
+        Every producer used to key on ``ctx.correlation_id`` alone, and
+        ``ctx.child()`` propagates that unchanged — so a coordinator and each of
+        its child agents wrote to the SAME slot. That is not merely an
+        overwrite: a child finishing normally calls ``_clear``, which is
+        ``Checkpointer.delete(run_id)``, and deletes ALL versions for the id.
+        Measured: a coordinator wrote its in-progress turn state, one child
+        completed successfully, and the coordinator's checkpoint was gone — so
+        a crash then lost a run that had checkpointed. Version numbering also
+        restarted, which breaks the monotonic-version guarantee the
+        Checkpointer documents.
+
+        Namespacing by agent name fixes the collision without touching the
+        caller-facing identity: ``Suspended.run_id`` still carries the plain
+        ``run_id`` a caller passes back to ``Agent.resume``, and ``resume``
+        re-derives the same slot because it has the agent in hand.
+
+        Remaining limit, stated rather than hidden: two children sharing one
+        agent NAME in a single run still share a slot. That is ambiguous by
+        identity, and the fix is to name them distinctly.
+        """
+        return f"{run_id}:agent:{agent_name}"
+
+    async def _load(self, ctx: Any, run_id: str, agent: Agent) -> Any:
         cp = self._resolve_checkpointer(ctx)
         if cp is None:
             return None
-        return await cp.resume(run_id)
+        found = await cp.resume(self.checkpoint_slot(run_id, agent.name))
+        if found is not None:
+            return found
+        # Legacy slot: a run suspended by a version that keyed on the bare
+        # correlation_id. A suspended run is waiting on a person and cannot be
+        # reconstructed, so orphaning one across an upgrade is not acceptable.
+        # Safe to drop once no old suspends can remain.
+        #
+        # The shape check is load-bearing, not defensive padding. The bare
+        # correlation_id is exactly the slot OTHER producers still use — a
+        # coordinator policy writes ``{turn, transcript, results, ...}`` there —
+        # so reading it unconditionally re-introduces the collision this
+        # namespacing exists to remove, from the other direction. Measured
+        # while building it: a child loop picked up its coordinator's state and
+        # died in ``rehydrate`` with ``KeyError: 'messages'``.
+        legacy = await cp.resume(run_id)
+        if legacy is None:
+            return None
+        state = legacy.state if isinstance(legacy.state, dict) else {}
+        return legacy if "messages" in state else None
 
-    async def _clear(self, ctx: Any, run_id: str) -> None:
+    async def _clear(self, ctx: Any, run_id: str, agent: Agent) -> None:
         cp = self._resolve_checkpointer(ctx)
         if cp is None:
             return
-        await cp.delete(run_id)
+        await cp.delete(self.checkpoint_slot(run_id, agent.name))
 
     async def _save(
         self,
         ctx: Any,
         run_id: str,
+        agent: Agent,
         context: Any,
         usage: Any,
         next_i: int,
@@ -782,7 +834,7 @@ class ReActCognition:
         if cp is None:
             return
         await cp.snapshot(
-            run_id,
+            self.checkpoint_slot(run_id, agent.name),
             {
                 "prefix": prefix_to_dict(context.prefix),
                 "messages": [msg_to_dict(m) for m in context.messages],

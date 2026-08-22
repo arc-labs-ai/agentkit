@@ -11,6 +11,34 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — a child agent deleting its coordinator's checkpoint
+
+- **Every producer keyed durable state on `ctx.correlation_id`**, and
+  `ctx.child()` propagates that unchanged — so a coordinator and each of its
+  child agents wrote to the SAME checkpoint slot. Not merely an overwrite: a
+  child finishing normally calls `_clear`, which is
+  `Checkpointer.delete(run_id)`, removing ALL versions for the id. Measured: a
+  coordinator wrote its in-progress turn state, one child completed
+  successfully, and the coordinator's checkpoint was **gone** — so a crash then
+  lost a run that had checkpointed. Version numbering restarted too, breaking
+  the monotonic-version guarantee the Checkpointer documents. Parallel siblings
+  clobbered each other by the same mechanism.
+
+  The tool loop now owns `"{run_id}:agent:{name}"`, exposed as the public
+  `ReActCognition.checkpoint_slot` because an operator tool listing or clearing
+  durable state needs the same derivation. `Suspended.run_id` still carries the
+  plain id a caller passes back to `Agent.resume`, so nothing public changed.
+  `resume` reads the legacy bare-id slot as a fallback, so an in-flight suspend
+  survives the upgrade — **guarded by a payload shape check**, because the bare
+  id is exactly the slot other producers still use, and reading it
+  unconditionally re-introduced the collision from the other direction (a child
+  loop picked up its coordinator's state and died in `rehydrate` with
+  `KeyError: 'messages'`).
+
+  Known limit, stated rather than hidden: two children sharing one agent *name*
+  in a single run still share a slot. That is ambiguous by identity; name them
+  distinctly.
+
 ### Fixed — FileStore durability, and a StorePort contract nobody checked
 
 `InMemoryStore`'s docstring calls itself "the offline reference `StorePort` and

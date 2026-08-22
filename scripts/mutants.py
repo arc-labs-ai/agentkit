@@ -109,6 +109,7 @@ SECURITY_TESTS = (
 )
 RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
 PROVIDER_TESTS = ("tests/adapters/test_provider_stream_errors.py",)
+SLOT_TESTS = ("tests/capabilities/test_checkpoint_slot_isolation.py",)
 STORE_TESTS = (
     "tests/meta/test_protocol_conformance.py",
     "tests/adapters/test_stores.py",
@@ -209,8 +210,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="budget",
         why="the budget-exhausted checkpoint is written as running, not suspended",
         path="agentkit/agents/cognition/react.py",
-        before='                        ctx, run_id, context, usage, i + 1, repaired, status="suspended"',
-        after="                        ctx, run_id, context, usage, i + 1, repaired",
+        before='                        ctx, run_id, agent, context, usage, i + 1, repaired, status="suspended"',
+        after="                        ctx, run_id, agent, context, usage, i + 1, repaired",
         tests=MONEY_TESTS,
     ),
     # ── concurrency: nested fan-out must not deadlock ────────────────────────
@@ -380,6 +381,23 @@ MUTANTS: tuple[Mutant, ...] = (
         before='    "rate_limit",\n    "server_error",\n    "overloaded",',
         after='    "__never_matches_rate_limit",\n    "__never_matches_server_error",\n    "__never_matches_overloaded",',
         tests=PROVIDER_TESTS,
+    ),
+    # ── checkpoint slots: one producer per slot ──────────────────────────────
+    Mutant(
+        tag="checkpoint",
+        why="producers share a slot again (a child's completion deletes the coordinator's state)",
+        path="agentkit/agents/cognition/react.py",
+        before='        return f"{run_id}:agent:{agent_name}"',
+        after="        return run_id",
+        tests=SLOT_TESTS,
+    ),
+    Mutant(
+        tag="checkpoint",
+        why="the legacy read accepts another producer's payload",
+        path="agentkit/agents/cognition/react.py",
+        before='        return legacy if "messages" in state else None',
+        after="        return legacy",
+        tests=SLOT_TESTS,
     ),
     # ── stores: the reference contract every backend must match ──────────────
     Mutant(

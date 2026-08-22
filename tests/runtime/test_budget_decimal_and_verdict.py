@@ -266,6 +266,18 @@ def _react_ctx(budget: Budget, checkpointer: Checkpointer):
     )
 
 
+def _slot(run_id: str, agent_name: str) -> str:
+    """The checkpoint slot the tool loop owns for one agent inside a run.
+
+    Derived through the cognition rather than hardcoded: every producer used to
+    key on the bare correlation_id, which meant a coordinator and its children
+    shared a slot and a child's normal completion deleted the coordinator's
+    state. Tests that hardcode the old format would pass against a regression
+    of exactly that.
+    """
+    return ReActCognition.checkpoint_slot(run_id, agent_name)
+
+
 def _fresh_checkpointer() -> Checkpointer:
     from agentkit.adapters.checkpoint.in_memory import InMemoryCheckpointStore
 
@@ -304,7 +316,7 @@ def test_exhausting_a_budget_writes_a_checkpoint_before_it_stops() -> None:
 
     # 3. The checkpoint exists, is marked suspended, and is CURRENT — not the
     #    stale previous-iteration snapshot the old code would have left.
-    saved = asyncio.run(cp.resume("budget-run"))
+    saved = asyncio.run(cp.resume(_slot("budget-run", "spender")))
     assert saved is not None, "no checkpoint was written before the budget stopped the run"
     assert saved.status == "suspended"
     assert saved.state["iteration"] == 2, "the checkpoint is a whole iteration behind"
@@ -331,7 +343,7 @@ def test_the_same_run_under_raise_mode_loses_the_current_checkpoint() -> None:
     with pytest.raises(MeterExceeded):
         asyncio.run(agent.run("go", _react_ctx(budget, cp)))
 
-    saved = asyncio.run(cp.resume("budget-run"))
+    saved = asyncio.run(cp.resume(_slot("budget-run", "spender")))
     assert saved is not None
     # Marked ``running``, not ``suspended`` — auto-resume reads this status to
     # tell "engine in motion" from "waiting on the world", so the stopped run
@@ -357,7 +369,7 @@ def test_a_stopped_run_can_be_resumed_after_the_ceiling_is_raised() -> None:
     tight = Budget(max_cost_usd="1.00", on_exceeded="stop")
     first = asyncio.run(agent.run("go", _react_ctx(tight, cp)))
     assert first.stop_reason == "budget_exhausted"
-    saved = asyncio.run(cp.resume("budget-run"))
+    saved = asyncio.run(cp.resume(_slot("budget-run", "spender")))
     assert saved is not None
     messages_at_stop = len(saved.state["messages"])
 
@@ -366,7 +378,7 @@ def test_a_stopped_run_can_be_resumed_after_the_ceiling_is_raised() -> None:
     roomy = Budget(max_cost_usd="100.00", on_exceeded="stop")
     second = asyncio.run(agent.run("go", _react_ctx(roomy, cp)))
     assert second.stop_reason in ("complete", "max_iterations", "budget_exhausted")
-    resumed = asyncio.run(cp.resume("budget-run"))
+    resumed = asyncio.run(cp.resume(_slot("budget-run", "spender")))
     if resumed is not None:
         assert len(resumed.state["messages"]) > messages_at_stop, "the run restarted from scratch"
 

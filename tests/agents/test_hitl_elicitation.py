@@ -524,9 +524,11 @@ def test_a_run_that_handled_a_secret_stops_checkpointing() -> None:
     assert is_context_tainted(context)
 
     cognition = ReActCognition(tools=[transfer], checkpointer=cp)
-    asyncio.run(cognition._save(ctx, "secret-run", context, Usage(), 1, False))
+    holder = Agent("holder", "m", cognition=cognition)
+    asyncio.run(cognition._save(ctx, "secret-run", holder, context, Usage(), 1, False))
 
-    assert asyncio.run(cp.resume("secret-run")) is None, (
+    slot = ReActCognition.checkpoint_slot("secret-run", holder.name)
+    assert asyncio.run(cp.resume(slot)) is None, (
         "a context holding an elicited secret must never be snapshotted"
     )
 
@@ -537,8 +539,10 @@ def test_an_untainted_run_still_checkpoints_normally() -> None:
     cp = _fresh_checkpointer()
     ctx = make_test_ctx(checkpointer=cp, correlation_id="normal-run")
     cognition = ReActCognition(tools=[transfer], checkpointer=cp)
-    asyncio.run(cognition._save(ctx, "normal-run", WorkingContext(), Usage(), 1, False))
-    assert asyncio.run(cp.resume("normal-run")) is not None
+    holder = Agent("holder", "m", cognition=cognition)
+    asyncio.run(cognition._save(ctx, "normal-run", holder, WorkingContext(), Usage(), 1, False))
+    slot = ReActCognition.checkpoint_slot("normal-run", holder.name)
+    assert asyncio.run(cp.resume(slot)) is not None
 
 
 def test_a_non_secret_elicitation_does_not_taint() -> None:

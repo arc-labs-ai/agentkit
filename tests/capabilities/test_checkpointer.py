@@ -19,6 +19,12 @@ import pytest
 from agentkit.adapters.checkpoint import InMemoryCheckpointStore
 from agentkit.agents import Agent, Suspended
 from agentkit.agents.cognition import ReActCognition
+
+# Every agent in this module is named "a". The tool loop namespaces its
+# checkpoint slot by agent name, because keying on the bare correlation_id had
+# a coordinator and its children sharing one slot — and a child completing
+# normally called `_clear`, deleting the coordinator's state.
+AGENT_NAME = "a"
 from agentkit.capabilities import Checkpointer
 from agentkit.kernel.ports import Checkpoint, CheckpointPort
 from agentkit.kernel.types import Scope, ToolCall
@@ -308,7 +314,7 @@ def test_agent_suspends_then_resumes_through_a_checkpointer():
 
     # Checkpointer holds the suspended snapshot; status reflects that, and `pending` made it
     # into the serialized state so resume() can apply human decisions to those tool calls.
-    saved = _run(cpt.resume("run-1"))
+    saved = _run(cpt.resume(ReActCognition.checkpoint_slot("run-1", AGENT_NAME)))
     assert saved is not None and saved.status == "suspended"
     assert saved.state["pending"] and saved.state["pending"][0]["id"] == "c1"
 
@@ -364,8 +370,8 @@ def test_agent_field_checkpointer_overrides_ctx_checkpointer():
     )
 
     # The agent's own checkpointer received the suspended state; the ctx one did not.
-    assert _run(agent_cpt.resume("run-1")) is not None
-    assert _run(ctx_cpt.resume("run-1")) is None
+    assert _run(agent_cpt.resume(ReActCognition.checkpoint_slot("run-1", AGENT_NAME))) is not None
+    assert _run(ctx_cpt.resume(ReActCognition.checkpoint_slot("run-1", AGENT_NAME))) is None
 
 
 def test_checkpointer_versions_grow_across_a_full_tool_loop():
