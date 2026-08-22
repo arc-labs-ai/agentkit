@@ -7,7 +7,7 @@ behind a single lookup-by-name surface.
 """
 
 from agentkit.tools.base import Tool
-from agentkit.tools.errors import ToolDefinitionError, ToolShapeError
+from agentkit.tools.errors import ToolArgumentError, ToolDefinitionError, ToolShapeError
 from agentkit.tools.file_tool import FileTool, InMemoryFiles
 from agentkit.tools.from_agent import as_tool, render_result
 from agentkit.tools.function import FunctionTool, tool
@@ -18,6 +18,7 @@ __all__ = [
     "FunctionTool",
     "InMemoryFiles",
     "Tool",
+    "ToolArgumentError",
     "ToolDefinitionError",
     "ToolRegistry",
     "ToolShapeError",

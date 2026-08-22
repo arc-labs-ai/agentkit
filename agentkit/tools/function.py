@@ -25,7 +25,7 @@ from agentkit.capabilities.output_schema import (
     adapt,
 )
 from agentkit.kernel.protocols import Ctx
-from agentkit.tools.errors import ToolDefinitionError, ToolShapeError
+from agentkit.tools.errors import ToolArgumentError, ToolDefinitionError, ToolShapeError
 from agentkit.tools.schema import (
     _build_schema,
     _infer_output_schema,
@@ -170,13 +170,48 @@ class FunctionTool:
         ]
         ctx_params = [p.name for p in sig_params if _is_ctx_param(p)]
         arg_params = [p.name for p in sig_params if not _is_ctx_param(p)]
+        required_params = frozenset(
+            p.name
+            for p in sig_params
+            if not _is_ctx_param(p) and p.default is inspect.Parameter.empty
+        )
+        # A ``**kwargs`` in the signature is the author saying "I accept keys I
+        # did not enumerate" — so extras are PASSED THROUGH rather than
+        # rejected. Before, they were neither: a tool declaring ``**kwargs``
+        # never saw a single extra key.
+        accepts_var_kw = any(
+            p.kind is p.VAR_KEYWORD for p in inspect.signature(func).parameters.values()
+        )
         is_async = inspect.iscoroutinefunction(func)
 
         async def _invoke(args: Any, ctx: Ctx) -> Any:
             # ``args`` may be a ``MappingProxyType`` (from ``ToolCall.arguments``,
             # which is read-only). Accept any ``Mapping`` — dicts and
             # MappingProxyType alike — so kwargs are always resolvable.
-            kwargs = {k: args[k] for k in arg_params if isinstance(args, Mapping) and k in args}
+            supplied = dict(args) if isinstance(args, Mapping) else {}
+            kwargs = {k: supplied[k] for k in arg_params if k in supplied}
+
+            # A model's call is CHECKED against the signature the model was
+            # shown. Silently dropping an unknown key let a defaulted parameter
+            # run with its default — a side-effecting tool reporting success for
+            # something it was never asked to do. A ``ctx``/``context`` key from
+            # the model is dropped rather than reported: it is not part of the
+            # advertised schema, and the real one is injected below.
+            unexpected = tuple(
+                k for k in supplied if k not in arg_params and k not in ctx_params
+            )
+            missing = tuple(k for k in required_params if k not in kwargs)
+            if accepts_var_kw:
+                kwargs.update({k: supplied[k] for k in unexpected})
+                unexpected = ()
+            if unexpected or missing:
+                raise ToolArgumentError(
+                    fname,
+                    unexpected=unexpected,
+                    missing=missing,
+                    accepted=tuple(arg_params),
+                )
+
             for cp in ctx_params:
                 kwargs[cp] = ctx
             if is_async:

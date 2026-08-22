@@ -11,6 +11,36 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — a tool call is checked against the schema the model was shown
+
+- **Unknown argument names were dropped silently.** A parameter with a DEFAULT
+  then ran with that default, so a model calling
+  `notify(message="page the on-call, prod is down")` against
+  `def notify(msg: str = "default message")` got back `"sent: default message"` —
+  a side-effecting tool reporting success for something it was never asked to
+  do, with nothing downstream able to tell. Unknown arguments now raise the new
+  `ToolArgumentError`, which names the tool, the offending keys and the accepted
+  set so the retry middleware can hand the model something it can act on.
+
+- A missing required argument surfaced as a raw
+  `TypeError: search() missing 1 required positional argument`, naming the
+  Python function rather than the tool. Same typed error now, and a typo reports
+  both halves (unexpected `querry`, missing `query`) since that is what the model
+  needs to correct it.
+
+- **`**kwargs` now receives the extras.** A tool declaring it was previously
+  neither strict nor permissive — the extras were dropped and it never saw one.
+  Declaring `**kwargs` is the opt-out from the check.
+
+- **Structured parameters advertised as `{"type": "string"}`.** A Pydantic /
+  dataclass / attrs parameter now gets its real object schema through the same
+  `adapt()` dispatcher `output_schema` uses. The old fragment was instructing the
+  model to send a string to a parameter whose annotation promised an object.
+
+- **`Enum` parameters advertised as a bare string** with no member list, leaving
+  the model free to invent one. They now emit `enum` (and a type when the member
+  values are homogeneous), matching how `Literal` was already handled.
+
 ### Fixed — the signal channel's audit tap could wedge the run it audits
 
 - **`SignalChannel.emit` awaited a queue nothing reads.** The documented

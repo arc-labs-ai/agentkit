@@ -115,6 +115,10 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+TOOLARG_TESTS = (
+    "tests/tools/test_tool_call_contract.py",
+    "tests/tools/test_function_tool.py",
+)
 CHANNEL_TESTS = ("tests/agents/test_signal_protocol.py",)
 TERM_TESTS = (
     "tests/agents/test_termination_isolation.py",
@@ -139,6 +143,63 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── a tool call is checked against the schema the model was shown ───────
+    Mutant(
+        tag="toolargs",
+        why="an unknown argument is dropped, so a defaulted parameter runs with its default",
+        path="agentkit/tools/function.py",
+        before="            if unexpected or missing:",
+        after="            if False:",
+        tests=TOOLARG_TESTS,
+    ),
+    Mutant(
+        tag="toolargs",
+        why="only unknown args are reported, so a missing required one stays a raw TypeError",
+        path="agentkit/tools/function.py",
+        before="            missing = tuple(k for k in required_params if k not in kwargs)",
+        after="            missing = ()",
+        tests=TOOLARG_TESTS,
+    ),
+    Mutant(
+        tag="toolargs",
+        why="**kwargs stops receiving the extras it exists to accept",
+        path="agentkit/tools/function.py",
+        before="                kwargs.update({k: supplied[k] for k in unexpected})\n                unexpected = ()",
+        after="                unexpected = ()",
+        tests=TOOLARG_TESTS,
+    ),
+    Mutant(
+        tag="toolargs",
+        why="a model-supplied ctx key trips the check instead of being ignored",
+        path="agentkit/tools/function.py",
+        before="                k for k in supplied if k not in arg_params and k not in ctx_params",
+        after="                k for k in supplied if k not in arg_params",
+        tests=TOOLARG_TESTS,
+    ),
+    Mutant(
+        tag="toolargs",
+        why="a structured parameter is advertised as a bare string again",
+        path="agentkit/tools/schema.py",
+        before="    struct = _struct_fragment(ann)\n    if struct is not None:\n        return struct\n",
+        after="",
+        tests=TOOLARG_TESTS,
+    ),
+    Mutant(
+        tag="toolargs",
+        why="an Enum parameter loses its member list",
+        path="agentkit/tools/schema.py",
+        before="    if isinstance(ann, type) and issubclass(ann, enum.Enum):\n        return _enum_fragment(ann)\n",
+        after="",
+        tests=TOOLARG_TESTS,
+    ),
+    Mutant(
+        tag="toolargs",
+        why="a heterogeneous enum gets a guessed type instead of none",
+        path="agentkit/tools/schema.py",
+        before="    kinds = {_JSON_PRIMITIVES.get(type(v)) for v in vals}\n    if len(kinds) == 1 and (t := kinds.pop()) is not None:\n        frag[\"type\"] = t\n    return frag",
+        after="    frag[\"type\"] = \"string\"\n    return frag",
+        tests=TOOLARG_TESTS,
+    ),
     # ── the signal channel's audit tap must not wedge the run ───────────────
     Mutant(
         tag="channel",

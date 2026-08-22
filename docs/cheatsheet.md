@@ -83,7 +83,22 @@ registry = ToolRegistry.from_tools([search, publish])
 
 # Filesystem-backed memory tool (read/write/list under a confined root).
 files_tool = FileTool(backend=InMemoryFiles(), root="/memories")
+
+# A call is CHECKED against the signature the model was shown: an unknown
+# argument name raises ToolArgumentError (naming the tool, the bad key and the
+# accepted set) instead of being dropped — a dropped key let a defaulted
+# parameter run with its default and report success. Declare **kwargs if the
+# tool genuinely accepts arbitrary keys; then the extras are passed through.
+@tool(side_effecting=False)
+async def flexible(a: str, **extra: object) -> str:
+    """Accept arbitrary extra keyword arguments alongside the declared one."""
+    return "ok"
 ```
+
+Parameter schemas are derived from the annotations: primitives, `list`/`dict`,
+`Literal` and `Enum` (both become an `enum` list) and typed structs (Pydantic /
+dataclass / attrs, which become a real `object` schema via the same `adapt()`
+the `output=` path uses). Anything else degrades to `string`.
 
 ## Prompts
 

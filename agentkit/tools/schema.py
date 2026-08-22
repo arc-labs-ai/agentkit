@@ -9,6 +9,7 @@ package ``__init__`` if something elsewhere needs them.
 from __future__ import annotations
 
 import contextlib
+import enum
 import inspect
 import types as _types
 from collections.abc import Callable
@@ -74,6 +75,44 @@ def _is_ctx_param(p: inspect.Parameter) -> bool:
     return getattr(ann, "__name__", "") == "RunContext" or "RunContext" in str(ann)
 
 
+def _enum_fragment(ann: type[enum.Enum]) -> dict[str, Any]:
+    """An ``Enum`` class → ``{"enum": [...values...]}``, typed when the member
+    values are homogeneous. Advertising a bare ``{"type": "string"}`` told the
+    model nothing about which strings are legal, so it was free to invent one
+    and the tool raised ``ValueError`` on a value the schema had implied was
+    fine. Same treatment ``Literal`` already gets."""
+    vals = [m.value for m in ann]
+    frag: dict[str, Any] = {"enum": vals}
+    kinds = {_JSON_PRIMITIVES.get(type(v)) for v in vals}
+    if len(kinds) == 1 and (t := kinds.pop()) is not None:
+        frag["type"] = t
+    return frag
+
+
+def _struct_fragment(ann: Any) -> dict[str, Any] | None:
+    """A typed struct (Pydantic model / dataclass / attrs class) → its real
+    object schema, via the same ``adapt()`` dispatcher ``output_schema`` uses.
+
+    Without this a structured parameter advertised as ``{"type": "string"}``:
+    the model dutifully sent a string, and the function received a ``str``
+    where its annotation promised a ``Filter``. The schema was actively
+    instructing the model to call the tool wrongly.
+
+    Returns ``None`` for anything ``adapt()`` cannot describe, so the caller
+    falls through to its existing best-effort mapping.
+    """
+    if not isinstance(ann, type) or issubclass(ann, enum.Enum):
+        return None
+    with contextlib.suppress(Exception):
+        schema = adapt(ann).json_schema()
+        if isinstance(schema, dict) and schema:
+            # ``title``/``$defs`` are for humans and for $ref resolution; the
+            # inline fragment keeps them, since a provider that rejects them
+            # would equally reject them on ``Agent.output=``.
+            return schema
+    return None
+
+
 def _json_type(ann: Any) -> dict[str, Any]:
     """Map a Python type hint to a JSON-schema type fragment (best-effort, dependency-free)."""
     if ann in _JSON_PRIMITIVES:
@@ -102,6 +141,11 @@ def _json_type(ann: Any) -> dict[str, Any]:
             return _json_type(real[0])
         if real:  # genuine multi-type union → anyOf (don't pick one)
             return {"anyOf": [_json_type(a) for a in real]}
+    if isinstance(ann, type) and issubclass(ann, enum.Enum):
+        return _enum_fragment(ann)
+    struct = _struct_fragment(ann)
+    if struct is not None:
+        return struct
     return {"type": "string"}  # unknown / unannotated → string
 
 
