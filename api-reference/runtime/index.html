@@ -1467,6 +1467,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agentkit.runtime.RunContext.semaphore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;semaphore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.runtime.RunContext.check_cancelled" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1692,6 +1703,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;charge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.runtime.Budget.semaphore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;semaphore
       
     </span>
   </a>
@@ -2297,6 +2319,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agentkit.runtime.RunContext.semaphore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;semaphore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.runtime.RunContext.check_cancelled" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2522,6 +2555,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;charge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.runtime.Budget.semaphore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;semaphore
       
     </span>
   </a>
@@ -2892,6 +2936,28 @@ default to the sentinel <code>_UNSET</code> (propagate the parent's value); pass
 <code>None</code> to explicitly UNSET at this level of the tree, or a concrete
 value to override. Existing callers (<code>ctx.child()</code> with no args) keep
 the unchanged propagation-by-reference behavior.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.runtime.RunContext.semaphore" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">semaphore</span>
+
+
+<a href="#agentkit.runtime.RunContext.semaphore" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">semaphore</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Any">Any</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>This context's concurrency pool — scoped to <code>depth</code>.</p>
+<p>Passing <code>self.depth</code> is what makes nested fan-out deadlock-free; see
+<code>Budget.semaphore</code> for why a single tree-wide pool cannot work.</p>
 
 
     </div>
@@ -3365,7 +3431,7 @@ tool stream. The app builds the two chains once; patterns pick the consumption m
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">_ceiling</span><span class="p">:</span> <span class="n"><span title="decimal.Decimal">Decimal</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">_ceiling_src</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="n"><span title="agentkit.runtime.meter._UNSET_CEILING">_UNSET_CEILING</span></span><span class="p">,</span>
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">_lock</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">_sem</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">_sems</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="dict">dict</span></span><span class="p">(),</span>
 </span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="p">)</span>
 </span></code></pre></div>
 
@@ -3664,6 +3730,50 @@ never mutated in place.</p>
 
 </div>
 
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.runtime.Budget.semaphore" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">semaphore</span>
+
+
+<a href="#agentkit.runtime.Budget.semaphore" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">semaphore</span><span class="p">(</span><span class="n">depth</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="asyncio.Semaphore">Semaphore</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The concurrency permit pool for one DEPTH of the agent tree.</p>
+<p>One semaphore per depth, not one for the whole tree. A single shared
+semaphore deadlocks, and not hypothetically: a parent's fan-out holds
+its permits for the ENTIRE duration of each child run, so a nested
+fan-out draws from a pool its own ancestors have already drained. With
+<code>max_concurrency=2</code>, an agent dispatching two <code>as_tool</code> sub-agents
+that each dispatch their own tools hangs forever — the two outer
+permits are held until the inner runs finish, and the inner runs cannot
+start without a permit. Deeper trees hit the same wall at any cap once
+the ancestors' outstanding acquisitions reach it.</p>
+<p>Keying on depth breaks the cycle structurally: an ancestor at depth d
+can only ever hold permits from pool d, and its children draw from
+pool d+1, so no acquisition can ever wait on a permit held by its own
+ancestor. Every nesting boundary in the framework goes through
+<code>ctx.child()</code> (<code>as_tool</code>, <code>run_agents</code>, the coordinator
+policies), so depth genuinely increments at each level.</p>
+<p>The trade is an honest one: the bound is now <code>max_concurrency</code> PER
+LEVEL rather than across the whole tree, so worst-case in-flight work
+is <code>max_concurrency * (max_depth + 1)</code>. Set <code>max_concurrency</code> with
+that in mind. A single tree-wide cap cannot be both deadlock-free and
+respected by nested acquisition — a re-entrant permit would let one
+level's fan-out multiply without limit, which is a weaker bound than
+per-level, not a stronger one.</p>
+<p>Lazy per depth, so the semaphore binds to the running loop at first
+use rather than to whatever loop existed at Budget construction.</p>
+
+
+    </div>
+
+</div>
+
 
 
   </div>
@@ -3915,15 +4025,16 @@ unrecoverable abort this module exists to remove.</p>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">clock</span><span class="p">:</span> <span class="n"><span title="collections.abc.Callable">Callable</span></span><span class="p">[[],</span> <span class="n"><span title="float">float</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="time.monotonic">monotonic</span></span><span class="p">,</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">on_exceeded</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">&quot;raise&quot;</span><span class="p">,</span> <span class="s2">&quot;stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;raise&quot;</span><span class="p">,</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">_ceiling</span><span class="p">:</span> <span class="n"><span title="decimal.Decimal">Decimal</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">_reqs</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="float">float</span></span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="k">lambda</span><span class="p">:</span> <span class="n"><span title="collections.defaultdict">defaultdict</span></span><span class="p">(</span><span class="n"><span title="list">list</span></span><span class="p">)</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="p">)(),</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">_charges</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="float">float</span></span><span class="p">,</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n"><span title="decimal.Decimal">Decimal</span></span><span class="p">]]</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n"><span title="collections.defaultdict">defaultdict</span></span><span class="p">(</span><span class="n"><span title="list">list</span></span><span class="p">))(),</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">_lock</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">_ceiling_src</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="n"><span title="agentkit.runtime.meter._UNSET_CEILING">_UNSET_CEILING</span></span><span class="p">,</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">_last_sweep</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="n"><span title="float">float</span></span><span class="p">(</span><span class="s2">&quot;-inf&quot;</span><span class="p">),</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">_reqs</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="float">float</span></span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="k">lambda</span><span class="p">:</span> <span class="n"><span title="collections.defaultdict">defaultdict</span></span><span class="p">(</span><span class="n"><span title="list">list</span></span><span class="p">)</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="p">)(),</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">_charges</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="float">float</span></span><span class="p">,</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n"><span title="decimal.Decimal">Decimal</span></span><span class="p">]]</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n"><span title="collections.defaultdict">defaultdict</span></span><span class="p">(</span><span class="n"><span title="list">list</span></span><span class="p">))(),</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">_lock</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">_ceiling_src</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="n"><span title="agentkit.runtime.meter._UNSET_CEILING">_UNSET_CEILING</span></span><span class="p">,</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
