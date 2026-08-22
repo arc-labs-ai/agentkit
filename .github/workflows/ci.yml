@@ -10,6 +10,14 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Action majors are bumped together and deliberately: GitHub forced every
+# Node-20 action onto Node 24, which surfaced as a deprecation annotation on
+# every run. Our usage of each is limited to long-stable inputs
+# (checkout: fetch-depth; upload-artifact: name/path/if-no-files-found/
+# retention-days; setup-uv: enable-cache/cache-dependency-glob), so the major
+# jumps carry no interface change for us. The PyPI publish action stays
+# SHA-pinned rather than tag-pinned — it holds signing authority.
+
 jobs:
   check:
     name: check (py${{ matrix.python-version }})
@@ -21,10 +29,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -57,7 +65,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-py${{ matrix.python-version }}
           path: coverage.xml
@@ -68,8 +76,8 @@ jobs:
     name: mutation testing
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
           cache-dependency-glob: |
