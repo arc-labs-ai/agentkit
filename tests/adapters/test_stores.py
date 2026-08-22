@@ -420,3 +420,120 @@ def test_inmemory_get_or_set_concurrent_racers_after_failure_still_single_flight
         assert state["attempts"] == 2
 
     _run(go())
+
+
+# ── FileStore durability: the adapter whose whole job is surviving a crash ───
+
+
+def test_filestore_writes_atomically() -> None:
+    """A plain `path.write_text` is not atomic, and this adapter exists to
+    "survive a process restart, so a human-gate suspend or a crashed run
+    resumes from disk". A crash DURING the write left a truncated file and
+    every later `get` raised — the checkpoint became permanently unreadable
+    and the run could never resume. The failure mode the adapter is FOR was
+    the one that broke it.
+
+    Atomicity is asserted through its observable consequence: a failure at the
+    rename must leave the previous value fully readable, and must not litter
+    the directory with scratch files.
+    """
+    import os
+    import pathlib
+    import tempfile
+
+    from agentkit.adapters.store import FileStore
+
+    d = tempfile.mkdtemp()
+    store = FileStore(d)
+
+    async def go():
+        await store.set("ckpt", {"v": "original"})
+        real = os.replace
+        os.replace = lambda *a, **k: (_ for _ in ()).throw(OSError("disk full"))
+        try:
+            with pytest.raises(OSError):
+                await store.set("ckpt", {"v": "new"})
+        finally:
+            os.replace = real
+        return await store.get("ckpt")
+
+    assert asyncio.run(go()) == {"v": "original"}, "a failed write destroyed the old value"
+    leftovers = [f.name for f in pathlib.Path(d).iterdir() if f.name.endswith(".tmp")]
+    assert leftovers == [], f"scratch files left behind: {leftovers}"
+
+
+def test_filestore_reports_a_corrupt_entry_with_its_path() -> None:
+    """Writes are atomic now, so an unparseable file means EXTERNAL corruption
+    (a disk fault, a hand-edit, an older non-atomic build). Returning None
+    would report "no checkpoint" and restart a run that has durable state, so
+    it raises — but a bare JSONDecodeError from inside a `to_thread` frame
+    gives an operator nothing to act on, so the message names the file."""
+    import pathlib
+    import tempfile
+
+    from agentkit.adapters.store import FileStore
+    from agentkit.kernel.errors import StoreUnavailable
+
+    d = tempfile.mkdtemp()
+    store = FileStore(d)
+    asyncio.run(store.set("ckpt", {"goal": "build"}))
+    path = next(p for p in pathlib.Path(d).iterdir() if p.suffix == ".json")
+    path.write_text(path.read_text()[:8])  # external truncation
+
+    with pytest.raises(StoreUnavailable) as exc:
+        asyncio.run(store.get("ckpt"))
+    assert "ckpt" in str(exc.value) and str(path) in str(exc.value)
+
+
+def test_one_torn_log_line_does_not_destroy_the_audit_trail() -> None:
+    """`list()` did `json.loads` over every line and raised on the first bad
+    one — so a crash during an append made every EARLIER audit record
+    unreadable too. An append-only log degrades to "the records that
+    survived", which is what an audit trail is for."""
+    import pathlib
+    import tempfile
+
+    from agentkit.adapters.store import FileStore
+
+    d = tempfile.mkdtemp()
+    store = FileStore(d)
+
+    async def go():
+        await store.append("audit", {"a": 1})
+        await store.append("audit", {"b": 2})
+
+    asyncio.run(go())
+    log = next(p for p in pathlib.Path(d).iterdir() if p.suffix == ".log")
+    log.write_text(log.read_text() + '{"c": ')  # a crash mid-append
+
+    with pytest.warns(UserWarning, match="unparseable"):
+        records = asyncio.run(store.list("audit"))
+    assert records == [{"a": 1}, {"b": 2}], "surviving records were lost with the torn one"
+
+
+def test_filestore_says_so_when_it_ignores_a_ttl() -> None:
+    """FileStore has no expiry sweeper, so a ttl is silently permanent. That
+    matters most for idempotency: a key that never expires dedupes a
+    legitimate retry of the same operation forever. Documented in a docstring
+    is not the same as visible at the call site."""
+    import tempfile
+    import warnings
+
+    from agentkit.adapters.store import FileStore
+
+    store = FileStore(tempfile.mkdtemp())
+
+    with pytest.warns(UserWarning, match="ignores ttl"):
+        asyncio.run(store.set("k", "v", ttl=60))
+
+    # Once per store, not once per call — a per-call warning gets filtered.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        asyncio.run(store.set("k2", "v", ttl=60))
+    assert not [w for w in caught if "ignores ttl" in str(w.message)]
+
+    # And no warning at all when no ttl is asked for.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        asyncio.run(FileStore(tempfile.mkdtemp()).set("k", "v"))
+    assert caught == []

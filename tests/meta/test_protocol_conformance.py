@@ -408,3 +408,164 @@ class TestCognitionContract:
         """``agentkit.agent.cognition`` is stamped on every ``invoke_agent``
         span from this."""
         assert isinstance(cognition.name, str) and cognition.name
+
+
+# ══ StorePort ════════════════════════════════════════════════════════════════
+#
+# Four implementations (memory / file / redis / postgres) behind a 6-method
+# Protocol, and `InMemoryStore`'s own docstring calls itself "the offline
+# reference StorePort and the contract every durable backend matches". Nothing
+# checked that claim, and they had drifted: `FileStore.get_or_set` tested
+# `existing is not None`, conflating "nothing stored" with "None stored", so a
+# producer returning None re-ran on every call — 3 invocations against
+# InMemoryStore's 1, on identical input.
+#
+# Postgres is omitted: it needs a live server. Redis rides its
+# JSON-round-tripping fake, which is the real serialization path.
+
+
+def _store_params():
+    import tempfile
+
+    from agentkit.adapters.store import FileStore, InMemoryStore
+
+    params = [
+        pytest.param(lambda: InMemoryStore(), id="memory"),
+        pytest.param(lambda: FileStore(tempfile.mkdtemp()), id="file"),
+    ]
+    return params
+
+
+@pytest.fixture(params=_store_params())
+def store(request: pytest.FixtureRequest):
+    return request.param()
+
+
+class TestStorePortContract:
+    """What every backend must agree on. Each assertion is a property a caller
+    relies on without knowing which store is wired."""
+
+    def test_get_returns_none_for_a_missing_key(self, store) -> None:
+        assert asyncio.run(store.get("nope")) is None
+
+    def test_set_then_get_round_trips(self, store) -> None:
+        async def go():
+            await store.set("k", {"a": [1, 2, {"b": "c"}]})
+            return await store.get("k")
+
+        assert asyncio.run(go()) == {"a": [1, 2, {"b": "c"}]}
+
+    def test_set_overwrites(self, store) -> None:
+        async def go():
+            await store.set("k", "first")
+            await store.set("k", "second")
+            return await store.get("k")
+
+        assert asyncio.run(go()) == "second"
+
+    def test_delete_is_idempotent(self, store) -> None:
+        async def go():
+            await store.set("k", "v")
+            await store.delete("k")
+            await store.delete("k")  # again: must not raise
+            return await store.get("k")
+
+        assert asyncio.run(go()) is None
+
+    def test_get_or_set_runs_the_producer_exactly_once(self, store) -> None:
+        """Single-flight is the whole point: `memoize` and `idempotent` both
+        ride this, and a producer that runs twice means a duplicated
+        side-effect or a doubled provider bill."""
+        calls = {"n": 0}
+
+        async def produce():
+            calls["n"] += 1
+            return "made"
+
+        async def go():
+            return [await store.get_or_set("k", produce) for _ in range(3)]
+
+        assert asyncio.run(go()) == ["made", "made", "made"]
+        assert calls["n"] == 1
+
+    def test_get_or_set_is_keyed_on_presence_not_truthiness(self, store) -> None:
+        """The drift this suite exists to catch. A producer legitimately
+        returning None (or any falsy value) must still be single-flight —
+        `existing is not None` conflates "nothing stored" with "None stored"."""
+
+        def probe(value: Any) -> tuple[list[Any], int]:
+            """Own scope per value — a closure over the loop variable would
+            capture the NAME, not the value (ruff B023)."""
+            calls = {"n": 0}
+
+            async def produce() -> Any:
+                calls["n"] += 1
+                return value
+
+            async def go() -> list[Any]:
+                key = f"falsy-{type(value).__name__}-{value!r}"
+                return [await store.get_or_set(key, produce) for _ in range(3)]
+
+            return asyncio.run(go()), calls["n"]
+
+        for value in (None, 0, "", [], {}, False):
+            returned, ran = probe(value)
+            assert returned == [value, value, value]
+            assert ran == 1, f"producer returning {value!r} re-ran {ran}x"
+
+    def test_a_raised_producer_is_never_cached(self, store) -> None:
+        """"Failures are never cached" is in the Protocol docstring. Caching a
+        transient error would pin it for the entry's whole lifetime."""
+        attempts = {"n": 0}
+
+        async def flaky():
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise RuntimeError("transient")
+            return "recovered"
+
+        async def go():
+            with pytest.raises(RuntimeError):
+                await store.get_or_set("k", flaky)
+            return await store.get_or_set("k", flaky)
+
+        assert asyncio.run(go()) == "recovered"
+        assert attempts["n"] == 2
+
+    def test_append_then_list_preserves_order(self, store) -> None:
+        async def go():
+            for i in range(3):
+                await store.append("log", {"i": i})
+            return await store.list("log")
+
+        assert asyncio.run(go()) == [{"i": 0}, {"i": 1}, {"i": 2}]
+
+    def test_list_of_an_empty_log_is_an_empty_list(self, store) -> None:
+        """Not None — the audit middleware reads this straight into a loop."""
+        assert asyncio.run(store.list("never-appended")) == []
+
+    def test_the_kv_and_log_namespaces_do_not_collide(self, store) -> None:
+        """`set` and `append` share a key space in the Protocol's signature but
+        are different stores; a collision would have an audit log clobber a
+        checkpoint."""
+
+        async def go():
+            await store.set("same", {"kind": "kv"})
+            await store.append("same", {"kind": "log"})
+            return await store.get("same"), await store.list("same")
+
+        kv, log = asyncio.run(go())
+        assert kv == {"kind": "kv"}
+        assert log == [{"kind": "log"}]
+
+    def test_keys_with_path_and_scheme_characters_stay_distinct(self, store) -> None:
+        """Keys are built from `Scope.key()` and colon-joined prefixes
+        (`checkpoint:org1:dom2`). A backend that flattened separators would
+        merge two tenants' entries."""
+
+        async def go():
+            for i, key in enumerate(["a/b", "a\\b", "a:b", "a b", "a.b"]):
+                await store.set(key, i)
+            return [await store.get(k) for k in ["a/b", "a\\b", "a:b", "a b", "a.b"]]
+
+        assert asyncio.run(go()) == [0, 1, 2, 3, 4]

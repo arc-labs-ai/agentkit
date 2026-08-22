@@ -11,6 +11,41 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — FileStore durability, and a StorePort contract nobody checked
+
+`InMemoryStore`'s docstring calls itself "the offline reference `StorePort` and
+the contract every durable backend matches". Nothing checked that claim, and
+they had drifted.
+
+- **A crash during a write left the checkpoint permanently unreadable.**
+  `FileStore.set` used `path.write_text`, which is not atomic — so a process
+  that died mid-write produced a truncated file and every later `get` raised
+  `JSONDecodeError` forever. The adapter exists to "survive a process restart,
+  so a human-gate suspend or a crashed run resumes from disk"; the failure mode
+  it is *for* was the one that broke it. Now writes to a temp file in the same
+  directory and `os.replace`s it, so a reader sees the whole old file or the
+  whole new one. (Without `fsync` this survives a process crash, not a power
+  loss — which is the claim the docstring makes.)
+- **A corrupt entry now names its file.** Writes are atomic, so an unparseable
+  file means external corruption. It raises `StoreUnavailable` rather than
+  returning `None`, because reporting "no checkpoint" would restart a run that
+  has durable state — and the message includes the path, where a bare
+  `JSONDecodeError` from inside a `to_thread` frame gave an operator nothing.
+- **One torn log line destroyed the whole audit trail.** `list()` raised on the
+  first unparseable line, so a crash during an append made every *earlier*
+  record unreadable too. Bad lines are now skipped (with a one-shot warning)
+  and the surviving records returned.
+- **`get_or_set` broke single-flight on a falsy value.** It tested
+  `existing is not None`, conflating "nothing stored" with "`None` stored", so
+  a producer returning `None` re-ran on every call: 3 invocations against
+  `InMemoryStore`'s 1, on identical input. Now keyed on presence.
+- **A silently-ignored `ttl` warns once.** FileStore has no expiry sweeper, so
+  a ttl is permanent — which matters most for idempotency, where a key that
+  never expires dedupes a legitimate retry of the same operation forever. It
+  was a docstring note; it is now visible at the call site.
+- **Added a `StorePort` conformance contract** (11 properties × memory/file) to
+  the protocol suite, so the next backend either matches the reference or fails.
+
 ### Fixed — a provider failure that read as a complete answer
 
 - **An in-band SSE error frame was swallowed by both providers.** Anthropic and

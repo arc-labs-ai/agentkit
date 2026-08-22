@@ -109,6 +109,10 @@ SECURITY_TESTS = (
 )
 RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
 PROVIDER_TESTS = ("tests/adapters/test_provider_stream_errors.py",)
+STORE_TESTS = (
+    "tests/meta/test_protocol_conformance.py",
+    "tests/adapters/test_stores.py",
+)
 WORKFLOW_TESTS = ("tests/agents/test_workflow.py",)
 REGISTRY_TESTS = (
     "tests/adapters/test_model_registry.py",
@@ -376,6 +380,42 @@ MUTANTS: tuple[Mutant, ...] = (
         before='    "rate_limit",\n    "server_error",\n    "overloaded",',
         after='    "__never_matches_rate_limit",\n    "__never_matches_server_error",\n    "__never_matches_overloaded",',
         tests=PROVIDER_TESTS,
+    ),
+    # ── stores: the reference contract every backend must match ──────────────
+    Mutant(
+        tag="store",
+        why="FileStore.get_or_set keys on truthiness again (single-flight breaks on None)",
+        path="agentkit/adapters/store/file.py",
+        # Targets `_exists` itself, not one of its two call sites: mutating
+        # only the pre-lock check leaves the in-lock double-check correct, and
+        # the mutant survives for the wrong reason.
+        before="        return await asyncio.to_thread(path.exists)",
+        after="        return (await self.get(key)) is not None",
+        tests=STORE_TESTS,
+    ),
+    Mutant(
+        tag="store",
+        why="FileStore writes non-atomically again (a crash mid-write orphans the checkpoint)",
+        path="agentkit/adapters/store/file.py",
+        before="        await asyncio.to_thread(self._write_atomic, path, json.dumps(value))",
+        after="        await asyncio.to_thread(lambda: path.write_text(json.dumps(value)))",
+        tests=STORE_TESTS,
+    ),
+    Mutant(
+        tag="store",
+        why="one unparseable log line takes the whole audit trail down again",
+        path="agentkit/adapters/store/file.py",
+        before="                except json.JSONDecodeError:",
+        after="                except _NeverJSONError:",
+        tests=STORE_TESTS,
+    ),
+    Mutant(
+        tag="store",
+        why="a silently-ignored ttl stops warning (permanent idempotency entries)",
+        path="agentkit/adapters/store/file.py",
+        before="        if ttl is not None and not self._warned_ttl:",
+        after="        if False:",
+        tests=STORE_TESTS,
     ),
     # ── workflow ─────────────────────────────────────────────────────────────
     Mutant(
