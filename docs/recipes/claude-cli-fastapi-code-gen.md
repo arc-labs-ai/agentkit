@@ -150,6 +150,37 @@ the per-field diagnostics.
 Pass `json_schema=` on the cognition to send a shape that isn't the agent's
 Python type; it overrides `output=`.
 
+## Spend
+
+The CLI bypasses the `Invoker`, so the `meter()` middleware never sees its
+usage. That used to mean CLI spend was invisible: a $50 run against a $1
+`Budget` completed happily and the ledger read `$0.00`. Both ends are wired
+now.
+
+```python
+ctx = RunContext("run-1", Scope(), services=Services(), budget=Budget(max_cost_usd=2.50))
+result = await agent.run("Refactor the auth module", ctx)
+
+ctx.budget.spent()      # Decimal('0.750000') — what the CLI reported
+ctx.budget.remaining()  # Decimal('1.750000')
+```
+
+- **Before the spawn**, the run's *remaining* headroom goes out as
+  `--max-budget-usd`, so the CLI stops itself mid-flight instead of being
+  audited after the money is gone. An already-exhausted budget doesn't spawn
+  at all — the result carries `stop_reason="budget_exhausted"`, which is
+  resumable: raise the ceiling and run again.
+- **After the run**, the reported cost and tokens are charged to every meter
+  on the context (`Budget`, any `Quota`) and to `ctx.actor_budget`.
+- A ceiling crossed by *this* run is recorded in `evals["meter_error"]`, never
+  raised — the money is spent and the answer exists; throwing it away helps
+  nobody.
+- `meter_spend=False` opts a run out of both ends (a warm-up call, an eval
+  harness with its own accounting).
+
+`Usage.cost_usd` remains a CLI-side estimate, so the ledger it feeds is an
+estimate too.
+
 ## Configuration walkthrough
 
 ```python

@@ -235,6 +235,19 @@ class ClaudeCliCognition:
     # that declares no ``output=``.
     json_schema: dict[str, Any] | None = None
 
+    # ── spend ───────────────────────────────────────────────────────────────
+    # Two halves of one problem. ``--max-budget-usd`` hands the run's remaining
+    # headroom to the CLI so IT stops itself mid-flight; charging the meters
+    # afterwards puts what it actually spent on the framework's books. Before
+    # this the cognition was invisible to both: a $50 CLI run against a $1
+    # Budget completed happily and the ledger read $0.00, which the class
+    # docstring admitted ("callers who need a hard ceiling on CLI spend must
+    # impose it externally").
+    #
+    # Turn it off for a run that should not draw on the shared envelope at all
+    # — a warm-up call, an eval harness with its own accounting.
+    meter_spend: bool = True
+
     # ── session identity ────────────────────────────────────────────────────
     # Three DIFFERENT things the CLI keeps separate, and so must we:
     #
@@ -339,11 +352,13 @@ class ClaudeCliCognition:
           resume, pass the ``evals["session_id"]`` value back as
           ``ClaudeCliCognition(resume_session_id=...)`` — NOT ``session_id=``,
           which names a new session rather than continuing an old one.
-        - ``ctx.budget`` — the CLI's cost accounting is surfaced via
-          ``Usage.cost_usd`` on the final event but is NOT charged
-          against ``ctx.budget`` (the cognition bypasses the ``Invoker``
-          and its ``meter()`` middleware). Callers who need a hard
-          ceiling on CLI spend must impose it externally.
+        - ``ctx.budget`` — CHARGED, as of the spend integration. The run's
+          remaining headroom goes out as ``--max-budget-usd`` so the CLI
+          stops itself mid-flight, and what it actually spent is charged
+          to every meter on the context plus the per-actor envelope once
+          the run ends. An already-exhausted budget refuses to spawn at
+          all, with the resumable ``budget_exhausted`` stop reason. Set
+          ``meter_spend=False`` to opt a run out of both ends.
         """
         del context  # unused — the CLI owns its own transcript
 
@@ -398,7 +413,10 @@ class ClaudeCliCognition:
             system_prompt = self._resolve_system_prompt(agent.prompt)
             schema = self._resolve_json_schema(agent)
             schema_requested = schema is not None
-            argv = self._build_argv(task, system_prompt=system_prompt, json_schema=schema)
+            budget_cap = self._budget_cap(ctx)
+            argv = self._build_argv(
+                task, system_prompt=system_prompt, json_schema=schema, max_budget_usd=budget_cap
+            )
             env = self._build_env(ctx=ctx)
 
             if wd_missing is not None:
@@ -484,7 +502,14 @@ class ClaudeCliCognition:
             # Distinguish working_dir_missing from spawn_failed for
             # operator clarity (the CLI would raise FileNotFoundError for
             # both, but the fix path differs).
-            if proc is None:
+            if type(fatal_exc).__name__ == "MeterExceeded":
+                # The pre-flight refusal from ``_budget_cap``: no subprocess
+                # was spawned. ``budget_exhausted`` is a RESUMABLE stop reason,
+                # which is the honest one — raise the ceiling and run again.
+                # Matched by name so this module keeps its import of
+                # ``runtime.meter`` lazy.
+                final_stop_reason = "budget_exhausted"
+            elif proc is None:
                 if isinstance(fatal_exc, FileNotFoundError) and str(fatal_exc).startswith(
                     "working_dir does not exist:"
                 ):
@@ -545,6 +570,12 @@ class ClaudeCliCognition:
         else:
             evals_structured_error = None
 
+        # Charge the framework's meters with what the CLI actually spent. After
+        # the stop-reason decision (so a charge cannot change it) and before the
+        # terminal event (so the books are straight by the time the caller sees
+        # the result).
+        charge_error = await self._charge_meters(ctx, usage)
+
         evals: dict[str, Any] = {
             "session_id": session_id or "",
             "cli_duration_ms": duration_ms or 0,
@@ -572,6 +603,11 @@ class ClaudeCliCognition:
             evals["thinking"] = accumulated_thinking
         if fatal_exc is not None:
             evals["error"] = f"{type(fatal_exc).__name__}: {fatal_exc}"
+        if charge_error is not None:
+            # A meter refused the charge — almost always a ceiling crossed by
+            # this very run. The spend is on the books either way; this records
+            # that the ceiling is now behind us.
+            evals["meter_error"] = charge_error
         if final_partial and stderr_bytes:
             stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
             if stderr_text:
@@ -639,8 +675,73 @@ class ClaudeCliCognition:
             return None
         return schema if isinstance(schema, dict) and schema else None
 
+    def _budget_cap(self, ctx: Ctx | None) -> str | None:
+        """The run's remaining headroom, as the CLI's ``--max-budget-usd`` wants it.
+
+        ``None`` when metering is off, no budget is wired, or the budget has no
+        ceiling — in each case there is no number to enforce and the flag must
+        not appear, because passing one would invent a limit the caller never
+        set.
+
+        Raises :class:`MeterExceeded` when the headroom is already gone. That is
+        a pre-flight refusal on purpose: spawning a subprocess to be told what
+        we already know costs two to five seconds of CLI warm-up, and the
+        terminal event this produces (``budget_exhausted``) is the resumable
+        one — raise the ceiling and run again.
+        """
+        if not self.meter_spend or ctx is None:
+            return None
+        budget = getattr(ctx, "budget", None)
+        remaining = getattr(budget, "remaining", None)
+        if remaining is None:
+            return None
+        headroom = remaining()
+        if headroom is None:  # no ceiling configured
+            return None
+        if headroom <= 0:
+            from agentkit.runtime.meter import MeterExceeded
+
+            raise MeterExceeded(
+                f"claude CLI not spawned: the run budget has {headroom} USD left"
+            )
+        return f"{headroom:f}"
+
+    async def _charge_meters(self, ctx: Ctx | None, usage: Usage) -> str | None:
+        """Put the CLI's spend on the framework's books. Returns an error note.
+
+        The CLI bypasses the ``Invoker``, so the ``meter()`` middleware never
+        sees this usage and every meter on the context stays at zero. That is
+        how a documented safety mechanism ends up doing nothing — the same
+        failure ``ActorBudget`` had — so the charge happens here instead.
+
+        Nothing raises out of this. The spend already happened, the run already
+        produced an answer, and the terminal-event guarantee says the caller
+        gets that answer; a ceiling crossed on the LAST call is recorded and
+        reported, not converted into a lost result. A custom meter that
+        misbehaves is contained for the same reason.
+        """
+        if not self.meter_spend or ctx is None:
+            return None
+        call = _CliCall(ctx=ctx)
+        note: str | None = None
+        for meter in getattr(ctx, "all_meters", None) or []:
+            try:
+                await meter.charge(call, usage)
+            except Exception as exc:  # noqa: BLE001 — see docstring
+                note = f"{type(exc).__name__}: {exc}"
+        actor = getattr(ctx, "actor_budget", None)
+        if actor is not None:
+            with contextlib.suppress(Exception):
+                actor.charge(tokens=usage.total_tokens, cost_usd=usage.cost_usd, steps=1)
+        return note
+
     def _build_argv(
-        self, task: str, *, system_prompt: str, json_schema: dict[str, Any] | None = None
+        self,
+        task: str,
+        *,
+        system_prompt: str,
+        json_schema: dict[str, Any] | None = None,
+        max_budget_usd: str | None = None,
     ) -> list[str]:
         """Assemble the CLI argv. Order-independent; kept grouped by role
         (identity → format → model → prompt → tools → permissions → resume →
@@ -675,6 +776,8 @@ class ClaudeCliCognition:
             argv += ["--permission-prompt-tool", self.permission_prompt_tool]
         if self.max_turns is not None:
             argv += ["--max-turns", str(self.max_turns)]
+        if max_budget_usd is not None:
+            argv += ["--max-budget-usd", max_budget_usd]
         if json_schema is not None:
             # The CLI parses this argument as JSON and rejects an invalid
             # schema at startup ("Error: --json-schema is not a valid JSON
@@ -718,6 +821,21 @@ class ClaudeCliCognition:
 # ─────────────────────────────────────────────────────────────────────────────
 # Stream-JSON parsing
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class _CliCall:
+    """The minimum a ``Meter`` needs from a "call" it is charging.
+
+    ``Budget.charge`` ignores its ``call`` entirely, but ``Quota`` reads
+    ``call.ctx.scope.key()`` to partition per tenant — so a bare ``None`` would
+    charge the run budget and crash the quota. ``request`` is present and
+    ``None`` because a custom meter may look for it; there is no ``ChatRequest``
+    here, and inventing one would be a lie.
+    """
+
+    ctx: Any
+    request: Any = None
 
 
 @dataclass(slots=True)

@@ -11,6 +11,30 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — CLI spend is on the framework's books, and its ceiling on the CLI
+
+`ClaudeCliCognition` bypasses the `Invoker`, so the `meter()` middleware never
+saw its usage and every meter on the context stayed at zero no matter what the
+CLI spent. A $50 CLI run against a $1 `Budget` completed happily with a ledger
+reading `$0.00`. The class docstring admitted it ("callers who need a hard
+ceiling on CLI spend must impose it externally") — the same shape as the
+`ActorBudget` that was wired to nothing.
+
+- **Before the spawn**: the run's *remaining* headroom goes out as
+  `--max-budget-usd`, so the CLI stops itself mid-flight rather than being
+  audited after the money is gone. An already-exhausted budget refuses to spawn
+  at all — two to five seconds of CLI warm-up to be told what we already know —
+  and reports the resumable `budget_exhausted`.
+- **After the run**: the reported cost and tokens are charged to every meter on
+  the context and to `ctx.actor_budget`. A `Quota` is charged through a minimal
+  call shim, since it partitions on `call.ctx.scope.key()` and a bare `None`
+  would have crashed it.
+- A ceiling crossed by *this* run lands in `evals["meter_error"]` rather than
+  raising: the money is spent, the answer exists, and converting the charge
+  into an exception would lose a result the caller already paid for — and break
+  the terminal-event guarantee on the way.
+- `meter_spend=False` opts a run out of both ends.
+
 ### Added — `output=` types a CLI-delegated run
 
 `ClaudeCliCognition` ignored `agent.output` entirely: the schema was never

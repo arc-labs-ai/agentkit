@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
 CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
 CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
 FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
@@ -146,6 +147,71 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── CLI spend is on the books, and the ceiling is on the CLI ────────────
+    Mutant(
+        tag="clibudget",
+        why="CLI spend is invisible to every meter again ($50 run, $0.00 ledger)",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        charge_error = await self._charge_meters(ctx, usage)",
+        after="        charge_error = None",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the run's headroom is never handed to the CLI, so nothing stops it mid-flight",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if max_budget_usd is not None:\n            argv += [\"--max-budget-usd\", max_budget_usd]\n",
+        after="",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the ORIGINAL ceiling is sent instead of the remaining headroom",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='        return f"{headroom:f}"',
+        after='        return f"{budget.ceiling():f}"',
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="an exhausted budget still burns a subprocess spawn to learn it is exhausted",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if headroom <= 0:",
+        after="        if False:",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the pre-flight refusal is categorised as a spawn failure, so it reads unresumable",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='            if type(fatal_exc).__name__ == "MeterExceeded":',
+        after="            if False:",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the per-actor envelope is skipped, the bug ActorBudget already had once",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        actor = getattr(ctx, \"actor_budget\", None)\n        if actor is not None:",
+        after="        actor = None\n        if actor is not None:",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="a ceiling crossed by this very run raises, losing a result already paid for",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="            except Exception as exc:  # noqa: BLE001 — see docstring\n                note = f\"{type(exc).__name__}: {exc}\"",
+        after="            except Exception:\n                raise",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="meter_spend=False still charges the shared envelope",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if not self.meter_spend or ctx is None:\n            return None\n        call = _CliCall(ctx=ctx)",
+        after="        if ctx is None:\n            return None\n        call = _CliCall(ctx=ctx)",
+        tests=CLI_BUDGET_TESTS,
+    ),
     # ── output= types a CLI-delegated run too ───────────────────────────────
     Mutant(
         tag="clischema",
