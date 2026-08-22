@@ -5703,13 +5703,16 @@ replies with a <code>RedirectSignal</code> / <code>BudgetReducedSignal</code> /
 <p>Returned by an agent (via a tool call result OR an output marker) to say "I'm done; the
 next turn should be <code>target</code>, with this context." The coordinator's SelectorPolicy
 interprets it; the receiving agent inherits the transcript and the shared scratchpad.</p>
-<p><code>target</code> — the name of the receiving agent. Must exist in the coordinator's roster; an
-    unknown target falls back to the selector's default (never stalls the run).
+<p><code>target</code> — the name of the receiving agent. Must exist in the coordinator's roster;
+    <code>route_by_handoff</code> checks it and falls back to the selector's default (never
+    stalls the run), warning once per invented name. Matching is exact, or a unique
+    case-insensitive match — so <code>HANDOFF:Bob</code> still reaches a child named <code>bob</code>.
 <code>reason</code> — a short human-readable reason for the transfer. Goes into traces and the
     rendered marker so the receiving agent sees <em>why</em> it was handed control.
-<code>message</code> — optional text the orchestrator wants the receiving agent to see as the next
-    user turn. If empty, the receiving agent just inherits the transcript with no fresh
-    task framing. Multi-line is fine; it's wrapped inside the marker render.</p>
+<code>message</code> — optional text for the receiving agent. It is appended to the rendered
+    marker on its own line, so it reaches the next agent inside the rendered transcript
+    — NOT as a separate user message. If empty, the receiving agent just inherits the
+    transcript with no fresh task framing. Multi-line is fine.</p>
 
 
 
