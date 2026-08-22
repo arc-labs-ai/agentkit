@@ -6,8 +6,10 @@ cancels its group and raises on any step failure; ``best_effort=True`` isolates 
 into ``errors``.
 
 A **human-gate step** (``Step.gate("review")``) is a coordinator-level suspend point:
-reaching it checkpoints the accumulated results/errors/usage to ``ctx.store`` under a
-``plan_policy:<run_id>`` key, then returns an ``AgentResult`` with
+reaching it checkpoints the accumulated results/errors/usage through the shared
+``Checkpointer`` seam (``resolve_checkpointer``: an explicit ``checkpointer=`` on the
+cognition, else ``ctx.checkpointer``, else a bridge over ``ctx.store``) at the plan's own
+slot ``{run_id}:plan``, then returns an ``AgentResult`` with
 ``stop_reason="awaiting_decision"`` and a ``Suspended`` in ``evals["suspended"]``. The
 run resumes via :meth:`PlanPolicy.resume` — an ``approve`` decision continues at the next
 group (and reclaims the checkpoint); a ``reject`` (or missing decision) returns a
@@ -24,17 +26,24 @@ import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from agentkit.agents.policies.roundrobin import _emit_policy_dispatch
+from agentkit.agents.policies.roundrobin import _emit_policy_dispatch, _resolve_checkpointer
 from agentkit.agents.result import AgentResult, Suspended, stop_reason_for
+from agentkit.capabilities.checkpointer.persistence import (
+    result_to_dict,
+    usage_to_dict,
+)
 from agentkit.context import WorkingContext
+from agentkit.kernel._json import dumps as _json_dumps
 from agentkit.kernel.concurrency import run_agents
 from agentkit.kernel.errors import Failure
+from agentkit.kernel.ports import CheckpointStatus
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.resilience import ErrorClass
 from agentkit.kernel.types import Usage
 
 if TYPE_CHECKING:
     from agentkit.agents.agent import Agent
+    from agentkit.capabilities.checkpointer import Checkpointer
 
 
 def _plan_dispatch(ctx: Ctx, *, policy: str, child: str, reason: str) -> None:
@@ -44,9 +53,184 @@ def _plan_dispatch(ctx: Ctx, *, policy: str, child: str, reason: str) -> None:
 
 
 def _ckpt_key(run_id: str) -> str:
-    """Store key for a suspended PlanPolicy run's checkpoint (mirrors
-    ``Workflow``'s namespace scheme so the two can coexist in one store)."""
+    """LEGACY store key for a suspended plan, written before this policy moved
+    onto the shared ``Checkpointer`` seam. Still READ on resume so a run that
+    suspended across an upgrade can finish; no longer written."""
     return f"plan_policy:{run_id}"
+
+
+def checkpoint_slot(run_id: str) -> str:
+    """The durable slot for a suspended plan.
+
+    Namespaced per producer, like every other slot: a coordinator's tool-looping
+    children write at ``{run_id}:agent:{name}``, so a plan at ``{run_id}:plan``
+    cannot be clobbered by a child completing (which deletes its own slot) and
+    cannot clobber a nested coordinator's state.
+    """
+    return f"{run_id}:plan"
+
+
+# Bump when the encoded shape changes incompatibly. A payload with no ``v`` is a
+# pre-encoding record holding LIVE objects (see ``_decode_plan_state``).
+_CKPT_VERSION = 1
+
+
+def _warn_unpersisted_gate(gate: str, run_id: str) -> None:
+    """Announce a plan suspend that cannot be resumed.
+
+    Reaching a gate with no durable seam used to return a ``Suspended`` in
+    silence: the caller got a run id and a pending gate name, and every
+    ``resume`` for it would raise "no suspended plan". Mirrors
+    ``Workflow``'s warning for the same situation.
+    """
+    import warnings
+
+    warnings.warn(
+        f"plan gate {gate!r} suspended run {run_id!r} but no durable seam is wired on the "
+        "RunContext, so NOTHING WAS PERSISTED and PlanPolicy.resume() will raise "
+        f'"no suspended plan {run_id!r} to resume". Wire either '
+        "Services(checkpointer=Checkpointer(port=...)) or Services(store=...) to make this "
+        "suspend resumable.",
+        UserWarning,
+        stacklevel=4,
+    )
+
+
+def _step_to_dict(s: Step) -> dict[str, Any]:
+    return {"agent": s.agent, "input": s.input, "group": s.group, "gate_name": s.gate_name}
+
+
+def _dict_to_step(d: dict[str, Any]) -> Step:
+    return Step(
+        agent=d.get("agent"),
+        input=d.get("input", ""),
+        group=int(d.get("group", 0)),
+        gate_name=d.get("gate_name"),
+    )
+
+
+def _failure_to_dict(name: str | None, f: Failure) -> dict[str, Any]:
+    """Encode a step failure. ``Failure.cause`` is a live exception and cannot
+    cross a wire — the message it produced is kept, the traceback is not."""
+    return {
+        "agent": name,
+        "category": str(getattr(f.category, "value", f.category)),
+        "source": f.source,
+        "message": f.message,
+        "retriable": bool(f.retriable),
+    }
+
+
+def _dict_to_failure(d: dict[str, Any]) -> tuple[str | None, Failure]:
+    return (
+        d.get("agent"),
+        Failure(
+            category=ErrorClass(d.get("category", ErrorClass.UNKNOWN.value)),
+            source=d.get("source", "PlanPolicy"),
+            message=d.get("message", ""),
+            retriable=bool(d.get("retriable", False)),
+        ),
+    )
+
+
+def _encode_plan_state(
+    *,
+    task: str,
+    steps: list[Step],
+    results: list[AgentResult],
+    errors: list[Any],
+    usage: Usage,
+    gate_group: int,
+) -> dict[str, Any]:
+    """Encode a suspended plan into a JSON-SAFE payload.
+
+    Encoding always happens, even on an in-memory store that would happily hold
+    the live dataclasses. Two reasons. It kept a real bug invisible: the old
+    code put ``Step`` / ``Usage`` / ``AgentResult`` objects straight into
+    ``ctx.store.set``, so every test passed on ``InMemoryStore`` while any
+    durable store raised ``TypeError: Object of type Step is not JSON
+    serializable`` — the human-gate feature simply did not work on the
+    persistence people actually deploy. And encoding unconditionally keeps the
+    in-memory tests honest about the wire contract, the same argument
+    ``Checkpointer.snapshot`` makes for deep-copying state.
+
+    A child result's ``evals`` / ``parsed`` can hold ANYTHING (a Pydantic model,
+    a ``Message`` list from a nested coordinator). Rather than let the suspend
+    itself explode — which loses the whole run, the worst possible outcome at a
+    gate — those two fields are dropped, once, with a warning, if the payload
+    will not serialize without them.
+    """
+    payload: dict[str, Any] = {
+        "v": _CKPT_VERSION,
+        "task": task,
+        "steps": [_step_to_dict(s) for s in steps],
+        "results": [result_to_dict(r) for r in results],
+        "errors": [
+            _failure_to_dict(n, f) if isinstance(f, Failure) else {"agent": n, "message": str(f)}
+            for n, f in errors
+        ],
+        "usage": usage_to_dict(usage),
+        "gate_group": gate_group,
+    }
+    if _serializable(payload):
+        return payload
+
+    import warnings
+
+    for rec in payload["results"]:
+        rec.pop("evals", None)
+        rec.pop("parsed", None)
+    warnings.warn(
+        "a suspended plan carried child results whose `evals`/`parsed` could not be "
+        "serialized, so those two fields were dropped from the checkpoint. The plan will "
+        "resume and finish; the pre-gate results it hands back will have empty `evals` and "
+        "`parsed=None`. Return JSON-safe values from `output=` parsers to keep them.",
+        UserWarning,
+        stacklevel=3,
+    )
+    return payload
+
+
+def _serializable(payload: dict[str, Any]) -> bool:
+    try:
+        _json_dumps(payload)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _decode_plan_state(
+    state: dict[str, Any],
+) -> tuple[str, list[Step], list[AgentResult], list[Any], Usage, int]:
+    """Inverse of :func:`_encode_plan_state`, tolerating a PRE-encoding record.
+
+    A payload with no ``"v"`` was written by the old code path and holds live
+    objects — an in-memory store round-tripped them fine, so runs suspended
+    before this change must still resume rather than crash on a dict lookup
+    into a ``Step``.
+    """
+    from agentkit.capabilities.checkpointer.persistence import dict_to_result
+
+    task = state["task"]
+    gate_group = int(state["gate_group"])
+    if state.get("v") is None:  # legacy: live objects, no encoding
+        return (
+            task,
+            list(state["steps"]),
+            list(state["results"]),
+            list(state["errors"]),
+            state["usage"],
+            gate_group,
+        )
+    u = state.get("usage") or {}
+    return (
+        task,
+        [_dict_to_step(d) for d in state.get("steps", [])],
+        [dict_to_result(d) for d in state.get("results", [])],
+        [_dict_to_failure(d) for d in state.get("errors", [])],
+        Usage(u.get("input", 0), u.get("output", 0), u.get("cost", 0.0)),
+        gate_group,
+    )
 
 
 @dataclass(frozen=True)
@@ -265,6 +449,7 @@ class PlanPolicy:
             errors=list(dropped),
             usage=Usage(),
             start_group=None,
+            cp=_resolve_checkpointer(coordinator, ctx),
         )
 
     async def resume(
@@ -286,20 +471,28 @@ class PlanPolicy:
         the children roster isn't part of the checkpoint — the caller re-supplies the
         coordinator on resume, matching how ``Workflow.resume`` re-supplies the graph.
         """
-        if ctx.store is None:
-            raise ValueError("PlanPolicy.resume requires ctx.store")
-
         run_id = ctx.correlation_id
-        saved = await ctx.store.get(_ckpt_key(run_id))
+        cp = _resolve_checkpointer(coordinator, ctx)
+        if cp is None:
+            raise ValueError(
+                "PlanPolicy.resume requires a durable seam: wire "
+                "Services(checkpointer=Checkpointer(port=...)) or Services(store=...)"
+            )
+
+        # A record written by the pre-upgrade code lives under the old raw
+        # store key. Read it as a fallback so a plan that suspended across the
+        # upgrade can still finish, and remember which seam it came from so the
+        # right one is cleared below.
+        legacy = False
+        found = await cp.resume(checkpoint_slot(run_id))
+        saved: dict[str, Any] | None = found.state if found is not None else None
+        if not saved and ctx.store is not None:
+            saved = await ctx.store.get(_ckpt_key(run_id))
+            legacy = saved is not None
         if not saved:
             raise ValueError(f"no suspended plan {run_id!r} to resume")
 
-        task: str = saved["task"]
-        steps: list[Step] = list(saved["steps"])
-        results: list[AgentResult] = list(saved["results"])
-        errors: list[Any] = list(saved["errors"])
-        usage: Usage = saved["usage"]
-        gate_group: int = saved["gate_group"]
+        task, steps, results, errors, usage, gate_group = _decode_plan_state(saved)
 
         # Find the gate step at ``gate_group`` and look up its decision.
         gate_step = next(
@@ -318,7 +511,7 @@ class PlanPolicy:
         # Any non-approve decision (including missing) terminates the plan. Clear the
         # checkpoint on the way out so a stale run can't be re-resumed under the same id.
         if decision != "approve":
-            await ctx.store.delete(_ckpt_key(run_id))
+            await self._clear(cp, ctx, run_id, legacy=legacy)
             last = results[-1].output if results else ""
             return AgentResult(
                 output=last,
@@ -338,7 +531,7 @@ class PlanPolicy:
 
         # Approve → clear the checkpoint FIRST so a mid-resume crash doesn't leave a
         # phantom pending gate that would replay on the next resume attempt.
-        await ctx.store.delete(_ckpt_key(run_id))
+        await self._clear(cp, ctx, run_id, legacy=legacy)
 
         # The roster is re-supplied by the caller on resume and may not be the
         # one the plan was built against — validate again rather than trusting
@@ -355,7 +548,17 @@ class PlanPolicy:
             errors=errors,
             usage=usage,
             start_group=gate_group + 1,  # advance past the gate group
+            cp=cp,
         )
+
+    @staticmethod
+    async def _clear(
+        cp: Checkpointer, ctx: Ctx, run_id: str, *, legacy: bool
+    ) -> None:
+        """Drop a consumed plan checkpoint from whichever seam held it."""
+        await cp.delete(checkpoint_slot(run_id))
+        if legacy and ctx.store is not None:
+            await ctx.store.delete(_ckpt_key(run_id))
 
     async def _run_groups(
         self,
@@ -368,6 +571,7 @@ class PlanPolicy:
         errors: list[Any],
         usage: Usage,
         start_group: int | None,
+        cp: Checkpointer | None,
     ) -> AgentResult:
         """Core dispatch loop, shared by :meth:`execute` and :meth:`resume`. Iterates
         the plan's groups in ascending order (optionally skipping past ``start_group``).
@@ -386,17 +590,28 @@ class PlanPolicy:
                 gate_name = gate_step.gate_name
                 assert gate_name is not None  # narrowing for mypy — see filter above
                 run_id = ctx.correlation_id
-                if ctx.store is not None:
-                    await ctx.store.set(
-                        _ckpt_key(run_id),
-                        {
-                            "task": task,
-                            "steps": list(steps),
-                            "results": list(results),
-                            "errors": list(errors),
-                            "usage": usage,
-                            "gate_group": group,
-                        },
+                if cp is None:
+                    # No seam at all: the suspend is real but unrecoverable, and
+                    # saying so beats handing back a run id whose every resume
+                    # raises "no suspended plan".
+                    _warn_unpersisted_gate(gate_name, run_id)
+                else:
+                    await cp.snapshot(
+                        checkpoint_slot(run_id),
+                        _encode_plan_state(
+                            task=task,
+                            steps=steps,
+                            results=results,
+                            errors=errors,
+                            usage=usage,
+                            gate_group=group,
+                        ),
+                        # SUSPENDED, not RUNNING: ``Checkpointer.resume``
+                        # returns None for terminal statuses, and an
+                        # auto-resume supervisor needs "waiting on a human"
+                        # to be distinguishable from "engine in motion".
+                        status=CheckpointStatus.SUSPENDED,
+                        ctx=ctx,
                     )
                 await ctx.emit(
                     "interrupt",
@@ -452,4 +667,4 @@ class PlanPolicy:
         )
 
 
-__all__ = ["PlanPolicy", "PlanShapeError", "Planner", "StaticPlanner", "Step"]
+__all__ = ["PlanPolicy", "PlanShapeError", "Planner", "StaticPlanner", "Step", "checkpoint_slot"]

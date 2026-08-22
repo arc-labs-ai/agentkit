@@ -115,6 +115,10 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+PLAN_GATE_TESTS = (
+    "tests/agents/test_plan_durable_gate.py",
+    "tests/agents/test_plan_policy.py",
+)
 STORE_TESTS = (
     "tests/meta/test_protocol_conformance.py",
     "tests/adapters/test_stores.py",
@@ -126,6 +130,71 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the plan's human gate must be durable on a REAL store ───────────────
+    Mutant(
+        tag="plangate",
+        why="the checkpoint holds live dataclasses, so any serializing store raises",
+        path="agentkit/agents/policies/plan.py",
+        before="                        _encode_plan_state(",
+        after="                        dict(",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="a gate with no durable seam suspends in silence",
+        path="agentkit/agents/policies/plan.py",
+        before="                    _warn_unpersisted_gate(gate_name, run_id)",
+        after="                    pass",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="the plan writes at the bare run id, colliding with a nested coordinator",
+        path="agentkit/agents/policies/plan.py",
+        before='    return f"{run_id}:plan"',
+        after="    return run_id",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="the snapshot is RUNNING, so resume() reads it as engine-in-motion",
+        path="agentkit/agents/policies/plan.py",
+        before="                        status=CheckpointStatus.SUSPENDED,",
+        after="                        status=CheckpointStatus.RUNNING,",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="a pre-upgrade checkpoint is decoded as if it were encoded",
+        path="agentkit/agents/policies/plan.py",
+        before='    if state.get("v") is None:  # legacy: live objects, no encoding',
+        after="    if False:  # legacy: live objects, no encoding",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="an unserialisable child payload takes the whole run down at the gate",
+        path="agentkit/agents/policies/plan.py",
+        before="    if _serializable(payload):\n        return payload",
+        after="    return payload\n    if _serializable(payload):",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="results are stripped unconditionally, losing evals nobody asked to drop",
+        path="agentkit/agents/policies/plan.py",
+        before="    if _serializable(payload):\n        return payload\n",
+        after="",
+        tests=PLAN_GATE_TESTS,
+    ),
+    Mutant(
+        tag="plangate",
+        why="resume ignores the legacy key, stranding a plan suspended across the upgrade",
+        path="agentkit/agents/policies/plan.py",
+        before="        if not saved and ctx.store is not None:",
+        after="        if False and ctx.store is not None:",
+        tests=PLAN_GATE_TESTS,
+    ),
     # ── plan shape: refuse before dispatch, never mid-flight ─────────────────
     Mutant(
         tag="plan",

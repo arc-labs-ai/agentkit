@@ -8,12 +8,18 @@ module reads as policy only. The coordinator-state helpers (`coord_state_to_dict
 checkpoints read consistently.
 
 The *transport* (where the snapshot lives and how versions are numbered) is no longer here;
-that's the `Checkpointer` capability + `CheckpointPort`. `Agent` keeps a thin legacy bridge
-(`StoreBackedCheckpointStore`) so an existing wiring that injects only `ctx.store` still
-gets durable resume — the bridge is constructed on demand inside `Agent`, not exported.
-Coordinator runs do NOT carry the legacy bridge — they require a real `Checkpointer` if
-they want durability. This deliberate divergence keeps the coordinator path simpler (one
-resolution rule instead of three) while preserving Agent's back-compat.
+that's the `Checkpointer` capability + `CheckpointPort`. A wiring that injects only
+`ctx.store` still gets durable resume through the `StoreBackedCheckpointStore` bridge,
+which `capabilities.checkpointer.resolve_checkpointer` synthesizes on demand.
+
+EVERY producer resolves through that one function — the tool loop, `Workflow`, the
+coordinator policies, `PlanPolicy`'s human gate. An earlier version of this docstring
+claimed coordinator runs deliberately excluded the bridge and "require a real
+`Checkpointer`"; that divergence was not a simplification, it was a silent failure — a
+`Services(store=...)` wiring left a completed coordinator run with zero keys in the store
+and no warning. The bridge is exactly as durable as the store behind it, and its one
+limitation (a single slot per run, no version history) costs nothing to a producer that
+only ever reads `latest`.
 """
 
 from __future__ import annotations

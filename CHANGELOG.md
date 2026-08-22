@@ -11,6 +11,31 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — the plan human-gate is durable on a real store
+
+- **The gate checkpoint held live dataclasses.** `PlanPolicy` put `Step`,
+  `Usage` and `AgentResult` instances straight into `ctx.store.set`.
+  `InMemoryStore` holds objects, so the whole feature tested green while a
+  `FileStore` raised `TypeError: Object of type Step is not JSON serializable`
+  — the human gate did not work on the persistence anyone deploys. There is now
+  an explicit JSON-safe wire format, applied **unconditionally** so an
+  in-memory test cannot pass over a broken encoding.
+
+- **`resume` required `ctx.store`,** so a `Services(checkpointer=...)` wiring —
+  the documented durable seam — could suspend but never resume. The gate now
+  goes through the same `resolve_checkpointer` order as every other producer, at
+  its own namespaced slot `{run_id}:plan`, with `CheckpointStatus.SUSPENDED` so
+  an auto-resume supervisor can tell "waiting on a human" from "engine in
+  motion". Records under the old raw `plan_policy:<run_id>` key are still read
+  (and cleared) on resume, so a plan suspended across the upgrade finishes.
+
+- **A gate reached with no seam wired suspended in silence,** handing back a run
+  id whose every `resume` raises. It now warns, exactly as `Workflow` does.
+
+- A child result whose `evals` / `parsed` cannot be serialized no longer takes
+  the run down at the gate: those two fields are dropped with a warning, since
+  losing the whole run is strictly worse than losing them.
+
 ### Fixed — a plan is checked against the roster before it dispatches
 
 - **A step naming an unknown child raised `KeyError('reseacher')` mid-flight.**

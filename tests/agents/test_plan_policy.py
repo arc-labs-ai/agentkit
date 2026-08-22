@@ -2,7 +2,7 @@
 
 Companion to ``test_orchestrator.py`` (basic group dispatch); this file locks the
 coordinator-level suspend contract: reaching a ``Step.gate("name")`` checkpoints the
-accumulated results/errors/usage under ``plan_policy:<run_id>``, yields a ``Suspended``
+accumulated results/errors/usage at the plan's durable slot, yields a ``Suspended``
 result, and returns without dispatching further groups. Resume routes on the decision
 dict: ``approve`` clears the checkpoint and continues at the next group; ``reject`` (or
 a missing key) terminates with ``stop_reason="rejected"`` and never runs downstream
@@ -16,7 +16,12 @@ import pytest
 from agentkit import Agent
 from agentkit.adapters.store import InMemoryStore
 from agentkit.agents.cognition import CoordinatorCognition
-from agentkit.agents.policies.plan import PlanPolicy, StaticPlanner, Step, _ckpt_key
+from agentkit.agents.policies.plan import (
+    PlanPolicy,
+    StaticPlanner,
+    Step,
+    checkpoint_slot,
+)
 from agentkit.agents.result import Suspended
 from agentkit.kernel.types import Scope
 from agentkit.testing import FakeLLM, make_test_ctx
@@ -96,8 +101,9 @@ def test_plan_policy_suspends_at_human_gate():
     # Only the two researchers ran — the synth step was NEVER dispatched.
     assert len(res.evals["results"]) == 2
     assert synth.calls == []
-    # Checkpoint was persisted for resume — key is namespaced by run id.
-    assert _run(store.get(_ckpt_key("plan-run-1"))) is not None
+    # Checkpoint was persisted for resume, through the shared ``Checkpointer``
+    # seam (bridged over this store) at the plan's own namespaced slot.
+    assert _run(store.get(f"checkpoint:{checkpoint_slot('plan-run-1')}")) is not None
 
 
 # ── 2. Approve → resume dispatches the synthesizer ──────────────────────────
@@ -186,7 +192,7 @@ def test_plan_policy_without_gate_runs_all_groups():
     assert res.evals["errors"] == []
     assert "suspended" not in res.evals
     # No checkpoint should have been written when no gate was in play.
-    assert _run(store.get(_ckpt_key("plan-run-4"))) is None
+    assert _run(store.get(f"checkpoint:{checkpoint_slot('plan-run-4')}")) is None
 
 
 # ── 5. Approve reclaims the checkpoint ──────────────────────────────────────
@@ -206,12 +212,13 @@ def test_plan_policy_gate_checkpoint_deleted_on_approve():
     ctx = make_test_ctx(
         llm=FakeLLM("ok"), store=store, scope=Scope(1, 2), correlation_id="plan-run-5"
     )
+    slot = f"checkpoint:{checkpoint_slot('plan-run-5')}"
     _run(coord.run("goal", ctx))
-    assert _run(store.get(_ckpt_key("plan-run-5"))) is not None  # checkpoint exists
+    assert _run(store.get(slot)) is not None  # checkpoint exists
 
     _run(policy.resume(coord, {"review": "approve"}, ctx))
     # State cleaned up: the store no longer holds the run's checkpoint.
-    assert _run(store.get(_ckpt_key("plan-run-5"))) is None
+    assert _run(store.get(slot)) is None
     # A second resume under the same id must not silently succeed — the checkpoint is
     # gone, so ``resume`` raises rather than replaying a phantom.
     with pytest.raises(ValueError, match="no suspended plan"):

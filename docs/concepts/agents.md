@@ -128,6 +128,28 @@ with it.
 `Agent.resume`; the slot is re-derived internally. Two children sharing one
 agent *name* in a single run still share a slot — name them distinctly.
 
+| Producer | Slot |
+|---|---|
+| Tool loop (`ReActCognition`) | `{run_id}:agent:{name}` |
+| Coordinator policies | `{run_id}` |
+| `PlanPolicy` human gate | `{run_id}:plan` |
+| `Workflow` | `{run_id}` |
+
+**Durable state is encoded, not stored raw.** A producer writes JSON-safe
+dicts even when the backing store would happily hold live objects. That is
+not ceremony: `PlanPolicy` used to put `Step` / `Usage` / `AgentResult`
+instances straight into `ctx.store.set`, so its human gate tested green on
+`InMemoryStore` and raised `TypeError: Object of type Step is not JSON
+serializable` on a `FileStore` — the feature did not work on the
+persistence anyone deploys. Encoding unconditionally is what keeps an
+in-memory test honest about the wire.
+
+One consequence worth knowing: a child result's `evals` / `parsed` can hold
+anything. If they will not serialize, the plan drops those two fields with a
+warning rather than letting the suspend itself raise — losing the whole run
+at the gate is the worst available outcome. Return JSON-safe values from
+`output=` parsers to keep them.
+
 ### How a run ends
 
 `AgentResult.stop_reason` is a closed `Literal`, so the terminal state
