@@ -228,6 +228,46 @@ MUTANTS: tuple[Mutant, ...] = (
         after="            except _NeverRaised:\n",
         tests=CONCURRENCY_TESTS,
     ),
+    Mutant(
+        tag="concurrency",
+        why="a starved slice floors to zero, producing silent no-op children",
+        path="agentkit/kernel/concurrency.py",
+        before="    return max(1, units)",
+        after="    return units",
+        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+    ),
+    Mutant(
+        tag="concurrency",
+        why="a fan-out from an already-spent envelope stops failing fast",
+        path="agentkit/kernel/concurrency.py",
+        before="        if parent_actor_budget.exhausted():",
+        after="        if False:",
+        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+    ),
+    Mutant(
+        tag="concurrency",
+        why="the money slice round-trips through the float mirror again",
+        path="agentkit/kernel/concurrency.py",
+        before="        base_cost = parent_actor_budget.remaining_cost()  # exact, not the float mirror",
+        after="        base_cost = to_money(parent_actor_budget.remaining_cost_usd())",
+        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+    ),
+    Mutant(
+        tag="concurrency",
+        why="a child is over-granted a step the parent never reserved",
+        path="agentkit/kernel/concurrency.py",
+        before="                    max_steps=slice_steps,",
+        after="                    max_steps=max(slice_steps, 1) + 1,",
+        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+    ),
+    Mutant(
+        tag="concurrency",
+        why="reservations leak when a fan-out fails (the finally settlement)",
+        path="agentkit/kernel/concurrency.py",
+        before="        if parent_actor_budget is not None:\n            for idx, slice_ in enumerate(reserved_slices):",
+        after="        if False:\n            for idx, slice_ in enumerate(reserved_slices):",
+        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+    ),
     # ── budget: the sibling float axes ───────────────────────────────────────
     # NOTE: mutating ``remaining_cost() <= 0`` to ``remaining_cost_usd() == 0.0``
     # was tried and is an EQUIVALENT mutant — the exact Decimal ledger leaves no

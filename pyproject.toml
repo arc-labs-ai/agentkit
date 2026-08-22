@@ -137,7 +137,8 @@ parallel = true
 # A ratchet, not an aspiration: raise it when it is comfortably exceeded, never
 # lower it to make a red build green. Set just under the measured baseline so
 # a regression fails while honest refactors do not.
-fail_under = 85
+# 85 -> 87 after kernel/concurrency.py went 57% -> 91% (measured total: 88%).
+fail_under = 87
 show_missing = true
 skip_covered = true
 exclude_also = [

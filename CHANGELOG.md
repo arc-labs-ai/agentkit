@@ -11,6 +11,33 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — the fan-out reservation path
+
+- **A starved fan-out silently produced no-op children on two of three axes.**
+  Only `steps` failed fast when a slice would round to nothing; `tokens` and
+  `cost` floored to zero, so a reservation of zero "succeeded" and each child
+  was handed an already-exhausted envelope. A fan-out of 3 against 2 tokens ran
+  three children that each stopped immediately and looked like a completed
+  wave. All three axes now fail fast with `BudgetExhausted`, naming the axis,
+  and a fan-out from an already-exhausted parent refuses outright rather than
+  carving zero-sized slices.
+- **A child was over-granted a step it was never reserved.** The step axis was
+  handed `max(slice_steps, 1)`, so with a one-step slice a child could take a
+  second turn the parent had not committed — and `settle_child` caps usage at
+  the reservation, making that spend invisible on the parent's books. Children
+  now get exactly their slice.
+- **Slices are carved in `Decimal`**, off `remaining_cost()` rather than the
+  float mirror. Equal shares, so reservation order cannot skew fairness.
+- **`_tightest_axis` crashed on the path it exists to explain.** It mixed the
+  float mirror with the request amount, so once `run_agents` began slicing in
+  `Decimal` the diagnostic raised `TypeError: unsupported operand type(s) for
+  -: 'float' and 'decimal.Decimal'` instead of naming the blocking axis. Every
+  money-bearing `ActorBudget` parameter now accepts what `to_money` accepts.
+- `kernel/concurrency.py` coverage **57% → 91%**, including the reservation /
+  settlement path and `run_sync`'s nested-loop branch (a sync host calling in
+  from inside an async caller — the branch that quietly regresses into a
+  deadlock). Coverage ratchet raised 85 → 87.
+
 ### Fixed — an inert ActorBudget, and one durable seam
 
 - **`ActorBudget` did nothing.** Nothing in the framework ever charged it: the

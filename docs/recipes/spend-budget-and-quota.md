@@ -199,9 +199,19 @@ next pre-flight stops the loop with `stop_reason="budget_exhausted"` naming
 the axis that ran out. A token-out is a "wind down" signal; a wall-out may
 warrant a hard cancel, and the reason string tells you which.
 
-`BudgetExhausted` (distinct from `Budget`'s `MeterExceeded`) is raised by
-`reserve_for_child` when a fan-out cannot be carved at all — fail-fast,
-before any child runs.
+`BudgetExhausted` (distinct from `Budget`'s `MeterExceeded`) is raised when a
+fan-out cannot be carved — **fail-fast, before any child runs**, on any of the
+three reservation axes:
+
+- the parent envelope is already exhausted, or
+- a slice would round to nothing (N children against fewer than N tokens,
+  steps, or micro-dollars).
+
+Both cases used to produce N children that each stopped on their first check —
+a fan-out that looked like it ran and did nothing. The exception names the
+axis. Slices are equal (so reservation order cannot skew fairness) and the
+money axis is carved in `Decimal`, so nothing is lost to float rounding; each
+child is granted exactly what was reserved for it and no more.
 
 ## Gotchas
 
