@@ -2146,11 +2146,26 @@ four-axis envelope (<code>tokens</code>, <code>cost_usd</code>, <code>steps</cod
 reservation accounting. When <code>run_agents(...)</code> fans children out under
 a parent's <code>ActorBudget</code>, each child gets a <code>1/N</code> slice reserved before
 dispatch; overspend on one child can't drain the parent's envelope
-because <code>settle_child(...)</code> caps at the reservation. See
-<code>agentkit.agents.control.budget.ActorBudget</code>. <code>ActorBudget</code> raises
-<code>BudgetExhausted</code> (a distinct exception from <code>Budget</code>'s
-<code>MeterExceeded</code>), carrying the exhausted axis so callers can react
-differently to a token-out vs wall-out.</p>
+because <code>settle_child(...)</code> caps at the reservation.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.control.budget</span><span class="w"> </span><span class="kn">import</span> <span class="n">ActorBudget</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">ctx</span><span class="o">.</span><span class="n">actor_budget</span> <span class="o">=</span> <span class="n">ActorBudget</span><span class="p">(</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">100_000</span><span class="p">,</span> <span class="n">max_cost_usd</span><span class="o">=</span><span class="s2">&quot;5.00&quot;</span><span class="p">,</span> <span class="n">max_steps</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">max_wall_seconds</span><span class="o">=</span><span class="mi">600</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>The envelope is charged by the same <code>meter()</code> middleware that charges the
+run <code>Budget</code> — one model call is one step, plus its tokens and cost. Its
+cost axis is an exact <code>Decimal</code> ledger like <code>Budget</code>'s; <code>used_cost()</code> /
+<code>remaining_cost()</code> are the exact reads and the <code>*_usd</code> attributes are float
+mirrors for display.</p>
+<p>Unlike <code>Budget</code>, there is no <code>on_exceeded</code> switch: <code>ActorBudget.charge</code>
+never raises, so an in-flight call always completes, and the cognition's
+next pre-flight stops the loop with <code>stop_reason="budget_exhausted"</code> naming
+the axis that ran out. A token-out is a "wind down" signal; a wall-out may
+warrant a hard cancel, and the reason string tells you which.</p>
+<p><code>BudgetExhausted</code> (distinct from <code>Budget</code>'s <code>MeterExceeded</code>) is raised by
+<code>reserve_for_child</code> when a fan-out cannot be carved at all — fail-fast,
+before any child runs.</p>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong><code>meter()</code> is not on by default.</strong> You wire it into
@@ -2216,7 +2231,7 @@ differently to a token-out vs wall-out.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 16, 2026 20:55:51 UTC">August 16, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 20:33:40 UTC">August 22, 2026</span>
   </span>
 
     
