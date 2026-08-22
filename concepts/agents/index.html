@@ -2378,19 +2378,32 @@ service that pins its models). <code>UNKNOWN</code> is never treated as present.
    <code>Policy</code> implementations.</li>
 <li><strong>Signals are frozen.</strong> A <code>SignalEnvelope</code> is immutable; consumers
    read, they don't edit.</li>
-<li><strong>Termination is per-drive.</strong> A <code>ReAct</code> cognition deep-copies its
-   termination condition on every drive so cross-drive state can't
-   leak.</li>
-<li><strong>Handoff transfers ownership.</strong> After a <code>Handoff</code>, the source
-   agent stops emitting; there is no shared write.</li>
-<li><strong>Suspended is not failed.</strong> A parked run returns a typed
+<li><strong>Termination is per-run.</strong> A <code>TerminationCondition</code> is stateful
+   (<code>MaxTurns.turn</code>, <code>Timeout._start</code>, the latched <code>Stop</code>) and lives on
+   a long-lived cognition, so every producer — the <code>ReAct</code> drive <em>and</em>
+   the coordinator policies — deep-copies it into a run-local variable.
+   Without that, two concurrent <code>coordinator.run(...)</code> calls counted
+   into one counter: <code>MaxTurns(4)</code> gave one run 3 turns and the other</li>
+<li>The instance you passed in is never advanced, so a coordinator is
+   safe to reuse.</li>
+</ol>
+<p><code>ExternalTermination</code> opts out of the copy, and that is deliberate:
+   a stop switch you hold a handle to is not per-run state, and copying
+   it meant <code>set()</code> could never reach a loop already running. One switch
+   shared by two concurrent runs stops both — use one condition per run
+   if you need them independent.</p>
+<p>A judge condition (<code>judge_termination</code>) stops only on a <strong>leading</strong>
+   affirmative. "Not yet — yesterday's draft is still open." used to
+   stop the run, because <code>YES</code> was matched as a substring.
+4. <strong>Handoff transfers ownership.</strong> After a <code>Handoff</code>, the source
+   agent stops emitting; there is no shared write.
+5. <strong>Suspended is not failed.</strong> A parked run returns a typed
    <code>AgentResult</code>; a broken one raises. A reader must be able to tell
-   them apart without parsing a message.</li>
-<li><strong>A capability is declared, never inferred from a name.</strong> An
+   them apart without parsing a message.
+6. <strong>A capability is declared, never inferred from a name.</strong> An
    unregistered model reports <code>UNKNOWN</code>, never <code>True</code> — guessing
    <code>True</code> reintroduces the silent, well-formed wrong answer the check
-   exists to catch.</li>
-</ol>
+   exists to catch.</p>
 <h2 id="related-deep-dive">Related deep dive<a class="headerlink" href="#related-deep-dive" title="Anchor link">&para;</a></h2>
 <p>The
 <a href="https://github.com/arc-labs-ai/agentkit/blob/main/docs/mental-models/04-multi-agent-coordinated-research.md">multi-agent mental model</a>
@@ -2419,7 +2432,7 @@ make it correct.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 22:30:56 UTC">August 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 22:41:58 UTC">August 22, 2026</span>
   </span>
 
     
