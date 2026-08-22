@@ -1768,6 +1768,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label=" CircuitBreaker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.record_success" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_success
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2728,6 +2745,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label=" CircuitBreaker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.record_success" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_success
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -4386,6 +4420,42 @@ zero-config path.</p>
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.kernel.CircuitBreaker.record_success" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">record_success</span>
+
+
+<a href="#agentkit.kernel.CircuitBreaker.record_success" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">record_success</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>A success closes the breaker from CLOSED or HALF_OPEN — never from OPEN.</p>
+<p>The class docstring describes the state machine as
+<code>CLOSED -&gt; OPEN -&gt; (cooldown) -&gt; HALF_OPEN -&gt; CLOSED</code>. There is no
+<code>OPEN -&gt; CLOSED</code> edge, and there was one in the code: this method
+set <code>state = "closed"</code> unconditionally.</p>
+<p>That edge is reachable at any concurrency above one, which is the
+normal case for the documented pattern of ONE breaker shared per
+dependency (<code>client.py</code> builds <code>CircuitBreaker("agentkit.llm")</code>
+once). Several calls are in flight, enough fail to trip the breaker,
+and then a straggler that started BEFORE the trip finishes
+successfully and reports it — reopening the gate and sending the herd
+straight back at the failing provider. Measured: a 300-second cooldown
+skipped entirely by one late success.</p>
+<p>Ignoring the report while OPEN is the honest reading of it: that call
+was admitted under the old state, so it is evidence about the past,
+not about whether the dependency has recovered. Only the single probe
+admitted after the cooldown speaks to that.</p>
+
+
+    </div>
+
+</div>
 
 
 
