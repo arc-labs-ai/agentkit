@@ -25,9 +25,11 @@ we build — the thing a mock can never tell us.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import subprocess
+import warnings
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -198,8 +200,166 @@ def test_the_real_cli_accepts_the_argv_we_build() -> None:
     )
     argv = cog._build_argv("Reply with the single word: OK", system_prompt="Be terse.")
 
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)  # noqa: S603
+    # ``stdin=DEVNULL`` matters: ``claude -p`` reads stdin and waits ~3s for
+    # data before giving up. The cognition passes DEVNULL for the same reason,
+    # so this test spawns it the way production does.
+    proc = subprocess.run(  # noqa: S603
+        argv, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL
+    )
 
     assert "unknown option" not in proc.stderr.lower(), proc.stderr
     assert "error: --" not in proc.stderr.lower(), proc.stderr
     assert proc.returncode == 0, f"exit={proc.returncode} stderr={proc.stderr[:400]}"
+
+
+# ── 5. the flags a service needs ────────────────────────────────────────────
+#
+# Everything below was reachable only through ``extra_args`` — i.e. by
+# hand-writing CLI syntax inside application code, with no validation and no
+# way for the cognition to know what was set.
+
+
+def test_bare_mode_is_passed_and_is_opt_in(monkeypatch) -> None:
+    """``--bare`` skips auto-discovery of hooks, plugins, MCP servers, auto
+    memory and CLAUDE.md. It is what makes a run reproducible across machines —
+    without it, a hook in a teammate's ``~/.claude`` or an MCP server in the
+    checked-out repo executes inside your service. Opt-in, because turning it
+    on changes what a run can see.
+
+    The key is set so this test is about the FLAG; the credential interaction
+    below is its own test."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert "--bare" in _argv(ClaudeCliCognition(bare=True))
+    assert "--bare" not in _argv(ClaudeCliCognition())
+
+
+def test_bare_mode_without_a_credential_warns(monkeypatch) -> None:
+    """Bare mode never reads OAuth credentials or the system keychain, so a
+    ``claude`` that works perfectly in a terminal fails here with an auth error
+    ("Not logged in · Please run /login") pointing at exactly the wrong fix.
+    Warned, not refused: the credential may arrive through an ``apiKeyHelper``
+    in ``settings`` or a provider mechanism this list does not know."""
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
+                 "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.warns(UserWarning, match="never reads OAuth"):
+        ClaudeCliCognition(bare=True)._build_env()
+
+    # A settings blob may carry an apiKeyHelper — no warning in that case.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ClaudeCliCognition(bare=True, settings='{"apiKeyHelper":"..."}')._build_env()
+
+    # And no warning at all when bare mode is off: OAuth works there.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ClaudeCliCognition()._build_env()
+
+
+def test_the_prompt_prefix_can_be_made_machine_independent() -> None:
+    """``--exclude-dynamic-system-prompt-sections`` moves cwd / environment /
+    memory paths into the first user message so the cache-stable prefix is
+    identical across users and machines. The CLI docs name this workload
+    exactly: "Use with -p for scripted, multi-user workloads"."""
+    argv = _argv(ClaudeCliCognition(stable_prompt_prefix=True))
+    assert "--exclude-dynamic-system-prompt-sections" in argv
+
+
+def test_it_is_refused_when_the_prompt_is_replaced_wholesale() -> None:
+    """The CLI only moves the dynamic sections out of ITS OWN default prompt,
+    which ``--system-prompt`` discards anyway — so the combination is a silent
+    no-op, and a silent no-op in a caching optimisation is worse than an
+    error."""
+    with pytest.raises(ValueError, match="no effect"):
+        ClaudeCliCognition(stable_prompt_prefix=True, system_prompt_mode="replace")
+
+
+def test_a_fallback_chain_is_comma_joined() -> None:
+    """``--fallback-model`` accepts a comma-separated list tried in order."""
+    argv = _argv(ClaudeCliCognition(fallback_model=("sonnet", "haiku")))
+    assert _value_after(argv, "--fallback-model") == "sonnet,haiku"
+    assert _value_after(_argv(ClaudeCliCognition(fallback_model="sonnet")), "--fallback-model") == (
+        "sonnet"
+    )
+
+
+def test_mcp_servers_are_variadic_and_strictness_needs_them() -> None:
+    """``--mcp-config`` takes several entries, each a path or inline JSON.
+    ``--strict-mcp-config`` on its own would leave the session with no MCP
+    servers at all, which is not what anyone means by "strict"."""
+    argv = _argv(
+        ClaudeCliCognition(mcp_config=("/tmp/a.json", '{"b":1}'), strict_mcp_config=True)
+    )
+    i = argv.index("--mcp-config")
+    assert argv[i + 1 : i + 3] == ("/tmp/a.json", '{"b":1}')
+    assert "--strict-mcp-config" in argv
+
+    with pytest.raises(ValueError, match="only means something alongside"):
+        ClaudeCliCognition(strict_mcp_config=True)
+
+
+def test_additional_directories_are_checked_at_construction(tmp_path) -> None:
+    """The CLI validates each path exists as a directory. Doing it here turns a
+    subprocess that dies three seconds in into an error at wiring time."""
+    argv = _argv(ClaudeCliCognition(add_dirs=(tmp_path,)))
+    assert _value_after(argv, "--add-dir") == str(tmp_path)
+
+    with pytest.raises(ValueError, match="not directories"):
+        ClaudeCliCognition(add_dirs=(tmp_path / "nope",))
+
+
+def test_settings_agents_effort_and_session_persistence() -> None:
+    """The remaining service-shaped knobs. ``agents`` is serialised for the
+    caller — hand-writing JSON into an argv string is how quoting bugs get
+    into production."""
+    cog = ClaudeCliCognition(
+        settings='{"x":1}',
+        agents={"reviewer": {"description": "d", "prompt": "p"}},
+        effort="low",
+        no_session_persistence=True,
+    )
+    argv = _argv(cog)
+    assert _value_after(argv, "--settings") == '{"x":1}'
+    assert json.loads(_value_after(argv, "--agents")) == {
+        "reviewer": {"description": "d", "prompt": "p"}
+    }
+    assert _value_after(argv, "--effort") == "low"
+    assert "--no-session-persistence" in argv
+
+
+@real_cli
+def test_the_real_cli_accepts_the_service_flag_set() -> None:
+    """Same reasoning as the argv test above, for the flags a service actually
+    ships with: bare mode, a stable prompt prefix, a fallback chain and no
+    session persistence.
+
+    Bare mode has a documented catch — it never reads OAuth credentials or the
+    keychain — so on a developer machine authenticated with ``claude login``
+    this run fails with an AUTH error rather than a flag error. That
+    distinction is the assertion: the flags parsed, the credential did not
+    exist. With ``ANTHROPIC_API_KEY`` set (CI), it must exit 0.
+    """
+    cog = ClaudeCliCognition(
+        model="claude-haiku-4-5-20251001",
+        tools=("",),
+        permission_mode="dontAsk",
+        max_turns=1,
+        bare=True,
+        stable_prompt_prefix=True,
+        fallback_model=("claude-haiku-4-5-20251001",),
+        no_session_persistence=True,
+    )
+    argv = cog._build_argv("Reply with the single word: OK", system_prompt="Be terse.")
+
+    proc = subprocess.run(  # noqa: S603
+        argv, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL
+    )
+
+    assert "unknown option" not in proc.stderr.lower(), proc.stderr
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        assert proc.returncode == 0, f"exit={proc.returncode} stderr={proc.stderr[:400]}"
+    else:
+        # No API key: bare mode cannot authenticate. The failure must be about
+        # the CREDENTIAL, which is what proves the flags themselves parsed.
+        assert "/login" in (proc.stdout + proc.stderr).lower(), proc.stdout[:400]

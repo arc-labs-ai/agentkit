@@ -147,6 +147,55 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the flags a service ships with ──────────────────────────────────────
+    Mutant(
+        tag="cliops",
+        why="strict_mcp_config alone silently leaves the session with no MCP servers",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.strict_mcp_config and not self.mcp_config:",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="a stable prompt prefix is silently a no-op under a replaced system prompt",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='        if self.stable_prompt_prefix and self.system_prompt_mode == "replace":',
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="a typo'd add_dir reaches the CLI and dies three seconds in",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]",
+        after="        missing_dirs = []",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="a fallback CHAIN is passed as a Python tuple repr instead of a comma list",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='                else ",".join(self.fallback_model)',
+        after="                else str(self.fallback_model)",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="bare mode without a credential fails with a message pointing at the wrong fix",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.bare:\n            self._warn_if_bare_mode_has_no_credential(env)",
+        after="        if False:\n            self._warn_if_bare_mode_has_no_credential(env)",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="the bare-mode warning fires even when settings may carry an apiKeyHelper",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if self.settings is not None:\n            return\n        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):",
+        after="        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):",
+        tests=CLI_FLAG_TESTS,
+    ),
     # ── CLI spend is on the books, and the ceiling is on the CLI ────────────
     Mutant(
         tag="clibudget",

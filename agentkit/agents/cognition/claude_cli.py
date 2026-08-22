@@ -235,6 +235,47 @@ class ClaudeCliCognition:
     # that declares no ``output=``.
     json_schema: dict[str, Any] | None = None
 
+    # ── environment: what the session can reach ─────────────────────────────
+    # ``--add-dir``: directories outside ``working_dir`` the session may read
+    # and edit. Existence is checked at construction, matching what the CLI
+    # itself validates, because a typo'd path is otherwise a subprocess that
+    # dies three seconds in.
+    add_dirs: tuple[Path | str, ...] = ()
+    # ``--mcp-config``: MCP servers, as file paths or inline JSON strings.
+    # ``--strict-mcp-config`` ignores every other MCP configuration, which is
+    # what a service wants: the servers it declared, not the ones a developer
+    # happened to have in ``~/.claude``.
+    mcp_config: tuple[str | Path, ...] = ()
+    strict_mcp_config: bool = False
+    # ``--settings``: a settings file path or an inline JSON string, overriding
+    # the same keys in the user's settings.json for this session only.
+    settings: str | Path | None = None
+    # ``--agents``: subagent definitions as JSON, serialised for you.
+    agents: dict[str, Any] | None = None
+    # ``--bare``: skip auto-discovery of hooks, skills, commands, subagents,
+    # plugins, MCP servers, auto memory and CLAUDE.md. The CLI docs call this
+    # "the recommended mode for scripted and SDK calls" and say it will become
+    # the default for ``-p``. It is what makes a run reproducible across
+    # machines: without it, a hook in a teammate's ``~/.claude`` or an MCP
+    # server in the checked-out repo's ``.mcp.json`` executes inside your
+    # service. Left False here because turning it on changes what a run can
+    # see, which is not a default this cognition should flip under anyone.
+    #
+    # In bare mode the CLI never reads OAuth credentials or the keychain — set
+    # ``ANTHROPIC_API_KEY`` (or an ``apiKeyHelper`` in ``settings``).
+    bare: bool = False
+    # ``--exclude-dynamic-system-prompt-sections``: move per-machine sections
+    # (cwd, environment info, memory paths) out of the system prompt and into
+    # the first user message, so the cache-stable prefix is identical across
+    # users and machines running the same task. Documented for exactly this
+    # workload: "Use with -p for scripted, multi-user workloads".
+    stable_prompt_prefix: bool = False
+    fallback_model: str | tuple[str, ...] | None = None  # → --fallback-model (tried in order)
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    # ``--no-session-persistence``: sessions are not written to disk. For a
+    # multi-tenant service this is a containment control, not an optimisation.
+    no_session_persistence: bool = False
+
     # ── spend ───────────────────────────────────────────────────────────────
     # Two halves of one problem. ``--max-budget-usd`` hands the run's remaining
     # headroom to the CLI so IT stops itself mid-flight; charging the meters
@@ -290,6 +331,23 @@ class ClaudeCliCognition:
             raise ValueError(
                 "ClaudeCliCognition: fork_session only applies when resuming "
                 "(set resume_session_id= or continue_session=True)"
+            )
+        if self.strict_mcp_config and not self.mcp_config:
+            raise ValueError(
+                "ClaudeCliCognition: strict_mcp_config only means something alongside "
+                "mcp_config= — on its own it would leave the session with no MCP servers "
+                "at all, which disallowed_tools=('mcp__*',) says more clearly"
+            )
+        if self.stable_prompt_prefix and self.system_prompt_mode == "replace":
+            raise ValueError(
+                "ClaudeCliCognition: stable_prompt_prefix has no effect with "
+                "system_prompt_mode='replace' — the CLI only moves the dynamic sections out "
+                "of ITS OWN default prompt, which a replacement discards anyway"
+            )
+        missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]
+        if missing_dirs:
+            raise ValueError(
+                f"ClaudeCliCognition: add_dirs entries are not directories: {missing_dirs}"
             )
         if self.tools == ():
             # ``--tools`` is variadic and needs at least one value, so an empty
@@ -652,6 +710,31 @@ class ClaudeCliCognition:
             return prompt.render()
         return prompt
 
+    def _warn_if_bare_mode_has_no_credential(self, env: dict[str, str]) -> None:
+        """Bare mode ignores OAuth and the keychain — say so before the CLI does.
+
+        Warned rather than refused: the credential may arrive through an
+        ``apiKeyHelper`` in ``settings``, or through a provider mechanism this
+        list does not know about, and refusing a run over an env-var heuristic
+        would be worse than the confusing message it replaces.
+        """
+        if self.settings is not None:
+            return
+        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):
+            return
+        import warnings
+
+        warnings.warn(
+            "ClaudeCliCognition(bare=True) but no API credential is in the environment "
+            f"({', '.join(_BARE_CREDENTIAL_ENV)}). Bare mode never reads OAuth credentials "
+            "or the system keychain, so a `claude` that works in your terminal will fail "
+            "here with an auth error ('Not logged in · Please run /login', or 'Invalid API "
+            "key' depending on state) that points at exactly the wrong fix. Set "
+            "ANTHROPIC_API_KEY, or supply an apiKeyHelper via settings=.",
+            UserWarning,
+            stacklevel=3,
+        )
+
     def _resolve_json_schema(self, agent: Agent) -> dict[str, Any] | None:
         """The JSON Schema to hand the CLI, or ``None``.
 
@@ -770,6 +853,32 @@ class ClaudeCliCognition:
             # entry. ``("",)`` — the documented "disable all tools" spelling —
             # therefore survives as a single empty argument.
             argv += ["--tools", *self.tools]
+        if self.bare:
+            argv += ["--bare"]
+        if self.stable_prompt_prefix:
+            argv += ["--exclude-dynamic-system-prompt-sections"]
+        if self.fallback_model is not None:
+            models = (
+                self.fallback_model
+                if isinstance(self.fallback_model, str)
+                else ",".join(self.fallback_model)
+            )
+            argv += ["--fallback-model", models]
+        if self.effort is not None:
+            argv += ["--effort", self.effort]
+        for d in self.add_dirs:
+            argv += ["--add-dir", str(d)]
+        if self.mcp_config:
+            # Variadic: every entry after the flag, path or inline JSON alike.
+            argv += ["--mcp-config", *(str(c) for c in self.mcp_config)]
+        if self.strict_mcp_config:
+            argv += ["--strict-mcp-config"]
+        if self.settings is not None:
+            argv += ["--settings", str(self.settings)]
+        if self.agents is not None:
+            argv += ["--agents", json.dumps(self.agents)]
+        if self.no_session_persistence:
+            argv += ["--no-session-persistence"]
         if self.permission_mode != "default":
             argv += ["--permission-mode", self.permission_mode]
         if self.permission_prompt_tool is not None:
@@ -808,6 +917,8 @@ class ClaudeCliCognition:
         caller-set value wins.
         """
         env = os.environ.copy()
+        if self.bare:
+            self._warn_if_bare_mode_has_no_credential(env)
         if self.config_dir is not None:
             env["CLAUDE_CONFIG_DIR"] = str(self.config_dir)
         env.setdefault("CLAUDE_ENABLE_STREAM_WATCHDOG", "1")
@@ -816,6 +927,22 @@ class ClaudeCliCognition:
             if correlation_id:
                 env.setdefault("CLAUDE_TRACE_EXTERNAL_ID", str(correlation_id))
         return env
+
+
+# Credential env vars that make ``--bare`` viable. In bare mode the CLI never
+# reads OAuth credentials or the system keychain, so a developer whose
+# ``claude`` works perfectly in a terminal gets "Not logged in · Please run
+# /login" the first time their service turns bare mode on — a message that
+# points at exactly the wrong fix. The check below is deliberately
+# conservative: any one of these, or a ``settings`` blob (which may carry an
+# ``apiKeyHelper``), and we stay quiet.
+_BARE_CREDENTIAL_ENV = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

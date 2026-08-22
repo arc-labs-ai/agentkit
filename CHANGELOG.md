@@ -11,6 +11,35 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — the CLI flags a service actually ships with
+
+Reachable before only through `extra_args` — hand-written CLI syntax inside
+application code, with no validation and no way for the cognition to know what
+was set.
+
+`add_dirs`, `mcp_config` + `strict_mcp_config`, `settings`, `agents`,
+`fallback_model`, `effort`, `no_session_persistence`, plus two that matter
+specifically at scale:
+
+- **`bare=True`** (`--bare`) skips auto-discovery of hooks, skills, commands,
+  subagents, plugins, MCP servers, auto memory and `CLAUDE.md` — the CLI docs
+  call it "the recommended mode for scripted and SDK calls". Without it a `-p`
+  session runs the hooks in the working directory's `.claude/settings.json` and
+  connects the servers in its `.mcp.json`, including from a repository you just
+  cloned. Bare mode also never reads OAuth credentials or the keychain, so the
+  cognition warns when no API credential is in the environment and no `settings`
+  is configured: the CLI's own error ("Not logged in · Please run /login")
+  points at exactly the wrong fix on a machine where `claude` works
+  interactively.
+- **`stable_prompt_prefix=True`**
+  (`--exclude-dynamic-system-prompt-sections`) moves per-machine sections out
+  of the system prompt so the cache-stable prefix is identical across users and
+  machines. Refused alongside `system_prompt_mode="replace"`, where it is a
+  silent no-op.
+
+Impossible combinations are refused at construction: `strict_mcp_config`
+without `mcp_config`, and an `add_dirs` entry that is not a directory.
+
 ### Added — CLI spend is on the framework's books, and its ceiling on the CLI
 
 `ClaudeCliCognition` bypasses the `Invoker`, so the `meter()` middleware never

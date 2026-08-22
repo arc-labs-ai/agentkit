@@ -181,6 +181,44 @@ ctx.budget.remaining()  # Decimal('1.750000')
 `Usage.cost_usd` remains a CLI-side estimate, so the ledger it feeds is an
 estimate too.
 
+## Running it as a service
+
+Four flags matter once this is behind an API rather than on your laptop.
+
+```python
+ClaudeCliCognition(
+    bare=True,                    # --bare
+    stable_prompt_prefix=True,    # --exclude-dynamic-system-prompt-sections
+    mcp_config=("/etc/mysvc/mcp.json",),
+    strict_mcp_config=True,       # only the servers YOU declared
+    no_session_persistence=True,  # nothing written to disk
+    fallback_model=("claude-sonnet-4-6",),
+    add_dirs=(Path("/srv/shared-templates"),),
+    settings='{"apiKeyHelper": "/usr/local/bin/fetch-key"}',
+)
+```
+
+- **`bare=True`** skips auto-discovery of hooks, skills, commands, subagents,
+  plugins, MCP servers, auto memory and `CLAUDE.md`. Without it, a `-p`
+  session runs the hooks in the working directory's `.claude/settings.json`
+  and connects the servers in its `.mcp.json` — including a repository you
+  just cloned to review. The CLI docs call bare "the recommended mode for
+  scripted and SDK calls". **It also never reads OAuth credentials or the
+  keychain**, so set `ANTHROPIC_API_KEY` (or an `apiKeyHelper` in `settings`);
+  the cognition warns if neither is present, because the CLI's own error
+  ("Not logged in · Please run /login") points at exactly the wrong fix on a
+  machine where `claude` works fine interactively.
+- **`stable_prompt_prefix=True`** moves per-machine sections (cwd,
+  environment, memory paths) out of the system prompt and into the first user
+  message, so the cache-stable prefix is byte-identical across users and
+  machines running the same task. Documented for precisely this: "Use with
+  `-p` for scripted, multi-user workloads."
+- **`strict_mcp_config=True`** ignores every MCP configuration except the ones
+  you passed. It's refused without `mcp_config=`, since on its own it would
+  just leave the session with no servers.
+- **`no_session_persistence=True`** keeps sessions off disk — a containment
+  control in a multi-tenant service, not an optimisation.
+
 ## Configuration walkthrough
 
 ```python
