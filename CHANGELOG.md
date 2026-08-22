@@ -11,6 +11,22 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — the signal channel's audit tap could wedge the run it audits
+
+- **`SignalChannel.emit` awaited a queue nothing reads.** The documented
+  concurrency model has the owning agent reading `inbox` and `merge_inbox`;
+  `outbox` is the audit/replay tap. `emit` awaited both, so a run whose parent
+  was draining perfectly still stopped dead once the tap filled — measured, the
+  9th emit on a `buffer_size=8` channel blocked forever, and at the default size
+  an agent went silent after its 256th signal. That is a deadlock wearing
+  backpressure's clothes.
+
+  The tap now drops its oldest entry instead (a rolling window is what a
+  diagnostic tap is for; dropping the newest would make it go blind exactly when
+  a run gets busy), counts the loss on `channel.dropped`, and warns once. The
+  delivery path to the parent still awaits — that is the one place backpressure
+  belongs, and a mutant pins it.
+
 ### Fixed — a termination condition is run-local state
 
 - **Concurrent coordinator runs shared one condition.** A `TerminationCondition`

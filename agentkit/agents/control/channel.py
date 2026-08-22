@@ -109,6 +109,8 @@ class SignalChannel(Generic[ControlT, DataT]):
     __slots__ = (
         "_clock",
         "_observer",
+        "_outbox_dropped",
+        "_outbox_warned",
         "_parent_merge_inbox",
         "agent_id",
         "inbox",
@@ -152,6 +154,8 @@ class SignalChannel(Generic[ControlT, DataT]):
         self._parent_merge_inbox: MergeInbox[DataT] | None = None
         self._clock = clock
         self._observer = observer
+        self._outbox_dropped = 0
+        self._outbox_warned = False
 
     def attach_parent(self, parent_merge_inbox: MergeInbox[DataT]) -> None:
         """Wire this channel's emit to also fan up to the parent's
@@ -166,10 +170,15 @@ class SignalChannel(Generic[ControlT, DataT]):
         emit time. Puts the signal on this agent's outbox AND on the
         parent's merge inbox (if attached).
 
-        Both writes ``await`` so backpressure flows correctly — if
-        the parent is slow, the child blocks. Tests that read from
-        a detached channel (no parent attached) only see the outbox
-        write; production flows see both.
+        Backpressure comes from the PARENT: if the parent's merge
+        inbox is full, that write blocks and the child waits. The
+        outbox write never blocks — it drops its oldest entry
+        instead (see ``_offer_to_outbox`` and ``dropped``), because
+        nothing in the framework drains it and awaiting a queue with
+        no consumer is a deadlock, not backpressure.
+
+        Tests that read from a detached channel (no parent attached)
+        only see the outbox write; production flows see both.
         """
         # Envelope is a frozen dataclass. Build a stamped copy via
         # ``dataclasses.replace``; sharing one mutable envelope across
@@ -181,7 +190,17 @@ class SignalChannel(Generic[ControlT, DataT]):
             timestamp_us=signal.timestamp_us if signal.timestamp_us != 0 else self._clock(),
         )
 
-        await self.outbox.put(stamped)
+        # The OUTBOX never blocks the emitter. It is the audit / replay tap:
+        # the documented concurrency model has the owning agent reading `inbox`
+        # and `merge_inbox` and nothing at all reading `outbox`, so awaiting a
+        # full one is not backpressure, it is a deadlock. Measured before this
+        # change, with a parent draining perfectly: the 9th emit on a
+        # buffer_size=8 channel blocked forever, and at the default size an
+        # agent simply stopped after its 256th signal.
+        #
+        # Real backpressure comes from the PARENT below, which is the actual
+        # consumer — that await stays.
+        self._offer_to_outbox(stamped)
         if self._parent_merge_inbox is not None:
             await self._parent_merge_inbox.put((self.agent_id, stamped))
 
@@ -204,6 +223,41 @@ class SignalChannel(Generic[ControlT, DataT]):
                         },
                     )
                 )
+
+    def _offer_to_outbox(self, stamped: DataT) -> None:
+        """Put on the audit tap, dropping the OLDEST entry when it is full.
+
+        A rolling window of recent activity is what a diagnostic tap is for, and
+        the alternative — dropping the newest — would make the tap go blind
+        exactly when a run gets busy. The loss is never silent: ``dropped``
+        counts every discarded envelope and the first drop logs a warning.
+        """
+        try:
+            self.outbox.put_nowait(stamped)
+            return
+        except asyncio.QueueFull:
+            pass
+        with contextlib.suppress(asyncio.QueueEmpty):
+            self.outbox.get_nowait()  # evict the oldest
+        self._outbox_dropped += 1
+        if not self._outbox_warned:
+            self._outbox_warned = True
+            logger.warning(
+                "SignalChannel(%s): outbox full (maxsize=%d); dropping the oldest audit "
+                "entries. Nothing in the framework drains `outbox` — it is the replay tap, "
+                "not a delivery path. Read it yourself, or size it for the run.",
+                self.agent_id,
+                self.outbox.maxsize,
+            )
+        with contextlib.suppress(asyncio.QueueFull):
+            self.outbox.put_nowait(stamped)
+
+    @property
+    def dropped(self) -> int:
+        """How many audit entries the outbox has discarded. ``0`` means the tap
+        is complete; anything else means a consumer is reading a window, not a
+        transcript."""
+        return self._outbox_dropped
 
     async def send_to(self, signal: ControlT) -> None:
         """Deliver a control signal to THIS agent's inbox. Called by

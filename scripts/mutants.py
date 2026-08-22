@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+CHANNEL_TESTS = ("tests/agents/test_signal_protocol.py",)
 TERM_TESTS = (
     "tests/agents/test_termination_isolation.py",
     "tests/agents/test_termination.py",
@@ -138,6 +139,39 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the signal channel's audit tap must not wedge the run ───────────────
+    Mutant(
+        tag="channel",
+        why="the unread audit tap is awaited, so a healthy run stops at buffer_size emits",
+        path="agentkit/agents/control/channel.py",
+        before="        self._offer_to_outbox(stamped)",
+        after="        await self.outbox.put(stamped)",
+        tests=CHANNEL_TESTS,
+    ),
+    Mutant(
+        tag="channel",
+        why="a full tap drops the NEWEST, going blind exactly when the run gets busy",
+        path="agentkit/agents/control/channel.py",
+        before="        with contextlib.suppress(asyncio.QueueEmpty):\n            self.outbox.get_nowait()  # evict the oldest",
+        after="        if True:\n            return",
+        tests=CHANNEL_TESTS,
+    ),
+    Mutant(
+        tag="channel",
+        why="dropped audit entries are not counted, so a window reads as a transcript",
+        path="agentkit/agents/control/channel.py",
+        before="        self._outbox_dropped += 1",
+        after="        pass",
+        tests=CHANNEL_TESTS,
+    ),
+    Mutant(
+        tag="channel",
+        why="the parent stops applying backpressure, so a slow parent grows unbounded",
+        path="agentkit/agents/control/channel.py",
+        before="            await self._parent_merge_inbox.put((self.agent_id, stamped))",
+        after="            self._parent_merge_inbox.put_nowait((self.agent_id, stamped))",
+        tests=CHANNEL_TESTS,
+    ),
     # ── termination: run-local state, and a judge read literally ────────────
     Mutant(
         tag="termination",

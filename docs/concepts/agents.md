@@ -89,6 +89,15 @@ about the others. Workflow's `human_gate` node suspends the workflow
   `EscalateSignal`, …). `Handoff` is separate: it's a routing verb
   consumed by `SelectorPolicy` / `route_by_handoff`, not a member of
   the progress/done data-signal family.
+
+    `emit` dual-writes: the parent's `merge_inbox` (the delivery path,
+    where a slow parent applies real backpressure and the child waits)
+    and the channel's own `outbox` (the audit/replay tap, which nothing
+    in the framework drains). The tap **never blocks** — it drops its
+    oldest entry and counts it on `channel.dropped`. Awaiting a queue
+    with no consumer is a deadlock rather than backpressure: before
+    this, a run whose parent was keeping up perfectly still stopped
+    dead on its 257th signal.
 - **`Handoff` + routing** — `route_by_handoff(default=...)` reads the
   `HANDOFF:<target>` marker off the last message and routes to that
   child. The target is **checked against the roster**: an invented name

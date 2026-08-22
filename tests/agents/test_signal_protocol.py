@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -391,3 +392,81 @@ def test_all_signal_types_are_frozen() -> None:
     ):
         with pytest.raises(FrozenInstanceError):
             signal.sender_id = "clobber"  # type: ignore[misc]
+
+
+# ── The audit tap must never wedge the run it audits ────────────────────────
+#
+# The documented concurrency model has the owning agent reading ``inbox`` and
+# ``merge_inbox``; NOTHING reads ``outbox`` — it is the audit / replay tap.
+# ``emit`` awaited it anyway, so a healthy run with a perfectly draining parent
+# stopped dead once the tap filled: measured, the 9th emit on a
+# ``buffer_size=8`` channel blocked forever, and at the default size an agent
+# went silent after its 256th signal. That is a deadlock wearing backpressure's
+# clothes.
+
+
+@pytest.mark.asyncio
+async def test_a_full_outbox_does_not_block_the_emitter() -> None:
+    """THE regression. The parent drains everything; only the unread audit tap
+    is full, and emitting must still make progress."""
+    parent: MergeInbox[ProgressSignal] = MergeInbox(buffer_size=1024)
+    channel: SignalChannel[CancelSignal, ProgressSignal] = SignalChannel(
+        agent_id="worker", buffer_size=4
+    )
+    channel.attach_parent(parent)
+
+    for i in range(12):
+        await asyncio.wait_for(channel.emit(ProgressSignal(mutations=[i])), timeout=1.0)
+
+    # Every signal reached the real consumer — dropping is the TAP's behaviour,
+    # never the delivery path's.
+    assert parent.qsize() == 12
+
+
+@pytest.mark.asyncio
+async def test_the_tap_keeps_the_most_recent_window() -> None:
+    """Dropping the oldest keeps a diagnostic tap useful under load; dropping
+    the newest would make it go blind exactly when a run gets busy."""
+    channel: SignalChannel[CancelSignal, ProgressSignal] = SignalChannel(
+        agent_id="worker", buffer_size=3
+    )
+    for i in range(10):
+        await channel.emit(ProgressSignal(mutations=[i]))
+
+    seen = []
+    while not channel.outbox.empty():
+        seen.append(channel.outbox.get_nowait().mutations[0])
+    assert seen == [7, 8, 9]
+
+
+@pytest.mark.asyncio
+async def test_dropping_is_counted_not_silent() -> None:
+    """A consumer reading the tap has to be able to tell a complete transcript
+    from a window."""
+    channel: SignalChannel[CancelSignal, ProgressSignal] = SignalChannel(
+        agent_id="worker", buffer_size=3
+    )
+    for i in range(3):
+        await channel.emit(ProgressSignal(mutations=[i]))
+    assert channel.dropped == 0  # still complete
+
+    for i in range(4):
+        await channel.emit(ProgressSignal(mutations=[i]))
+    assert channel.dropped == 4
+
+
+@pytest.mark.asyncio
+async def test_the_parent_still_applies_backpressure() -> None:
+    """The negative control: making the tap non-blocking must NOT make the
+    delivery path non-blocking. A slow parent still makes the child wait —
+    that is the one place backpressure belongs."""
+    parent: MergeInbox[ProgressSignal] = MergeInbox(buffer_size=2)
+    channel: SignalChannel[CancelSignal, ProgressSignal] = SignalChannel(
+        agent_id="worker", buffer_size=1024
+    )
+    channel.attach_parent(parent)
+
+    await channel.emit(ProgressSignal(mutations=[0]))
+    await channel.emit(ProgressSignal(mutations=[1]))
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(channel.emit(ProgressSignal(mutations=[2])), timeout=0.05)
