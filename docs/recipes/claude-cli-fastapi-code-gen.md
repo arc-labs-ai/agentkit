@@ -114,6 +114,42 @@ final.evals["session_id"]       # pass back as resume_session_id= (NOT session_i
 final.evals["cli_duration_ms"]  # end-to-end CLI wall time
 ```
 
+## Typed output from the CLI
+
+`output=` works here exactly as it does on any other agent. The schema goes
+out as `--json-schema`, the CLI validates its own final answer against it
+(re-prompting itself on a mismatch), and the validated value comes back
+through the same `SchemaAdapter` as a real Python object:
+
+```python
+class Invoice(BaseModel):
+    vendor: str
+    total: float
+
+agent = Agent(name="extract", output=Invoice, cognition=ClaudeCliCognition())
+result = await agent.run("Pull the vendor and total out of invoice.pdf", ctx)
+
+result.parsed          # Invoice(vendor='ACME', total=42.5)
+result.evals["structured_output"]   # the raw validated dict
+```
+
+Three outcomes, and only the first is a success — the other two set
+`partial=True` and `stop_reason="invalid_output"`:
+
+| Outcome | `evals["stop_reason"]` |
+|---|---|
+| A conforming value | *(absent — the run is clean)* |
+| The CLI exhausted its retries | `error_max_structured_output_retries` |
+| Exit 0 but no value at all | `structured_output_missing` |
+| A value the *Python* type rejects | `structured_output_mismatch` |
+
+The last one is worth knowing: the CLI validates against JSON Schema, which
+is looser than most Python types. `evals["structured_output_error"]` carries
+the per-field diagnostics.
+
+Pass `json_schema=` on the cognition to send a shape that isn't the agent's
+Python type; it overrides `output=`.
+
 ## Configuration walkthrough
 
 ```python

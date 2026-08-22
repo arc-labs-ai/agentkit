@@ -11,6 +11,35 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — `output=` types a CLI-delegated run
+
+`ClaudeCliCognition` ignored `agent.output` entirely: the schema was never
+sent, `AgentResult.parsed` was always `None`, and a caller who declared
+`output=Invoice` got prose back with no sign that the typing they asked for had
+been dropped.
+
+The CLI has first-class support for this. The agent's schema now goes out as
+`--json-schema` (through the same `SchemaAdapter` that types the rest of the
+framework), the CLI validates its own final answer against it and re-prompts
+itself on a mismatch, and the validated value comes back through that adapter
+as a real Python object on `AgentResult.parsed`. The raw dict stays on
+`evals["structured_output"]`.
+
+Three outcomes, and only the first is a success — the other two previously
+looked like one:
+
+| Outcome | `evals["stop_reason"]` | typed |
+|---|---|---|
+| A conforming value | *(clean)* | `complete` |
+| Retries exhausted | `error_max_structured_output_retries` | `invalid_output` |
+| Exit 0 with no value | `structured_output_missing` | `invalid_output` |
+| A value the Python type rejects | `structured_output_mismatch` | `invalid_output` |
+
+`json_schema=` on the cognition overrides `output=` for a shape that is not the
+agent's Python type. Verified end to end against the real binary: the adapter's
+schema dialect is one the CLI accepts, and the round trip yields the declared
+type.
+
 ### Fixed — `ClaudeCliCognition` flags meant something other than they said
 
 Three mappings were wrong against the CLI reference, each producing a run that

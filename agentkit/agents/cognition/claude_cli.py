@@ -112,6 +112,47 @@ _CLI_FAILURE_REASONS = frozenset(
     {"spawn_failed", "parse_failed", "working_dir_missing", "cli_reported_error"}
 )
 
+# Structured-output failures are ``invalid_output`` in the closed taxonomy —
+# the same category the tool loop uses when parse-and-repair is exhausted. They
+# are NOT ``failed``: the run itself worked, the shape did not.
+_CLI_INVALID_OUTPUT_REASONS = frozenset(
+    {
+        "error_max_structured_output_retries",
+        "structured_output_missing",
+        "structured_output_mismatch",
+    }
+)
+
+
+def _coerce_structured(agent: Agent, value: Any) -> tuple[Any, str | None]:
+    """Turn the CLI's validated JSON into the type the agent declared.
+
+    The CLI validates against the schema and hands back a plain dict. An agent
+    that declared ``output=Invoice`` wants an ``Invoice``, so the value goes
+    back through the same ``SchemaAdapter`` that produced the schema — one
+    round trip, one definition of the type.
+
+    Returns ``(parsed, error)``. A coercion failure is reported, never raised:
+    the run happened and its text is real, so the caller gets a terminal event
+    with ``partial=True`` and an explanation rather than an exception thrown
+    from inside a generator.
+
+    With no adapter (an explicit ``json_schema=`` on an agent that declares no
+    ``output=``) the validated dict IS the parsed value — there is no Python
+    type to build.
+    """
+    adapter = getattr(agent, "_output_adapter", None)
+    if adapter is None:
+        return value, None
+    try:
+        return adapter.validate(value), None
+    except Exception as exc:  # noqa: BLE001 — reported as data, see docstring
+        # ``OutputCoercionError.__str__`` summarises ("1 error(s)"); the
+        # per-field diagnostics live on ``.errors`` and are the only part a
+        # caller can act on, so they go into the message.
+        detail = "; ".join(str(e) for e in getattr(exc, "errors", ()) or ())
+        return None, f"{type(exc).__name__}: {exc}" + (f" — {detail}" if detail else "")
+
 
 def _cli_stop_reason(reason: str | None) -> AgentStopReason:
     """Map this cognition's free-form terminal reason onto the closed taxonomy.
@@ -120,6 +161,8 @@ def _cli_stop_reason(reason: str | None) -> AgentStopReason:
     ``cli_exit_<n>`` are ``"failed"``; everything else (``"cancelled"``) defers
     to the shared table.
     """
+    if reason in _CLI_INVALID_OUTPUT_REASONS:
+        return "invalid_output"
     if reason in _CLI_FAILURE_REASONS or (reason is not None and reason.startswith("cli_exit_")):
         return "failed"
     return stop_reason_for(reason)
@@ -181,6 +224,16 @@ class ClaudeCliCognition:
     permission_mode: PermissionMode = "default"
     permission_prompt_tool: str | None = None  # → --permission-prompt-tool (an MCP tool)
     max_turns: int | None = None
+
+    # ── structured output ───────────────────────────────────────────────────
+    # ``--json-schema``: the CLI validates its own final answer against this
+    # schema and returns it in the result payload's ``structured_output``
+    # field, re-prompting itself on a mismatch. Leave ``None`` and the schema
+    # is taken from ``agent.output`` when one is declared, so the same
+    # ``output=`` that types a normal agentkit run types a CLI-delegated one.
+    # Set explicitly to override, or to ``{}``-free JSON Schema for an agent
+    # that declares no ``output=``.
+    json_schema: dict[str, Any] | None = None
 
     # ── session identity ────────────────────────────────────────────────────
     # Three DIFFERENT things the CLI keeps separate, and so must we:
@@ -310,6 +363,10 @@ class ClaudeCliCognition:
         cancelled = False
         is_error = False
         stop_reason: str | None = None
+        structured_output: Any = None
+        # Set once the schema is resolved. Initialised False so a spawn that
+        # dies before resolution still reaches the terminal event.
+        schema_requested = False
         stderr_bytes: bytes = b""
         proc: asyncio.subprocess.Process | None = None
         # ``fatal_exc`` records any exception raised before/during spawn or
@@ -339,7 +396,9 @@ class ClaudeCliCognition:
             # malformed template, ``os.environ.copy()`` under bizarre OS
             # states). Inside the outer try so we always yield a final.
             system_prompt = self._resolve_system_prompt(agent.prompt)
-            argv = self._build_argv(task, system_prompt=system_prompt)
+            schema = self._resolve_json_schema(agent)
+            schema_requested = schema is not None
+            argv = self._build_argv(task, system_prompt=system_prompt, json_schema=schema)
             env = self._build_env(ctx=ctx)
 
             if wd_missing is not None:
@@ -382,6 +441,8 @@ class ClaudeCliCognition:
                                 is_error = True
                             if delta.stop_reason is not None:
                                 stop_reason = delta.stop_reason
+                            if delta.structured_output is not None:
+                                structured_output = delta.structured_output
                 finally:
                     if cancelled and proc.returncode is None:
                         await _terminate(proc, self.terminate_grace_s)
@@ -452,6 +513,38 @@ class ClaudeCliCognition:
             final_stop_reason = stop_reason  # may still be None on clean success
             final_partial = False
 
+        # ── structured output ───────────────────────────────────────────────
+        # A schema was requested. Three outcomes, and only the first is a
+        # success:
+        #
+        #   value present   → coerce to the declared type; ``parsed`` is typed
+        #   retries burnt   → subtype ``error_max_structured_output_retries``
+        #   absent, exit 0  → the docs are explicit that this is a failure too
+        #
+        # The third is the one worth spelling out: without this branch the run
+        # returns ``partial=False`` and ``parsed=None``, and a caller that
+        # declared ``output=Invoice`` reads the prose as if the object simply
+        # had not been wired. Treating it as a failure makes it visible.
+        parsed: Any = None
+        if schema_requested:
+            if structured_output is not None:
+                parsed, coercion_error = _coerce_structured(agent, structured_output)
+                if coercion_error is not None:
+                    final_partial = True
+                    final_stop_reason = "structured_output_mismatch"
+                    evals_structured_error = coercion_error
+                else:
+                    evals_structured_error = None
+            else:
+                final_partial = True
+                if final_stop_reason in (None, "success"):
+                    final_stop_reason = "structured_output_missing"
+                evals_structured_error = (
+                    "the CLI returned no structured_output despite --json-schema"
+                )
+        else:
+            evals_structured_error = None
+
         evals: dict[str, Any] = {
             "session_id": session_id or "",
             "cli_duration_ms": duration_ms or 0,
@@ -465,6 +558,12 @@ class ClaudeCliCognition:
             evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
+        if structured_output is not None:
+            # The RAW validated dict, alongside the typed ``parsed`` object. A
+            # caller that declared no Python type still wants the data.
+            evals["structured_output"] = structured_output
+        if evals_structured_error is not None:
+            evals["structured_output_error"] = evals_structured_error
         if accumulated_thinking:
             # Reasoning chain from ``thinking`` blocks — separate from
             # ``output`` (the final response). Live consumers already saw
@@ -486,6 +585,7 @@ class ClaudeCliCognition:
                 usage=usage,
                 partial=final_partial,
                 evals=evals,
+                parsed=parsed,
                 # This cognition reports failures as DATA (a terminal event is
                 # guaranteed even when the subprocess never starts), so it is
                 # the one producer that can legitimately stamp ``"failed"``.
@@ -516,7 +616,32 @@ class ClaudeCliCognition:
             return prompt.render()
         return prompt
 
-    def _build_argv(self, task: str, *, system_prompt: str) -> list[str]:
+    def _resolve_json_schema(self, agent: Agent) -> dict[str, Any] | None:
+        """The JSON Schema to hand the CLI, or ``None``.
+
+        An explicit ``json_schema=`` wins. Otherwise the agent's own
+        ``output=`` schema is used, through the same ``SchemaAdapter`` the rest
+        of the framework uses — so declaring ``output=Invoice`` types a
+        CLI-delegated run exactly like it types a normal one, instead of being
+        silently ignored the way it was before this existed.
+
+        Reading the adapter defensively (``getattr``) keeps this working for
+        agent-likes in tests that don't build one.
+        """
+        if self.json_schema is not None:
+            return self.json_schema
+        adapter = getattr(agent, "_output_adapter", None)
+        if adapter is None:
+            return None
+        try:
+            schema = adapter.json_schema()
+        except Exception:  # noqa: BLE001 — a schema we cannot render is not a run-ender
+            return None
+        return schema if isinstance(schema, dict) and schema else None
+
+    def _build_argv(
+        self, task: str, *, system_prompt: str, json_schema: dict[str, Any] | None = None
+    ) -> list[str]:
         """Assemble the CLI argv. Order-independent; kept grouped by role
         (identity → format → model → prompt → tools → permissions → resume →
         extras) so a diff is legible."""
@@ -550,6 +675,12 @@ class ClaudeCliCognition:
             argv += ["--permission-prompt-tool", self.permission_prompt_tool]
         if self.max_turns is not None:
             argv += ["--max-turns", str(self.max_turns)]
+        if json_schema is not None:
+            # The CLI parses this argument as JSON and rejects an invalid
+            # schema at startup ("Error: --json-schema is not a valid JSON
+            # Schema"), so a malformed one fails the run rather than silently
+            # returning prose — which is what it did before CLI v2.1.205.
+            argv += ["--json-schema", json.dumps(json_schema)]
         if self.session_id is not None:
             argv += ["--session-id", self.session_id]
         if self.resume_session_id is not None:
@@ -606,6 +737,12 @@ class _EventDelta:
     # ``AgentResult.partial`` flag and stamp a stop_reason.
     is_error: bool = False
     stop_reason: str | None = None
+    # The CLI's validated structured answer, present on the ``result`` payload
+    # only when ``--json-schema`` was passed AND the run produced a conforming
+    # value. A ``success`` result WITHOUT it is a failure the docs call out
+    # explicitly, so ``None`` here is meaningful and the drive loop needs to
+    # distinguish "never asked for one" from "asked and did not get one".
+    structured_output: Any = None
 
 
 def _parse_line(line: bytes) -> dict[str, Any] | None:
@@ -719,6 +856,12 @@ async def _events_from_payload(
         is_error = bool(payload.get("is_error"))
         subtype = payload.get("subtype")
         stop_reason = str(subtype) if is_error and isinstance(subtype, str) else None
+        # ``error_max_structured_output_retries`` arrives as a subtype and is
+        # NOT flagged ``is_error`` in every version, so key off the subtype
+        # directly: the run produced no valid structured output and the caller
+        # must not read the prose as if it were the object.
+        if subtype == "error_max_structured_output_retries":
+            stop_reason = str(subtype)
         yield (
             None,
             _EventDelta(
@@ -727,6 +870,7 @@ async def _events_from_payload(
                 duration_ms=int(duration) if duration is not None else None,
                 is_error=is_error,
                 stop_reason=stop_reason,
+                structured_output=payload.get("structured_output"),
             ),
         )
         return

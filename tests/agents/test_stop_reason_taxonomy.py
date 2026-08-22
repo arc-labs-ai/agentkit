@@ -30,7 +30,11 @@ import pytest
 from agentkit import Agent
 from agentkit.adapters.store import InMemoryStore
 from agentkit.agents.cognition import CoordinatorCognition
-from agentkit.agents.cognition.claude_cli import _CLI_FAILURE_REASONS, _cli_stop_reason
+from agentkit.agents.cognition.claude_cli import (
+    _CLI_FAILURE_REASONS,
+    _CLI_INVALID_OUTPUT_REASONS,
+    _cli_stop_reason,
+)
 from agentkit.agents.control.termination import FunctionalTermination, MaxTurns
 from agentkit.agents.policies.ledger import LedgerPolicy
 from agentkit.agents.policies.plan import PlanPolicy, StaticPlanner, Step
@@ -225,6 +229,14 @@ def test_cli_failures_map_to_failed(reason: str) -> None:
     assert _cli_stop_reason(reason) == "failed"
 
 
+@pytest.mark.parametrize("reason", sorted(_CLI_INVALID_OUTPUT_REASONS))
+def test_cli_structured_output_failures_are_invalid_output(reason: str) -> None:
+    """The run worked; the SHAPE did not. That is ``invalid_output``, the same
+    category the tool loop uses when parse-and-repair is exhausted — not
+    ``failed``, which would read as "the subprocess fell over"."""
+    assert _cli_stop_reason(reason) == "invalid_output"
+
+
 @pytest.mark.parametrize(("reason", "expected"), [(None, "complete"), ("success", "complete"), ("cancelled", "terminated")])
 def test_cli_non_failures_defer_to_the_shared_table(reason: str | None, expected: str) -> None:
     assert _cli_stop_reason(reason) == expected
@@ -277,7 +289,12 @@ def test_every_reason_the_framework_itself_passes_is_categorised() -> None:
     root = pathlib.Path(__file__).resolve().parents[2] / "agentkit"
     # A producer may pass a taxonomy member DIRECTLY (``stop_reason="suspended"``
     # in the tool loop) — that needs no mapping entry, it IS the category.
-    known = set(_REASON_TO_STOP) | _CLI_FAILURE_REASONS | set(get_args(AgentStopReason))
+    known = (
+        set(_REASON_TO_STOP)
+        | _CLI_FAILURE_REASONS
+        | _CLI_INVALID_OUTPUT_REASONS
+        | set(get_args(AgentStopReason))
+    )
     uncategorised: dict[str, list[str]] = {}
     scanned = 0
     for path in sorted((root / "agents").rglob("*.py")) + sorted(
@@ -293,6 +310,6 @@ def test_every_reason_the_framework_itself_passes_is_categorised() -> None:
     assert scanned > 20, f"the scan found almost nothing ({scanned} files) — the glob broke"
     assert not uncategorised, (
         "these stop reasons are passed by the framework but categorised nowhere; add each to "
-        "`_REASON_TO_STOP` in agents/result.py (or `_CLI_FAILURE_REASONS` if it is a CLI "
-        f"failure mode): {uncategorised}"
+        "`_REASON_TO_STOP` in agents/result.py (or `_CLI_FAILURE_REASONS` / "
+        f"`_CLI_INVALID_OUTPUT_REASONS` if it is a CLI failure mode): {uncategorised}"
     )

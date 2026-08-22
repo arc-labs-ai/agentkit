@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
 CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
 FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
@@ -145,6 +146,55 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── output= types a CLI-delegated run too ───────────────────────────────
+    Mutant(
+        tag="clischema",
+        why="agent.output is ignored again, so the CLI never validates its answer",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        adapter = getattr(agent, \"_output_adapter\", None)\n        if adapter is None:\n            return None",
+        after="        return None\n        adapter = getattr(agent, \"_output_adapter\", None)\n        if adapter is None:",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="the validated dict is handed back raw instead of the declared type",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        return adapter.validate(value), None",
+        after="        return value, None",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="a success with no structured_output reads as a clean run",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="            else:\n                final_partial = True\n                if final_stop_reason in (None, \"success\"):",
+        after="            elif False:\n                final_partial = True\n                if final_stop_reason in (None, \"success\"):",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="a value the Python type rejects is reported as a successful parse",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                if coercion_error is not None:",
+        after="                if False:",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="exhausted structured-output retries are categorised as a generic termination",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="    if reason in _CLI_INVALID_OUTPUT_REASONS:\n        return \"invalid_output\"\n",
+        after="",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="the field-level coercion diagnostics are dropped, leaving only '1 error(s)'",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='        detail = "; ".join(str(e) for e in getattr(exc, "errors", ()) or ())',
+        after='        detail = ""',
+        tests=CLI_SCHEMA_TESTS,
+    ),
     # ── the CLI cognition's flags mean what the CLI says they mean ──────────
     Mutant(
         tag="cliflags",
