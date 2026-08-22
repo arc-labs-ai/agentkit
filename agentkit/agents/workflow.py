@@ -51,6 +51,25 @@ def _ckpt_key(run_id: str) -> str:
     return f"workflow:{run_id}"
 
 
+def _warn_unpersisted_gate(gate: str, run_id: str) -> None:
+    """Announce a human-gate suspend that cannot be resumed.
+
+    ``stacklevel=4`` aims the warning at the caller's ``run()`` rather than at
+    the depths of ``_execute``.
+    """
+    import warnings
+
+    warnings.warn(
+        f"workflow gate {gate!r} suspended run {run_id!r} but no store is wired on the "
+        "RunContext, so NOTHING WAS PERSISTED and Workflow.resume() will raise "
+        f"\"no suspended workflow {run_id!r} to resume\". Wire "
+        "Services(store=...) to make this suspend resumable. (Workflow persists via "
+        "ctx.store; a Checkpointer alone is not enough for a workflow gate.)",
+        UserWarning,
+        stacklevel=4,
+    )
+
+
 def _as_tuple(after: Any) -> tuple[str, ...]:
     if not after:
         return ()
@@ -344,6 +363,22 @@ class Workflow:
                 gate = next((n for n in ready if n.gate and n.name not in decisions), None)
                 if gate is not None:  # suspend for a human decision
                     run_id = ctx.correlation_id
+                    if ctx.store is None:
+                        # Returning a ``Suspended`` we could not persist is a
+                        # silent, well-formed failure: ``run()`` reports a
+                        # resumable state, and the truth only emerges later —
+                        # usually in a different process — as
+                        # "no suspended workflow <id> to resume", with nothing
+                        # pointing back at the missing store.
+                        #
+                        # Note the asymmetry this also catches: Workflow
+                        # persists through ``ctx.store``, while the ReAct
+                        # cognition prefers ``ctx.checkpointer`` and only
+                        # falls back to a store bridge. Wiring ONLY a
+                        # ``Checkpointer`` — the documented durable seam —
+                        # therefore leaves a workflow gate unpersisted too,
+                        # and this warning is what says so out loud.
+                        _warn_unpersisted_gate(gate.name, run_id)
                     if ctx.store is not None:
                         # Deep-copy ``done`` at the store boundary: the
                         # live map is returned to the caller as

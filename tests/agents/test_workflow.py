@@ -662,3 +662,51 @@ def test_workflow_on_existing_without_checkpointer_degrades_cleanly():
         )
         assert res.stop_reason == "complete"
         assert res.outputs["a"] == "alpha"
+
+
+def test_a_workflow_gate_warns_when_the_suspend_cannot_be_persisted() -> None:
+    """A suspend with no store wired returned `stop_reason="suspended"` and a
+    `Suspended` object while persisting NOTHING.
+
+    The truth surfaced later — usually in a different process — as
+    "no suspended workflow <id> to resume", with nothing pointing back at the
+    missing store. That is the silent, well-formed failure class: the return
+    value says resumable, the system is not.
+
+    The warning also catches an asymmetry worth knowing: Workflow persists via
+    `ctx.store`, while the ReAct cognition prefers `ctx.checkpointer` and only
+    falls back to a store bridge. Wiring ONLY a Checkpointer — the documented
+    durable seam — therefore leaves a workflow gate unpersisted too.
+    """
+    import asyncio
+    import warnings
+
+    import pytest as _pytest
+
+    from agentkit import Scope, Workflow
+    from agentkit.runtime import RunContext, Services
+
+    wf = Workflow(max_steps=10)
+    wf.fn("prep", lambda inputs: "ready")
+    wf.human_gate("approve", after="prep")
+    wf.fn("act", lambda inputs: "done", after="approve")
+
+    ctx = RunContext("wf-unpersisted", Scope(), services=Services())  # no store
+
+    with _pytest.warns(UserWarning, match="no store is wired"):
+        result = asyncio.run(wf.run("go", ctx))
+    assert result.stop_reason == "suspended"
+
+    # And the downstream failure the warning predicts really does happen.
+    with _pytest.raises(ValueError, match="no suspended workflow"):
+        asyncio.run(wf.resume("wf-unpersisted", {"approve": "yes"}, ctx))
+
+    # With a store wired, no warning and the resume works.
+    from agentkit.adapters.store import InMemoryStore
+
+    ctx2 = RunContext("wf-ok", Scope(), services=Services(store=InMemoryStore()))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert asyncio.run(wf.run("go", ctx2)).stop_reason == "suspended"
+    assert not [w for w in caught if "no store is wired" in str(w.message)]
+    assert asyncio.run(wf.resume("wf-ok", {"approve": "yes"}, ctx2)).stop_reason == "complete"
