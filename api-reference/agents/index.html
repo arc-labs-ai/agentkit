@@ -1987,6 +1987,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.agents.SignalChannel.dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;dropped
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.agents.SignalChannel.attach_parent" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3496,6 +3507,17 @@
   
     <nav class="md-nav" aria-label=" SignalChannel">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.agents.SignalChannel.dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;dropped
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#agentkit.agents.SignalChannel.attach_parent" class="md-nav__link">
@@ -6378,6 +6400,32 @@ attached) still work at zero-config.</p>
 
 
 
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="agentkit.agents.SignalChannel.dropped" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">dropped</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#agentkit.agents.SignalChannel.dropped" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">dropped</span><span class="p">:</span> <span class="n"><span title="int">int</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>How many audit entries the outbox has discarded. <code>0</code> means the tap
+is complete; anything else means a consumer is reading a window, not a
+transcript.</p>
+
+    </div>
+
+</div>
+
 
 
 
@@ -6426,10 +6474,14 @@ constructing the child.</p>
 <p>Stamps <code>sender_id</code> and <code>timestamp_us</code> on the envelope at
 emit time. Puts the signal on this agent's outbox AND on the
 parent's merge inbox (if attached).</p>
-<p>Both writes <code>await</code> so backpressure flows correctly — if
-the parent is slow, the child blocks. Tests that read from
-a detached channel (no parent attached) only see the outbox
-write; production flows see both.</p>
+<p>Backpressure comes from the PARENT: if the parent's merge
+inbox is full, that write blocks and the child waits. The
+outbox write never blocks — it drops its oldest entry
+instead (see <code>_offer_to_outbox</code> and <code>dropped</code>), because
+nothing in the framework drains it and awaiting a queue with
+no consumer is a deadlock, not backpressure.</p>
+<p>Tests that read from a detached channel (no parent attached)
+only see the outbox write; production flows see both.</p>
 
 
     </div>
