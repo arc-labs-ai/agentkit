@@ -30,6 +30,7 @@ from agentkit.context import WorkingContext
 from agentkit.kernel.concurrency import run_agents
 from agentkit.kernel.errors import Failure
 from agentkit.kernel.protocols import Ctx
+from agentkit.kernel.resilience import ErrorClass
 from agentkit.kernel.types import Usage
 
 if TYPE_CHECKING:
@@ -98,6 +99,100 @@ class StaticPlanner:
         return self.steps
 
 
+class PlanShapeError(ValueError):
+    """A plan that cannot be executed as written.
+
+    Raised at the START of ``execute`` / ``resume``, before any child is
+    dispatched, because every alternative is worse: a plan whose step 5 names a
+    child that does not exist used to raise a bare ``KeyError('reseacher')``
+    from inside the dispatch loop, AFTER steps 1-4 had run and spent money, and
+    with their results unreachable — the accumulator is a local of
+    ``_run_groups``. Under ``best_effort=True`` that also broke the mode's one
+    promise, which is that partial progress survives.
+
+    Subclasses ``ValueError`` so the existing ``except ValueError`` around plan
+    construction keeps catching it.
+    """
+
+
+def _validate_plan(
+    steps: list[Step], children: dict[str, Agent], *, best_effort: bool
+) -> tuple[list[Step], list[tuple[str | None, Failure]]]:
+    """Check a plan against the child roster BEFORE anything is dispatched.
+
+    Returns the steps to execute plus per-step failures for the ones dropped.
+
+    Two shapes are refused outright, in both modes, because there is no honest
+    way to guess what was meant:
+
+    * A **malformed step** — neither an ``agent`` nor a ``gate_name``. There is
+      nothing to dispatch and nothing to wait for.
+    * A **gate sharing a group with dispatch steps**. Reaching such a group
+      suspends before any of its steps run (gates and work do not co-execute),
+      and resume then continues at ``gate_group + 1`` — so those co-grouped
+      steps were announced in the trace and then silently never ran, in either
+      branch of the decision. Whether the work belongs before or after the
+      human's decision is exactly what the plan failed to say, so the framework
+      states the problem rather than picking one.
+
+    An **unknown child name** is the one case that depends on the mode, because
+    it is the one case that can legitimately be runtime data rather than a typo:
+    a live ``Planner`` names the child it wants. Under ``best_effort=True`` it
+    becomes a ``Failure`` in ``evals["errors"]`` and the rest of the plan runs;
+    otherwise it is refused up front.
+    """
+    dropped: list[tuple[str | None, Failure]] = []
+    keep: list[Step] = []
+    roster = sorted(children)
+
+    for group in sorted({s.group for s in steps}):
+        in_group = [s for s in steps if s.group == group]
+        gates = [s for s in in_group if s.gate_name is not None]
+        work = [s for s in in_group if s.gate_name is None]
+        if gates and work:
+            raise PlanShapeError(
+                f"plan group {group} mixes the human gate "
+                f"{gates[0].gate_name!r} with {len(work)} dispatch step(s) "
+                f"({', '.join(repr(s.agent) for s in work)}). A gate suspends its whole group "
+                "before any step runs, and resume continues at the NEXT group, so those steps "
+                "would never run. Move them to a group before the gate (to run first) or after "
+                "it (to run only on approval)."
+            )
+
+    for step in steps:
+        if step.gate_name is not None:
+            keep.append(step)
+            continue
+        if step.agent is None:
+            raise PlanShapeError(
+                f"plan step {step!r} names neither an agent nor a gate — there is nothing to "
+                "dispatch. Use Step('<child>', '<input>') or Step.gate('<name>')."
+            )
+        if step.agent not in children:
+            msg = (
+                f"plan step for child {step.agent!r} has no such child on the coordinator "
+                f"(known: {roster or ['<none>']})"
+            )
+            if not best_effort:
+                raise PlanShapeError(
+                    msg + ". Fix the plan, or set best_effort=True to isolate unknown children "
+                    "into evals['errors'] and run the rest."
+                )
+            # PERMANENT: retrying a name that is not on the roster cannot
+            # succeed, and ``Failure.retriable`` is read by callers deciding
+            # whether to re-dispatch.
+            dropped.append(
+                (
+                    step.agent,
+                    Failure(category=ErrorClass.PERMANENT, source="PlanPolicy", message=msg),
+                )
+            )
+            continue
+        keep.append(step)
+
+    return keep, dropped
+
+
 @dataclass
 class PlanPolicy:
     """Dispatches a plan of named-child steps. The plan comes from ``planner``
@@ -140,6 +235,10 @@ class PlanPolicy:
             plan = self.planner.plan(task, ctx)
             steps = await plan if inspect.isawaitable(plan) else plan
 
+        # Validate against the roster BEFORE the dispatch events are emitted:
+        # announcing a step that will never run puts a lie in the trace.
+        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)
+
         total = len(steps)
         # Drop one ``policy.dispatch`` event per planned step (in plan order),
         # naming the child + its 1-based step position so an operator can read
@@ -163,7 +262,7 @@ class PlanPolicy:
             ctx,
             steps,
             results=[],
-            errors=[],
+            errors=list(dropped),
             usage=Usage(),
             start_group=None,
         )
@@ -241,7 +340,12 @@ class PlanPolicy:
         # phantom pending gate that would replay on the next resume attempt.
         await ctx.store.delete(_ckpt_key(run_id))
 
+        # The roster is re-supplied by the caller on resume and may not be the
+        # one the plan was built against — validate again rather than trusting
+        # that the pre-suspend check still holds.
         children = getattr(coordinator.cognition, "children", None) or {}
+        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)
+        errors.extend(dropped)
         return await self._run_groups(
             children,
             task,
@@ -319,6 +423,8 @@ class PlanPolicy:
                     stop_reason=stop_reason_for("awaiting_decision"),
                 )
 
+            # ``children[...]`` is safe: ``_validate_plan`` ran before the first
+            # dispatch and every surviving step names a child on the roster.
             pairs = [(children[s.agent], s.input) for s in group_steps]  # type: ignore[index]
             outs = await run_agents(pairs, ctx, best_effort=self.best_effort)
             for step, res in zip(group_steps, outs, strict=False):
@@ -346,4 +452,4 @@ class PlanPolicy:
         )
 
 
-__all__ = ["PlanPolicy", "Planner", "StaticPlanner", "Step"]
+__all__ = ["PlanPolicy", "PlanShapeError", "Planner", "StaticPlanner", "Step"]

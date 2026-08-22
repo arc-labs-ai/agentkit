@@ -111,6 +111,10 @@ RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
 PROVIDER_TESTS = ("tests/adapters/test_provider_stream_errors.py",)
 SLOT_TESTS = ("tests/capabilities/test_checkpoint_slot_isolation.py",)
 STOP_REASON_TESTS = ("tests/agents/test_stop_reason_taxonomy.py",)
+PLAN_TESTS = (
+    "tests/agents/test_plan_validation.py",
+    "tests/agents/test_plan_policy.py",
+)
 STORE_TESTS = (
     "tests/meta/test_protocol_conformance.py",
     "tests/adapters/test_stores.py",
@@ -122,6 +126,63 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── plan shape: refuse before dispatch, never mid-flight ─────────────────
+    Mutant(
+        tag="plan",
+        why="an unknown child is only discovered mid-dispatch, after earlier groups spent",
+        path="agentkit/agents/policies/plan.py",
+        before="        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n\n        total = len(steps)",
+        after="        dropped: list[tuple[str | None, Failure]] = []\n\n        total = len(steps)",
+        tests=PLAN_TESTS,
+    ),
+    Mutant(
+        tag="plan",
+        why="best_effort refuses an unknown child instead of isolating it",
+        path="agentkit/agents/policies/plan.py",
+        before="            if not best_effort:",
+        after="            if True:",
+        tests=PLAN_TESTS,
+    ),
+    Mutant(
+        tag="plan",
+        why="a gate co-grouped with work is accepted, silently dropping those steps",
+        path="agentkit/agents/policies/plan.py",
+        before="        if gates and work:",
+        after="        if gates and work and False:",
+        tests=PLAN_TESTS,
+    ),
+    Mutant(
+        tag="plan",
+        why="resume trusts the pre-suspend roster, so a shrunken one KeyErrors mid-flight",
+        path="agentkit/agents/policies/plan.py",
+        before="        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n        errors.extend(dropped)",
+        after="        dropped = []",
+        tests=PLAN_TESTS,
+    ),
+    Mutant(
+        tag="plan",
+        why="an unknown child is dropped SILENTLY instead of recorded as a failure",
+        path="agentkit/agents/policies/plan.py",
+        before="            results=[],\n            errors=list(dropped),",
+        after="            results=[],\n            errors=[],",
+        tests=PLAN_TESTS,
+    ),
+    Mutant(
+        tag="plan",
+        why="the validator sorts its output, silently rewriting the plan's order",
+        path="agentkit/agents/policies/plan.py",
+        before="    return keep, dropped",
+        after="    return sorted(keep, key=lambda s: s.group), dropped",
+        tests=PLAN_TESTS,
+    ),
+    Mutant(
+        tag="plan",
+        why="an unknown child is reported as retriable, so a caller re-dispatches forever",
+        path="agentkit/agents/policies/plan.py",
+        before="                    Failure(category=ErrorClass.PERMANENT, source=\"PlanPolicy\", message=msg),",
+        after="                    Failure(category=ErrorClass.TRANSIENT, source=\"PlanPolicy\", message=msg),",
+        tests=PLAN_TESTS,
+    ),
     # ── stop reasons: the typed field must not outlive its meaning ───────────
     Mutant(
         tag="stopreason",

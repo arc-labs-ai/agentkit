@@ -11,6 +11,27 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — a plan is checked against the roster before it dispatches
+
+- **A step naming an unknown child raised `KeyError('reseacher')` mid-flight.**
+  It surfaced from `children[s.agent]` inside the dispatch loop — after the
+  earlier groups had run and spent money, and with their results unreachable,
+  because the accumulator is a local of `_run_groups`. Under `best_effort=True`
+  that also broke the mode's one promise: partial progress survives. Unknown
+  children now either refuse up front (fail-fast) or land in `evals["errors"]`
+  as a `PERMANENT` `Failure` while the rest of the plan runs (best-effort).
+  `resume` re-validates too, since the roster is re-supplied by the caller.
+
+- **A gate sharing a group with dispatch steps silently dropped them.** The
+  group suspends before any of its steps run, and resume continues at the group
+  *after* the gate — so those steps were announced in the trace and then never
+  executed, on approve and on reject alike. Refused as `PlanShapeError`: whether
+  the work belongs before or after the human's decision is exactly what the plan
+  failed to say, so the framework states the problem instead of picking one.
+
+- A `Step` with neither an `agent` nor a `gate_name` reached `children[None]`.
+  Also refused, by name.
+
 ### Fixed — every producer stamps the typed stop reason
 
 - **A plan parked on a human gate reported itself `complete`.**

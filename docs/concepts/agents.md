@@ -167,6 +167,30 @@ never resumed. If you write your own policy, map the reason; a
 source-level test refuses a new framework reason that is categorised
 nowhere.
 
+### Plan shape is checked before dispatch
+
+`PlanPolicy` validates a plan against the coordinator's child roster
+*before* the first step runs, raising `PlanShapeError` (a `ValueError`)
+on three shapes:
+
+| Shape | Why it is refused |
+|---|---|
+| A step naming a child that isn't on the coordinator | Under `best_effort=False` there is nothing to dispatch. It used to raise a bare `KeyError('reseacher')` from inside the dispatch loop — after the earlier groups had run and spent, and with their results unreachable |
+| A step with neither an `agent` nor a `gate_name` | Nothing to dispatch and nothing to wait for |
+| A gate sharing a group with dispatch steps | A gate suspends its whole group *before* any step runs, and resume continues at the group **after** it — so those steps were announced in the trace and then never ran, on approve *and* on reject. Whether the work belongs before or after the decision is exactly what the plan failed to say |
+
+`best_effort=True` treats only the first of those as data, not an
+error: a live `Planner` names the child it wants, so an unknown name
+can be a runtime answer rather than a typo. It lands in
+`evals["errors"]` as a `PERMANENT` `Failure` — re-dispatching a name
+that isn't on the roster cannot succeed — and the rest of the plan
+runs. That is the mode's whole promise, and a mid-loop `KeyError`
+could not keep it.
+
+`resume` re-validates, because the roster is re-supplied by the caller
+and a service that rebuilds its coordinator from config can lose a
+child between suspend and resume.
+
 ### Model capability contract
 
 `Agent(requires=("vision",), min_context_window=100_000)` is checked

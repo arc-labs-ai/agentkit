@@ -172,6 +172,12 @@ the accumulated results + errors + usage to `ctx.store` under a
 with `stop_reason="awaiting_decision"`. The synthesizer step in
 group 2 does NOT run.
 
+A gate must be **alone in its group**. `PlanPolicy` refuses a plan that
+puts a gate and dispatch steps in one group with `PlanShapeError`,
+because the group suspends before any step runs and resume continues at
+the next group — so the co-grouped steps would be announced in the trace
+and then silently never run, whichever way the human decided.
+
 **t=<indefinite> — Operator interacts.** The user drops two
 irrelevant sources on the canvas. The api posts an approve command
 with the trimmed source-id set and the pending decision id
