@@ -26,6 +26,7 @@ from agentkit.agents.policies.roundrobin import (
     _name_of,
     _replay_termination,
     _resolve_checkpointer,
+    _run_local_termination,
     render_transcript,
 )
 from agentkit.agents.result import AgentResult
@@ -110,8 +111,8 @@ class SelectorPolicy:
                 f"coordinator {coordinator.name!r}: cannot run a Policy with no children"
             )
 
-        termination: TerminationCondition = getattr(cognition, "termination", None) or MaxTurns(
-            self.max_turns
+        termination: TerminationCondition = _run_local_termination(
+            cognition, MaxTurns(self.max_turns)
         )
         run_id = ctx.correlation_id
         cpt = _resolve_checkpointer(coordinator, ctx)

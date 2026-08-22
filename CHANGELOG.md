@@ -11,6 +11,36 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — a termination condition is run-local state
+
+- **Concurrent coordinator runs shared one condition.** A `TerminationCondition`
+  is stateful and lives on the cognition, which lives on a long-lived `Agent` a
+  server reuses. `ReActCognition` already deep-copied per drive for exactly this
+  reason; the coordinator policies did not, so the documented "termination is
+  per-drive" invariant held for leaf agents and quietly failed for teams. Two
+  concurrent runs with `MaxTurns(4)` got **3 turns and 2 turns**. Both policies
+  now clone, and the instance the caller passed in is never advanced.
+
+- **Cloning had broken `ExternalTermination`.** The caller holds a handle and
+  the run holds a copy, so `set()` could never reach a running loop — an
+  "externally triggered stop" that only worked if triggered before the run
+  started. It now opts out of the copy via `__deepcopy__`: an external switch is
+  not per-run state. One switch shared by two concurrent runs stops both, which
+  is the point of it.
+
+- **`judge_termination` matched `YES` as a substring.** "Not yet — yesterday's
+  draft is still open." stopped the run; so did "There is no simple yes/no
+  answer here." Negation and hedging are precisely what a judge produces, and
+  the docstring promised "stops only on an explicit affirmative". The affirmative
+  must now LEAD the reply (leading punctuation skipped, case-insensitive, word
+  boundary after). The bias is deliberate: "Answer: YES" reads as a non-stop and
+  costs one more turn, which the hard ceiling bounds — while a false stop
+  truncates the work and reports it complete, and nothing catches that.
+
+- **`Stop` is frozen.** A condition latches its `Stop` and hands the same
+  instance to every caller on every later turn, so a consumer assigning to
+  `.reason` was rewriting the condition's own record of why it stopped.
+
 ### Fixed — routing picks the agent the model actually named
 
 - **`llm_selector` scanned the roster in its own order for a substring.** The

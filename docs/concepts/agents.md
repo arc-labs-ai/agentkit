@@ -247,9 +247,24 @@ service that pins its models). `UNKNOWN` is never treated as present.
    `Policy` implementations.
 2. **Signals are frozen.** A `SignalEnvelope` is immutable; consumers
    read, they don't edit.
-3. **Termination is per-drive.** A `ReAct` cognition deep-copies its
-   termination condition on every drive so cross-drive state can't
-   leak.
+3. **Termination is per-run.** A `TerminationCondition` is stateful
+   (`MaxTurns.turn`, `Timeout._start`, the latched `Stop`) and lives on
+   a long-lived cognition, so every producer — the `ReAct` drive *and*
+   the coordinator policies — deep-copies it into a run-local variable.
+   Without that, two concurrent `coordinator.run(...)` calls counted
+   into one counter: `MaxTurns(4)` gave one run 3 turns and the other
+   2. The instance you passed in is never advanced, so a coordinator is
+   safe to reuse.
+
+   `ExternalTermination` opts out of the copy, and that is deliberate:
+   a stop switch you hold a handle to is not per-run state, and copying
+   it meant `set()` could never reach a loop already running. One switch
+   shared by two concurrent runs stops both — use one condition per run
+   if you need them independent.
+
+   A judge condition (`judge_termination`) stops only on a **leading**
+   affirmative. "Not yet — yesterday's draft is still open." used to
+   stop the run, because `YES` was matched as a substring.
 4. **Handoff transfers ownership.** After a `Handoff`, the source
    agent stops emitting; there is no shared write.
 5. **Suspended is not failed.** A parked run returns a typed

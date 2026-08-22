@@ -115,6 +115,10 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+TERM_TESTS = (
+    "tests/agents/test_termination_isolation.py",
+    "tests/agents/test_termination.py",
+)
 ROUTING_TESTS = (
     "tests/agents/test_routing_accuracy.py",
     "tests/agents/test_handoff.py",
@@ -134,6 +138,63 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── termination: run-local state, and a judge read literally ────────────
+    Mutant(
+        tag="termination",
+        why="the coordinator shares one condition, so concurrent runs eat each other's turns",
+        path="agentkit/agents/policies/roundrobin.py",
+        before="    return copy.deepcopy(getattr(cognition, \"termination\", None) or fallback)",
+        after="    return getattr(cognition, \"termination\", None) or fallback",
+        tests=TERM_TESTS,
+    ),
+    Mutant(
+        tag="termination",
+        why="the selector policy keeps its own uncloned resolution",
+        path="agentkit/agents/policies/selector_policy.py",
+        before="        termination: TerminationCondition = _run_local_termination(\n            cognition, MaxTurns(self.max_turns)\n        )",
+        after="        termination: TerminationCondition = getattr(cognition, \"termination\", None) or MaxTurns(self.max_turns)",
+        tests=TERM_TESTS,
+    ),
+    Mutant(
+        tag="termination",
+        why="cloning the external switch, so set() cannot reach a running loop",
+        path="agentkit/agents/control/termination.py",
+        before="    def __deepcopy__(self, memo: dict[int, Any]) -> ExternalTermination:\n        memo[id(self)] = self\n        return self\n",
+        after="",
+        tests=TERM_TESTS,
+    ),
+    Mutant(
+        tag="termination",
+        why="the deepcopy carve-out leaks to every condition, undoing run-locality",
+        path="agentkit/agents/control/termination.py",
+        before="class ExternalTermination(TerminationCondition):",
+        after="class ExternalTermination(TerminationCondition):\n    pass\n\n\nclass _Unused(TerminationCondition):",
+        tests=TERM_TESTS,
+    ),
+    Mutant(
+        tag="termination",
+        why="the judge's YES is matched anywhere, so 'yesterday' stops the run",
+        path="agentkit/agents/control/termination.py",
+        before='        return re.match(rf"\\W*{re.escape(yes)}(?!\\w)", out, re.IGNORECASE) is not None',
+        after="        return yes.upper() in out.upper()",
+        tests=TERM_TESTS,
+    ),
+    Mutant(
+        tag="termination",
+        why="the judge's affirmative need not be a whole word ('yes/no' counts)",
+        path="agentkit/agents/control/termination.py",
+        before='        return re.match(rf"\\W*{re.escape(yes)}(?!\\w)", out, re.IGNORECASE) is not None',
+        after='        return re.search(rf"(?<!\\w){re.escape(yes)}(?!\\w)", out, re.IGNORECASE) is not None',
+        tests=TERM_TESTS,
+    ),
+    Mutant(
+        tag="termination",
+        why="a latched Stop is mutable, so a consumer can rewrite why the run stopped",
+        path="agentkit/agents/control/termination.py",
+        before="@dataclass(frozen=True)\nclass Stop:",
+        after="@dataclass\nclass Stop:",
+        tests=TERM_TESTS,
+    ),
     # ── routing: who speaks next is who the model named ─────────────────────
     Mutant(
         tag="routing",

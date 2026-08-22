@@ -14,6 +14,7 @@ The Policy is intentionally stateless across runs: all state lives on the ``coor
 from __future__ import annotations
 
 import contextlib
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -99,6 +100,32 @@ def _resolve_checkpointer(coordinator: Agent, ctx: Ctx) -> Checkpointer | None:
     sharing one resolution order across producers viable at all.
     """
     return resolve_checkpointer(ctx, getattr(coordinator.cognition, "checkpointer", None))
+
+
+def _run_local_termination(
+    cognition: Any, fallback: TerminationCondition
+) -> TerminationCondition:
+    """The coordinator's termination condition, CLONED for this run.
+
+    A ``TerminationCondition`` is stateful — ``MaxTurns.turn``,
+    ``MaxMessages.count``, ``Timeout._start``, the latched ``_stop``. The
+    condition lives on the cognition, which lives on the coordinator ``Agent``,
+    which is a long-lived object a server reuses. Two concurrent
+    ``coordinator.run(...)`` calls therefore counted into ONE counter and reset
+    each other mid-flight. Measured with ``MaxTurns(4)`` on two concurrent runs:
+    one got 3 turns, the other 2.
+
+    ``ReActCognition`` already clones per drive for exactly this reason; the
+    coordinator policies did not, so the "termination is per-drive" invariant
+    held for leaf agents and quietly failed for teams. A fresh default
+    (``MaxTurns(len(children))``) needs no clone — it is already run-local —
+    but cloning it costs nothing and keeps one code path.
+
+    ``ExternalTermination`` opts out of the copy (see its ``__deepcopy__``): an
+    external stop switch is not per-run state, and copying it is what made
+    ``set()`` unable to reach a running loop.
+    """
+    return copy.deepcopy(getattr(cognition, "termination", None) or fallback)
 
 
 async def _replay_termination(
@@ -200,7 +227,7 @@ class RoundRobinPolicy:
                 f"coordinator {coordinator.name!r}: cannot run a Policy with no children"
             )
 
-        termination = getattr(cognition, "termination", None) or MaxTurns(len(children))
+        termination = _run_local_termination(cognition, MaxTurns(len(children)))
         run_id = ctx.correlation_id
         cpt = _resolve_checkpointer(coordinator, ctx)
         bb = context if context is not None and context.shared else context

@@ -12,6 +12,7 @@ is always the never-hang backstop — termination conditions sit on top of it, n
 from __future__ import annotations
 
 import inspect
+import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
@@ -21,9 +22,23 @@ from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message
 
 
-@dataclass
+@dataclass(frozen=True)
 class Stop:
-    """Why a run stopped — a structured reason (fed into `AgentResult.evals['stop_reason']`)."""
+    """Why a run stopped — a structured reason (fed into `AgentResult.evals['stop_reason']`).
+
+    Frozen, because a condition LATCHES its ``Stop`` and hands the same instance
+    to every caller on every subsequent turn. A consumer writing
+    ``stop.reason = ...`` was rewriting the condition's own record of why it
+    stopped, and every later read — including the policy's, including the
+    trace's — saw the rewrite. Same reasoning as ``Suspended``: a value a
+    caller reasons about must not be editable underneath the thing that
+    produced it.
+
+    ``detail`` is a plain dict rather than a frozen mapping on purpose: a
+    ``MappingProxyType`` cannot be deep-copied, and conditions ARE deep-copied
+    per drive to keep counters run-local. Its contents stay writable; the
+    ``reason`` every consumer branches on does not.
+    """
 
     reason: str
     detail: dict[str, Any] = field(default_factory=dict)
@@ -220,11 +235,30 @@ class Timeout(TerminationCondition):
 
 
 class ExternalTermination(TerminationCondition):
-    """Stop when flipped from outside via `.set()` (graceful externally-triggered stop)."""
+    """Stop when flipped from outside via `.set()` (graceful externally-triggered stop).
+
+    **Not cloned per drive.** Every other condition is deep-copied into a
+    drive-local variable so two concurrent runs cannot race on
+    ``MaxTurns.turn`` or ``Timeout._start``. Applying that to this one broke
+    the only thing it does: the caller holds a handle, the RUN holds a copy,
+    and ``set()`` on the handle never reached the loop — an external stop that
+    could only ever work if it was flipped before the run started, which is
+    not what "externally-triggered" means.
+
+    So ``__deepcopy__`` returns ``self``. An external stop switch is by
+    definition not per-run state; sharing it is the semantics, not a leak. The
+    consequence is deliberate and worth knowing: one switch shared by two
+    concurrent drives stops both, and either drive's ``reset()`` lowers it for
+    both. Use one condition per run if you need to stop them independently.
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self._flag = False
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> ExternalTermination:
+        memo[id(self)] = self
+        return self
 
     def set(self) -> None:
         self._flag = True
@@ -272,6 +306,21 @@ def judge_termination(
     new-message delta each turn. Stops only on an explicit affirmative — anything else (incl. an error or
     ambiguity) continues, so the hard ceiling stays the real backstop.
 
+    "Explicit affirmative" means the reply LEADS with ``yes`` — leading
+    punctuation and whitespace are skipped, matching is case-insensitive, and a
+    word boundary must follow. The substring test this used to do
+    (``yes.upper() in out.upper()``) read both "Not yet — yesterday's draft is
+    still open." and "There is no simple yes/no answer here." as affirmative,
+    which is the exact opposite of each, and negation and hedging are what a
+    judge produces most.
+
+    Leading rather than anywhere, because the prompt asks the judge to *answer*
+    YES or NO and the answer is the first thing it writes. The bias is
+    deliberate and matches the paragraph above: "Answer: YES" reads as a
+    non-stop and the loop continues one more turn, which the hard ceiling
+    bounds anyway. A false stop has no such backstop — it silently truncates
+    the work and returns it as complete.
+
     The judge runs on the **live** run ctx threaded in each turn (correct budget/cancel/trace even when the
     coordinator is reused across runs); the optional `ctx` here is only a fallback for the rare caller that
     evaluates the condition directly without threading one."""
@@ -287,7 +336,11 @@ def judge_termination(
             out = (await judge.run(prompt, run_ctx.child())).output or ""
         except Exception:  # noqa: BLE001 — a judge failure must never force a stop
             return False
-        return yes.upper() in out.upper()
+        # ``\W*`` skips leading punctuation/whitespace ("**YES**", "  yes").
+        # ``re.escape`` because ``yes=`` is caller-supplied and may hold regex
+        # metacharacters; ``(?!\w)`` rather than ``\b`` so a multi-word phrase
+        # like ``yes="task complete"`` anchors correctly at its end.
+        return re.match(rf"\W*{re.escape(yes)}(?!\w)", out, re.IGNORECASE) is not None
 
     return FunctionalTermination(_done, reason=reason)
 
