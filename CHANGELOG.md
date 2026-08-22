@@ -7,11 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Two batches of work in this cycle: five gaps reported from production use, and
+a follow-up sweep for other major issues. Everything is additive except the
+concurrency-bound change called out below.
+
+### Fixed — concurrency, budgets and workflow suspend
+
+- **Nested fan-out deadlocked.** `ctx.semaphore()` returned ONE semaphore for
+  the whole agent tree, and a parent's fan-out holds its permits for the entire
+  duration of each child run — so a nested fan-out drew from a pool its own
+  ancestors had already drained. Reproduced through the public API: an Agent
+  dispatching two `as_tool` sub-agents that each dispatch their own tools hangs
+  forever at `max_concurrency=2`. The pool is now keyed on `ctx.depth`, which
+  breaks the cycle structurally since every nesting boundary goes through
+  `ctx.child()`. **Behaviour change:** the bound is now `max_concurrency` per
+  LEVEL, so worst-case in-flight work is `max_concurrency * (max_depth + 1)`.
+  A single tree-wide cap cannot be both deadlock-free and respected by nested
+  acquisition.
+- **`gather_best_effort` swallowed cooperative cancellation.** It correctly
+  re-raised `asyncio.CancelledError` but caught agentkit's own `Cancelled`
+  under `except Exception`, turning it into a `Failure` slot. The token is
+  shared across the run tree, so a tripped token gave the caller N independent
+  "failures" with no way to tell an aborted run from a batch where everything
+  broke at once. `Cancelled` is an abort and now aborts.
+- **`ActorBudget` under-reported exhaustion.** Its float axes kept an
+  `== 0.0` check, which does not survive float arithmetic: a `$1.00` cap
+  charged ten times at `$0.10` left `remaining == 1.11e-16` and
+  `exhausted() == False`, so the agent loop ran past its cap. `remaining_*`
+  clamps with `max(0.0, …)`, catching an overshoot but not an undershoot. It
+  was also inconsistent — `0.1 + 0.2` against a `0.3` cap lands exactly on
+  zero — so the bug depended on which numbers a caller picked. Now thresholded
+  at one unit of `MONEY_SCALE`. (The run-scoped `Budget` already had an exact
+  Decimal ledger; converting ActorBudget's float reservation API is a larger
+  change worth doing on its own.)
+- **`Quota` never evicted expired tenants.** `_prune` only touched the key
+  being guarded, so a tenant that went quiet leaked its dict entry forever —
+  5000 distinct scopes left 5000 retained keys long after every window had
+  expired. That is a slow leak in exactly the multi-tenant deployment the class
+  exists for, and worse than one-entry-per-customer when a scope carries a
+  per-user id. Added a sweep, at most once per window.
+- **A workflow gate suspended with no store persisted nothing, silently.**
+  `run()` returned `stop_reason="suspended"` with a `Suspended` object while
+  writing no checkpoint; the truth surfaced later, usually in another process,
+  as "no suspended workflow <id> to resume" with nothing pointing at the cause.
+  Now warns at suspend time. The warning also surfaces an asymmetry: Workflow
+  persists via `ctx.store`, while the ReAct cognition prefers
+  `ctx.checkpointer` — so wiring only a `Checkpointer` leaves a workflow gate
+  unpersisted too.
+
+#### Notes on the above
+
+- Abandoning `Agent.stream` before the `final` event releases the provider's
+  HTTP stream at generator finalization, not at your `break`. On CPython that
+  is prompt (200 abandoned streams measured to zero un-released after one event
+  loop turn) but not deterministic; use `contextlib.aclosing` for a hard
+  guarantee. Making every framework layer cascade the close would mean
+  re-indenting ~22 `async for` sites across the middleware chain, which is not
+  worth the risk for a leak CPython already collects.
+
+### The five production-feedback briefs
+
 Five gaps reported from production use. Everything here is **additive** —
 no existing wiring changes behaviour, and the full pre-change test suite
 passes untouched.
 
-### Added
+#### Added
 
 - **`StreamEvent.partial_output`** — the in-progress typed object, forwarded
   from `Delta.partial` by both chat cognitions. An application can now stream
@@ -85,7 +145,7 @@ passes untouched.
   **never checkpointed again** for the rest of that run, so a one-time code
   cannot outlive its validity inside a durable store.
 
-### Changed
+#### Changed
 
 - **Money is `Decimal`.** `Budget` / `Quota` keep an exact ledger at six
   decimal places; a hundred charges of `0.01` now sum to exactly `1.00`.
@@ -108,7 +168,7 @@ passes untouched.
 - **`Quota` returns verdicts too**, so both `Meter` implementations behave
   uniformly under the middleware's `all_meters` iteration.
 
-### Fixed
+#### Fixed
 
 - **`output_coerce()` no longer defeats parse-and-repair.** The middleware
   strict-parses at end-of-stream and re-raises; that exception escaped past
@@ -118,7 +178,7 @@ passes untouched.
   `agent.parse` re-raise it inside the repair loop. (`output_coerce` itself is
   unchanged.)
 
-### Fixed (found in review of the above)
+#### Fixed (found in review of the above)
 
 - **`Agent.resume` bypassed the `RunPolicy` lethal-trifecta gate.** The gate
   lived inline in `stream()`, so an agent whose tool set combines
@@ -157,7 +217,7 @@ passes untouched.
   `Charge.remaining`; `*_usd` now means float everywhere and `spent`/`remaining`
   mean Decimal everywhere.
 
-### Notes
+#### Notes
 
 - An `Asker` whose `ask` blocks the event loop (`input()`, `requests.get()`,
   `time.sleep()`) **cannot be deadlined** — scheduling is cooperative, so the

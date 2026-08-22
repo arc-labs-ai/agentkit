@@ -102,6 +102,8 @@ MONEY_TESTS = (
 )
 HITL_TESTS = ("tests/agents/test_hitl_elicitation.py",)
 STREAM_TESTS = ("tests/agents/test_stream_partial_output.py",)
+CONCURRENCY_TESTS = ("tests/kernel/test_nested_concurrency.py",)
+WORKFLOW_TESTS = ("tests/agents/test_workflow.py",)
 REGISTRY_TESTS = (
     "tests/adapters/test_model_registry.py",
     "tests/agents/test_agent_capability_binding.py",
@@ -200,6 +202,57 @@ MUTANTS: tuple[Mutant, ...] = (
         before='await self._save(ctx, run_id, context, usage, i + 1, repaired, status="suspended")',
         after="await self._save(ctx, run_id, context, usage, i + 1, repaired)",
         tests=MONEY_TESTS,
+    ),
+    # ── concurrency: nested fan-out must not deadlock ────────────────────────
+    Mutant(
+        tag="concurrency",
+        why="the permit pool goes back to one-per-tree, deadlocking nested fan-out",
+        path="agentkit/runtime/context.py",
+        before="        return self.budget.semaphore(self.depth)",
+        after="        return self.budget.semaphore(0)",
+        tests=CONCURRENCY_TESTS,
+    ),
+    Mutant(
+        tag="concurrency",
+        why="the per-level concurrency cap stops being enforced",
+        path="agentkit/runtime/meter.py",
+        before="            sem = asyncio.Semaphore(self.max_concurrency)",
+        after="            sem = asyncio.Semaphore(1000)",
+        tests=CONCURRENCY_TESTS,
+    ),
+    Mutant(
+        tag="concurrency",
+        why="cooperative cancellation is isolated into a Failure slot again",
+        path="agentkit/kernel/concurrency.py",
+        before="            except Cancelled:\n",
+        after="            except _NeverRaised:\n",
+        tests=CONCURRENCY_TESTS,
+    ),
+    # ── budget: the sibling float axes ───────────────────────────────────────
+    Mutant(
+        tag="budget",
+        why="ActorBudget goes back to == 0.0, missing a float-residue exhaustion",
+        path="agentkit/agents/control/budget.py",
+        before="or self.remaining_cost_usd() <= _COST_EPSILON",
+        after="or self.remaining_cost_usd() == 0.0",
+        tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+    ),
+    Mutant(
+        tag="budget",
+        why="Quota stops evicting expired tenants (unbounded key growth)",
+        path="agentkit/runtime/meter.py",
+        before="            self._sweep(now)  # evict long-dead tenants; at most once per window",
+        after="            pass  # no sweep",
+        tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+    ),
+    # ── workflow ─────────────────────────────────────────────────────────────
+    Mutant(
+        tag="workflow",
+        why="an unpersistable gate suspend goes silent again",
+        path="agentkit/agents/workflow.py",
+        before="                        _warn_unpersisted_gate(gate.name, run_id)",
+        after="                        pass",
+        tests=WORKFLOW_TESTS,
     ),
     # ── HITL: the containment and the deadline ───────────────────────────────
     Mutant(

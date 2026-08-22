@@ -132,6 +132,27 @@ re-parses the whole accumulated buffer on every text delta. For very
 long structured outputs that is real CPU. If it shows up in a profile,
 sample the partials rather than rendering every one.
 
+## Abandoning a stream early
+
+If you stop consuming before the `final` event — a client disconnects, a UI
+navigates away — the provider's HTTP stream is released at **generator
+finalization**, not at your `break`. On CPython that is prompt: refcounting
+plus asyncio's async-generator hooks clear an abandoned chain within an event
+loop turn (200 abandoned streams measured down to zero un-released after one
+turn). It is not deterministic, though, and `break` alone does not close an
+async generator.
+
+For deterministic release, close it explicitly:
+
+```python
+from contextlib import aclosing
+
+async with aclosing(agent.stream(task, ctx)) as events:
+    async for ev in events:
+        if done_enough(ev):
+            break
+```
+
 ## Related
 
 - [Cap spend with Budget and Quota](spend-budget-and-quota.md)
