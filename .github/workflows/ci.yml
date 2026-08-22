@@ -14,9 +14,19 @@ concurrency:
 # Node-20 action onto Node 24, which surfaced as a deprecation annotation on
 # every run. Our usage of each is limited to long-stable inputs
 # (checkout: fetch-depth; upload-artifact: name/path/if-no-files-found/
-# retention-days; setup-uv: enable-cache/cache-dependency-glob), so the major
-# jumps carry no interface change for us. The PyPI publish action stays
-# SHA-pinned rather than tag-pinned — it holds signing authority.
+# retention-days; download-artifact: name/path; setup-uv:
+# enable-cache/cache-dependency-glob), so the major jumps carry no interface
+# change for us.
+#
+# Pinned to the highest FLOATING MAJOR each action actually publishes, which is
+# not the same thing as its latest release: astral-sh/setup-uv's newest release
+# is v10.x but it publishes major aliases only through v7, and `@v10` fails
+# with "unable to find version". Check `git/matching-refs/tags/v` for a
+# resolvable `vN`, not `releases/latest`. Floating majors are used (rather than
+# exact pins) so patch fixes land automatically.
+#
+# The PyPI publish action is the exception and stays SHA-pinned rather than
+# tag-pinned — it holds signing authority via OIDC.
 
 jobs:
   check:
@@ -32,7 +42,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -77,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: |
