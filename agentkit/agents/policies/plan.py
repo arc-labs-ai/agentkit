@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from agentkit.agents.policies.roundrobin import _emit_policy_dispatch
-from agentkit.agents.result import AgentResult, Suspended
+from agentkit.agents.result import AgentResult, Suspended, stop_reason_for
 from agentkit.context import WorkingContext
 from agentkit.kernel.concurrency import run_agents
 from agentkit.kernel.errors import Failure
@@ -231,6 +231,10 @@ class PlanPolicy:
                     "gate": gate_name,
                     "decision": decision,
                 },
+                # A person declining is a deliberate terminal stop, not a
+                # completed plan and not a failure. ``"terminated"`` is the
+                # closed-taxonomy spelling; ``evals`` keeps the exact word.
+                stop_reason=stop_reason_for("rejected"),
             )
 
         # Approve → clear the checkpoint FIRST so a mid-resume crash doesn't leave a
@@ -306,6 +310,13 @@ class PlanPolicy:
                         "stop_reason": "awaiting_decision",
                         "suspended": susp,
                     },
+                    # THE one that mattered: a plan parked on a gate must
+                    # report ``is_suspended``/``is_resumable``, exactly like a
+                    # tool call parked on an approval. While this defaulted to
+                    # ``"complete"``, a caller branching on the typed field
+                    # never prompted its human and never called ``resume``,
+                    # even though the checkpoint was sitting in the store.
+                    stop_reason=stop_reason_for("awaiting_decision"),
                 )
 
             pairs = [(children[s.agent], s.input) for s in group_steps]  # type: ignore[index]
@@ -331,6 +342,7 @@ class PlanPolicy:
                 "errors": errors,
                 "stop_reason": "plan_complete",
             },
+            stop_reason=stop_reason_for("plan_complete"),
         )
 
 

@@ -212,12 +212,20 @@ def result_to_dict(r: Any) -> dict[str, Any]:
         "evals": dict(r.evals or {}),
         "parsed": r.parsed,
         "prompt_version": r.prompt_version,
+        # Persisted explicitly: it is a CLOSED taxonomy a reader branches on,
+        # and re-deriving it from ``evals`` on the way back only works for
+        # producers that also record a free-form reason. Omitting it silently
+        # downgraded every rehydrated result to ``"complete"``.
+        "stop_reason": r.stop_reason,
     }
 
 
 def dict_to_result(d: dict[str, Any]) -> AgentResult:
     """Inverse of `result_to_dict`."""
-    from agentkit.agents.result import AgentResult  # local import — avoids any forward-ref churn
+    from agentkit.agents.result import (  # local import — avoids any forward-ref churn
+        AgentResult,
+        stop_reason_for,
+    )
 
     u = d.get("usage") or {"input": 0, "output": 0, "cost": 0.0}
     return AgentResult(
@@ -227,6 +235,11 @@ def dict_to_result(d: dict[str, Any]) -> AgentResult:
         evals=dict(d.get("evals") or {}),
         parsed=d.get("parsed"),
         prompt_version=d.get("prompt_version", ""),
+        # A record written before ``stop_reason`` was persisted has no key. Fall
+        # back to deriving it from the free-form ``evals`` reason, which those
+        # records DO carry — so an old checkpoint upgrades rather than reading
+        # back as a bare "complete".
+        stop_reason=d.get("stop_reason") or stop_reason_for((d.get("evals") or {}).get("stop_reason")),
     )
 
 

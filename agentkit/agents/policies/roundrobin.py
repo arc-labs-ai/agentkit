@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agentkit.agents.control.termination import MaxTurns, TerminationCondition
-from agentkit.agents.result import AgentResult
+from agentkit.agents.result import AgentResult, stop_reason_for
 from agentkit.capabilities.checkpointer import (
     Checkpointer,
     coord_state_from_dict,
@@ -128,7 +128,16 @@ def _coord_result(
 ) -> AgentResult:
     """Aggregate a coordinator run into a single ``AgentResult``. The transcript / per-
     child results / stop reason ride in ``evals`` so callers that care about the inner
-    detail can introspect; ``output`` is the last assistant reply."""
+    detail can introspect; ``output`` is the last assistant reply.
+
+    ``stop_reason`` arrives free-form — the policy's own ceiling wording
+    (``"max_turns"``) or a ``TerminationCondition``'s ``Stop.reason``, which may
+    be anything a user wrote. It rides in ``evals`` verbatim AND is mapped onto
+    the closed ``AgentResult.stop_reason`` taxonomy by
+    :func:`~agentkit.agents.result.stop_reason_for`. Skipping that mapping left
+    the typed field at its ``"complete"`` default, so a coordinator that ran out
+    of turns reported the same terminal state as one that finished its work.
+    """
     last = next(
         (m.content for m in reversed(transcript) if m.role == "assistant"),
         "",
@@ -141,6 +150,7 @@ def _coord_result(
             "messages": transcript,
             "results": results,
         },
+        stop_reason=stop_reason_for(stop_reason),
     )
 
 

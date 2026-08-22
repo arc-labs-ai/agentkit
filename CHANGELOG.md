@@ -11,6 +11,40 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — every producer stamps the typed stop reason
+
+- **A plan parked on a human gate reported itself `complete`.**
+  `AgentResult.stop_reason` is the closed taxonomy a caller branches on, and
+  `is_suspended` / `is_resumable` derive from it — but only the tool loop ever
+  set it. Every coordinator policy (round-robin, selector, ledger, plan) wrote
+  its real reason into `evals["stop_reason"]` and left the typed field at its
+  `"complete"` default. So a suspended plan read back as
+  `is_suspended is False` with its checkpoint sitting in the store: an
+  application branching on the typed field never prompted its human and never
+  called `resume`. A coordinator that ran out of turns was likewise
+  indistinguishable from one that finished its work.
+
+  The free-form → closed mapping now lives once, beside the taxonomy, as
+  `agents.result.stop_reason_for`; the tool loop's private copy is gone. It is
+  total — an unrecognised reason becomes `terminated`, never a guess — so a
+  producer can stamp the field unconditionally.
+
+- **`stop_reason` was dropped on the durable round trip.** `result_to_dict` /
+  `dict_to_result` back coordinator resume, and neither carried the field, so
+  every rehydrated result read back as `complete`. Records written before this
+  upgrade in place, deriving the category from the free-form reason they do
+  carry.
+
+- **Added `AgentStopReason.failed`.** `ClaudeCliCognition` guarantees a terminal
+  event even when the subprocess never starts, so it reports failures as data
+  rather than raising — the one producer that legitimately can. Mapping
+  `spawn_failed` / `cli_exit_2` onto `terminated` would have read as "something
+  stopped this on purpose", which is the opposite of what happened.
+
+  A source-level test now refuses a new framework reason string that is
+  categorised nowhere, so the next producer has to make the decision rather
+  than inherit a silent fallback.
+
 ### Fixed — one checkpointer resolution order, not three
 
 - **A `Services(store=...)` wiring gave silently non-durable coordinator runs.**

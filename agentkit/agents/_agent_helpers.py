@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agentkit.agents.result import AgentResult, AgentStopReason
+from agentkit.agents.result import AgentResult, AgentStopReason, stop_reason_for
 from agentkit.capabilities.output_schema import SchemaAdapter
 from agentkit.kernel._json import JSONDecodeError as _JSONDecodeError
 from agentkit.kernel._json import dumps as _json_dumps
@@ -96,7 +96,8 @@ def _final_events(
 
     ``stop_reason`` is the CLOSED taxonomy stamped on
     ``AgentResult.stop_reason``. When omitted it is derived from
-    ``reason`` via :data:`_REASON_TO_STOP`, which maps every string the
+    ``reason`` via :func:`~agentkit.agents.result.stop_reason_for`, which
+    maps every string the
     framework itself passes; anything unrecognised (i.e. a custom
     termination condition's own wording) becomes ``"terminated"``
     rather than guessing. The two never disagree because the derivation
@@ -113,25 +114,11 @@ def _final_events(
         partial=partial,
         evals=evals,
         prompt_version=prompt_version,
-        stop_reason=stop_reason if stop_reason is not None else _REASON_TO_STOP.get(reason, "terminated"),
+        stop_reason=stop_reason if stop_reason is not None else stop_reason_for(reason),
     )
     return [StreamEvent("final", result=result, usage=usage)]
 
 
-# Free-form ``reason`` → closed ``AgentStopReason``. Only the strings the
-# framework passes itself are listed; every other value (a custom
-# ``TerminationCondition``'s wording) falls through to ``"terminated"``,
-# which is the honest answer — *something* stopped the loop deliberately
-# and we are not going to invent a more specific category for it.
-_REASON_TO_STOP: dict[str, AgentStopReason] = {
-    "complete": "complete",
-    "awaiting_approval": "suspended",
-    "awaiting_input": "suspended",
-    "expired": "expired",
-    "budget_exhausted": "budget_exhausted",
-    "max_iterations": "max_iterations",
-    "invalid_output": "invalid_output",
-}
 
 
 def _exhausted_ceiling(ctx: Any) -> str | None:

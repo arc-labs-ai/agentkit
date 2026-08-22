@@ -28,15 +28,27 @@ WorkflowStopReason = Literal["complete", "suspended", "max_steps", "deadlock"]
 #   max_iterations    the tool-loop ceiling was hit with no final answer
 #   invalid_output    parse-and-repair exhausted; ``output`` is the last
 #                     (unparseable) text
-#   terminated        a ``TerminationCondition`` fired. The specific
-#                     condition's own reason string is in
+#   terminated        a ``TerminationCondition`` fired, or the run was
+#                     stopped deliberately from outside (a cancel, a person
+#                     declining at a gate). The specific reason string is in
 #                     ``evals["stop_reason"]``.
+#   failed            the run ended in an ERROR that the cognition chose to
+#                     report as data instead of raising. Rare and deliberate:
+#                     ``ClaudeCLICognition`` guarantees a terminal event even
+#                     when the subprocess never starts, so a spawn failure or
+#                     a non-zero exit arrives as a result rather than an
+#                     exception. ``output`` holds whatever text was produced
+#                     before the failure and ``evals["stop_reason"]`` names
+#                     the mode (``spawn_failed``, ``cli_exit_2``, ...).
 #
-# A run that FAILED does not produce an ``AgentResult`` at all — the
-# exception propagates out of ``Agent.run`` / ``Agent.stream``. So
-# "suspended vs failed" is the difference between getting a result whose
-# ``stop_reason == "suspended"`` and getting an exception. That is the
-# distinction Brief 4 asks a reader to be able to act on.
+# A run that fails usually does not produce an ``AgentResult`` at all — the
+# exception propagates out of ``Agent.run`` / ``Agent.stream``. ``failed``
+# exists for the one cognition that deliberately does otherwise; mapping its
+# spawn failures onto ``terminated`` would have read as "something stopped this
+# on purpose", which is the opposite of what happened. So "suspended vs failed"
+# is the difference between ``stop_reason == "suspended"`` and either an
+# exception or ``stop_reason == "failed"``. That is the distinction Brief 4
+# asks a reader to be able to act on.
 AgentStopReason = Literal[
     "complete",
     "suspended",
@@ -45,6 +57,7 @@ AgentStopReason = Literal[
     "max_iterations",
     "invalid_output",
     "terminated",
+    "failed",
 ]
 
 # Terminal reasons that leave the run RESUMABLE — a durable checkpoint
@@ -52,6 +65,68 @@ AgentStopReason = Literal[
 # ``correlation_id``) can pick it back up. Exposed as a frozenset so
 # callers branch on membership rather than re-listing the strings.
 RESUMABLE_STOP_REASONS: frozenset[str] = frozenset({"suspended", "budget_exhausted"})
+
+
+# Free-form ``reason`` → closed ``AgentStopReason``. Lives beside the taxonomy
+# because EVERY producer needs it: the tool loop, the coordinator policies
+# (round-robin, selector, ledger, plan) and any pattern a user writes. Two
+# copies of this table is how a suspended plan came to report itself
+# ``complete`` — the policies simply never mapped, so the typed field kept its
+# default while ``evals["stop_reason"]`` said ``"awaiting_decision"``.
+#
+# Only the strings the framework passes ITSELF are listed. Anything else — a
+# custom ``TerminationCondition``'s own wording — resolves to ``"terminated"``,
+# which is the honest answer: something stopped the run deliberately and we are
+# not going to invent a more specific category for it. That fallback is what
+# makes the mapping TOTAL, so a producer can always set the field and no reader
+# ever sees a default that outlived its meaning.
+_REASON_TO_STOP: dict[str, AgentStopReason] = {
+    # ── the tool loop ───────────────────────────────────────────────────────
+    "complete": "complete",
+    "awaiting_approval": "suspended",
+    "awaiting_input": "suspended",
+    "expired": "expired",
+    "budget_exhausted": "budget_exhausted",
+    "max_iterations": "max_iterations",
+    "invalid_output": "invalid_output",
+    # ── coordinator policies ────────────────────────────────────────────────
+    # A plan parked on a human gate is the same KIND of stop as a tool call
+    # parked on an approval: resumable, not failed. Anything else here is
+    # terminal.
+    "awaiting_decision": "suspended",
+    "plan_complete": "complete",
+    "satisfied": "complete",  # the ledger assessor judged the goal met
+    "rejected": "terminated",  # a person declined at a gate
+    "stalled": "terminated",  # replans exhausted without progress
+    "no_children": "terminated",  # nothing to dispatch to
+    # Turn/round ceilings are the coordinator's spelling of "iteration
+    # ceiling". ``MaxTurns``/``MaxMessages`` emit the same strings, so a
+    # condition firing and a policy ceiling tripping agree — which is correct,
+    # they mean the same thing to a reader deciding whether to raise the limit.
+    "max_turns": "max_iterations",
+    "max_rounds": "max_iterations",
+    "max_messages": "max_iterations",
+    # ── the Claude CLI cognition ────────────────────────────────────────────
+    # Its FAILURE reasons are mapped locally in ``cognition/claude_cli.py``,
+    # because ``cli_exit_<n>`` is dynamic and cannot be enumerated here.
+    "success": "complete",
+    "cancelled": "terminated",
+}
+
+
+def stop_reason_for(reason: str | None) -> AgentStopReason:
+    """Map a producer's free-form stop reason onto the closed taxonomy.
+
+    Total by construction: an unrecognised reason becomes ``"terminated"``.
+    ``None`` (a producer that finished without recording a reason) becomes
+    ``"complete"`` — reaching the end of the work IS completion.
+
+    Keep the free-form string in ``evals["stop_reason"]`` as well; it carries
+    the detail this field deliberately drops.
+    """
+    if reason is None:
+        return "complete"
+    return _REASON_TO_STOP.get(reason, "terminated")
 
 
 @dataclass(frozen=True)

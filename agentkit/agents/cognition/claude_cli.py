@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from agentkit.agents.result import AgentResult
+from agentkit.agents.result import AgentResult, AgentStopReason, stop_reason_for
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import StreamEvent, ToolCall, Usage
 from agentkit.prompts.prompt import Prompt
@@ -95,6 +95,27 @@ def _get_semaphore(bin_: str, config_dir: str | None, max_concurrent: int) -> as
         sem = asyncio.BoundedSemaphore(max_concurrent)
         _SEMAPHORES[key] = sem
     return sem
+
+
+# Reasons this cognition emits that mean "the run ERRORED", as opposed to
+# "something stopped it deliberately". ``cli_exit_<n>`` is dynamic, which is
+# why the mapping lives here rather than in the framework-wide table: only this
+# module knows how it spells its own failures.
+_CLI_FAILURE_REASONS = frozenset(
+    {"spawn_failed", "parse_failed", "working_dir_missing", "cli_reported_error"}
+)
+
+
+def _cli_stop_reason(reason: str | None) -> AgentStopReason:
+    """Map this cognition's free-form terminal reason onto the closed taxonomy.
+
+    ``None`` and ``"success"`` are completion; the failure set above and any
+    ``cli_exit_<n>`` are ``"failed"``; everything else (``"cancelled"``) defers
+    to the shared table.
+    """
+    if reason in _CLI_FAILURE_REASONS or (reason is not None and reason.startswith("cli_exit_")):
+        return "failed"
+    return stop_reason_for(reason)
 
 
 @dataclass(slots=True)
@@ -379,6 +400,12 @@ class ClaudeCliCognition:
                 usage=usage,
                 partial=final_partial,
                 evals=evals,
+                # This cognition reports failures as DATA (a terminal event is
+                # guaranteed even when the subprocess never starts), so it is
+                # the one producer that can legitimately stamp ``"failed"``.
+                # Leaving the field at its default made a spawn failure and a
+                # clean success indistinguishable to a typed reader.
+                stop_reason=_cli_stop_reason(final_stop_reason),
             ),
         )
         if should_reraise_cancel:
@@ -386,6 +413,7 @@ class ClaudeCliCognition:
             # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
             # and TaskGroup cancels propagate to siblings.
             raise asyncio.CancelledError()
+
 
     # ---- helpers ---------------------------------------------------------------------------
 

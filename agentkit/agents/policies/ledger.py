@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agentkit.agents.policies.roundrobin import _emit_policy_dispatch
-from agentkit.agents.result import AgentResult
+from agentkit.agents.result import AgentResult, stop_reason_for
 from agentkit.context import WorkingContext
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message, Usage
@@ -216,6 +216,10 @@ class LedgerPolicy:
                 "results": results,
                 "replans": replans,
             },
+            # ``max_rounds`` / ``stalled`` / ``no_children`` are NOT completion.
+            # Without this mapping the typed field stayed ``"complete"`` and a
+            # caller could not tell a met goal from an exhausted round budget.
+            stop_reason=stop_reason_for(stop_reason),
         )
 
 

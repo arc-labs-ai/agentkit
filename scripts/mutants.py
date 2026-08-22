@@ -110,6 +110,7 @@ SECURITY_TESTS = (
 RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
 PROVIDER_TESTS = ("tests/adapters/test_provider_stream_errors.py",)
 SLOT_TESTS = ("tests/capabilities/test_checkpoint_slot_isolation.py",)
+STOP_REASON_TESTS = ("tests/agents/test_stop_reason_taxonomy.py",)
 STORE_TESTS = (
     "tests/meta/test_protocol_conformance.py",
     "tests/adapters/test_stores.py",
@@ -121,6 +122,71 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── stop reasons: the typed field must not outlive its meaning ───────────
+    Mutant(
+        tag="stopreason",
+        why="a plan parked on a human gate reports itself complete (the original bug)",
+        path="agentkit/agents/policies/plan.py",
+        before='                    stop_reason=stop_reason_for("awaiting_decision"),\n',
+        after="",
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="a gate suspend is categorised as terminal, so nothing ever resumes it",
+        path="agentkit/agents/result.py",
+        before='    "awaiting_decision": "suspended",',
+        after='    "awaiting_decision": "terminated",',
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="a coordinator out of turns is indistinguishable from one that finished",
+        path="agentkit/agents/policies/roundrobin.py",
+        before="        stop_reason=stop_reason_for(stop_reason),\n",
+        after="",
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="a ledger out of rounds claims the goal was met",
+        path="agentkit/agents/policies/ledger.py",
+        before="            stop_reason=stop_reason_for(stop_reason),\n",
+        after="",
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="an unrecognised reason is GUESSED as completion instead of terminated",
+        path="agentkit/agents/result.py",
+        before='    return _REASON_TO_STOP.get(reason, "terminated")',
+        after='    return _REASON_TO_STOP.get(reason, "complete")',
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="a CLI subprocess that exited non-zero reads as a deliberate stop",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='    if reason in _CLI_FAILURE_REASONS or (reason is not None and reason.startswith("cli_exit_")):',
+        after="    if reason in _CLI_FAILURE_REASONS:",
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="the typed reason is dropped on the durable round trip",
+        path="agentkit/capabilities/checkpointer/persistence.py",
+        before='        "stop_reason": r.stop_reason,\n',
+        after="",
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="a legacy record without the field reads back as a bare completion",
+        path="agentkit/capabilities/checkpointer/persistence.py",
+        before='        stop_reason=d.get("stop_reason") or stop_reason_for((d.get("evals") or {}).get("stop_reason")),',
+        after='        stop_reason=d.get("stop_reason", "complete"),',
+        tests=STOP_REASON_TESTS,
+    ),
     # ── money: the ledger must stay exact ────────────────────────────────────
     Mutant(
         tag="money",

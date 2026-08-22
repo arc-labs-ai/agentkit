@@ -141,12 +141,31 @@ is something you branch on rather than sniff out of a dict:
 | `budget_exhausted` | A meter ceiling hit. A checkpoint was written *before* stopping |
 | `max_iterations` | The tool-loop ceiling was reached with no final answer |
 | `invalid_output` | Parse-and-repair exhausted |
-| `terminated` | A `TerminationCondition` fired (its own wording is in `evals["stop_reason"]`) |
+| `terminated` | Stopped deliberately: a `TerminationCondition` fired, a person declined at a gate, a run was cancelled (the exact wording is in `evals["stop_reason"]`) |
+| `failed` | The run errored and the cognition reported it as *data* rather than raising — only `ClaudeCliCognition` does this, so its guarantee of a terminal event survives a subprocess that never starts |
 
 `result.is_suspended` and `result.is_resumable` are the two
-convenience reads. A run that **failed** produces no `AgentResult` at
-all — the exception propagates — which is exactly what makes
-"waiting for you" and "it fell over" distinguishable.
+convenience reads. A run that **failed** usually produces no
+`AgentResult` at all — the exception propagates — which is what makes
+"waiting for you" and "it fell over" distinguishable. `failed` covers
+the one deliberate exception to that rule.
+
+**Every producer maps onto this table**, coordinators included. A
+policy's own vocabulary is richer than the taxonomy — a plan says
+`awaiting_decision`, a ledger says `max_rounds`, a round-robin says
+`max_turns` — so each keeps its exact word in `evals["stop_reason"]`
+and maps the category onto the typed field with
+`agentkit.agents.result.stop_reason_for`. The mapping is *total*: an
+unrecognised reason (a custom `TerminationCondition`'s wording)
+becomes `terminated` rather than a guess.
+
+That mapping is not decoration. While the policies skipped it, a plan
+parked on a human gate reported `stop_reason="complete"` and
+`is_suspended is False` with its checkpoint sitting in the store — so
+an application branching on the typed field never asked its human and
+never resumed. If you write your own policy, map the reason; a
+source-level test refuses a new framework reason that is categorised
+nowhere.
 
 ### Model capability contract
 
