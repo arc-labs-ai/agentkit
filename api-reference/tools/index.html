@@ -1640,6 +1640,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.tools.ToolArgumentError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ToolArgumentError
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.tools.ToolDefinitionError" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2036,6 +2047,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.tools.ToolArgumentError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ToolArgumentError
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.tools.ToolDefinitionError" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2322,6 +2344,76 @@ shapes <code>FunctionTool.output_schema</code> does — a JSON-Schema dict, a
 Pydantic / dataclass / attrs class, or <code>None</code> (no check).
 <code>run.args</code> is <code>Mapping[str, Any]</code> — a plain dict OR a
 <code>MappingProxyType</code> handed down from a <code>ToolCall</code> both satisfy it.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.tools.ToolArgumentError" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">ToolArgumentError</span>
+
+
+<a href="#agentkit.tools.ToolArgumentError" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ToolArgumentError</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">tool_name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="o">*</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">unexpected</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">missing</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">accepted</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="ValueError">ValueError</span></code></p>
+
+
+
+        <p>A tool CALL named arguments the tool does not accept, or omitted required ones.</p>
+<p>The mirror of :class:<code>ToolShapeError</code>: that one is a bad value coming OUT of a
+tool, this one is a bad call going IN. Both are raised at call time and both
+are meant to be reflected back to the model, which authored the call and is
+the only party that can fix it.</p>
+<p>Why this is an error rather than a shrug: unknown keys used to be dropped
+silently, and a parameter with a DEFAULT then ran with that default. A model
+calling <code>notify(message="page the on-call, prod is down")</code> against
+<code>def notify(msg: str = "default message")</code> got back <code>"sent: default
+message"</code> — a side-effecting tool reporting success for something it never
+did. Nothing downstream could tell.</p>
+<p>The message names the tool, the offending arguments and the accepted set, so
+the retry middleware can hand the model something it can act on. A tool that
+genuinely wants arbitrary keys declares <code>**kwargs</code> and receives them.</p>
+<p>Subclasses <code>ValueError</code>: the failure mode is a bad value, and existing
+<code>except ValueError</code> isolation around tool calls keeps working.</p>
 
 
 
