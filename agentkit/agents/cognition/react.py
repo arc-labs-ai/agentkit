@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from agentkit.agents._agent_helpers import (
     _assistant,
+    _exhausted_ceiling,
     _final_events,
     _last_assistant,
     _parse_args,
@@ -35,11 +36,11 @@ from agentkit.agents.control.gate import should_gate
 from agentkit.agents.result import AgentResult, Suspended
 from agentkit.capabilities.checkpointer import (
     Checkpointer,
-    StoreBackedCheckpointStore,
     dict_to_tc,
     msg_to_dict,
     prefix_to_dict,
     rehydrate,
+    resolve_checkpointer,
     tc_to_dict,
     usage_to_dict,
 )
@@ -289,10 +290,11 @@ class ReActCognition:
             # goes out anyway, and every retry of an exhausted run burns
             # another full call before noticing. Checked here, a resume
             # against an unraised ceiling costs nothing.
-            if self._budget_exhausted(ctx):
+            ceiling = self._budget_exhausted(ctx)
+            if ceiling is not None:
                 last = _last_assistant(context)
                 await self._save(ctx, run_id, context, usage, i, repaired, status="suspended")
-                async for ev in self._budget_final(ctx, last, usage, prompt_version):
+                async for ev in self._budget_final(ctx, last, usage, prompt_version, ceiling):
                     yield ev
                 return
 
@@ -341,23 +343,6 @@ class ReActCognition:
             # checkpoint carrying the CURRENT state. The operator raises the
             # ceiling and resumes; nothing is lost.
             #
-            # This is the POST-call check — the meter has just charged, so it
-            # catches a ceiling crossed BY this call. The pre-flight at the top
-            # of the loop catches one that was already crossed on entry. Both
-            # are needed: without this one an overspend goes unnoticed until
-            # the next iteration, and without the pre-flight every retry of an
-            # already-stopped run buys one more call to rediscover it.
-            #
-            # Stopping here means at most one call's overshoot, which is the
-            # same bound the ceiling always had (see ``Budget``'s "known
-            # property" note).
-            if self._budget_exhausted(ctx):
-                context.append(_assistant(res))
-                await self._save(ctx, run_id, context, usage, i + 1, repaired, status="suspended")
-                async for ev in self._budget_final(ctx, res.content, usage, prompt_version):
-                    yield ev
-                return
-
             if termination is not None:  # smart stop on the assistant delta (drive-local clone)
                 stop = await termination([_assistant(res)], ctx)
                 if stop is not None:
@@ -374,6 +359,26 @@ class ReActCognition:
                     return
 
             if res.tool_calls:
+                # POST-call ceiling check, placed HERE rather than immediately
+                # after the chat call, because it must only fire when the loop
+                # intends to spend MORE. Checked before the answer branch it
+                # would discard a perfectly good final answer whenever the
+                # closing call happened to land exactly on the cap —
+                # `ActorBudget.exhausted()` is `remaining <= 0`, so landing on
+                # the cap counts — reporting `budget_exhausted` for a run that
+                # had its result in hand. Tool calls are the branch that costs
+                # money, so this is where stopping is worth the answer.
+                ceiling = self._budget_exhausted(ctx)
+                if ceiling is not None:
+                    context.append(_assistant(res))
+                    await self._save(
+                        ctx, run_id, context, usage, i + 1, repaired, status="suspended"
+                    )
+                    async for ev in self._budget_final(
+                        ctx, res.content, usage, prompt_version, ceiling
+                    ):
+                        yield ev
+                    return
                 context.append(_assistant(res))
                 # ``_needs_approval`` is pure — call it once here and
                 # stamp a ``gate.check`` observation so the run's audit
@@ -596,24 +601,17 @@ class ReActCognition:
     # ---- budget exhaustion ------------------------------------------------------------------
 
     @staticmethod
-    def _budget_exhausted(ctx: Any) -> bool:
-        """Has a ceiling been crossed on a budget configured to stop rather than raise?
+    def _budget_exhausted(ctx: Any) -> str | None:
+        """The ceiling telling this loop to stop, or ``None``.
 
-        Reads through ``getattr`` so a ``NullCtx`` or a structural test stub
-        without a real ``Budget`` is simply "not exhausted" rather than an
-        ``AttributeError`` inside the loop. A budget left on the default
-        ``on_exceeded="raise"`` never reaches this check — it has already
-        raised — so gating on the setting keeps the two modes from
-        double-handling the same event.
+        Covers BOTH the run-scoped ``Budget`` (only under
+        ``on_exceeded="stop"``) and the per-actor ``ActorBudget`` (always) —
+        see ``_exhausted_ceiling`` for why the policies differ.
         """
-        budget = getattr(ctx, "budget", None)
-        if budget is None or getattr(budget, "on_exceeded", "raise") != "stop":
-            return False
-        check = getattr(budget, "exhausted", None)
-        return bool(check()) if callable(check) else False
+        return _exhausted_ceiling(ctx)
 
     async def _budget_final(
-        self, ctx: Any, content: str, usage: Usage, prompt_version: str
+        self, ctx: Any, content: str, usage: Usage, prompt_version: str, reason: str
     ) -> AsyncIterator[StreamEvent]:
         """Terminal event for a budget-exhausted run.
 
@@ -624,12 +622,10 @@ class ReActCognition:
         lands in ``evals["error"]`` so an operator sees the actual numbers
         without re-deriving them.
         """
-        budget = getattr(ctx, "budget", None)
-        verdict = budget.verdict() if budget is not None else None
         await ctx.emit(
             "budget.exhausted",
             render="run stopped on a budget ceiling; checkpoint written",
-            payload={"reason": verdict.reason if verdict else "", "calls": usage.total_tokens},
+            payload={"reason": reason, "tokens": usage.total_tokens},
         )
         for ev in _final_events(
             content,
@@ -637,7 +633,7 @@ class ReActCognition:
             partial=True,
             reason="budget_exhausted",
             prompt_version=prompt_version,
-            error=verdict.reason if verdict else "budget exhausted",
+            error=reason,
         ):
             yield ev
 
@@ -726,19 +722,11 @@ class ReActCognition:
     def _resolve_checkpointer(self, ctx: Any) -> Checkpointer | None:
         """Return the Checkpointer that should back this run.
 
-        Resolution order: explicit ``self.checkpointer`` > ``ctx.checkpointer`` >
-        a legacy bridge synthesized over ``ctx.store`` (so existing wirings that
-        only inject a ``StorePort`` keep working). When all three are absent,
-        durable resume is disabled and the helpers below become no-ops."""
-        if self.checkpointer is not None:
-            return self.checkpointer
-        cp: Checkpointer | None = getattr(ctx, "checkpointer", None)
-        if cp is not None:
-            return cp
-        store = getattr(ctx, "store", None)
-        if store is not None:
-            return Checkpointer(port=StoreBackedCheckpointStore(store))
-        return None
+        Delegates to the shared ``resolve_checkpointer`` so this cognition and
+        ``Workflow`` cannot drift apart on which seam counts as durable — see
+        that function for the order and for the bug that motivated sharing it.
+        """
+        return resolve_checkpointer(ctx, self.checkpointer)
 
     async def _load(self, ctx: Any, run_id: str) -> Any:
         cp = self._resolve_checkpointer(ctx)

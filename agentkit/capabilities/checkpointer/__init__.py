@@ -11,7 +11,7 @@ Everything here is re-exported so callers say
 submodule a given name lives in.
 """
 
-from agentkit.capabilities.checkpointer.base import Checkpointer
+from agentkit.capabilities.checkpointer.base import Checkpointer, resolve_checkpointer
 from agentkit.capabilities.checkpointer.persistence import (
     StoreBackedCheckpointStore,
     ckpt_key,
@@ -32,6 +32,7 @@ from agentkit.capabilities.checkpointer.persistence import (
 __all__ = [
     "Checkpointer",
     "StoreBackedCheckpointStore",
+    "resolve_checkpointer",
     "ckpt_key",
     "coord_state_from_dict",
     "coord_state_to_dict",

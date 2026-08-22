@@ -673,10 +673,9 @@ def test_a_workflow_gate_warns_when_the_suspend_cannot_be_persisted() -> None:
     missing store. That is the silent, well-formed failure class: the return
     value says resumable, the system is not.
 
-    The warning also catches an asymmetry worth knowing: Workflow persists via
-    `ctx.store`, while the ReAct cognition prefers `ctx.checkpointer` and only
-    falls back to a store bridge. Wiring ONLY a Checkpointer — the documented
-    durable seam — therefore leaves a workflow gate unpersisted too.
+    Workflow now resolves its durable seam through the shared
+    `resolve_checkpointer`, so this fires only when NEITHER a checkpointer nor
+    a store is wired.
     """
     import asyncio
     import warnings
@@ -693,7 +692,7 @@ def test_a_workflow_gate_warns_when_the_suspend_cannot_be_persisted() -> None:
 
     ctx = RunContext("wf-unpersisted", Scope(), services=Services())  # no store
 
-    with _pytest.warns(UserWarning, match="no store is wired"):
+    with _pytest.warns(UserWarning, match="no durable seam is wired"):
         result = asyncio.run(wf.run("go", ctx))
     assert result.stop_reason == "suspended"
 
@@ -708,5 +707,83 @@ def test_a_workflow_gate_warns_when_the_suspend_cannot_be_persisted() -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         assert asyncio.run(wf.run("go", ctx2)).stop_reason == "suspended"
-    assert not [w for w in caught if "no store is wired" in str(w.message)]
+    assert not [w for w in caught if "no durable seam" in str(w.message)]
     assert asyncio.run(wf.resume("wf-ok", {"approve": "yes"}, ctx2)).stop_reason == "complete"
+
+
+def test_a_workflow_gate_persists_through_a_checkpointer_alone() -> None:
+    """The trap this fix removes.
+
+    Workflow used to persist ONLY through `ctx.store`, while the ReAct
+    cognition preferred `ctx.checkpointer`. So wiring the documented durable
+    seam — a `Checkpointer` — left workflow human-gates silently unpersisted,
+    and the failure surfaced later as "no suspended workflow <id> to resume".
+    Both producers now share one resolution order.
+    """
+    import asyncio
+    import warnings
+
+    from agentkit import Scope, Workflow
+    from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+    from agentkit.capabilities import Checkpointer
+    from agentkit.runtime import RunContext, Services
+
+    wf = Workflow(max_steps=10)
+    wf.fn("prep", lambda inputs: "ready")
+    wf.human_gate("approve", after="prep")
+    wf.fn("act", lambda inputs: "done", after="approve")
+
+    cp = Checkpointer(port=InMemoryCheckpointStore())
+    ctx = RunContext("wf-cp", Scope(), services=Services(checkpointer=cp))  # NO store
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        first = asyncio.run(wf.run("go", ctx))
+    assert first.stop_reason == "suspended"
+    assert not [w for w in caught if "no durable seam" in str(w.message)]
+
+    # It really was written, and marked SUSPENDED rather than RUNNING — the
+    # status a bare KV write could not express.
+    saved = asyncio.run(cp.resume("wf-cp"))
+    assert saved is not None and saved.status == "suspended"
+    assert saved.state["goal"] == "go" and "prep" in saved.state["done"]
+
+    resumed = asyncio.run(wf.resume("wf-cp", {"approve": "yes"}, ctx))
+    assert resumed.stop_reason == "complete"
+    assert resumed.outputs["act"] == "done"
+    # Terminal → the checkpoint is reclaimed, so a naive re-resume cannot replay.
+    assert asyncio.run(cp.resume("wf-cp")) is None
+
+
+def test_a_suspend_written_by_the_legacy_store_format_still_resumes() -> None:
+    """Switching seams must not orphan IN-FLIGHT gates across an upgrade.
+
+    Older versions wrote `{"goal","done","steps"}` straight to
+    `workflow:<run_id>` on the raw store; the checkpointer bridge writes at
+    `checkpoint:<run_id>`. A suspended run is exactly the state that cannot be
+    reconstructed — it is waiting on a person — so `resume` falls back to
+    reading the legacy key.
+    """
+    import asyncio
+
+    from agentkit import Scope, Workflow
+    from agentkit.adapters.store import InMemoryStore
+    from agentkit.runtime import RunContext, Services
+
+    wf = Workflow(max_steps=10)
+    wf.fn("prep", lambda inputs: "ready")
+    wf.human_gate("approve", after="prep")
+    wf.fn("act", lambda inputs: "done", after="approve")
+
+    store = InMemoryStore()
+    ctx = RunContext("wf-legacy", Scope(), services=Services(store=store))
+    # Hand-write the OLD format, as a pre-upgrade process would have left it.
+    asyncio.run(
+        store.set("workflow:wf-legacy", {"goal": "go", "done": {"prep": "ready"}, "steps": 1})
+    )
+
+    resumed = asyncio.run(wf.resume("wf-legacy", {"approve": "yes"}, ctx))
+    assert resumed.stop_reason == "complete"
+    assert resumed.outputs["act"] == "done"
+    # And the legacy record is reclaimed on terminal completion.
+    assert not asyncio.run(store.get("workflow:wf-legacy"))

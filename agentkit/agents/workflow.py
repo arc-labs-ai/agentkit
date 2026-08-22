@@ -21,6 +21,7 @@ dict); a custom `fn`/`tool` node whose output crosses a gate must likewise retur
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import inspect
 from collections.abc import Awaitable, Callable
@@ -28,8 +29,10 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from agentkit.agents.result import Suspended, WorkflowResult
+from agentkit.capabilities.checkpointer import resolve_checkpointer
 from agentkit.kernel.concurrency import gather_bounded
 from agentkit.kernel.errors import CheckpointerError
+from agentkit.kernel.ports import CheckpointStatus
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import ToolRequest, Usage
 
@@ -51,6 +54,35 @@ def _ckpt_key(run_id: str) -> str:
     return f"workflow:{run_id}"
 
 
+async def _read_legacy_checkpoint(ctx: Ctx, run_id: str) -> dict[str, Any] | None:
+    """Read a suspend written by a version that persisted straight to ``ctx.store``.
+
+    Workflow used to write ``{"goal", "done", "steps"}`` at ``workflow:<run_id>``
+    on the raw store, while the checkpointer bridge writes at
+    ``checkpoint:<run_id>``. Switching seams without this would orphan every
+    IN-FLIGHT human gate across an upgrade — and a suspended run is precisely
+    the state that cannot be reconstructed, because it is waiting on a person.
+    Read-only and best-effort; safe to delete once no old suspends can remain.
+    """
+    store = getattr(ctx, "store", None)
+    if store is None:
+        return None
+    with contextlib.suppress(Exception):
+        legacy = await store.get(_ckpt_key(run_id))
+        if legacy:
+            return dict(legacy)
+    return None
+
+
+async def _delete_legacy_checkpoint(ctx: Ctx, run_id: str) -> None:
+    """Reclaim a legacy-format checkpoint on terminal completion."""
+    store = getattr(ctx, "store", None)
+    if store is None:
+        return
+    with contextlib.suppress(Exception):
+        await store.delete(_ckpt_key(run_id))
+
+
 def _warn_unpersisted_gate(gate: str, run_id: str) -> None:
     """Announce a human-gate suspend that cannot be resumed.
 
@@ -60,11 +92,11 @@ def _warn_unpersisted_gate(gate: str, run_id: str) -> None:
     import warnings
 
     warnings.warn(
-        f"workflow gate {gate!r} suspended run {run_id!r} but no store is wired on the "
-        "RunContext, so NOTHING WAS PERSISTED and Workflow.resume() will raise "
-        f"\"no suspended workflow {run_id!r} to resume\". Wire "
-        "Services(store=...) to make this suspend resumable. (Workflow persists via "
-        "ctx.store; a Checkpointer alone is not enough for a workflow gate.)",
+        f"workflow gate {gate!r} suspended run {run_id!r} but no durable seam is wired "
+        "on the RunContext, so NOTHING WAS PERSISTED and Workflow.resume() will raise "
+        f"\"no suspended workflow {run_id!r} to resume\". Wire either "
+        "Services(checkpointer=Checkpointer(port=...)) or Services(store=...) to make "
+        "this suspend resumable.",
         UserWarning,
         stacklevel=4,
     )
@@ -297,9 +329,18 @@ class Workflow:
         return await self._execute(goal, ctx, done={}, decisions=dict(decisions or {}), steps=0)
 
     async def resume(self, run_id: str, decisions: dict[str, Any], ctx: Ctx) -> WorkflowResult:
-        saved = await ctx.store.get(_ckpt_key(run_id)) if ctx.store is not None else None
-        if not saved:
+        """Continue a gate-suspended run. Reads through the same seam
+        ``_execute`` wrote to — see ``resolve_checkpointer``."""
+        cp = resolve_checkpointer(ctx)
+        state = None
+        if cp is not None:
+            checkpoint = await cp.resume(run_id)
+            state = checkpoint.state if checkpoint is not None else None
+        if state is None:
+            state = await _read_legacy_checkpoint(ctx, run_id)
+        if not state:
             raise ValueError(f"no suspended workflow {run_id!r} to resume")
+        saved = state
         # Deep-copy the persisted ``done`` map. ``InMemoryStore`` returns
         # the same object reference it was handed at ``set`` time, so a
         # shallow ``dict(saved["done"])`` would leave inner values
@@ -316,10 +357,14 @@ class Workflow:
             decisions=dict(decisions),
             steps=saved["steps"],
         )
-        if result.stop_reason != "suspended" and ctx.store is not None:
-            await ctx.store.delete(
-                _ckpt_key(run_id)
-            )  # terminal → reclaim the checkpoint (no replay)
+        if result.stop_reason != "suspended":
+            # Terminal → reclaim the checkpoint so a naive
+            # "resume if anything exists" wiring cannot replay a finished run.
+            # Both seams are cleared: the run may have been suspended by an
+            # older version that wrote the legacy KV key.
+            if cp is not None:
+                await cp.delete(run_id)
+            await _delete_legacy_checkpoint(ctx, run_id)
         return result
 
     async def _execute(
@@ -363,34 +408,28 @@ class Workflow:
                 gate = next((n for n in ready if n.gate and n.name not in decisions), None)
                 if gate is not None:  # suspend for a human decision
                     run_id = ctx.correlation_id
-                    if ctx.store is None:
+                    cp = resolve_checkpointer(ctx)
+                    if cp is None:
                         # Returning a ``Suspended`` we could not persist is a
                         # silent, well-formed failure: ``run()`` reports a
                         # resumable state, and the truth only emerges later —
                         # usually in a different process — as
                         # "no suspended workflow <id> to resume", with nothing
-                        # pointing back at the missing store.
-                        #
-                        # Note the asymmetry this also catches: Workflow
-                        # persists through ``ctx.store``, while the ReAct
-                        # cognition prefers ``ctx.checkpointer`` and only
-                        # falls back to a store bridge. Wiring ONLY a
-                        # ``Checkpointer`` — the documented durable seam —
-                        # therefore leaves a workflow gate unpersisted too,
-                        # and this warning is what says so out loud.
+                        # pointing back at the missing seam.
                         _warn_unpersisted_gate(gate.name, run_id)
-                    if ctx.store is not None:
-                        # Deep-copy ``done`` at the store boundary: the
-                        # live map is returned to the caller as
-                        # ``WorkflowResult.outputs``, and a store like
-                        # ``InMemoryStore`` keeps the same reference —
-                        # so a caller mutating an output post-suspend
-                        # would corrupt the persisted checkpoint under
-                        # a shallow copy. Symmetric with the read-side
-                        # deep-copy in ``resume``.
-                        await ctx.store.set(
-                            _ckpt_key(run_id),
-                            {"goal": goal, "done": copy.deepcopy(done), "steps": steps},
+                    else:
+                        # ``Checkpointer.snapshot`` deep-copies ``state`` at the
+                        # seam, so the live ``done`` map (handed to the caller as
+                        # ``WorkflowResult.outputs``) cannot alias the persisted
+                        # record. Marked SUSPENDED so auto-resume can tell
+                        # "waiting on a human" from "engine in motion" — the
+                        # status this path could not express while it wrote
+                        # through a bare KV.
+                        await cp.snapshot(
+                            run_id,
+                            {"goal": goal, "done": done, "steps": steps},
+                            status=CheckpointStatus.SUSPENDED,
+                            ctx=ctx,
                         )
                     await ctx.emit(
                         "interrupt", f"awaiting decision: {gate.name}", payload={"gate": gate.name}

@@ -19,7 +19,16 @@ import pytest
 
 from agentkit.adapters.store import PostgresStore, RedisStore
 from agentkit.agents import Agent, Workflow
-from agentkit.agents.workflow import _ckpt_key
+
+# Workflow now persists through the shared ``resolve_checkpointer`` seam, so a
+# store-only wiring is bridged by ``StoreBackedCheckpointStore`` and the record
+# lands at ``ckpt_key`` (``checkpoint:<run_id>``) rather than the workflow's old
+# private ``workflow:<run_id>``. Asserting on the CURRENT key keeps this test
+# exercising the real encode -> store -> fetch -> decode path, which is the
+# serialization risk it exists for. ``_legacy_key`` is still checked so the
+# upgrade path (an in-flight suspend written by an older version) stays covered.
+from agentkit.agents.workflow import _ckpt_key as _legacy_key
+from agentkit.capabilities.checkpointer import ckpt_key
 from agentkit.kernel.types import Scope
 from agentkit.testing import FakeLLM, make_test_ctx
 
@@ -41,7 +50,8 @@ def _wf() -> Workflow:
 async def _resume_cycle(store):
     """Suspend → assert the checkpoint is in the backend → resume from a fresh workflow → assert it
     completes and the checkpoint is reclaimed. `store` is the real durable backend under test."""
-    await store.delete(_ckpt_key(_RUN_ID))  # clean slate (idempotent)
+    await store.delete(ckpt_key(_RUN_ID))  # clean slate (idempotent)
+    await store.delete(_legacy_key(_RUN_ID))
 
     res = await _wf().run(
         "build",
@@ -55,7 +65,7 @@ async def _resume_cycle(store):
     assert res.stop_reason == "suspended" and res.suspended.pending == ("review",)
     assert "ship" not in res.outputs  # downstream did not run
     assert (
-        await store.get(_ckpt_key(_RUN_ID)) is not None
+        await store.get(ckpt_key(_RUN_ID)) is not None
     )  # checkpoint durably persisted in the backend
 
     res2 = await _wf().resume(
@@ -70,7 +80,8 @@ async def _resume_cycle(store):
     )
     assert res2.stop_reason == "complete"
     assert res2.outputs["ship"] == "shipping with approved"  # resumed from the backend and finished
-    assert await store.get(_ckpt_key(_RUN_ID)) is None  # terminal completion reclaimed it
+    assert await store.get(ckpt_key(_RUN_ID)) is None  # terminal completion reclaimed it
+    assert await store.get(_legacy_key(_RUN_ID)) is None  # and the legacy slot too
 
 
 # ---- RedisStore over a JSON-round-tripping fake (always runs) ----------------------------------

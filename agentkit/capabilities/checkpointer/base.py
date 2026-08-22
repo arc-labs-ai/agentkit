@@ -61,6 +61,35 @@ def _is_tainted(state: dict[str, Any]) -> bool:
     return bool(isinstance(nested, dict) and nested.get(_SECRET_TAINT_KEY))
 
 
+def resolve_checkpointer(ctx: Any, explicit: Checkpointer | None = None) -> Checkpointer | None:
+    """The ONE durable-state resolution order, shared by every producer.
+
+    ``explicit`` (a producer's own ``checkpointer=``) > ``ctx.checkpointer`` >
+    a legacy bridge synthesized over ``ctx.store`` (so a wiring that only
+    injected a ``StorePort`` keeps working). ``None`` when nothing is wired,
+    which callers treat as "durable resume disabled".
+
+    This lives here rather than on any one producer because having two
+    resolution orders is how a seam silently stops working: ``Workflow``
+    persisted only through ``ctx.store`` while the ReAct cognition preferred
+    ``ctx.checkpointer``, so wiring the documented durable seam — a
+    ``Checkpointer`` — left workflow human-gates unpersisted, and the failure
+    surfaced later as "no suspended workflow <id> to resume". One function
+    means a new producer cannot invent a third order.
+    """
+    if explicit is not None:
+        return explicit
+    found: Checkpointer | None = getattr(ctx, "checkpointer", None)
+    if found is not None:
+        return found
+    store = getattr(ctx, "store", None)
+    if store is not None:
+        from agentkit.capabilities.checkpointer.persistence import StoreBackedCheckpointStore
+
+        return Checkpointer(port=StoreBackedCheckpointStore(store))
+    return None
+
+
 def _snapshot_span(ctx: Any, run_id: str, status: CheckpointStatus | str) -> Any:
     """Best-effort span for ``Checkpointer.snapshot``. Yields a
     context manager (real span or a nullcontext) — the checkpointer is
