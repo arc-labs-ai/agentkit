@@ -108,6 +108,26 @@ about the others. Workflow's `human_gate` node suspends the workflow
   cognition, because `elicit(ctx, ...)` takes a `Ctx`, not an `Agent`.
   See [the recipe](../recipes/elicit-a-value-from-a-human.md).
 
+### Durable state: one slot per producer
+
+Every producer that checkpoints — the tool loop, `Workflow`, the coordinator
+policies — resolves its durable seam through the same order: an explicit
+`checkpointer=` on the cognition, then `ctx.checkpointer`, then a bridge over
+`ctx.store`. Three separate orders is how a `Services(store=...)` wiring ended
+up giving durable tool-loop runs, durable workflow gates, and coordinator runs
+that persisted nothing.
+
+Slots are namespaced per producer, so they cannot collide. The tool loop owns
+`ReActCognition.checkpoint_slot(run_id, agent_name)` —
+`"{run_id}:agent:{name}"` — while a coordinator owns the bare run id. Without
+that, a coordinator and its children shared one slot, and a child finishing
+normally called `delete(run_id)` and took the coordinator's in-progress state
+with it.
+
+`Suspended.run_id` still carries the plain run id you pass back to
+`Agent.resume`; the slot is re-derived internally. Two children sharing one
+agent *name* in a single run still share a slot — name them distinctly.
+
 ### How a run ends
 
 `AgentResult.stop_reason` is a closed `Literal`, so the terminal state

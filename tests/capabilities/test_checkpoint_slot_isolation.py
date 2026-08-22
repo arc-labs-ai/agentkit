@@ -156,3 +156,126 @@ def test_the_legacy_read_refuses_another_producers_state() -> None:
     # And the coordinator's payload is untouched.
     still = asyncio.run(cp.resume(RUN))
     assert still is not None and still.state["turn"] == 3
+
+
+# ── one resolution order, shared by every producer ──────────────────────────
+
+
+def _coordinator_over(child: Agent, *, turns: int = 1) -> Agent:
+    from agentkit.agents.cognition import CoordinatorCognition
+    from agentkit.agents.policies import RoundRobinPolicy
+
+    return Agent(
+        "boss",
+        "m",
+        cognition=CoordinatorCognition(
+            children={child.name: child}, policy=RoundRobinPolicy(max_turns=turns)
+        ),
+    )
+
+
+class _PlainAnswer:
+    async def stream(self, **_kw):
+        yield Delta(text="answer", model="m", provider="f")
+        yield Delta(usage=Usage(1, 1, 0.0), finish_reason="stop", model="m", provider="f")
+
+
+def test_a_coordinator_persists_through_a_store_only_wiring() -> None:
+    """The coordinator policies had a THIRD checkpointer resolution order,
+    stopping at `ctx.checkpointer` and deliberately excluding the store bridge
+    because "coordinator runs require a real Checkpointer for durability".
+
+    The bridge is exactly as durable as the store behind it; its only
+    documented limitation is a single slot per run with no version history, and
+    no policy reads history — they call `resume` for the latest and nothing
+    else. Meanwhile the cost was silent: a `Services(store=...)` wiring gave
+    durable ReAct runs, durable Workflow gates, and coordinator runs that
+    persisted NOTHING. Measured: zero keys in the store after a completed run.
+    """
+    from agentkit.adapters.store import InMemoryStore
+    from agentkit.kernel.types import Scope
+    from agentkit.runtime import Invoker, RunContext, Services
+
+    store = InMemoryStore()
+    coord = _coordinator_over(Agent("worker", "m"))
+    ctx = RunContext(
+        "coord-run",
+        Scope(),
+        services=Services(invoker=Invoker(llm=_PlainAnswer()), store=store),
+    )
+    asyncio.run(coord.run("go", ctx))
+
+    keys = [k for k in store._kv if "coord-run" in k]
+    assert keys, "a store-only wiring left the coordinator run with no durable state"
+
+
+def test_a_coordinator_and_its_tool_looping_child_hold_distinct_slots() -> None:
+    """What makes ONE shared resolution order viable across producers: the tool
+    loop namespaces its slot per agent, so a coordinator writing at the run id
+    and a child writing at `{run_id}:agent:{name}` cannot collide — and the
+    child's `_clear` cannot delete the coordinator's state."""
+    from agentkit.adapters.store import InMemoryStore
+    from agentkit.kernel.types import Scope
+    from agentkit.runtime import Invoker, RunContext, Services
+
+    @tool(side_effecting=True)
+    def risky(q: str) -> str:
+        """Side-effecting, so the child gates and leaves a suspended slot."""
+        return "ok"
+
+    class _ToolThenGate:
+        async def stream(self, *, messages, tools=None, **_kw):
+            offered = {t.name for t in (tools or ())}
+            ran = any(getattr(m, "role", "") == "tool" for m in messages)
+            if "risky" in offered and not ran:
+                yield Delta(text="tooling", model="m", provider="f")
+                yield Delta(
+                    tool_calls=(ToolCall("t1", "risky", {"q": "x"}),),
+                    usage=Usage(1, 1, 0.0),
+                    finish_reason="tool_calls",
+                    model="m",
+                    provider="f",
+                )
+            else:
+                yield Delta(text="answer", model="m", provider="f")
+                yield Delta(
+                    usage=Usage(1, 1, 0.0), finish_reason="stop", model="m", provider="f"
+                )
+
+    store = InMemoryStore()
+    child = Agent("worker", "m", cognition=ReActCognition(tools=[risky]))
+    coord = _coordinator_over(child, turns=2)
+    ctx = RunContext(
+        "run-x",
+        Scope(),
+        services=Services(invoker=Invoker(llm=_ToolThenGate()), store=store),
+        autonomy="manual",  # gate the side-effecting tool so the child suspends
+    )
+    asyncio.run(coord.run("go", ctx))
+
+    keys = sorted(k for k in store._kv if "run-x" in k)
+    assert "checkpoint:run-x" in keys, "the coordinator's slot is missing"
+    assert "checkpoint:run-x:agent:worker" in keys, "the child's slot is missing"
+
+
+def test_every_producer_shares_one_resolution_order() -> None:
+    """Three orders was how the asymmetry appeared in the first place. Asserted
+    structurally so a fourth producer cannot quietly invent another."""
+    from agentkit.agents.policies.roundrobin import _resolve_checkpointer
+    from agentkit.capabilities.checkpointer import Checkpointer, resolve_checkpointer
+
+    class _Ctx:
+        checkpointer = None
+        store = None
+
+    explicit = Checkpointer(port=InMemoryCheckpointStore())
+    coordinator = Agent("boss", "m", cognition=ReActCognition(tools=[], checkpointer=explicit))
+
+    # An explicit per-cognition checkpointer wins, in both.
+    assert _resolve_checkpointer(coordinator, _Ctx()) is explicit
+    assert resolve_checkpointer(_Ctx(), explicit) is explicit
+
+    # And with nothing wired, both agree there is no durable seam.
+    bare = Agent("boss", "m")
+    assert _resolve_checkpointer(bare, _Ctx()) is None
+    assert resolve_checkpointer(_Ctx()) is None

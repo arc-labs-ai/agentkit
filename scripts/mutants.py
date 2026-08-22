@@ -399,6 +399,14 @@ MUTANTS: tuple[Mutant, ...] = (
         after="        return legacy",
         tests=SLOT_TESTS,
     ),
+    Mutant(
+        tag="checkpoint",
+        why="coordinator policies drop back to a third resolution order (no store bridge)",
+        path="agentkit/agents/policies/roundrobin.py",
+        before='    return resolve_checkpointer(ctx, getattr(coordinator.cognition, "checkpointer", None))',
+        after='    return getattr(coordinator.cognition, "checkpointer", None) or getattr(ctx, "checkpointer", None)',
+        tests=SLOT_TESTS,
+    ),
     # ── stores: the reference contract every backend must match ──────────────
     Mutant(
         tag="store",

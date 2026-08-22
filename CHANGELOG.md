@@ -11,6 +11,22 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — one checkpointer resolution order, not three
+
+- **A `Services(store=...)` wiring gave silently non-durable coordinator runs.**
+  The coordinator policies had their own resolution order that stopped at
+  `ctx.checkpointer` and deliberately excluded the store bridge, on the stated
+  grounds that "coordinator runs require a real `Checkpointer` for durability".
+  That does not survive inspection: the bridge is exactly as durable as the
+  store behind it, and its only documented limitation — a single slot per run,
+  no version history — costs nothing here, because no policy reads history.
+  Meanwhile a completed coordinator run left **zero** keys in the store, with
+  no warning, while ReAct runs and Workflow gates on the same wiring persisted
+  fine. All three producers now share `resolve_checkpointer`.
+
+  Viable only because of the slot namespacing below: a coordinator writing at
+  the run id and its children at `{run_id}:agent:{name}` no longer collide.
+
 ### Fixed — a child agent deleting its coordinator's checkpoint
 
 - **Every producer keyed durable state on `ctx.correlation_id`**, and

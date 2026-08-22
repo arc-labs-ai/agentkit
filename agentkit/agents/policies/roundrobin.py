@@ -24,6 +24,7 @@ from agentkit.capabilities.checkpointer import (
     Checkpointer,
     coord_state_from_dict,
     coord_state_to_dict,
+    resolve_checkpointer,
 )
 from agentkit.context import WorkingContext
 from agentkit.kernel.ports import CheckpointStatus
@@ -75,14 +76,29 @@ def _name_of(agent: Any, children: dict[str, Any]) -> str:
 
 
 def _resolve_checkpointer(coordinator: Agent, ctx: Ctx) -> Checkpointer | None:
-    """Per-coordinator ``cognition.checkpointer`` wins over ``ctx.checkpointer``.
-    No store-backed bridge — coordinator runs require a real ``Checkpointer``
-    for durability."""
-    cp: Checkpointer | None = getattr(coordinator.cognition, "checkpointer", None)
-    if cp is not None:
-        return cp
-    ctx_cp: Checkpointer | None = getattr(ctx, "checkpointer", None)
-    return ctx_cp
+    """Per-coordinator ``cognition.checkpointer`` wins, then the shared order.
+
+    Delegates to ``capabilities.checkpointer.resolve_checkpointer`` so this is
+    not a THIRD resolution order alongside the tool loop's and ``Workflow``'s.
+    It was: this function stopped at ``ctx.checkpointer`` and deliberately
+    excluded the store bridge, on the stated grounds that "coordinator runs
+    require a real Checkpointer for durability".
+
+    That reasoning does not survive inspection. The bridge is exactly as
+    durable as the store behind it (FileStore / Postgres / Redis); its only
+    documented limitation is a single slot per run with no version history, and
+    no policy reads history — they call ``resume`` for the latest and nothing
+    else. Meanwhile the cost was real and silent: a ``Services(store=...)``
+    wiring gave durable ReAct runs, durable Workflow gates, and coordinator
+    runs that persisted NOTHING, with no warning. Measured: a completed
+    coordinator run left zero keys in the store.
+
+    Safe now in a way it would not have been before: the tool loop namespaces
+    its slot per agent, so a coordinator writing at the run id and its children
+    writing at ``{run_id}:agent:{name}`` no longer collide — which is what made
+    sharing one resolution order across producers viable at all.
+    """
+    return resolve_checkpointer(ctx, getattr(coordinator.cognition, "checkpointer", None))
 
 
 async def _replay_termination(
