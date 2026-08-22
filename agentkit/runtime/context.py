@@ -214,7 +214,12 @@ class RunContext:
         )
 
     def semaphore(self) -> Any:
-        return self.budget.semaphore()
+        """This context's concurrency pool — scoped to ``depth``.
+
+        Passing ``self.depth`` is what makes nested fan-out deadlock-free; see
+        ``Budget.semaphore`` for why a single tree-wide pool cannot work.
+        """
+        return self.budget.semaphore(self.depth)
 
     def check_cancelled(self) -> None:
         """Cooperative cancellation check for patterns (no-op if no token is attached)."""

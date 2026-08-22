@@ -210,7 +210,7 @@ class Budget:
     _ceiling: Decimal | None = field(default=None, compare=False, repr=False)
     _ceiling_src: Any = field(default=_UNSET_CEILING, compare=False, repr=False)
     _lock: Any = field(default=None, compare=False, repr=False)
-    _sem: Any = field(default=None, compare=False, repr=False)
+    _sems: dict[int, Any] = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         # Normalise the ceiling STRICTLY here. A ceiling is the operator's
@@ -374,10 +374,42 @@ class Budget:
             raise MeterExceeded(verdict.reason)
         return verdict
 
-    def semaphore(self) -> asyncio.Semaphore:
-        if self._sem is None:
-            self._sem = asyncio.Semaphore(self.max_concurrency)
-        sem: asyncio.Semaphore = self._sem
+    def semaphore(self, depth: int = 0) -> asyncio.Semaphore:
+        """The concurrency permit pool for one DEPTH of the agent tree.
+
+        One semaphore per depth, not one for the whole tree. A single shared
+        semaphore deadlocks, and not hypothetically: a parent's fan-out holds
+        its permits for the ENTIRE duration of each child run, so a nested
+        fan-out draws from a pool its own ancestors have already drained. With
+        ``max_concurrency=2``, an agent dispatching two ``as_tool`` sub-agents
+        that each dispatch their own tools hangs forever — the two outer
+        permits are held until the inner runs finish, and the inner runs cannot
+        start without a permit. Deeper trees hit the same wall at any cap once
+        the ancestors' outstanding acquisitions reach it.
+
+        Keying on depth breaks the cycle structurally: an ancestor at depth d
+        can only ever hold permits from pool d, and its children draw from
+        pool d+1, so no acquisition can ever wait on a permit held by its own
+        ancestor. Every nesting boundary in the framework goes through
+        ``ctx.child()`` (``as_tool``, ``run_agents``, the coordinator
+        policies), so depth genuinely increments at each level.
+
+        The trade is an honest one: the bound is now ``max_concurrency`` PER
+        LEVEL rather than across the whole tree, so worst-case in-flight work
+        is ``max_concurrency * (max_depth + 1)``. Set ``max_concurrency`` with
+        that in mind. A single tree-wide cap cannot be both deadlock-free and
+        respected by nested acquisition — a re-entrant permit would let one
+        level's fan-out multiply without limit, which is a weaker bound than
+        per-level, not a stronger one.
+
+        Lazy per depth, so the semaphore binds to the running loop at first
+        use rather than to whatever loop existed at Budget construction.
+        """
+        sem = self._sems.get(depth)
+        if sem is None:
+            sem = asyncio.Semaphore(self.max_concurrency)
+            self._sems[depth] = sem
+        assert isinstance(sem, asyncio.Semaphore)
         return sem
 
 
@@ -400,6 +432,10 @@ class Quota:
     clock: Callable[[], float] = time.monotonic
     on_exceeded: Literal["raise", "stop"] = "raise"
     _ceiling: Decimal | None = field(default=None, compare=False, repr=False)
+    # Monotonic-ish marker for the last full eviction sweep. Seeded to
+    # ``-inf`` so the first ``guard`` sweeps immediately rather than waiting
+    # out a window on a freshly built Quota.
+    _last_sweep: float = field(default=float("-inf"), compare=False, repr=False)
     _reqs: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
     _charges: dict[str, list[tuple[float, int, Decimal]]] = field(
         default_factory=lambda: defaultdict(list)
@@ -423,9 +459,45 @@ class Quota:
         return self._ceiling
 
     def _prune(self, key: str, now: float) -> None:
+        """Drop out-of-window entries for ONE key, then drop the key itself if
+        it has gone empty.
+
+        Deleting the empty key matters because ``_reqs``/``_charges`` are
+        ``defaultdict``s keyed by ``Scope.key()``. A service whose scope
+        carries a per-user or per-request id — which is the whole point of a
+        tenant key — would otherwise accumulate one permanently-retained dict
+        entry per distinct scope ever seen, holding an empty list forever.
+        """
         cutoff = now - self.window
-        self._reqs[key] = [t for t in self._reqs[key] if t > cutoff]
-        self._charges[key] = [c for c in self._charges[key] if c[0] > cutoff]
+        reqs = [t for t in self._reqs[key] if t > cutoff]
+        charges = [c for c in self._charges[key] if c[0] > cutoff]
+        if reqs:
+            self._reqs[key] = reqs
+        else:
+            self._reqs.pop(key, None)
+        if charges:
+            self._charges[key] = charges
+        else:
+            self._charges.pop(key, None)
+
+    def _sweep(self, now: float) -> None:
+        """Evict every key whose whole window has expired.
+
+        ``_prune`` only ever touches the key being guarded, so a tenant that
+        goes quiet is never revisited and its entry leaks. Measured: 5000
+        distinct scopes left 5000 retained keys long after every window had
+        expired. This sweeps the rest, at most once per ``window`` — O(keys)
+        amortised over the window length, which is negligible beside the
+        per-call work it sits next to.
+        """
+        if now - self._last_sweep < self.window:
+            return
+        self._last_sweep = now
+        cutoff = now - self.window
+        for key in [k for k, v in self._reqs.items() if not any(t > cutoff for t in v)]:
+            self._reqs.pop(key, None)
+        for key in [k for k, v in self._charges.items() if not any(c[0] > cutoff for c in v)]:
+            self._charges.pop(key, None)
 
     def _get_lock(self) -> asyncio.Lock:
         # Lazy — see Budget._get_lock for the loop-binding rationale.
@@ -444,6 +516,7 @@ class Quota:
         key = call.ctx.scope.key()
         est = _est_tokens(call)
         async with self._get_lock():  # prune+read+count is one atomic critical section (no awaits)
+            self._sweep(now)  # evict long-dead tenants; at most once per window
             self._prune(key, now)
             reqs = len(self._reqs[key])
             toks = sum(t for _, t, _ in self._charges[key])

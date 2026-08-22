@@ -19,6 +19,12 @@ from agentkit.kernel.errors import Failure
 R = TypeVar("R")
 
 
+class _NeverRaised(Exception):
+    """Never raised anywhere. Exists so the mutation catalogue can neutralise
+    an `except` clause by retargeting it, producing a real behavioural change
+    rather than a NameError that any test would "catch" for the wrong reason."""
+
+
 class Cancelled(RuntimeError):
     """Raised by a cooperative cancellation check when the run (or its subtree) has been cancelled."""
 
@@ -95,6 +101,16 @@ async def gather_best_effort(
             try:
                 return await coro
             except asyncio.CancelledError:  # never swallow cancellation — let it unwind the gather
+                raise
+            except Cancelled:
+                # agentkit's own COOPERATIVE cancellation. Isolating this into
+                # a Failure slot was wrong: the token is shared across the run
+                # tree, so a tripped token means every sibling is about to
+                # raise it too, and the caller would receive N independent
+                # "failures" with no way to tell an aborted run from a batch
+                # where everything happened to break at once. An abort aborts
+                # — that is the documented distinction between ``Cancelled``,
+                # a graceful ``TerminationCondition``, and ``MeterExceeded``.
                 raise
             except Exception as exc:  # noqa: BLE001 — a normal failure is isolated into the slot
                 return Failure.of(exc, source=f"gather_best_effort[{idx}]")

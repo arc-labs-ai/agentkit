@@ -69,6 +69,25 @@ Three properties worth knowing:
   *before* it stops. See
   [the recipe](../recipes/spend-budget-and-quota.md#making-exhaustion-recoverable).
 
+### Concurrency: the permit pool is per LEVEL
+
+`ctx.semaphore()` returns the pool for **this context's depth**, not one pool
+for the whole tree. A single tree-wide semaphore deadlocks nested fan-out: a
+parent's fan-out holds its permits for the entire duration of each child run,
+so an inner fan-out draws from a pool its own ancestors have already drained.
+At `max_concurrency=2`, an agent dispatching two `as_tool` sub-agents that
+each dispatch their own tools hung forever.
+
+Every nesting boundary goes through `ctx.child()` (`as_tool`, `run_agents`,
+the coordinator policies), so keying on depth breaks the cycle structurally —
+an ancestor at depth *d* can only hold permits from pool *d*, and its children
+draw from pool *d+1*.
+
+The trade is honest: the bound is `max_concurrency` **per level**, so
+worst-case in-flight work is `max_concurrency * (max_depth + 1)`. Set
+`max_concurrency` with that in mind. A single tree-wide cap cannot be both
+deadlock-free and respected by nested acquisition.
+
 ### `Services.asker`
 
 The human-in-the-loop transport (`agents.control.elicitation.Asker`). When
