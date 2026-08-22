@@ -11,6 +11,48 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — an inert ActorBudget, and one durable seam
+
+- **`ActorBudget` did nothing.** Nothing in the framework ever charged it: the
+  `meter()` middleware charges `ctx.run.all_meters` (the run `Budget` plus any
+  `Quota`), and `ActorBudget` is not a `Meter` — four axes, a sync `charge`, no
+  guard/charge protocol — so it was never in that list. And no loop consulted
+  `exhausted()`, even though `charge` is documented as soft-exceed-then-stop
+  *because* "the loop checks `exhausted()` and stops cleanly". The only thing
+  that ever touched the envelope was `run_agents` reserving slices and
+  releasing them with zero usage. Measured: **$3.00 of real spend against a
+  $1.00 cap left `used_cost` at zero and `exhausted()` False**, while the
+  run-scoped `Budget` correctly recorded $3.00. A documented safety mechanism
+  that never ran. Both ends are now wired, and the terminal reason names the
+  exhausted axis.
+- **`ActorBudget`'s cost axis is an exact `Decimal` ledger**, replacing the
+  epsilon threshold added earlier this cycle. `max_cost_usd` / `used_cost_usd`
+  / `reserved_cost_usd` remain float MIRRORS so `run_agents` and existing
+  readers are untouched; `max_cost()` / `used_cost()` / `reserved_cost()` /
+  `remaining_cost()` are the exact accessors.
+- **A ceiling crossed by the CLOSING call no longer discards the answer.** The
+  post-call check fired after every chat call, so a run whose final call
+  happened to exhaust the budget reported `budget_exhausted` with
+  `partial=True` — for work already paid for, with a good result in hand. The
+  check now runs only where the loop is about to spend *more*: before a tool
+  dispatch, or before a repair retry.
+- **`Workflow` now persists through the same seam as everything else.** It
+  wrote only to `ctx.store`, while the ReAct cognition prefers
+  `ctx.checkpointer` — so wiring the documented durable seam left workflow
+  human-gates silently unpersisted. Both producers now share one
+  `resolve_checkpointer`, gates are marked `SUSPENDED` (a status a bare KV
+  write could not express), and `resume` falls back to reading the legacy
+  `workflow:<run_id>` key so in-flight suspends survive the upgrade.
+
+### Changed — CI
+
+- Action majors bumped together (`actions/checkout@v7`,
+  `actions/upload-artifact@v7`, `actions/download-artifact@v8`,
+  `astral-sh/setup-uv@v10`). GitHub had forced every Node-20 action onto Node
+  24, annotating every run. Our usage is limited to long-stable inputs, so the
+  majors carry no interface change for us. The PyPI publish action stays
+  SHA-pinned — it holds signing authority.
+
 ### Fixed — concurrency, budgets and workflow suspend
 
 - **Nested fan-out deadlocked.** `ctx.semaphore()` returned ONE semaphore for

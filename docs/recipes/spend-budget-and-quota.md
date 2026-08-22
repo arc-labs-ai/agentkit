@@ -177,11 +177,31 @@ four-axis envelope (`tokens`, `cost_usd`, `steps`, `wall_seconds`) with
 reservation accounting. When `run_agents(...)` fans children out under
 a parent's `ActorBudget`, each child gets a `1/N` slice reserved before
 dispatch; overspend on one child can't drain the parent's envelope
-because `settle_child(...)` caps at the reservation. See
-`agentkit.agents.control.budget.ActorBudget`. `ActorBudget` raises
-`BudgetExhausted` (a distinct exception from `Budget`'s
-`MeterExceeded`), carrying the exhausted axis so callers can react
-differently to a token-out vs wall-out.
+because `settle_child(...)` caps at the reservation.
+
+```python
+from agentkit.agents.control.budget import ActorBudget
+
+ctx.actor_budget = ActorBudget(
+    max_tokens=100_000, max_cost_usd="5.00", max_steps=50, max_wall_seconds=600,
+)
+```
+
+The envelope is charged by the same `meter()` middleware that charges the
+run `Budget` — one model call is one step, plus its tokens and cost. Its
+cost axis is an exact `Decimal` ledger like `Budget`'s; `used_cost()` /
+`remaining_cost()` are the exact reads and the `*_usd` attributes are float
+mirrors for display.
+
+Unlike `Budget`, there is no `on_exceeded` switch: `ActorBudget.charge`
+never raises, so an in-flight call always completes, and the cognition's
+next pre-flight stops the loop with `stop_reason="budget_exhausted"` naming
+the axis that ran out. A token-out is a "wind down" signal; a wall-out may
+warrant a hard cancel, and the reason string tells you which.
+
+`BudgetExhausted` (distinct from `Budget`'s `MeterExceeded`) is raised by
+`reserve_for_child` when a fan-out cannot be carved at all — fail-fast,
+before any child runs.
 
 ## Gotchas
 

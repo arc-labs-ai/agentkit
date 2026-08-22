@@ -191,16 +191,16 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="budget",
         why="the tool loop stops pre-flighting, so each retry burns another call",
         path="agentkit/agents/cognition/react.py",
-        before="            if self._budget_exhausted(ctx):\n                last = _last_assistant(context)",
-        after="            if False:\n                last = _last_assistant(context)",
+        before="            ceiling = self._budget_exhausted(ctx)\n            if ceiling is not None:",
+        after="            ceiling = self._budget_exhausted(ctx)\n            if False:",
         tests=MONEY_TESTS,
     ),
     Mutant(
         tag="budget",
         why="the budget-exhausted checkpoint is written as running, not suspended",
         path="agentkit/agents/cognition/react.py",
-        before='await self._save(ctx, run_id, context, usage, i + 1, repaired, status="suspended")',
-        after="await self._save(ctx, run_id, context, usage, i + 1, repaired)",
+        before='                        ctx, run_id, context, usage, i + 1, repaired, status="suspended"',
+        after="                        ctx, run_id, context, usage, i + 1, repaired",
         tests=MONEY_TESTS,
     ),
     # ── concurrency: nested fan-out must not deadlock ────────────────────────
@@ -229,12 +229,17 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=CONCURRENCY_TESTS,
     ),
     # ── budget: the sibling float axes ───────────────────────────────────────
+    # NOTE: mutating ``remaining_cost() <= 0`` to ``remaining_cost_usd() == 0.0``
+    # was tried and is an EQUIVALENT mutant — the exact Decimal ledger leaves no
+    # residue, so both spellings agree for every input. That is the point of the
+    # conversion, and a mutant that cannot fail is noise in the report. The
+    # load-bearing invariant here is that the float MIRRORS track the ledger.
     Mutant(
         tag="budget",
-        why="ActorBudget goes back to == 0.0, missing a float-residue exhaustion",
+        why="ActorBudget float mirrors stop tracking the Decimal ledger",
         path="agentkit/agents/control/budget.py",
-        before="or self.remaining_cost_usd() <= _COST_EPSILON",
-        after="or self.remaining_cost_usd() == 0.0",
+        before="        self.used_cost_usd = float(self._used_cost)",
+        after="        pass",
         tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
     ),
     Mutant(
@@ -245,6 +250,30 @@ MUTANTS: tuple[Mutant, ...] = (
         after="            pass  # no sweep",
         tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
     ),
+    Mutant(
+        tag="budget",
+        why="the per-actor envelope stops being charged (an inert ActorBudget again)",
+        path="agentkit/middlewares/meter.py",
+        before="            actor = getattr(ctx.run, \"actor_budget\", None)",
+        after="            actor = None",
+        tests=("tests/agents/test_actor_budget.py",),
+    ),
+    Mutant(
+        tag="budget",
+        why="no loop consults the actor envelope, so exhausting it stops nothing",
+        path="agentkit/agents/_agent_helpers.py",
+        before="    actor = getattr(ctx, \"actor_budget\", None)",
+        after="    actor = None",
+        tests=("tests/agents/test_actor_budget.py",),
+    ),
+    Mutant(
+        tag="budget",
+        why="ActorBudget cost accumulates through float, losing exactness",
+        path="agentkit/agents/control/budget.py",
+        before="        self._used_cost += to_money(cost_usd)",
+        after="        self._used_cost = to_money(float(self._used_cost) + cost_usd)",
+        tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+    ),
     # ── workflow ─────────────────────────────────────────────────────────────
     Mutant(
         tag="workflow",
@@ -252,6 +281,14 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/agents/workflow.py",
         before="                        _warn_unpersisted_gate(gate.name, run_id)",
         after="                        pass",
+        tests=WORKFLOW_TESTS,
+    ),
+    Mutant(
+        tag="workflow",
+        why="Workflow goes back to store-only persistence, ignoring a Checkpointer",
+        path="agentkit/agents/workflow.py",
+        before="                    cp = resolve_checkpointer(ctx)",
+        after="                    cp = None",
         tests=WORKFLOW_TESTS,
     ),
     # ── HITL: the containment and the deadline ───────────────────────────────
