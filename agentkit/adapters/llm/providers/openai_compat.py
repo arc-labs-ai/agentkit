@@ -11,7 +11,7 @@ from dataclasses import replace
 from typing import Any
 
 from agentkit.adapters.llm._mapping import coerce_tool_args
-from agentkit.adapters.llm.providers.base import HttpLLM
+from agentkit.adapters.llm.providers.base import HttpLLM, raise_if_error_frame
 from agentkit.kernel.types import Delta, LLMResult, Message, ToolCall, Usage
 
 
@@ -185,6 +185,9 @@ class OpenAICompatibleLLM(HttpLLM):
         served_model, finish, usage = model, None, None
         frags: dict[int, dict[str, Any]] = {}  # tool-call fragments by index
         async for ev in self._stream_events("/chat/completions", payload):
+            # See ``raise_if_error_frame``: an in-band error arrives inside a
+            # 200 response and otherwise ends the stream as a complete answer.
+            raise_if_error_frame(ev)
             if ev.get("model"):
                 served_model = ev["model"]
             for ch in ev.get("choices") or ():

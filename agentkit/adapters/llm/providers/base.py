@@ -18,6 +18,41 @@ from agentkit.kernel._json import loads as _json_loads
 from agentkit.kernel.errors import ProviderAuthError as _KernelProviderAuthError
 
 
+def raise_if_error_frame(event: dict[str, Any]) -> None:
+    """Turn a provider's in-band SSE error frame into a raised ``ProviderError``.
+
+    Both providers can deliver a failure INSIDE a 200 response, part-way
+    through a stream, once headers are long gone:
+
+        Anthropic:  {"type": "error", "error": {"type": "overloaded_error", ...}}
+        OpenAI:     {"error": {"message": "...", "type": "server_error", ...}}
+
+    Neither translator had a branch for it, so the frame fell through every
+    ``elif``, the loop ended normally, and the caller received a TRUNCATED
+    answer presented as a complete one — ``finish_reason=None``, partial text,
+    no exception anywhere. An agent takes that half-sentence as the model's
+    final word. Worse, because nothing raised, ``retry()`` never fired: the
+    single most retryable provider failure there is (``overloaded_error``) was
+    the one the resilience layer never saw.
+
+    The provider's own error type and message go into the exception text
+    because ``kernel.resilience.classify`` is substring-based — ``overloaded``,
+    ``rate limit`` and ``429`` are already TRANSIENT there, so an overload
+    frame now routes to a retry, and ``invalid_request_error`` routes to
+    fail-fast, without this function needing its own error taxonomy.
+    """
+    err = event.get("error")
+    if not isinstance(err, dict) and event.get("type") != "error":
+        return
+    if not isinstance(err, dict):
+        err = {}
+    kind = err.get("type") or event.get("type") or "error"
+    message = err.get("message") or "provider reported an error mid-stream"
+    code = err.get("code")
+    detail = f" (code {code})" if code is not None else ""
+    raise ProviderError(f"provider stream error [{kind}]{detail}: {message}")
+
+
 def _make_client(timeout: float) -> httpx.AsyncClient:
     """Build the owned httpx.AsyncClient.
 

@@ -11,6 +11,29 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — a provider failure that read as a complete answer
+
+- **An in-band SSE error frame was swallowed by both providers.** Anthropic and
+  OpenAI can deliver a failure INSIDE a 200 response, part-way through a
+  stream, once the headers are long gone
+  (`{"type":"error","error":{"type":"overloaded_error"}}` /
+  `{"error":{"type":"server_error"}}`). Neither translator had a branch for it,
+  so the frame fell through every `elif`, the loop ended normally, and the
+  caller received a **truncated answer presented as a complete one** — partial
+  text, `finish_reason=None`, no exception anywhere. An agent takes that
+  half-sentence as the model's final word. And because nothing raised,
+  `retry()` never fired: the most retryable provider failure there is, an
+  overload, was the one the resilience layer never saw. Both paths now raise a
+  classified `ProviderError` via a shared `raise_if_error_frame`.
+- **The error classifier missed the underscore forms providers actually use.**
+  `_TRANSIENT` had `rate limit` (with a space) while the wire carries
+  `rate_limit_error`, and had no `server_error`, so the errors above landed in
+  `UNKNOWN`. They were still retried — only `PERMANENT` fails fast — but
+  classified on nothing. Added `rate_limit`, `server_error`, `529`. Bare `500`
+  is deliberately still absent: it is a substring of `5000`, which appears in
+  ordinary text like `max_tokens 5000`, and a false `TRANSIENT` there retries a
+  request that can never succeed.
+
 ### Fixed — tenant isolation, and two fail-open controls
 
 - **`memoize` leaked cached answers across tenants.** `Scope`'s own docstring

@@ -108,6 +108,7 @@ SECURITY_TESTS = (
     "tests/observability/test_observability_cache.py",
 )
 RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
+PROVIDER_TESTS = ("tests/adapters/test_provider_stream_errors.py",)
 WORKFLOW_TESTS = ("tests/agents/test_workflow.py",)
 REGISTRY_TESTS = (
     "tests/adapters/test_model_registry.py",
@@ -351,6 +352,30 @@ MUTANTS: tuple[Mutant, ...] = (
         before='        if self.state == "open":\n            return',
         after='        if False:\n            return',
         tests=RESILIENCE_TESTS,
+    ),
+    Mutant(
+        tag="provider",
+        why="an in-band SSE error frame is swallowed, truncating the answer silently",
+        path="agentkit/adapters/llm/providers/base.py",
+        before="    err = event.get(\"error\")",
+        after="    return\n    err = event.get(\"error\")",
+        tests=PROVIDER_TESTS,
+    ),
+    Mutant(
+        tag="provider",
+        why="Anthropic stops checking for the error frame",
+        path="agentkit/adapters/llm/providers/anthropic.py",
+        before="            raise_if_error_frame(ev)",
+        after="            pass",
+        tests=PROVIDER_TESTS,
+    ),
+    Mutant(
+        tag="provider",
+        why="an overload frame stops classifying as retryable",
+        path="agentkit/kernel/resilience.py",
+        before='    "rate_limit",\n    "server_error",\n    "overloaded",',
+        after='    "__never_matches_rate_limit",\n    "__never_matches_server_error",\n    "__never_matches_overloaded",',
+        tests=PROVIDER_TESTS,
     ),
     # ── workflow ─────────────────────────────────────────────────────────────
     Mutant(

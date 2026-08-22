@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from agentkit.adapters.llm._mapping import coerce_tool_args
-from agentkit.adapters.llm.providers.base import HttpLLM
+from agentkit.adapters.llm.providers.base import HttpLLM, raise_if_error_frame
 from agentkit.kernel.types import Delta, LLMResult, Message, ToolCall, Usage
 
 # Anthropic REQUIRES max_tokens; OpenAI does not. When a caller leaves it unset, we must still send one,
@@ -182,6 +182,10 @@ class AnthropicLLM(HttpLLM):
         in_tok = out_tok = cache_read = cache_write = 0
         blocks: dict[int, dict[str, Any]] = {}  # content blocks by index (text or tool_use)
         async for ev in self._stream_events("/v1/messages", payload):
+            # An in-band error frame arrives INSIDE a 200 response, mid-stream.
+            # Checked before the type dispatch so it cannot fall through every
+            # branch and end the stream as if the answer were complete.
+            raise_if_error_frame(ev)
             etype = ev.get("type")
             if etype == "message_start":
                 msg = ev.get("message") or {}

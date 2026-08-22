@@ -39,6 +39,21 @@ class ErrorClass(enum.StrEnum):
 
 _TRANSIENT = (
     "rate limit",
+    # Providers name their error TYPES with underscores, and those names are
+    # what now reaches this classifier from an in-band SSE error frame
+    # (`raise_if_error_frame`). Without these, `rate_limit_error` and
+    # `server_error` fell to UNKNOWN — still retried, since only PERMANENT
+    # fails fast, but classified on nothing.
+    "rate_limit",
+    "server_error",
+    "overloaded",
+    # 529 is Anthropic's overload status. Bare "500" is deliberately ABSENT:
+    # it is a substring of "5000", which appears in ordinary text like
+    # "max_tokens 5000", and a false TRANSIENT there would retry a request
+    # that can never succeed. The existing 502/503/504 entries carry the same
+    # risk in principle and are kept for continuity; this is not a reason to
+    # add more.
+    "529",
     "429",
     "timeout",
     "timed out",
@@ -49,7 +64,6 @@ _TRANSIENT = (
     "connection reset",
     "connection aborted",
     "circuit open",
-    "overloaded",
 )
 _PERMANENT = (
     "400",
