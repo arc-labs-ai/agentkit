@@ -57,23 +57,66 @@ def _safe_trace_span(trace: Any, name: str, kind: str, attrs: dict[str, Any]) ->
     wrapped in ``contextlib.suppress``; this closes the last gap.
     ``ExitStack`` gives us a single ``close()`` that either runs the
     real context manager's cleanup or is a no-op, so the exit path
-    stays uniform whether we opened a real span or a noop."""
+    stays uniform whether we opened a real span or a noop.
+
+    **The exception is forwarded to the span.** ``ExitStack.close()``
+    is defined as ``__exit__(None, None, None)`` — it tells the wrapped
+    context manager the block succeeded, whatever actually happened. A
+    span CM is precisely the collaborator that needs the truth:
+    ``adapters/observability/otel.py`` opens ``start_as_current_span``
+    and relies on OTel's own ``__exit__`` to call ``record_exception``
+    and set the ERROR status. Closing with a clean exit meant a
+    provider failure was exported as a SUCCESSFUL span. Measured: the
+    provider raised ``RuntimeError("provider 500")`` and the span came
+    out with ``exception=None, status=None``. So the error path exits
+    the stack with the live ``(type, value, traceback)`` instead.
+
+    Two deliberate asymmetries:
+
+    * The original exception is ALWAYS re-raised, even if the span CM's
+      ``__exit__`` returns True. A tracer is observability only; letting
+      it swallow a provider fault would be a far worse bug than the one
+      being fixed here.
+    * Only ``Exception`` is reported as a span error. ``GeneratorExit``
+      / ``CancelledError`` reach this frame when a consumer abandons or
+      cancels the stream, which is not a provider fault — those close
+      the span cleanly.
+    """
     from agentkit.runtime.context import NoopSpan
 
     stack = contextlib.ExitStack()
     span: Any
-    try:
-        span = stack.enter_context(trace.span(name, kind, **attrs))
-    except Exception:
-        _log_span_error_once("open")
+    if trace is None:
+        # Not a misbehaving tracer — just no tracer wired (a caller reading
+        # ``getattr(run, "trace", None)``). Skip the warning path entirely so
+        # an untraced run doesn't log as if something broke.
         span = NoopSpan()
+    else:
+        try:
+            span = stack.enter_context(trace.span(name, kind, **attrs))
+        except Exception:
+            _log_span_error_once("open")
+            span = NoopSpan()
+    closed = False
     try:
         yield span
-    finally:
+    except Exception as exc:
+        closed = True
         try:
-            stack.close()
-        except Exception:
-            _log_span_error_once("close")
+            stack.__exit__(type(exc), exc, exc.__traceback__)
+        except BaseException as close_exc:  # noqa: BLE001 — the tracer must stay inert
+            # A ``@contextmanager``-based span re-raises the exception we
+            # threw in; that is normal CM behaviour, not a tracer fault, so
+            # only a DIFFERENT exception counts as the tracer misbehaving.
+            if close_exc is not exc:
+                _log_span_error_once("close")
+        raise
+    finally:
+        if not closed:
+            try:
+                stack.close()
+            except Exception:
+                _log_span_error_once("close")
 
 
 # Cap the cardinality of the ``gen_ai.response.tool_calls`` attribute — a tool-heavy

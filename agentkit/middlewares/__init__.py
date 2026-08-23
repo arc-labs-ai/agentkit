@@ -14,6 +14,15 @@ Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit
 
 (`compaction` sits ahead of `meter` so the meter estimates tokens on the already-compacted transcript.)
 
+`audit()` vs `retry()` — pick the trail you want. In the tool chain above `retry()` is INSIDE `audit()`,
+so `Audit` sees one outcome per logical tool call: three retried executions of a side-effecting tool fold
+into ONE record. That is the right shape when the question is "what did this run ask the tool to do", and
+it is the only ordering in which an `idempotent()` replay can be recorded as `"deduped"` (a hit
+short-circuits everything inner). Swap to `[… idempotent(), retry(breaker=…), audit()]` when the question
+is "how many times did the side effect actually fire" — then every attempt gets its own record, and a
+deduped replay produces none at all because `audit()` is never reached. `Audit` records failures either
+way (`decision: "failed"`); it cannot see retry attempts it sits outside of.
+
 .. note::
    ``Egress`` / ``Audit`` live in ``egress_audit.py``, not ``security.py``. A
    submodule named ``security`` shadowed the ``security()`` factory re-exported

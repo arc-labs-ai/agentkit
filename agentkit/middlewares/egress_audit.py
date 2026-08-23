@@ -1,7 +1,8 @@
 """security middlewares — `egress` (default-deny, fail-fast) and `audit` (one record per tool call).
 
 Both are tool-chain `BaseMiddleware`s. `Egress` is a guard in `on_request` (a blocked URL never executes
-a side effect); `Audit` records in `on_response` (after a successful call).
+a side effect); `Audit` records in `on_response` AND `on_error`, so a side effect that fired and then
+failed still leaves a record.
 """
 
 from __future__ import annotations
@@ -45,9 +46,44 @@ class Egress(BaseMiddleware):
 
 
 class Audit(BaseMiddleware):
+    """One record per tool call — including the calls that FAILED.
+
+    ``Audit`` used to write only in ``on_response``, i.e. only after a
+    success. That is exactly backwards for a side-effecting tool: the
+    dangerous case is the one that fired the side effect and *then*
+    failed — the payment gateway that charged the card and timed out on
+    the response. Measured with the documented tool chain
+    (``[… idempotent(), audit(), retry(breaker=…)]``): a charging tool
+    that raised after every attempt executed 3 times and left
+    ``audit records: []``. The money moved and the audit trail was
+    empty, which is the one thing an audit trail may never be.
+
+    ``on_error`` now writes a ``"failed"`` record carrying the error
+    type and message, then re-raises so the failure still propagates —
+    the middleware records, it never recovers.
+
+    **One record = one invocation of THIS middleware.** ``retry()`` sits
+    INSIDE ``audit()`` in the documented chain, so its attempts are
+    invisible from here and three executions fold into one record. That
+    is an ordering choice, not something ``Audit`` can detect: placing
+    ``audit()`` inside ``retry()`` yields one record per attempt, at the
+    cost of the ``"deduped"`` record (``idempotent()`` short-circuits
+    before ``audit()`` is ever reached). Both orderings are supported
+    and pinned by tests; see the chain note in ``middlewares/__init__``.
+    """
+
     def __init__(self, *, store: Any = None, key: str = _AUDIT_LOG) -> None:
         self._store = store
         self._key = key
+
+    def _record(self, ctx: MiddlewareContext, **extra: Any) -> dict[str, Any]:
+        return {
+            "run_id": ctx.run.correlation_id,
+            "scope": ctx.run.scope.key(),
+            "tool": ctx.request.name,
+            "arg_hash": _hash(ctx.request.arguments),
+            **extra,
+        }
 
     async def on_response(self, ctx: MiddlewareContext, result: Any) -> Any:
         s = self._store or ctx.run.store
@@ -57,16 +93,34 @@ class Audit(BaseMiddleware):
             deduped = bool(ctx.call.meta.get("cache_hit"))
             await s.append(
                 self._key,
-                {
-                    "run_id": ctx.run.correlation_id,
-                    "scope": ctx.run.scope.key(),
-                    "tool": ctx.request.name,
-                    "arg_hash": _hash(ctx.request.arguments),
-                    "result_hash": _hash(result),
-                    "decision": "deduped" if deduped else "executed",
-                },
+                self._record(
+                    ctx,
+                    result_hash=_hash(result),
+                    decision="deduped" if deduped else "executed",
+                ),
             )
         return result
+
+    async def on_error(self, ctx: MiddlewareContext, exc: Exception) -> Any:
+        s = self._store or ctx.run.store
+        if s is not None:
+            # A failed write must not mask the tool's own failure: the
+            # exception below is what the caller needs to see. The record is
+            # best-effort; the raise is not.
+            try:
+                await s.append(
+                    self._key,
+                    self._record(
+                        ctx,
+                        result_hash=None,  # there is no result — do not hash the exception
+                        decision="failed",
+                        error_type=type(exc).__name__,
+                        error=str(exc)[:500],
+                    ),
+                )
+            except Exception:  # noqa: BLE001 — recording must never replace the real failure
+                pass
+        raise exc
 
 
 def egress(guardrail: Any) -> Egress:

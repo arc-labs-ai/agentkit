@@ -115,6 +115,12 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+MW_MEMO_TESTS = ("tests/middlewares/test_memoize_tool_identity.py",)
+MW_METER_TESTS = ("tests/middlewares/test_meter_stream_and_cache.py",)
+MW_SEM_TESTS = ("tests/middlewares/test_semantic_memoize_tool_turns.py",)
+MW_TRACE_TESTS = ("tests/middlewares/test_tracing_records_failures.py",)
+MW_COMPACT_TESTS = ("tests/middlewares/test_compaction_broken_tracer.py",)
+MW_AUDIT_TESTS = ("tests/middlewares/test_audit_records_failures.py",)
 STREAMS_TESTS = ("tests/kernel/test_streams.py",)
 BREAKER_TESTS = ("tests/kernel/test_kernel.py",)
 CONC_TESTS = ("tests/kernel/test_concurrency.py",)
@@ -157,6 +163,63 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── middlewares: bill it, key it, and report the failure ────────────────
+    Mutant(
+        tag="mw",
+        why="tool calls share one memo key again, so every tool returns the first one's result",
+        path="agentkit/middlewares/memoize.py",
+        before="    if _is_tool_call(call):",
+        after="    if False:",
+        tests=MW_MEMO_TESTS,
+    ),
+    Mutant(
+        tag="mw",
+        why="an abandoned stream escapes the meter, so real tokens are billed unseen",
+        path="agentkit/middlewares/meter.py",
+        before="        except BaseException:",
+        after="        except _NeverRaisedByAnything:",
+        tests=MW_METER_TESTS,
+    ),
+    Mutant(
+        tag="mw",
+        why="a cache hit is charged again, tripping a ceiling on money never spent",
+        path="agentkit/middlewares/meter.py",
+        before='        if ctx.call.meta.get("cache_hit"):',
+        after="        if False:",
+        tests=MW_METER_TESTS,
+    ),
+    Mutant(
+        tag="mw",
+        why="a tool-call turn poisons the semantic cache, so the loop returns an empty answer",
+        path="agentkit/middlewares/memoize.py",
+        before='        if content and not getattr(result, "tool_calls", None):',
+        after="        if content is not None:",
+        tests=MW_SEM_TESTS,
+    ),
+    Mutant(
+        tag="mw",
+        why="a failed call is exported as a successful span, hiding provider errors",
+        path="agentkit/middlewares/tracing.py",
+        before="            stack.__exit__(type(exc), exc, exc.__traceback__)",
+        after="            stack.close()",
+        tests=MW_TRACE_TESTS,
+    ),
+    Mutant(
+        tag="mw",
+        why="a misbehaving tracer kills the run from the compaction seam",
+        path="agentkit/middlewares/compaction.py",
+        before="with _safe_trace_span(",
+        after="with _unsafe_trace_span(",
+        tests=MW_COMPACT_TESTS,
+    ),
+    Mutant(
+        tag="mw",
+        why="a failed side effect leaves no audit record at all",
+        path="agentkit/middlewares/egress_audit.py",
+        before="    async def on_error(",
+        after="    async def _disabled_on_error(",
+        tests=MW_AUDIT_TESTS,
+    ),
     # ── a failure must never look like a clean finish ───────────────────────
     Mutant(
         tag="merge",

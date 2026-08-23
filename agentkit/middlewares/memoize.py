@@ -22,8 +22,23 @@ from agentkit.kernel.resilience import stable_hash as _hash
 from agentkit.kernel.types import Chunk, LLMResult, Usage
 
 
+def _is_tool_call(call: Call) -> bool:
+    """Is this unit of work a tool execution rather than a chat turn?
+
+    ``call.kind`` is the authority, but ``default_key`` is also called
+    directly in tests and by callers holding a bare object with only a
+    ``request``, so fall back to the shape of the request itself: a
+    ``ToolRequest`` has ``name`` + ``arguments``; a ``ChatRequest`` has
+    neither."""
+    kind = getattr(call, "kind", None)
+    if kind is not None:
+        return bool(kind == "tool")
+    r = call.request
+    return getattr(r, "name", None) is not None and hasattr(r, "arguments")
+
+
 def default_key(call: Call) -> str:
-    """The exact-match cache key for a chat call: every field that changes the
+    """The exact-match cache key for a unit of work: every field that changes the
     answer, and nothing else.
 
     Exists so ``memoize()`` works with no arguments. It previously required a
@@ -35,8 +50,24 @@ def default_key(call: Call) -> str:
     Tools are reduced to their names: two registries advertising the same tools
     should share a cache entry, and a schema's description text changing does
     not change the answer.
+
+    **Tool calls key on (tool name, arguments).** This module's own docstring
+    advertises ``memoize`` for "read-only tool reuse", but the key hashed only
+    chat fields — ``model`` / ``messages`` / ``tools`` / ``temperature`` /
+    ``max_tokens`` / ``response_format`` — and a ``ToolRequest`` has *none* of
+    them, so every tool call in a scope hashed to the SAME key. Measured:
+    ``weather(SF)`` ran once, then ``stock(AAPL)`` and ``weather(NYC)`` both
+    returned ``{'city': 'SF'}`` and the stock tool never executed at all. A
+    cache that returns one tool's answer for another tool is worse than no
+    cache. The ``memo:tool:`` prefix keeps the two key spaces disjoint so a
+    tool key can never alias a chat key either.
     """
     r = call.request
+    if _is_tool_call(call):
+        return "memo:tool:" + stable_hash(
+            {"tool": getattr(r, "name", None), "arguments": getattr(r, "arguments", None)},
+            length=24,
+        )
     return "memo:" + stable_hash(
         {
             "model": getattr(r, "model", None),
@@ -182,7 +213,17 @@ def semantic_memoize(
             yield x
         result = _assemble(call, items)
         content = getattr(result, "content", None)  # only cache LLM-shaped, serializable results
-        if content is not None:
+        # Only a FINAL, textual answer is reusable. The condition used to be
+        # ``content is not None``, which happily stored a tool-REQUESTING turn:
+        # such a turn assembles to ``content == ""`` with ``tool_calls`` set, and
+        # the hit path above reconstructs an ``LLMResult`` from ``metadata`` only
+        # — ``tool_calls`` is not stored, so it cannot be restored. Measured: a
+        # ReAct turn cached on call 1 (``tool_calls=(weather(SF),) content=''``)
+        # came back on call 2 as ``tool_calls=() content=''``, i.e. the loop
+        # silently returned an empty answer instead of calling the tool.
+        # Both halves matter: an empty ``content`` is not an answer, and a turn
+        # carrying ``tool_calls`` is an instruction to act, not a result to reuse.
+        if content and not getattr(result, "tool_calls", None):
             cid = _hash(query)
             await vec.upsert(
                 call.ctx.scope,

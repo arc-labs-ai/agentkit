@@ -39,6 +39,7 @@ from typing import Any
 from agentkit.capabilities.compaction import Compactor
 from agentkit.kernel.middleware import BaseMiddleware, MiddlewareContext
 from agentkit.kernel.types import Operation
+from agentkit.middlewares.tracing import _safe_trace_span
 
 
 def _approx_tokens(messages: list[Any]) -> int:
@@ -64,54 +65,53 @@ class Compaction(BaseMiddleware):
 
             run = ctx.run
             trace = getattr(run, "trace", None)
-            span_cm = (
-                trace.span(
-                    "context.compact",
-                    "internal",
-                    **{
-                        "agentkit.context.strategy": strategy,
-                        "agentkit.context.tokens_before": tokens_before,
-                        "agentkit.context.messages_before": len(messages_before),
-                    },
-                )
-                if trace is not None
-                else None
-            )
 
-            if span_cm is not None:
-                with span_cm as span:
-                    compacted = await self._compactor.compact(messages_before, run)
-                    # A compactor that returns an empty list would hand
-                    # the provider a zero-message request — 400 or
-                    # hallucination depending on the vendor. Fall back
-                    # to the original messages and stamp the trace so
-                    # the operator sees the rejection.
-                    if not compacted:
-                        compacted = messages_before
-                        with contextlib.suppress(Exception):
-                            span.set("agentkit.context.compaction_rejected", "empty_result")
-                    # ChatRequest is frozen — rewrite via replace,
-                    # reassign the mutable request slot on the underlying
-                    # Call. The setter on MiddlewareContext.request writes
-                    # into ``self._call.request`` for exactly this path.
-                    ctx.request = replace(ctx.request, messages=compacted)
-                    tokens_after = _approx_tokens(compacted)
-                    with contextlib.suppress(Exception):
-                        span.set("agentkit.context.tokens_after", tokens_after)
-                        span.set("agentkit.context.messages_after", len(compacted))
-                        span.set(
-                            "agentkit.context.messages_dropped",
-                            max(0, len(messages_before) - len(compacted)),
-                        )
-            else:
+            # ``trace.span(...)`` used to be called RAW here — open, enter and
+            # exit all unguarded — which contradicted this module's own
+            # docstring ("Both side-effects are best-effort — a misbehaving
+            # tracer can never break the run"). Measured: a ``TracePort`` that
+            # raises on span open killed the run with
+            # ``RuntimeError: boom on span open: 'context.compact'``, and one
+            # that raises on span CLOSE killed it just as dead — the attribute
+            # writes inside were individually suppressed, so the only
+            # unprotected parts were the three the tracer actually controls.
+            # ``tracing._safe_trace_span`` is the single place that already
+            # solves this (noop span on a broken open, absorbed close, and the
+            # real exception still forwarded to a working span); reuse it
+            # rather than growing a second, subtly-different guard.
+            with _safe_trace_span(
+                trace,
+                "context.compact",
+                "internal",
+                {
+                    "agentkit.context.strategy": strategy,
+                    "agentkit.context.tokens_before": tokens_before,
+                    "agentkit.context.messages_before": len(messages_before),
+                },
+            ) as span:
                 compacted = await self._compactor.compact(messages_before, run)
+                # A compactor that returns an empty list would hand
+                # the provider a zero-message request — 400 or
+                # hallucination depending on the vendor. Fall back
+                # to the original messages and stamp the trace so
+                # the operator sees the rejection.
                 if not compacted:
-                    # Defensive fallback outside the traced path — same
-                    # rationale as the traced branch above: never install
-                    # an empty message rewrite that breaks the run.
                     compacted = messages_before
+                    with contextlib.suppress(Exception):
+                        span.set("agentkit.context.compaction_rejected", "empty_result")
+                # ChatRequest is frozen — rewrite via replace,
+                # reassign the mutable request slot on the underlying
+                # Call. The setter on MiddlewareContext.request writes
+                # into ``self._call.request`` for exactly this path.
                 ctx.request = replace(ctx.request, messages=compacted)
                 tokens_after = _approx_tokens(compacted)
+                with contextlib.suppress(Exception):
+                    span.set("agentkit.context.tokens_after", tokens_after)
+                    span.set("agentkit.context.messages_after", len(compacted))
+                    span.set(
+                        "agentkit.context.messages_dropped",
+                        max(0, len(messages_before) - len(compacted)),
+                    )
 
             # Drop a span event on the SURROUNDING span (typically `chat`)
             # so the chat timeline reflects the reduction. The dedicated
