@@ -75,7 +75,10 @@ async def main() -> None:
             print(f"[crash after] {ev.text}")
             break  # simulate worker exit
 
-    print(f"[checkpoint] versions saved: {await port.list_versions(run_id)}")
+    # NOT ``list_versions(run_id)``: the tool loop namespaces its slot per
+    # agent, so the versions live under ``ReActCognition.checkpoint_slot(...)``.
+    slot = ReActCognition.checkpoint_slot(run_id, agent.name)
+    print(f"[checkpoint] versions saved: {await port.list_versions(slot)}")
 
     # ── attempt 2: a fresh worker picks up ────────────────────────────
     # Rebuilding the Agent + Ctx models a process restart — no in-memory
@@ -107,9 +110,23 @@ iteration index — then continues from there. When a **suspended**
 snapshot exists, `drive` refuses to run and expects
 `agent.resume(run_id, decisions, ctx)` to be called instead.
 
-The `run_id` is `RunContext.correlation_id`. Two `RunContext`s that
-share a `correlation_id` and a `Checkpointer` are the same run for
-this purpose.
+The `run_id` you pass to `agent.resume(...)` is
+`RunContext.correlation_id`, and two `RunContext`s sharing a
+`correlation_id` and a `Checkpointer` are the same run for this
+purpose.
+
+**The storage slot is not that id.** Each producer namespaces its own,
+so a coordinator and its children cannot clobber one another:
+
+| Producer | Slot |
+|---|---|
+| Tool loop | `ReActCognition.checkpoint_slot(run_id, agent_name)` → `{run_id}:agent:{name}` |
+| `PlanPolicy` gate | `{run_id}:plan` |
+| Coordinator policies, `Workflow` | `{run_id}` |
+
+So `port.list_versions(run_id)` returns `[]` for a leaf agent's run —
+ask for the slot instead. `resume()` re-derives it for you; only
+direct `CheckpointPort` introspection needs to know.
 
 ## Gotchas
 

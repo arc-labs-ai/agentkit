@@ -75,7 +75,7 @@ async def latency_log(call: Call, next):
     t = time.perf_counter()
     result: LLMResult = await next(call)
     dt = time.perf_counter() - t
-    call.ctx.services.trace.event("latency", {"ms": dt * 1000})
+    call.ctx.services.trace.add_event_to_current_span("latency", {"ms": dt * 1000})
     return result
 ```
 

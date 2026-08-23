@@ -23,7 +23,7 @@ on every chat call. Overspend raises `MeterExceeded`; the cognition
 propagates it; the run stops. Totals are invariant under concurrent
 workers — a coordinator fanning ten researchers out on the same
 `Budget` cannot race past its ceiling. Same primitive scoped by tenant:
-`Quota(max_rpm=..., max_tpm=..., max_cost_usd_per_window=...)` on the
+`Quota(max_rpm=..., max_tpm=..., max_usd=...)` on the
 same `meter()` chain.
 
 ### 2. Every side-effecting tool goes through an approval gate you actually control
@@ -225,7 +225,7 @@ port = InMemoryCheckpointStore()
 
 # Production (arc-agentkit[postgres]):
 from agentkit.adapters.checkpoint import PostgresCheckpointStore
-port = PostgresCheckpointStore(dsn="postgres://...")
+port = PostgresCheckpointStore(pool="postgres://...")
 
 checkpointer = Checkpointer(port=port)   # same object, different backing
 ```

@@ -317,7 +317,7 @@ from langchain_core.chat_history import BaseChatMessageHistory
 # ... configure a store, wrap the chain, deal with session ids ...
 
 # agentkit — history goes through the same Checkpointer that powers HITL:
-checkpointer = Checkpointer(port=PostgresCheckpointStore(dsn=DSN))
+checkpointer = Checkpointer(port=PostgresCheckpointStore(pool=DSN))
 # Continue the same session:
 ctx = RunContext(correlation_id=session_id, scope=scope,
                  services=Services(..., checkpointer=checkpointer))
@@ -363,12 +363,21 @@ similarity threshold.
 
 ```python
 # LangChain (LangSmith): hosted, external.
-# agentkit: Evaluator is a Protocol in agentkit.capabilities.
-from agentkit import Evaluator  # Protocol
+# agentkit: Evaluator is a CONCRETE class you configure, not a Protocol.
+# It runs `code_checks` (cheap, deterministic) and an optional LLM judge.
+from agentkit import Evaluator
 
-class MyEvaluator:
-    async def evaluate(self, agent, task, result, ctx) -> dict[str, float]:
-        return {"faithfulness": ..., "concision": ...}
+evaluator = Evaluator(
+    code_checks={
+        "mentions_source": lambda out: "http" in str(out),
+        "is_concise": lambda out: len(str(out)) < 1200,
+    },
+    judge_model="claude-sonnet-4-6",
+    rubric='Score 0..1 for faithfulness. Return JSON {"score": float, "reason": str}.',
+)
+
+scores = evaluator.code_evals(result.output)          # dict[str, bool]
+verdict = await evaluator.judge(ctx, goal=task, output=result.output)
 ```
 
 Wire it into your test loop; agentkit doesn't ship a runner because

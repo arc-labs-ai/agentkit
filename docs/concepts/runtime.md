@@ -113,7 +113,7 @@ can call the middleware chain without wiring a full services bundle.
 1. **One context per request.** Never fabricate a fresh `RunContext`
    inside a middleware or tool; forward the one you were given.
 2. **Cancellation is cooperative.** Every `await` point in an agent
-   loop must be reachable to `cancel.raise_if_set()`; blocking
+   loop must be reachable to `cancel.raise_if_cancelled()`; blocking
    primitives are banned on the hot path.
 3. **Budgets are enforced, not advisory.** `Budget` overspend raises
    `MeterExceeded` (from `agentkit.runtime.meter`) and unwinds the

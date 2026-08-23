@@ -11,6 +11,38 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — documentation that promised behaviour the code did not have
+
+An audit of every concrete, checkable claim in `docs/` against the code. This
+failure mode had already produced five bugs earlier in this release, so it was
+worth hunting systematically rather than opportunistically.
+
+- **`resume-after-crash.md` and `examples/06` were stale because of a change in
+  this same release.** Slots are namespaced per producer now
+  (`{run_id}:agent:{name}`), so `port.list_versions(run_id)` returns `[]` for a
+  leaf agent — the recipe printed exactly that and `examples/06` failed on an
+  `AssertionError`. Both fixed, and the recipe gained the slot table. Every
+  example now runs.
+- **`capabilities.md` claimed "each capability is a small, typed Protocol".**
+  Only `Compactor` and `SchemaAdapter` are; `RequestBuilder`, `Guardrail`,
+  `Evaluator` and `Checkpointer` are concrete classes. Replaced with a table
+  saying which is which and how each is substituted.
+- **`from-langchain.md` told users to implement `Evaluator.evaluate()`.** No
+  such method exists and nothing calls it — the real surface is `code_evals()`
+  plus `judge(ctx, *, goal, output)`. Rewritten against the actual class.
+- **`spend-budget-and-quota.md` said `register_model` fixes `$0.00` spend.** It
+  does not: `ModelEntry` has no price field and the price table is separate, so
+  a reader following that advice kept an unbounded budget. Replaced with the
+  `pricing=` callable, which is the seam that actually works.
+- **`mental-models/03` said best-effort failures arrive as raw exceptions**,
+  detectable via `isinstance(res, BaseException)`. They are `Failure`, a plain
+  frozen dataclass — so that check misses every one.
+- Non-existent APIs in copy-paste blocks: `Quota(max_cost_usd_per_window=)`,
+  `PostgresCheckpointStore(dsn=)` (the signature takes a pool),
+  `cancel.raise_if_set()`, `trace.event()`, `Budget._check`.
+
+Each corrected claim was re-verified by running it, not by re-reading it.
+
 ### Fixed — `security()` was uncallable, and `Prompt.render()` ignored its inputs
 
 Two documented entry points that failed on first contact.

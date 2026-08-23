@@ -153,8 +153,15 @@ async def demo_park_and_budget() -> None:
     # The load-bearing bit: a CURRENT checkpoint exists, written before the
     # stop. Under on_exceeded="raise" the exception would have unwound past
     # every _save and left a stale snapshot recording half the spend.
-    saved = await cp.resume("run-1")
-    assert saved is not None
+    # The slot is namespaced PER PRODUCER, so it is not the bare run id: a
+    # coordinator writing at ``run-1`` and its children writing at
+    # ``run-1:agent:<name>`` would otherwise collide, and a child finishing
+    # normally would delete its parent's in-progress state.
+    # ``agent.resume(run_id, ...)`` re-derives this for you; only direct port
+    # introspection like this needs to know.
+    slot = ReActCognition.checkpoint_slot("run-1", agent.name)
+    saved = await cp.resume(slot)
+    assert saved is not None, f"no checkpoint at {slot!r}"
     print(f"\ncheckpoint   : status={saved.status} iteration={saved.state['iteration']}")
     print(f"               records ${saved.state['usage']['cost']:.2f} of the ${budget.spent()} spent")
     print("               -> nothing lost; raise the ceiling and resume")

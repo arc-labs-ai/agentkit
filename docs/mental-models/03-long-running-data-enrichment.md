@@ -126,7 +126,11 @@ the returned `list[R]` — even if row 12 completes before row 8, the result
 slot ordering is preserved because each task has its own index.
 
 **t=~30s — Chunk 0 done (~100 rows).** `run_agents` returns 100 `AgentResult`
-entries (best_effort mode; each raised exception lands as a raw `Exception` object in its slot (not a `Failure`); callers detect via `isinstance(res, BaseException)`). `per_batch_wf` folds the results into `done_ids` and
+entries (best_effort mode; each raised exception is wrapped into a `Failure` —
+a plain frozen dataclass carrying `category` / `source` / `message` / `cause`,
+NOT an exception — so callers detect with `isinstance(res, Failure)`.
+`isinstance(res, BaseException)` misses every one of them, because a `Failure`
+is data rather than something raised). `per_batch_wf` folds the results into `done_ids` and
 computes cumulative cost.
 
 **t=~30s — First checkpoint save.** `per_batch_wf` calls:

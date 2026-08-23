@@ -90,7 +90,7 @@ The `meter()` middleware calls `guard(...)` on every entry in
 after. Both hit an async lock so totals are invariant under concurrent
 workers.
 
-`Budget._check` uses **strict greater-than** (`spent > max`) — a call
+`Budget._verdict` uses **strict greater-than** (`spent > max`) — a call
 whose cost lands exactly on the ceiling completes; the next one trips
 `MeterExceeded`. The same applies to `max_calls`: the first call
 lands on `calls == 1`, then the second call's `guard` sees `1 > 1`
@@ -234,11 +234,27 @@ child is granted exactly what was reserved for it and no more.
   pre-flight estimate. Set the ceiling slightly below your true limit,
   and use `on_exceeded="stop"` so the overshoot is recoverable rather
   than fatal.
-- **An unregistered model costs `$0.00`.** `pricing.cost()` returns
-  zero for a model it doesn't know, so a ceiling never fires and the
-  run is effectively unbounded. Declare the model in the
-  [model registry](provider-from-env.md) — the same table that routes
-  a name to a provider.
+- **An unpriced model costs `$0.00`.** `pricing.cost()` returns zero
+  for a model it doesn't know, so a ceiling never fires and the run is
+  effectively unbounded.
+
+    Registering the model in the [model registry](provider-from-env.md)
+    does **not** fix this — that table routes names to providers and
+    declares capabilities, and `ModelEntry` has no price field. The
+    price table is separate. Pass your own `pricing=` callable to the
+    provider instead:
+
+    ```python
+    def my_pricing(model: str, usage: Usage) -> float:
+        rate_in, rate_out = MY_RATES[model]          # $ per 1M tokens
+        return (usage.input_tokens * rate_in + usage.output_tokens * rate_out) / 1e6
+
+    llm = claude(api_key=..., pricing=my_pricing)
+    ```
+
+    It takes `(model, usage)` and returns dollars; `None` (the default)
+    uses the bundled table. If you meter spend, assume the bundled
+    table is stale for anything recent and supply your own.
 - **An over-precise *ceiling* is refused; an over-precise *charge* is
   quantized.** `Budget(max_cost_usd="0.0000001")` raises
   `MoneyPrecisionError` at construction, because a ceiling is your

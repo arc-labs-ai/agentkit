@@ -16,8 +16,25 @@ can be wired with — a `RequestBuilder` that assembles a prompt from
 sources, a `Compactor` that shrinks a growing context window, a
 `Guardrail` that vetoes a response, an `Evaluator` that scores it, a
 `Checkpointer` that snapshots the run so a crash can be resumed.
-Each capability is a small, typed Protocol; each has one or more
-implementations shipped in `agentkit.capabilities`.
+Each is a small, typed seam with one or more implementations shipped
+in `agentkit.capabilities`. Two of them — `Compactor` and
+`SchemaAdapter` — are literal `Protocol`s, so any object with the right
+shape satisfies them. The rest are concrete base classes you subclass
+or configure:
+
+| Capability | Kind | Substituted by |
+|---|---|---|
+| `Compactor` | `Protocol` | structural typing — any matching object |
+| `SchemaAdapter` | `Protocol` | structural typing |
+| `RequestBuilder` | class | subclass, or configure the shipped one |
+| `Guardrail` | class | subclass |
+| `Evaluator` | class | subclass (`code_evals` / `judge`) |
+| `Checkpointer` | class over `CheckpointPort` | swap the **port** |
+
+`Checkpointer` is the one worth understanding: it is a thin facade, and
+the substitutable seam beneath it is `CheckpointPort` — in-memory
+today, Postgres or Redis tomorrow — so you swap the port, not the
+capability.
 
 **Why it exists.** Compaction, grounding, guardrails, and durability
 are *pathologically* the wrong things to bake into a base class. They
@@ -48,9 +65,9 @@ handed to the cognition or policy that suspends/resumes.
 The shipped compactor strategies are
 `ImportanceFilteringCompactor`, `SlidingWindowCompactor`,
 `SummarizationCompactor`, and `TruncationCompactor` — all in
-`agentkit`. `Guardrail`, `Evaluator`, and `Checkpointer` ship as
-Protocols in `agentkit.capabilities`; implementations are yours to
-plug in.
+`agentkit`. `Guardrail` and `Evaluator` ship as base classes to subclass;
+`Checkpointer` is a concrete facade whose `CheckpointPort` is the part
+you swap.
 
 ```python
 from agentkit.capabilities import SlidingWindowCompactor, TruncationCompactor

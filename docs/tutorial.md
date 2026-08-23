@@ -296,7 +296,7 @@ if __name__ == "__main__":
 call goes through `meter()`, which calls `budget.guard` before the work
 and `budget.charge` after. Both take the budget's async lock — totals
 are invariant under concurrent workers, so you can fan out sub-agents
-without their spends racing. `Budget._check` uses strict greater-than
+without their spends racing. `Budget._verdict` uses strict greater-than
 (`spent > max`), so a call that lands exactly on the ceiling completes
 and the *next* one trips `MeterExceeded`. `ReActCognition` lets the
 exception propagate, which is the correct behaviour for a run that

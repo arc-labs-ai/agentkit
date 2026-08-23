@@ -86,7 +86,7 @@ ctx, output_adapter=None)`); `usage=Usage()`, `start_i=0`, `repaired=False`.
    LLMPort`.
 
 **t=4ms — Meter guard.** `meter()` middleware iterates
-`ctx.all_meters=[budget]` and calls `budget.guard(call)`. `Budget._check`
+`ctx.all_meters=[budget]` and calls `budget.guard(call)`. `Budget._verdict`
 verifies `spent_usd <= max_cost_usd (2.0)` and `calls <= max_calls (15)`.
 Pass — the middleware yields to the next hop.
 
