@@ -765,16 +765,35 @@ the shared one.
 
 ## What bites people
 
-!!! warning "`memoize()` on a chat chain needs `InMemoryStore`"
+!!! warning "`memoize()` on a chat chain: a typed `parsed` is not cached durably"
 
-    Chat memoization stores an `LLMResult` object. `InMemoryStore`
-    holds the object itself, so it works. Every durable adapter
-    serialises with `json.dumps`, so the same wiring raises
+    Chat memoization used to store an `LLMResult` **object**.
+    `InMemoryStore` holds objects, so it worked; every durable adapter
+    serialises with `json.dumps`, so the same wiring raised
     `TypeError: Object of type LLMResult is not JSON serializable` on
     the first cache write against `FileStore`, `RedisStore` or
-    `PostgresStore`. Tool-result memoization is fine on any of them —
-    a tool result is ordinary JSON. Until this is fixed, keep chat
-    memoization on the in-memory store.
+    `PostgresStore` — i.e. it failed for everyone who wired a cache
+    that outlives the process. A chat result is now stored
+    JSON-shaped and rebuilt on the way out (`tool_calls` come back as
+    real `ToolCall`s with frozen `arguments`; all five `Usage` fields
+    survive), so every store adapter caches a chat turn.
+
+    One field cannot follow: `LLMResult.parsed`, the typed object
+    `output_coerce()` produces. Rebuilding a Pydantic model or a
+    dataclass from JSON would mean importing a class named in a cache
+    entry. So the rule is **carry it or refuse the entry, never
+    downgrade it**: a JSON-native `parsed` (dict/list/str/int/float/
+    bool/`None`) round-trips, and anything else makes that call
+    uncacheable on a serialising store — the call runs, the caller
+    gets the complete typed result, nothing is stored, and a
+    `UserWarning` plus `call.meta["cache_stored"] = False` say so.
+    On `InMemoryStore` the typed object survives a hit as before.
+    Storing a `parsed=None` copy instead would mean a miss returning
+    `Plan(...)` and a hit returning `None` — a wrong answer beats a
+    missed cache hit only in a benchmark.
+
+    Tool-result memoization is unaffected on every adapter — a tool
+    result is ordinary JSON and always was.
 
 !!! warning "TTL is not uniform across store adapters"
 

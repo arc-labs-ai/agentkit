@@ -14,6 +14,7 @@ never stored, so failures are never cached.
 from __future__ import annotations
 
 import contextlib
+import warnings
 from collections.abc import AsyncIterator, Callable, Mapping
 from typing import Any
 
@@ -21,6 +22,7 @@ from agentkit.kernel.middleware import Call, Handler, Middleware, _assemble, _re
 from agentkit.kernel.resilience import idempotency_key, stable_hash
 from agentkit.kernel.resilience import stable_hash as _hash
 from agentkit.kernel.types import Chunk, LLMResult, Usage
+from agentkit.middlewares._memo_codec import decode_result, encode_result
 
 
 def _is_tool_call(call: Call) -> bool:
@@ -245,6 +247,43 @@ def _emit_cache_hit(call: Call, key: str) -> None:
         trace.add_event_to_current_span("cache.hit", cache_key=key)
 
 
+def _warn_uncacheable(
+    result: Any, cache_key: str, exc: BaseException, latch: dict[str, bool]
+) -> None:
+    """Say out loud that this call will never be cached on this store.
+
+    A silent skip would be the worst of both worlds: an operator who wired a `FileStore` for the
+    cache hit rate would keep paying for every call and see nothing to explain it. This repo has
+    a documented history of broad `except` clauses that report success, so the skip is
+    ANNOUNCED — a `UserWarning` (which pytest captures and a logging config can route), plus
+    `call.meta["cache_stored"] = False` for a programmatic reader on every occurrence, not just
+    the first.
+
+    The warning itself is latched per `memoize()` instance. Unlatched it fires on every call of
+    a structured-output chain — the exact shape that triggers it — and a warning printed a
+    thousand times is a warning nobody reads. `call.meta` is the un-latched channel.
+
+    Reached from the TOOL path too, and that is a deliberate widening: a read-only tool returning
+    an object its durable store cannot encode used to take the whole run down on the cache write.
+    A miss is safe; a crash on the way into a cache is not.
+    """
+    if latch["v"]:
+        return
+    latch["v"] = True
+    parsed = getattr(result, "parsed", None)
+    detail = f" (`parsed` is a {type(parsed).__name__})" if parsed is not None else ""
+    warnings.warn(
+        f"memoize(): this store cannot serialize the result for key {cache_key!r}"
+        f"{detail} — {type(exc).__name__}: {exc}. The call ran and its result is returned "
+        "UNCHANGED; nothing was cached, so every such call will hit the provider. Storing a "
+        "downgraded copy would make a cache HIT a different answer from a MISS, which is worse "
+        "than a miss. Make the parsed value JSON-native (a dict/list/str/int/float/bool) to "
+        "make it cacheable, or use an object store. Warned once per memoize() instance.",
+        UserWarning,
+        stacklevel=2,
+    )
+
+
 def memoize(
     *,
     key: Callable[[Call], str] = default_key,
@@ -272,6 +311,29 @@ def memoize(
     reports success for an action that never happened; a missed cache hit costs
     a re-execution. The asymmetry decides the default.
 
+    **A chat result is stored JSON-shaped** (:mod:`agentkit.middlewares._memo_codec`), because
+    it has to survive a DURABLE store. The middleware stored the assembled ``LLMResult``
+    object; ``InMemoryStore`` keeps objects, every durable adapter calls ``json.dumps``.
+    Measured, ``memoize()`` on a chat chain::
+
+        InMemoryStore : ok
+        FileStore     : TypeError: Object of type LLMResult is not JSON serializable
+
+    That is the first cache WRITE — the production wiring failed before it ever got far enough
+    to return a wrong answer — while the suite stayed green because every memoize test wires
+    ``InMemoryStore``. The codec carries all seven fields; ``tool_calls`` come back as real
+    ``ToolCall``s with FROZEN ``arguments``.
+
+    ``parsed`` is the field that cannot be carried unconditionally — it is an arbitrary caller
+    object, and rebuilding a Pydantic model from JSON would mean importing a class named in a
+    cache entry. The contract is **carry it or refuse the entry, never downgrade it**: a
+    JSON-native ``parsed`` round-trips, and anything else makes the call UNCACHEABLE on a
+    serializing store — the call runs, its result is returned unchanged and complete, nothing
+    is stored, and a ``UserWarning`` plus ``call.meta["cache_stored"] = False`` say so. On an
+    object store (``InMemoryStore``) the typed object survives a hit exactly as before. Storing
+    a ``parsed=None`` copy instead would recreate the bug commit ``5bb104a`` fixed, one layer
+    down: a miss returning ``Plan(...)`` and a hit returning ``None``.
+
     ``allow_side_effects=True`` is the deliberate opt-in and exists for exactly
     one caller today — :func:`idempotent`, whose contract ("an at-least-once
     retry must not re-fire") *wants* replay and pays for it with a key scoped
@@ -285,6 +347,8 @@ def memoize(
             return False
         return allow_side_effects or not _side_effecting(call)
 
+    warned = {"v": False}  # one uncacheable warning per memoize() instance
+
     async def mw(call: Call, nxt: Handler) -> AsyncIterator[Any]:
         if not _cacheable(call) or (store or call.ctx.store) is None:
             async for x in nxt(call):
@@ -292,15 +356,42 @@ def memoize(
             return
         s = store or call.ctx.store
         ran = {"v": False}
+        produced: dict[str, Any] = {}  # the live result, iff produce() got as far as one
 
         async def produce() -> Any:
             ran["v"] = True  # runs only on a MISS
-            return _assemble(
+            result = _assemble(
                 call, [x async for x in nxt(call)]
             )  # a raised stream propagates → unstored
+            produced["r"] = result
+            # Chat only. A TOOL result is already whatever JSON-ish payload the tool
+            # returned — durable stores took it fine before this fix — so it goes to the
+            # store untouched; wrapping it would re-key nothing but would change the format
+            # of every live tool entry for no gain.
+            return encode_result(result) if call.kind == "chat" else result
 
         cache_key = _scoped(call, key(call))
-        result = await s.get_or_set(cache_key, produce, ttl=ttl)
+        try:
+            stored = await s.get_or_set(cache_key, produce, ttl=ttl)
+        except (TypeError, ValueError) as exc:
+            # NARROW, and each half is a specific `json.dumps` failure: `TypeError` for a
+            # value it cannot encode, `ValueError` for a circular one. Those are the two
+            # ways a store WRITE fails because of the SHAPE of the value rather than
+            # because the backend is unreachable — a `StoreUnavailable`, a connection
+            # error, a timeout still propagates into the run untouched, because a broken
+            # store is not something a cache layer should paper over.
+            if "r" not in produced:
+                raise  # the producer itself (or a HIT read) blew up — not ours to absorb
+            _warn_uncacheable(produced["r"], cache_key, exc, warned)
+            call.meta["cache_stored"] = False
+            for item in _result_to_stream(call, produced["r"]):
+                yield item
+            return
+        # Decode on BOTH paths, miss included. On a miss `get_or_set` hands back exactly what
+        # `produce` returned (the envelope), so decoding it means the miss and the hit return
+        # the same rebuilt shape — the asymmetry this whole codec exists to kill cannot hide
+        # in the one path that never touches the disk.
+        result = decode_result(stored) if call.kind == "chat" else stored
         if not ran["v"]:
             call.meta["cache_hit"] = True  # signal a hit to outer middlewares (audit → "deduped")
             _emit_cache_hit(call, cache_key)  # trace timeline: explain the missing provider span
