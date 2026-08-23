@@ -1545,6 +1545,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.middlewares.Egress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;Egress
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.middlewares.SecurityMiddleware" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1556,10 +1567,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#agentkit.middlewares.Egress" class="md-nav__link">
+  <a href="#agentkit.middlewares.security" class="md-nav__link">
     <span class="md-ellipsis">
       
-        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;Egress
+        <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;security
       
     </span>
   </a>
@@ -1886,6 +1897,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.middlewares.Egress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;Egress
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.middlewares.SecurityMiddleware" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1897,10 +1919,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#agentkit.middlewares.Egress" class="md-nav__link">
+  <a href="#agentkit.middlewares.security" class="md-nav__link">
     <span class="md-ellipsis">
       
-        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;Egress
+        <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;security
       
     </span>
   </a>
@@ -1999,6 +2021,16 @@ them to the <code>Invoker</code>. There are two kinds:</p>
 <p>Typical chat chain:  [tracing(), compaction(…), meter(), fallback([...]), retry(breaker=…)]
 Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit(), retry(breaker=…)]</p>
 <p>(<code>compaction</code> sits ahead of <code>meter</code> so the meter estimates tokens on the already-compacted transcript.)</p>
+<p>.. note::
+   <code>Egress</code> / <code>Audit</code> live in <code>egress_audit.py</code>, not <code>security.py</code>. A
+   submodule named <code>security</code> shadowed the <code>security()</code> factory re-exported
+   here — importing a submodule binds its name onto the parent package, and
+   that binding happened AFTER the <code>from .guard import security</code> line, so
+   <code>middlewares.egress_audit</code> was the MODULE and <code>security()</code> raised
+   <code>TypeError: 'module' object is not callable</code>. The module was renamed
+   rather than the binding patched, because reordering the imports is undone by
+   the formatter and an explicit re-bind is one more thing to forget.
+   <code>tests/meta/test_public_surface.py</code> now fails on any recurrence.</p>
 
 
 
@@ -2018,6 +2050,55 @@ Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit
 
 
 
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.middlewares.Egress" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">Egress</span>
+
+
+<a href="#agentkit.middlewares.Egress" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">Egress</span><span class="p">(</span><span class="n">guardrail</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            BaseMiddleware (agentkit.kernel.middleware.BaseMiddleware)" href="../kernel/#agentkit.kernel.BaseMiddleware">BaseMiddleware</a></code></p>
+
+
+
+        <p>A tool with <code>request.url_arg</code> set has that URL checked (SSRF + allowlist) before it can run.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-class">
 
@@ -2071,55 +2152,32 @@ the chat chain ahead of the model: <code>Invoker(llm=…, chat_middleware=[Secur
 
 </div>
 
-<div class="doc doc-object doc-class">
+
+<div class="doc doc-object doc-function">
 
 
+<h2 id="agentkit.middlewares.security" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">security</span>
 
-<h2 id="agentkit.middlewares.Egress" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">Egress</span>
 
-
-<a href="#agentkit.middlewares.Egress" class="headerlink" title="Anchor link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">Egress</span><span class="p">(</span><span class="n">guardrail</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span>
+<a href="#agentkit.middlewares.security" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">security</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="o">*</span><span class="p">,</span> <span class="n">patterns</span><span class="p">:</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            SecurityMiddleware (agentkit.middlewares.guard.SecurityMiddleware)" href="#agentkit.middlewares.SecurityMiddleware">SecurityMiddleware</a></span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
-            <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-internal" title="            BaseMiddleware (agentkit.kernel.middleware.BaseMiddleware)" href="../kernel/#agentkit.kernel.BaseMiddleware">BaseMiddleware</a></code></p>
 
+        <p>Factory returning a configured <code>SecurityMiddleware</code>.</p>
+<p>Matches the lowercase-factory convention every other middleware
+in this package follows (<code>tracing()</code>, <code>retry()</code>, <code>meter()</code>,
+etc.). Kept alongside the class so callers wanting fine-grained
+control can still pass <code>SecurityMiddleware(...)</code> directly.</p>
 
-
-        <p>A tool with <code>request.url_arg</code> set has that URL checked (SSRF + allowlist) before it can run.</p>
-
-
-
-
-
-
-
-
-
-
-
-<div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-
-
-  </div>
 
     </div>
 
 </div>
-
 
 <div class="doc doc-object doc-function">
 

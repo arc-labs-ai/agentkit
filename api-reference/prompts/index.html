@@ -1525,6 +1525,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label=" Prompt">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;inputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;render
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1839,6 +1867,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label=" Prompt">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;inputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;render
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1959,8 +2015,68 @@ specific template version.</p>
 
 
 
+<div class="doc doc-object doc-attribute">
 
 
+
+<h3 id="agentkit.prompts.Prompt.inputs" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">inputs</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-class-attribute"><code>class-attribute</code></small>
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#agentkit.prompts.Prompt.inputs" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">inputs</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="dataclasses.field">field</span></span><span class="p">(</span><span class="n"><span title="dataclasses.field(default_factory)">default_factory</span></span><span class="o">=</span><span class="n"><span title="tuple">tuple</span></span><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The placeholder names <code>template</code> declares, e.g. <code>("tenant", "tone")</code>
+for a template containing <code>{tenant}</code> and <code>{tone}</code>. Declared on the value
+so a caller can validate a prompt against its call site before a run, and so
+a stored prompt carries its own contract.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.prompts.Prompt.render" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">render</span>
+
+
+<a href="#agentkit.prompts.Prompt.render" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">render</span><span class="p">(</span><span class="o">**</span><span class="n">values</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="str">str</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Substitute the declared <code>inputs</code> and return the prompt text.</p>
+<p>With no <code>inputs</code> declared this is what it has always been — the
+stripped template — so every existing caller is unaffected.</p>
+<p>Substitution is a literal replacement of <code>{name}</code> for each DECLARED
+input, never <code>str.format</code>. That is deliberate: system prompts are full
+of braces that are not placeholders — a JSON Schema, an example payload,
+a code fence — and <code>format</code> would either raise <code>KeyError</code> on them or
+silently eat the doubling a user added to escape them. Replacing only
+the names the prompt declared leaves every other brace untouched.</p>
+<p>Raises <code>ValueError</code> on a missing or unexpected input rather than
+rendering a half-filled prompt. A <code>{tenant}</code> that reaches the model
+unsubstituted is not a crash, which is exactly the problem: it is a
+plausible-looking prompt that quietly describes the wrong task.</p>
+
+
+    </div>
+
+</div>
 
 
 
