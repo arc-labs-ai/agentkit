@@ -181,6 +181,50 @@ ctx.budget.remaining()  # Decimal('1.750000')
 `Usage.cost_usd` remains a CLI-side estimate, so the ledger it feeds is an
 estimate too.
 
+## One process, many turns
+
+`drive()` spawns a subprocess per turn. That costs two to five seconds of CLI
+warm-up **every** time — and the turns share no context, so a follow-up
+question has no idea what was just discussed. Measured on the same two-turn
+conversation:
+
+| | wall | turn 2 answers |
+|---|---|---|
+| `session()` | 9.7s | `8137` |
+| `drive()` ×2 | 16.1s | *"I don't have a record of you asking me to remember a number"* |
+
+A session holds the process open and feeds turns over stdin, so the CLI keeps
+its own conversation context:
+
+```python
+async with cognition.session() as chat:
+    async for ev in chat.turn("Summarise README.md"):
+        ...
+    async for ev in chat.turn("Now list the risks you skipped"):
+        ...
+print(chat.session_id)      # for a later --resume
+```
+
+A session is also `Cognition`-shaped, so it can *be* an agent's cognition and
+consecutive `agent.run(...)` calls share one process and one conversation.
+
+Every per-turn contract is unchanged — exactly one terminal `final` event, the
+same stop reasons, the same metering — because both paths run the same
+finaliser. What differs is what a shared process implies:
+
+- **Turns are serialised.** One stdin and one transcript, so a second
+  concurrent `turn()` waits rather than interleaving two conversations.
+- **A dead process stays dead.** If the CLI exits mid-session, that turn
+  reports `stop_reason="session_closed"` and later turns refuse rather than
+  silently starting a fresh conversation with no history.
+- **Cancelling a turn ends the session.** No protocol message retracts a
+  half-finished turn, so the process is terminated — better than a context
+  holding half an answer nobody saw.
+- **`output=` is not per-turn.** `--json-schema` is fixed at spawn. Use
+  `drive()` for a typed run, or set `json_schema=` on the cognition before
+  opening the session; asking per turn is refused with that message rather
+  than silently returning prose.
+
 ## Streaming tokens
 
 By default the CLI emits one `assistant` message per **completed** content

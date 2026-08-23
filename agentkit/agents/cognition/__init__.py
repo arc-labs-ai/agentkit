@@ -13,13 +13,14 @@ no Agent subclassing required.
 """
 
 from agentkit.agents.cognition.base import Cognition
-from agentkit.agents.cognition.claude_cli import ClaudeCliCognition
+from agentkit.agents.cognition.claude_cli import ClaudeCliCognition, ClaudeCliSession
 from agentkit.agents.cognition.coordinator import CoordinatorCognition
 from agentkit.agents.cognition.react import ReActCognition
 from agentkit.agents.cognition.single_call import SingleCallCognition
 
 __all__ = [
     "ClaudeCliCognition",
+    "ClaudeCliSession",
     "Cognition",
     "CoordinatorCognition",
     "ReActCognition",

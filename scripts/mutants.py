@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+CLI_SESSION_TESTS = ("tests/agents/cognition/test_claude_cli_session.py",)
 CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
 CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
 CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
@@ -148,6 +149,87 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── one process, many turns ─────────────────────────────────────────────
+    Mutant(
+        tag="clisession",
+        why="a turn reads to EOF like a one-shot drive, so the session hangs forever",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='                    if payload.get("type") == "result":\n                        break',
+        after='                    if payload.get("type") == "__never":\n                        break',
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="the prompt is passed as an argv argument too, running a turn nobody asked for",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='        if stream_input:',
+        after="        if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="turns are not serialised, so two callers interleave one conversation",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        async with self._lock:",
+        after="        if True:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a turn is written into a process that has already exited",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                if proc.returncode is not None:",
+        after="                if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a closed session accepts turns, silently starting a fresh conversation",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                if self._closed or proc is None:",
+        after="                if proc is None:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a CLI that closed mid-turn is not noticed, so the turn reports success",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='                    raise _SessionClosed(\n                        "the CLI closed its output mid-turn; the session is over"\n                    )',
+        after="                    pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a dead session reads as a spawn failure rather than an ended conversation",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="            if isinstance(fatal_exc, _SessionClosed):",
+        after="            if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="per-turn structured output is accepted, silently returning prose",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                    if schema_requested:",
+        after="                    if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a cancelled turn leaves the process alive with half an answer in its context",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                if cancelled and proc is not None and proc.returncode is None:",
+        after="                if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="closing the session kills the CLI instead of ending the conversation",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                if proc.stdin is not None and not proc.stdin.is_closing():\n                    proc.stdin.close()",
+        after="                pass",
+        tests=CLI_SESSION_TESTS,
+    ),
     # ── token streaming, without showing every sentence twice ───────────────
     Mutant(
         tag="clistream",
@@ -290,8 +372,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clibudget",
         why="the pre-flight refusal is categorised as a spawn failure, so it reads unresumable",
         path="agentkit/agents/cognition/claude_cli.py",
-        before='            if type(fatal_exc).__name__ == "MeterExceeded":',
-        after="            if False:",
+        before='            elif type(fatal_exc).__name__ == "MeterExceeded":',
+        after="            elif False:",
         tests=CLI_BUDGET_TESTS,
     ),
     Mutant(

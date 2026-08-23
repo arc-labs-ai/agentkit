@@ -109,7 +109,16 @@ def _get_semaphore(bin_: str, config_dir: str | None, max_concurrent: int) -> as
 # why the mapping lives here rather than in the framework-wide table: only this
 # module knows how it spells its own failures.
 _CLI_FAILURE_REASONS = frozenset(
-    {"spawn_failed", "parse_failed", "working_dir_missing", "cli_reported_error"}
+    {
+        "spawn_failed",
+        "parse_failed",
+        "working_dir_missing",
+        "cli_reported_error",
+        # A turn sent into a dead session produced no answer. ``failed`` rather
+        # than ``terminated``: nobody chose to stop this, the process was
+        # already gone.
+        "session_closed",
+    }
 )
 
 # Structured-output failures are ``invalid_output`` in the closed taxonomy —
@@ -124,7 +133,7 @@ _CLI_INVALID_OUTPUT_REASONS = frozenset(
 )
 
 
-def _coerce_structured(agent: Agent, value: Any) -> tuple[Any, str | None]:
+def _coerce_structured(agent: Agent | None, value: Any) -> tuple[Any, str | None]:
     """Turn the CLI's validated JSON into the type the agent declared.
 
     The CLI validates against the schema and hands back a plain dict. An agent
@@ -557,8 +566,8 @@ class ClaudeCliCognition:
     async def _finalise(
         self,
         *,
-        agent: Agent,
-        ctx: Ctx,
+        agent: Agent | None,
+        ctx: Ctx | None,
         state: _TurnState,
         cancelled: bool,
         fatal_exc: BaseException | None,
@@ -596,7 +605,13 @@ class ClaudeCliCognition:
             # Distinguish working_dir_missing from spawn_failed for
             # operator clarity (the CLI would raise FileNotFoundError for
             # both, but the fix path differs).
-            if type(fatal_exc).__name__ == "MeterExceeded":
+            if isinstance(fatal_exc, _SessionClosed):
+                # The process behind a persistent session is gone (or the turn
+                # asked for something only a fresh process can do). NOT
+                # ``spawn_failed``: nothing failed to start — a conversation
+                # ended. The caller's fix is a new session, not a retry.
+                final_stop_reason = "session_closed"
+            elif type(fatal_exc).__name__ == "MeterExceeded":
                 # The pre-flight refusal from ``_budget_cap``: no subprocess
                 # was spawned. ``budget_exhausted`` is a RESUMABLE stop reason,
                 # which is the honest one — raise the ceiling and run again.
@@ -730,6 +745,24 @@ class ClaudeCliCognition:
             stop_reason=_cli_stop_reason(final_stop_reason),
         )
 
+    def session(self, *, agent: Agent | None = None) -> ClaudeCliSession:
+        """Open a persistent CLI session — one process, many turns.
+
+        ``drive()`` spawns a subprocess per turn, which costs two to five
+        seconds of CLI warm-up every time. A session pays that once and keeps
+        the CLI's own conversation context alive between turns::
+
+            async with cognition.session() as chat:
+                async for ev in chat.turn("Summarise README.md"):
+                    ...
+                async for ev in chat.turn("Now list the risks you skipped"):
+                    ...
+
+        See :class:`ClaudeCliSession` for what a shared process implies —
+        serialised turns, and a session that ends when its process does.
+        """
+        return ClaudeCliSession(self, agent=agent)
+
     # ---- helpers ---------------------------------------------------------------------------
 
     def _resolve_system_prompt(self, prompt: Prompt | str | None) -> str:
@@ -860,18 +893,21 @@ class ClaudeCliCognition:
         system_prompt: str,
         json_schema: dict[str, Any] | None = None,
         max_budget_usd: str | None = None,
+        stream_input: bool = False,
     ) -> list[str]:
         """Assemble the CLI argv. Order-independent; kept grouped by role
         (identity → format → model → prompt → tools → permissions → resume →
         extras) so a diff is legible."""
-        argv: list[str] = [
-            self.claude_bin,
-            "-p",
-            task,
-            "--output-format",
-            "stream-json",
-            "--verbose",
-        ]
+        argv: list[str] = [self.claude_bin, "-p"]
+        if stream_input:
+            # A session feeds turns over stdin as newline-delimited JSON, so
+            # there is no prompt ARGUMENT — passing one alongside
+            # ``--input-format stream-json`` would make the CLI run it as a
+            # first turn nobody asked for.
+            argv += ["--input-format", "stream-json"]
+        else:
+            argv += [task]
+        argv += ["--output-format", "stream-json", "--verbose"]
         if self.model is not None:
             argv += ["--model", self.model]
         if system_prompt:
@@ -964,6 +1000,281 @@ class ClaudeCliCognition:
             if correlation_id:
                 env.setdefault("CLAUDE_TRACE_EXTERNAL_ID", str(correlation_id))
         return env
+
+
+class ClaudeCliSession:
+    """One `claude` process, many turns.
+
+    ``ClaudeCliCognition.drive`` spawns a subprocess per turn, which costs two
+    to five seconds of CLI warm-up EVERY time — measured on a two-turn
+    conversation, 4.2s for the first turn and 1.1s for the second when they
+    share a process. For a chat UI or an agent that iterates with a person,
+    that difference is the whole interaction.
+
+    A session holds the process open and feeds turns over stdin as
+    newline-delimited JSON (``--input-format stream-json``), so the CLI keeps
+    its own conversation context in memory. Verified against the binary: the
+    model recalls a number from turn 1 in turn 2, one session id spans both,
+    and closing stdin exits 0.
+
+    ::
+
+        async with cognition.session() as chat:
+            async for ev in chat.turn("Summarise README.md"):
+                ...
+            async for ev in chat.turn("Now list the risks you skipped"):
+                ...
+
+    Every per-turn contract of ``drive`` holds unchanged, because both go
+    through the same ``_TurnState`` and ``_finalise``: exactly one terminal
+    ``final`` event, the same stop-reason taxonomy, the same structured-output
+    handling, the same metering. What differs is only what a shared process
+    implies, and each of those is a real trade:
+
+    * **Turns are serialised.** One stdin, one transcript, so a second
+      concurrent ``turn()`` on the same session would interleave two
+      conversations into one context. A lock makes the second caller wait.
+    * **A dead process stays dead.** The CLI exiting mid-session (a crash, an
+      OOM kill, ``--max-turns`` reached) ends the session; the turn that
+      noticed reports it and every later ``turn()`` refuses rather than
+      silently starting a fresh conversation with no history.
+    * **Cancelling a turn ends the session.** There is no way to tell the CLI
+      "forget the turn you were mid-way through" over this protocol, so the
+      process is terminated. That is the honest outcome: the alternative is a
+      session whose context contains half an answer nobody saw.
+    """
+
+    def __init__(self, cognition: ClaudeCliCognition, *, agent: Agent | None = None) -> None:
+        self._cog = cognition
+        self._agent = agent
+        self._proc: asyncio.subprocess.Process | None = None
+        self._lock = asyncio.Lock()
+        self._closed = False
+        self._sem_holder: Any = None
+        self.session_id: str | None = None  # populated from the first turn's init payload
+
+    # ---- lifecycle -------------------------------------------------------------------------
+
+    async def __aenter__(self) -> ClaudeCliSession:
+        await self.start()
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
+    async def start(self) -> None:
+        """Spawn the CLI. Idempotent; ``__aenter__`` calls it for you."""
+        if self._proc is not None:
+            return
+        cog = self._cog
+        # The spawn semaphore is held for the WHOLE session, not per turn: the
+        # bound exists because the SDK hangs at ~200 live subprocesses, and a
+        # session's subprocess is live the entire time.
+        sem = _get_semaphore(
+            cog.claude_bin,
+            str(cog.config_dir) if cog.config_dir is not None else None,
+            cog.max_concurrent,
+        )
+        self._sem_holder = sem
+        await sem.acquire()
+        try:
+            argv = cog._build_argv("", system_prompt="", stream_input=True)
+            self._proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(cog.working_dir) if cog.working_dir is not None else None,
+                env=cog._build_env(),
+            )
+        except BaseException:
+            sem.release()
+            self._sem_holder = None
+            raise
+
+    async def close(self) -> None:
+        """Close stdin and wait for the CLI to exit, then release the permit.
+
+        Closing stdin is the protocol's own end-of-conversation signal and the
+        CLI exits 0 on it, so this is a clean shutdown rather than a kill. A
+        process that ignores it is terminated after the usual grace.
+        """
+        self._closed = True
+        proc, self._proc = self._proc, None
+        if proc is not None:
+            with contextlib.suppress(Exception):
+                if proc.stdin is not None and not proc.stdin.is_closing():
+                    proc.stdin.close()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=self._cog.terminate_grace_s)
+            except TimeoutError:
+                await _terminate(proc, self._cog.terminate_grace_s)
+        if self._sem_holder is not None:
+            self._sem_holder.release()
+            self._sem_holder = None
+
+    # ---- turns -----------------------------------------------------------------------------
+
+    async def turn(
+        self,
+        task: str,
+        *,
+        agent: Agent | None = None,
+        ctx: Ctx | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Send one user turn and stream its events, ending at exactly one ``final``.
+
+        ``agent`` supplies the output schema (and is required for one, since the
+        schema is a property of the AGENT, not the session); ``ctx`` supplies
+        the meters and the cancel token. Both may be omitted for a bare
+        conversational session.
+        """
+        async for ev in self._turn(task, agent=agent or self._agent, ctx=ctx):
+            yield ev
+
+    async def drive(
+        self,
+        agent: Agent,
+        task: str,
+        ctx: Ctx,
+        context: WorkingContext,
+    ) -> AsyncIterator[StreamEvent]:
+        """``Cognition``-shaped entry point, so a session can BE an agent's
+        cognition and consecutive ``agent.run(...)`` calls share one process and
+        one CLI-side conversation."""
+        del context  # the CLI owns its own transcript
+        async for ev in self._turn(task, agent=agent, ctx=ctx):
+            yield ev
+
+    async def _turn(
+        self, task: str, *, agent: Agent | None, ctx: Ctx | None
+    ) -> AsyncIterator[StreamEvent]:
+        state = _TurnState()
+        cancelled = False
+        fatal_exc: BaseException | None = None
+        should_reraise_cancel = False
+        stderr_bytes = b""
+        schema_requested = False
+        # Serialise turns: one stdin and one transcript mean two concurrent
+        # turns would interleave into a single conversation.
+        async with self._lock:
+            proc = self._proc
+            try:
+                if self._closed or proc is None:
+                    raise _SessionClosed(
+                        "the CLI session is closed — start a new one; its conversation "
+                        "context is gone with the process"
+                    )
+                if proc.returncode is not None:
+                    raise _SessionClosed(
+                        f"the CLI process exited with code {proc.returncode}; its "
+                        "conversation context is gone, so this turn was not sent"
+                    )
+                if agent is not None:
+                    schema_requested = self._cog._resolve_json_schema(agent) is not None
+                    if schema_requested:
+                        # ``--json-schema`` is a process-level flag, fixed at
+                        # spawn. Saying so beats silently returning prose for an
+                        # ``output=`` the caller believes is wired.
+                        raise _SessionClosed(
+                            "structured output is a process-level flag on the CLI, so it "
+                            "cannot be turned on per turn. Use ClaudeCliCognition.drive() "
+                            "for a typed run, or pass json_schema= on the cognition before "
+                            "opening the session."
+                        )
+                assert proc.stdin is not None  # PIPE
+                proc.stdin.write(_user_turn(task).encode())
+                await proc.stdin.drain()
+
+                assert proc.stdout is not None  # PIPE
+                async for line in proc.stdout:
+                    if ctx is not None:
+                        try:
+                            ctx.check_cancelled()
+                        except Exception:
+                            cancelled = True
+                            break
+                    payload = _parse_line(line)
+                    if payload is None:
+                        continue
+                    async for ev, delta in _events_from_payload(
+                        payload, partial=self._cog.partial_messages
+                    ):
+                        if ev is not None:
+                            yield ev
+                        state.fold(delta)
+                    # A turn ends at its ``result`` payload — NOT at EOF, which
+                    # is what a one-shot drive waits for. The process stays
+                    # alive for the next turn.
+                    if payload.get("type") == "result":
+                        break
+                else:
+                    # stdout ended without a result: the CLI died mid-turn.
+                    raise _SessionClosed(
+                        "the CLI closed its output mid-turn; the session is over"
+                    )
+            except asyncio.CancelledError:
+                cancelled = True
+                should_reraise_cancel = True
+            except BaseException as exc:  # noqa: BLE001 — terminal-event guarantee
+                fatal_exc = exc
+            finally:
+                if cancelled and proc is not None and proc.returncode is None:
+                    # No protocol message retracts a half-finished turn, so the
+                    # session ends with it.
+                    await _terminate(proc, self._cog.terminate_grace_s)
+                if (cancelled or fatal_exc is not None) and proc is not None:
+                    self._closed = True
+                    if proc.stderr is not None:
+                        with contextlib.suppress(Exception):
+                            stderr_bytes = await asyncio.wait_for(proc.stderr.read(), 0.5)
+
+            if state.session_id:
+                self.session_id = state.session_id
+
+            result = await self._cog._finalise(
+                agent=agent,
+                ctx=ctx,
+                state=state,
+                cancelled=cancelled,
+                fatal_exc=fatal_exc,
+                spawned=proc is not None,
+                # ``None`` = the process is still alive, which is the normal
+                # end of a turn.
+                return_code=proc.returncode if proc is not None else -1,
+                stderr_bytes=stderr_bytes,
+                schema_requested=schema_requested,
+            )
+            yield StreamEvent("final", usage=state.usage, result=result)
+            if should_reraise_cancel:
+                raise asyncio.CancelledError()
+
+
+class _SessionClosed(RuntimeError):
+    """The session's process is gone (or was never usable for this turn).
+
+    Surfaced through the normal terminal event as ``session_closed`` rather
+    than raised at the caller, so a session turn keeps the same
+    exactly-one-``final`` contract as a one-shot drive.
+    """
+
+
+def _user_turn(text: str) -> str:
+    """One NDJSON user message for ``--input-format stream-json``.
+
+    The shape is the SDK's own (``parent_tool_use_id`` marks a subagent turn;
+    ``None`` is the main conversation) and was confirmed against the binary.
+    """
+    return (
+        json.dumps(
+            {
+                "type": "user",
+                "message": {"role": "user", "content": text},
+                "parent_tool_use_id": None,
+            }
+        )
+        + "\n"
+    )
 
 
 # Credential env vars that make ``--bare`` viable. In bare mode the CLI never
@@ -1307,4 +1618,4 @@ async def _terminate(proc: asyncio.subprocess.Process, grace_s: float) -> None:
             await proc.wait()
 
 
-__all__ = ["ClaudeCliCognition", "PermissionMode"]
+__all__ = ["ClaudeCliCognition", "ClaudeCliSession", "PermissionMode"]

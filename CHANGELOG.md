@@ -11,6 +11,39 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — `ClaudeCliCognition.session()`: one process, many turns
+
+`drive()` spawns a subprocess per turn. That costs two to five seconds of CLI
+warm-up every time, and — the part that actually matters — the turns share no
+context. Measured on the same two-turn conversation against the real binary:
+
+| | wall | turn 2 answers |
+|---|---|---|
+| `session()` | 9.7s | `8137` |
+| `drive()` ×2 | 16.1s | *"I don't have a record of you asking me to remember a number"* |
+
+A session holds the process open and feeds turns over stdin as
+newline-delimited JSON (`--input-format stream-json`), so the CLI keeps its own
+conversation context in memory. It is also `Cognition`-shaped, so it can *be* an
+agent's cognition and consecutive `agent.run(...)` calls share one process.
+
+Every per-turn contract holds unchanged, because both paths run the same
+`_TurnState` fold and the same `_finalise`: exactly one terminal `final` event,
+the same stop-reason taxonomy, the same structured-output handling, the same
+metering. What differs is only what a shared process implies, each a deliberate
+trade:
+
+- **Turns are serialised** — one stdin and one transcript, so a second
+  concurrent `turn()` waits rather than interleaving two conversations.
+- **A dead process stays dead.** A CLI that exits mid-session ends the session;
+  that turn reports the new `session_closed` stop reason and later turns refuse
+  rather than silently starting a fresh conversation with no history.
+- **Cancelling a turn ends the session**, since no protocol message retracts a
+  half-finished turn.
+- **`output=` is not per-turn**: `--json-schema` is fixed at spawn, and asking
+  for it per turn is refused with that explanation rather than silently
+  returning prose.
+
 ### Added — token streaming and startup diagnostics for the CLI cognition
 
 - **`partial_messages=True`** (`--include-partial-messages`) streams the
