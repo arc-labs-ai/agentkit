@@ -362,13 +362,43 @@ def test_subclass_post_init_can_extend_the_freeze() -> None:
         signal.options.append("retire")
 
 
-def test_bare_super_in_post_init_is_the_trap_the_docstring_names() -> None:
-    """Pinned because it is a live footgun, not a hypothetical:
-    ``@dataclass(slots=True)`` cannot add slots in place, so it returns
-    a REPLACEMENT class, and the zero-argument ``super()`` closes over
-    the original one — which the instance is not an instance of. The
-    same code in a non-slotted subclass works, so the spelling looks
-    fine right up until someone adds ``slots=True``."""
+def test_a_subclass_post_init_must_chain_and_the_prescribed_spelling_always_works() -> None:
+    """A subclass that overrides ``__post_init__`` has to chain, or its payload
+    is never frozen. The docstring prescribes the EXPLICIT spelling —
+    ``SignalEnvelope.__post_init__(self)`` — and that is what this pins,
+    because it is the part that is true on every interpreter.
+
+    Zero-argument ``super()`` is deliberately NOT asserted either way. It used
+    to be a reliable footgun: ``@dataclass(slots=True)`` cannot add slots in
+    place, so it returns a REPLACEMENT class while the zero-arg ``super()``
+    closes over the original, which the instance is not an instance of. CPython
+    has since fixed that, and the fix landed mid-3.13:
+
+        3.12      TypeError
+        3.13.2    TypeError  (reworded)
+        3.13.14   works
+
+    An earlier version of this test asserted the raise, so it passed locally on
+    3.13.2 and failed CI on 3.13.14 — pinning a CPython BUG rather than this
+    module's contract. What actually matters is invariant across all three: the
+    payload ends up frozen. So that is what is asserted, whichever way the
+    interpreter goes.
+    """
+
+    @dataclass(slots=True, frozen=True)
+    class Prescribed(DataSignal):
+        items: list[str] = field(
+            default_factory=list, hash=False, metadata=FROZEN_PAYLOAD
+        )
+
+        def __post_init__(self) -> None:
+            SignalEnvelope.__post_init__(self)
+
+    # The prescribed form: works everywhere, and freezes.
+    sig = Prescribed(items=["a"])
+    assert sig.items == ("a",)
+    with pytest.raises(AttributeError):
+        sig.items.append("b")  # type: ignore[attr-defined]
 
     @dataclass(slots=True, frozen=True)
     class BareSuperSlots(DataSignal):
@@ -379,15 +409,19 @@ def test_bare_super_in_post_init_is_the_trap_the_docstring_names() -> None:
         def __post_init__(self) -> None:
             super().__post_init__()
 
-    # Match the substring both CPythons share, not either one's phrasing.
-    # 3.12 says "obj must be an instance or subtype of type"; 3.13 says
-    # "obj (instance of X) is not an instance or subtype of type". Pinning
-    # 3.12's wording turned a green 3.12 run into a red 3.13 one for a trap
-    # that behaves identically on both — the test was asserting the message,
-    # not the behaviour.
-    with pytest.raises(TypeError, match="instance or subtype"):
-        BareSuperSlots(items=["a"])
+    # Version-tolerant: either the interpreter refuses the zero-arg super, or
+    # it chains and the payload comes back frozen. The one outcome that would
+    # be a real defect — constructing successfully with an UNFROZEN payload —
+    # is excluded either way.
+    try:
+        built = BareSuperSlots(items=["a"])
+    except TypeError as exc:
+        assert "instance or subtype" in str(exc)
+    else:
+        assert built.items == ("a",), "chained but did not freeze"
 
+    # Without slots there is no replacement class, so bare super has always
+    # worked — that half is version-independent.
     @dataclass(frozen=True)
     class BareSuperNoSlots(DataSignal):
         items: list[str] = field(

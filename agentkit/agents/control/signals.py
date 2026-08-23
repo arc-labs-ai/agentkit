@@ -205,14 +205,23 @@ class SignalEnvelope:
                 ...                                # your normalisation
                 SignalEnvelope.__post_init__(self)
 
-        ``super().__post_init__()`` is the obvious spelling and it
-        raises ``TypeError: super(type, obj): obj must be an instance
-        or subtype of type`` in a ``slots=True`` subclass — measured on
-        3.12.6. ``@dataclass(slots=True)`` cannot add slots in place, so
-        it builds a REPLACEMENT class; the zero-argument ``super()``
-        closes over the original, which the instance is not an instance
-        of. Non-slotted subclasses are unaffected, which is worse, not
-        better: the spelling works until someone adds ``slots=True``.
+        ``super().__post_init__()`` is the obvious spelling, and whether
+        it works depends on your interpreter — which is the reason to
+        avoid it rather than a reason to shrug. ``@dataclass(slots=True)``
+        cannot add slots in place, so it builds a REPLACEMENT class, and
+        the zero-argument ``super()`` closes over the original, which the
+        instance is not an instance of. CPython fixed that, mid-3.13:
+
+            3.12      TypeError: ... must be an instance or subtype
+            3.13.2    TypeError: ... is not an instance or subtype
+            3.13.14   works
+
+        So on a supported interpreter the bare spelling may raise or may
+        not, and non-slotted subclasses were never affected at all — the
+        code works right up until someone adds ``slots=True`` on a
+        Python where it still bites. Naming the base is correct on every
+        version and needs no table to explain, which is why it is what
+        this prescribes.
 
         Otherwise compatible with ``slots=True``: slotted frozen
         dataclasses still route writes through ``object.__setattr__``,
