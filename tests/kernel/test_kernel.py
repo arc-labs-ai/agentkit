@@ -771,7 +771,13 @@ def test_permanent_probe_failure_does_not_wedge_the_breaker():
     assert br.state != "half_open", "the breaker wedged in half_open"
     assert br._fails == fails_before, "a PERMANENT error was counted as a health failure"
 
-    # The dependency is healthy — the very next call must get through.
+    # The dependency is healthy — a call after the next cooldown must get
+    # through. NOT the immediately-next call: releasing the probe restarts the
+    # cooldown, because not doing so made the breaker stop braking entirely
+    # (twenty calls reached a dead dependency in 2ms). The invariant here is
+    # "does not wedge FOREVER", which is what the wedge bug violated.
+    t["now"] += 11.0
+
     async def ok():
         return "healthy"
 
@@ -794,7 +800,10 @@ def test_baseexception_probe_does_not_wedge_the_breaker():
     with pytest.raises(asyncio.CancelledError):
         _run(run_with_resilience(cancelled, breaker=br, max_attempts=1, sleep=_nosleep))
     assert br.state != "half_open"
-    assert br.allow() is True  # a fresh probe is admitted
+    # A fresh probe after the next cooldown — releasing restarts it, so the
+    # gate is not open again instantly. "Not wedged" is the invariant.
+    t["now"] += 11.0
+    assert br.allow() is True
 
 
 def test_half_open_gate_self_releases_after_one_cooldown():
@@ -904,30 +913,68 @@ def test_release_probe_grants_no_health_credit():
     assert br._fails == before, "a neutral release must not look like a success"
 
 
-def test_a_permanently_failing_dependency_is_probed_every_call():
-    """Deliberate, and worth pinning because it looks like a missing backoff.
+def test_a_permanently_failing_dependency_is_probed_once_per_cooldown() -> None:
+    """This test previously asserted the OPPOSITE, and it was wrong.
 
-    ``release_probe`` does NOT restart the cooldown, so the next caller becomes
-    a fresh probe immediately. For a dependency returning 401 that means every
-    call reaches it and fails fast with the REAL error — which is the point. The
-    alternative is masking a contract failure behind a ``CircuitOpen`` that
-    classifies as TRANSIENT and invites a retry that can never succeed.
+    ``release_probe`` deliberately did not restart the cooldown, on the
+    reasoning that a permanently-failing dependency should keep surfacing its
+    real 401 rather than hide behind a ``CircuitOpen``. The effect was a breaker
+    that does not brake: with a 60s cooldown, twenty consecutive calls spanning
+    2ms ALL reached the dead dependency, because an already-elapsed cooldown
+    makes EVERY caller a fresh probe rather than just the next one.
 
-    Restarting the cooldown here would look like a tidy-up and would
-    reintroduce exactly that masking.
+    The premise was wrong anyway. ``run_with_resilience`` raises
+    ``CircuitOpen(...) from last``, so the real error is already reachable as
+    ``__cause__`` on the refused calls — nothing was being masked, the rate
+    limiting was simply absent.
     """
     t = {"now": 0.0}
-    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=60.0, clock=lambda: t["now"])
     br.record_failure()
-    t["now"] = 20.0
+    t["now"] = 61.0
+
+    reached = 0
+    for _ in range(20):
+        if br.allow():
+            reached += 1
+            br.release_probe()  # every call is a PERMANENT failure
+        t["now"] += 0.0001  # 0.1ms apart — well inside one cooldown
+
+    assert reached == 1, f"the breaker let {reached} calls through in 2ms"
+
+    # ...and it is not wedged: after a cooldown, one more probe is admitted.
+    t["now"] += 61.0
     assert br.allow()
 
-    admitted = []
-    for _ in range(3):
-        br.release_probe()
-        admitted.append(br.allow())  # clock NOT advanced
 
-    assert admitted == [True, True, True]
+def test_a_refused_call_still_carries_the_failure_that_opened_the_breaker() -> None:
+    """The reason restarting the cooldown costs nothing: a refused call carries
+    the original exception as ``__cause__``, so a caller diagnosing an outage
+    is not left staring at a bare ``CircuitOpen``.
+
+    My first version of this test used a 401 to open the breaker and never got
+    a ``CircuitOpen`` at all — because PERMANENT errors deliberately do not
+    count toward the threshold, so a 401 never opens it. Only transient
+    failures do, which is exactly the shape a breaker is for.
+    """
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=60.0, clock=lambda: t["now"])
+
+    async def transient():
+        raise TimeoutError("upstream timed out")
+
+    with pytest.raises(TimeoutError):
+        _run(run_with_resilience(transient, breaker=br, max_attempts=1, sleep=_nosleep))
+    assert br.state == "open"
+
+    async def anything():
+        return "unreachable"
+
+    with pytest.raises(CircuitOpen) as exc:
+        _run(run_with_resilience(anything, breaker=br, max_attempts=1, sleep=_nosleep))
+
+    assert isinstance(exc.value.__cause__, TimeoutError)
+    assert "timed out" in str(exc.value.__cause__)
 
 
 def test_backoff_delay_survives_huge_attempt_numbers():
@@ -1049,3 +1096,64 @@ def test_the_lock_does_not_break_equality_or_repr() -> None:
     (lock_field,) = [f for f in dataclasses.fields(a) if f.name == "_lock"]
     assert lock_field.compare is False, "a lock in `==` breaks value semantics"
     assert lock_field.repr is False, "a lock in `repr` is noise"
+
+
+def test_retries_actually_back_off() -> None:
+    """A refactor moved `await asleep(backoff_delay(...))` below `return result`
+    in an `else:` block, where it was unreachable. Every retry became a hot loop
+    with zero delay — the retry storm `backoff_delay` exists to prevent.
+
+    `ruff` did not flag the dead code and no test covered it; the injected
+    `sleep=` simply stopped being called. Measured before the fix: three
+    attempts produced `sleep calls: []`.
+    """
+    slept: list[float] = []
+
+    async def record(delay: float) -> None:
+        slept.append(delay)
+
+    attempts = {"n": 0}
+
+    async def flaky() -> str:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise TimeoutError("transient")
+        return "ok"
+
+    assert _run(run_with_resilience(flaky, max_attempts=3, sleep=record)) == "ok"
+    assert attempts["n"] == 3
+    assert len(slept) == 2, f"expected a backoff between each retry, got {slept}"
+    assert all(d > 0 for d in slept)
+
+
+def test_a_call_that_succeeds_first_time_does_not_sleep() -> None:
+    """POSITIVE CONTROL: putting the backoff back on the retry path must not put
+    it on the success path — a delay after every successful call would be a
+    latency regression on the overwhelmingly common case."""
+    slept: list[float] = []
+
+    async def record(delay: float) -> None:
+        slept.append(delay)
+
+    async def fine() -> str:
+        return "ok"
+
+    assert _run(run_with_resilience(fine, max_attempts=3, sleep=record)) == "ok"
+    assert slept == []
+
+
+def test_a_permanent_failure_does_not_sleep_before_giving_up() -> None:
+    """POSITIVE CONTROL: a PERMANENT error raises immediately, so there must be
+    no backoff before it — sleeping before a failure that can never succeed is
+    pure added latency."""
+    slept: list[float] = []
+
+    async def record(delay: float) -> None:
+        slept.append(delay)
+
+    async def permanent() -> str:
+        raise ValueError("401 unauthorized")
+
+    with pytest.raises(ValueError):
+        _run(run_with_resilience(permanent, max_attempts=3, sleep=record))
+    assert slept == []

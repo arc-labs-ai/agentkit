@@ -158,6 +158,12 @@ class CircuitBreaker:
     # lock would force all four to become coroutines. The cost is one
     # uncontended acquire against an outbound network call.
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    # The failure that opened the breaker, so a call REFUSED later can still say
+    # why. ``run_with_resilience``'s own ``last`` is a local, so a separate
+    # invocation that gets ``CircuitOpen`` had nothing to chain from and the
+    # caller saw a bare "circuit open: upstream" with no diagnosis. Excluded
+    # from ``==``/``repr`` for the same reason as the lock.
+    _last_error: BaseException | None = field(default=None, repr=False, compare=False)
 
     def allow(self) -> bool:
         """Admit this caller, or refuse. The `half_open` state is itself the
@@ -225,12 +231,22 @@ class CircuitBreaker:
             self._fails = 0
             self.state = "closed"
 
-    def record_failure(self) -> None:
+    def record_failure(self, exc: BaseException | None = None) -> None:
+        """Count a failure. ``exc`` is optional and remembered only so a later
+        refused call can name what went wrong."""
         with self._lock:
+            if exc is not None:
+                self._last_error = exc
             self._fails += 1
             if self.state == "half_open" or self._fails >= self.fail_threshold:
                 self.state = "open"
                 self._opened_at = self.clock()
+
+    @property
+    def last_error(self) -> BaseException | None:
+        """The failure that opened the breaker, or ``None``. Lets a refused call
+        report a cause instead of a bare ``CircuitOpen``."""
+        return self._last_error
 
     def release_probe(self) -> None:
         """Hand the HALF_OPEN probe slot back after an outcome that says NOTHING
@@ -245,17 +261,26 @@ class CircuitBreaker:
         ``half_open`` forever, because the only exits were those two methods.
 
         So this is the third, neutral edge: consume nothing, grant nothing. The
-        state returns to OPEN and the cooldown clock is **not** restarted, so the
-        already-elapsed cooldown still holds and the very next caller is admitted
-        as a fresh probe. A dependency that only ever answers with PERMANENT
-        errors therefore keeps failing fast (the correct, un-masked error reaches
-        the caller) instead of being hidden behind a ``CircuitOpen`` that
-        classifies as TRANSIENT and invites a retry that can never succeed.
+        state returns to OPEN and the cooldown RESTARTS.
+
+        Restarting it is a correction. The first version deliberately did not,
+        reasoning that a permanently-failing dependency should keep surfacing
+        its real 401 rather than hide behind a ``CircuitOpen``. The effect was a
+        breaker that does not brake: with a 60s cooldown, twenty consecutive
+        calls spanning 2ms ALL reached the dead dependency, because an
+        already-elapsed cooldown makes every caller a fresh probe, not just the
+        next one.
+
+        The premise was wrong anyway — ``run_with_resilience`` raises
+        ``CircuitOpen(...) from last``, so the real error is already reachable
+        as ``__cause__`` on the calls that are refused. Nothing was being
+        masked; the rate limiting was simply absent.
         """
         with self._lock:
             if self.state != "half_open":
                 return  # nothing in flight — CLOSED / OPEN are unaffected
             self.state = "open"
+            self._opened_at = self.clock()
 
 
 def _stable_default(o: Any) -> Any:
@@ -385,7 +410,9 @@ async def run_with_resilience(
             # postmortem can reach the exception that opened the breaker —
             # a bare ``CircuitOpen`` would discard exactly the failure
             # class the breaker exists to surface.
-            raise CircuitOpen(f"circuit open: {breaker.name}") from last
+            raise CircuitOpen(f"circuit open: {breaker.name}") from (
+                last if last is not None else breaker.last_error
+            )
         try:
             result = await fn()
         except CircuitOpen:
@@ -400,7 +427,7 @@ async def run_with_resilience(
             # unrelated to dependency health.
             if breaker is not None:
                 if cls is not ErrorClass.PERMANENT:
-                    breaker.record_failure()
+                    breaker.record_failure(exc)
                 else:
                     # ...but the call still CONSUMED the half-open probe slot,
                     # and skipping the report left the breaker wedged in
@@ -412,6 +439,14 @@ async def run_with_resilience(
                     breaker.release_probe()
             if cls is ErrorClass.PERMANENT or attempt == max_attempts:
                 raise
+            # Back off before the next attempt. This belongs HERE, on the
+            # retrying path, not after the loop body: refactoring this function
+            # into try/except/except/else moved it below ``return result`` in
+            # the ``else`` block, where it is unreachable — every retry became a
+            # hot loop with zero delay, which is the retry storm ``backoff_delay``
+            # exists to prevent. ``ruff`` did not flag it and no test covered it;
+            # measured, 3 attempts produced `sleep calls: []`.
+            await asleep(backoff_delay(attempt, rng=rng))
         except BaseException:
             # ``CancelledError`` / ``SystemExit`` never reach the ``except
             # Exception`` above, so a probe that ended this way was the other
@@ -424,5 +459,4 @@ async def run_with_resilience(
             if breaker is not None:
                 breaker.record_success()
             return result
-            await asleep(backoff_delay(attempt, rng=rng))
     raise (last if last is not None else RuntimeError("run_with_resilience: no attempt ran"))  # pragma: no cover

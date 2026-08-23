@@ -186,6 +186,30 @@ REGISTRY_TESTS = (
 
 MUTANTS: tuple[Mutant, ...] = (
     Mutant(
+        tag="regress",
+        why="the retry backoff becomes dead code again, turning retries into a hot loop",
+        path="agentkit/kernel/resilience.py",
+        before="            await asleep(backoff_delay(attempt, rng=rng))",
+        after="            pass",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="release_probe stops restarting the cooldown, so the breaker never brakes",
+        path="agentkit/kernel/resilience.py",
+        before="            self.state = \"open\"\n            self._opened_at = self.clock()",
+        after="            self.state = \"open\"",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="a refused call loses the failure that opened the breaker",
+        path="agentkit/kernel/resilience.py",
+        before="                last if last is not None else breaker.last_error",
+        after="                last",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
         tag="schema",
         why="tuple containers fall through unremapped, so nested models keep the wrong alias",
         path="agentkit/capabilities/output_schema/pydantic_adapter.py",
@@ -246,8 +270,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="deferred",
         why="a state transition stops taking the lock, so two threads can both be the probe",
         path="agentkit/kernel/resilience.py",
-        before="    def record_failure(self) -> None:\n        with self._lock:",
-        after="    def record_failure(self) -> None:\n        if True:",
+        before="        with self._lock:\n            if exc is not None:",
+        after="        if True:\n            if exc is not None:",
         tests=BREAKER_TESTS,
     ),
     Mutant(
