@@ -42,11 +42,17 @@ identities — the same line ``signals.py`` draws.
 from __future__ import annotations
 
 import copy
+from types import MappingProxyType
 from typing import Any
 
+# NOT a format string — nothing calls `.format()` on it, so doubled braces
+# would reach the user verbatim. They did: the message shipped reading
+# `field={{**obj.field, ...}}`, and the test that was supposed to guard it
+# matched only on `dataclasses.replace`, which is loose enough to pass either
+# way. The test now asserts the exact text.
 _FROZEN_MSG = (
     "this payload belongs to a frozen value and cannot be mutated in place. "
-    "Build a new one instead: dataclasses.replace(obj, field={{**obj.field, ...}})"
+    "Build a new one instead: dataclasses.replace(obj, field={**obj.field, ...})"
 )
 
 
@@ -137,6 +143,23 @@ def deep_freeze(value: Any) -> Any:
     """
     if isinstance(value, (FrozenDict, FrozenList)):
         return value
+    if isinstance(value, MappingProxyType):
+        # Normalised, not passed through. A ``MappingProxyType`` is already
+        # immutable, so leaving it alone looks harmless — and it silently
+        # defeats the reason this module exists. Measured with it passed
+        # through: a caller who handed a proxy to ``ToolCall(arguments=...)``
+        # got it stored VERBATIM, and then
+        # ``json.dumps(tc.arguments)`` raised
+        # ``Object of type mappingproxy is not JSON serializable`` on a payload
+        # the type advertises as serialisable. The defensive ``dict(...)``
+        # unwraps scattered around the codebase covered only the TOP level of
+        # that, so a nested proxy still broke.
+        #
+        # Only the stdlib proxy is rewritten. Other ``Mapping`` subclasses are
+        # left alone: they are the project's own types, and swapping them for a
+        # FrozenDict would be the "silently reconstruct a user object" line
+        # this module draws everywhere else.
+        return FrozenDict({k: deep_freeze(v) for k, v in value.items()})
     if isinstance(value, dict):
         return FrozenDict({k: deep_freeze(v) for k, v in value.items()})
     if isinstance(value, list):

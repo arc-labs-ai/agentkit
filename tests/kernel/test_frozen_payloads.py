@@ -66,9 +66,21 @@ def test_every_list_mutation_route_is_closed(mutate) -> None:
 
 
 def test_the_error_says_how_to_do_it_properly() -> None:
-    """A refusal that does not name the alternative just gets worked around."""
-    with pytest.raises(TypeError, match=r"dataclasses\.replace"):
+    """A refusal that does not name the alternative just gets worked around.
+
+    Asserts the EXACT text, not a substring. The loose version of this test
+    matched only the `dataclasses.replace` substring and happily passed while the message
+    shipped with doubled braces — `field={{**obj.field, ...}}` — because the
+    constant had been written as if it were a format string that nothing ever
+    formats. Every user hitting a frozen payload read that.
+    """
+    with pytest.raises(TypeError) as ei:
         FrozenDict({"a": 1})["a"] = 2
+    assert str(ei.value) == (
+        "this payload belongs to a frozen value and cannot be mutated in place. "
+        "Build a new one instead: dataclasses.replace(obj, field={**obj.field, ...})"
+    )
+    assert "{{" not in str(ei.value) and "}}" not in str(ei.value)
 
 
 # ── the constraints that ruled out MappingProxyType ────────────────────────
@@ -184,3 +196,44 @@ def test_a_frozen_payload_does_not_alias_the_callers_object() -> None:
     frozen = deep_freeze(mine)
     mine["a"].append(2)
     assert frozen["a"] == [1], "the frozen payload must not track the caller's object"
+
+
+def test_a_mapping_proxy_is_normalised_not_passed_through() -> None:
+    """A `MappingProxyType` handed in must not survive as one.
+
+    It is already immutable, so passing it through looks harmless — and it
+    silently defeats the reason this module exists. Measured while it WAS
+    passed through: a caller who handed a proxy to `ToolCall(arguments=...)`
+    got it stored verbatim, and `json.dumps(tc.arguments)` then raised
+    `Object of type mappingproxy is not JSON serializable` on a payload the
+    type advertises as serialisable. The defensive `dict(...)` unwraps around
+    the codebase covered only the TOP level, so a nested proxy still broke.
+    """
+    from types import MappingProxyType
+
+    frozen = deep_freeze(MappingProxyType({"q": "hi", "n": MappingProxyType({"a": 1})}))
+    assert isinstance(frozen, FrozenDict)
+    assert isinstance(frozen["n"], FrozenDict), "a NESTED proxy must be normalised too"
+    assert json.loads(json.dumps(frozen)) == {"q": "hi", "n": {"a": 1}}
+    with pytest.raises(TypeError):
+        frozen["q"] = "x"
+
+
+def test_other_mapping_subclasses_are_left_alone() -> None:
+    """POSITIVE CONTROL for the narrowness of the rule above.
+
+    Only the stdlib proxy is rewritten. A project's own `Mapping` type is
+    returned by identity — swapping it for a `FrozenDict` would be the
+    "silently reconstruct a user object" line this module refuses to cross
+    everywhere else.
+    """
+    from collections.abc import Mapping
+
+    class MyMapping(Mapping):
+        def __init__(self, d): self._d = dict(d)
+        def __getitem__(self, k): return self._d[k]
+        def __iter__(self): return iter(self._d)
+        def __len__(self): return len(self._d)
+
+    mine = MyMapping({"a": 1})
+    assert deep_freeze(mine) is mine
