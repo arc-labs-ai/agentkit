@@ -560,6 +560,137 @@ def test_toolcall_arguments_hash_is_deterministic() -> None:
     assert stable_hash({"tc": tc1}) == stable_hash({"tc": tc2})
 
 
+# ── ToolCall / Message hashability ───────────────────────────────────────────
+#
+# ``arguments`` is a ``MappingProxyType``, and a mappingproxy is
+# UNHASHABLE — so the immutability guarantee silently cost the frozen
+# dataclass its generated ``__hash__``, and took ``Message``,
+# ``PrefixContext`` and ``FrozenContext`` down with it. Measured before
+# the fix::
+#
+#     hash(ToolCall("c1", "search", {"q": "hi"}))    TypeError: unhashable type: 'dict'
+#     hash(Message("assistant", tool_calls=(tc,)))   TypeError: unhashable type: 'dict'
+#
+# ``ToolCall.__hash__`` hashes ``(id, name)`` only. These tests pin both
+# halves of that trade: that hashing WORKS whatever the model put in
+# ``arguments``, and that ``__eq__`` still sees the arguments, because
+# dedup correctness (``WorkingContext.merge(mode="union")``) rides on
+# equality, not on the hash.
+
+
+def test_toolcall_is_hashable_with_nested_json_arguments() -> None:
+    """Arguments come from decoded provider JSON, so nested lists/dicts are the
+    NORMAL case, not an edge case. Hashability must not depend on what the
+    model happened to emit."""
+    tc = ToolCall("c1", "search", {"q": "hi", "filters": [{"k": [1, 2]}, None], "n": {"deep": {}}})
+    assert isinstance(hash(tc), int)
+    assert {tc} == {tc}
+
+
+def test_toolcall_with_empty_arguments_is_hashable() -> None:
+    """The degenerate payload — a no-arg tool — shares the code path."""
+    assert isinstance(hash(ToolCall("c1", "ping")), int)
+
+
+def test_message_carrying_tool_calls_is_hashable() -> None:
+    """The failure that actually shipped was one level up: a Message hashes its
+    ``tool_calls`` tuple, so an assistant turn that requested a tool was
+    unhashable while a plain user turn was not."""
+    tc = ToolCall("c1", "search", {"q": {"nested": ["json"]}})
+    msg = Message("assistant", "", tool_calls=(tc,))
+    assert isinstance(hash(msg), int)
+    assert len({msg, Message("assistant", "", tool_calls=(tc,))}) == 1
+
+
+def test_toolcall_hash_ignores_arguments_while_eq_does_not() -> None:
+    """The whole design in one assertion. Hashing a SUBSET is sound because the
+    invariant only requires equal objects to hash equally — so two calls that
+    differ only in arguments may share a bucket, but must NOT compare equal, or
+    union-mode dedup would silently drop a distinct tool call."""
+    a = ToolCall("c1", "search", {"q": "alpha"})
+    b = ToolCall("c1", "search", {"q": "beta"})
+    assert hash(a) == hash(b)  # same bucket — deliberate
+    assert a != b  # ...but not the same call
+    assert len({a, b}) == 2  # so the set keeps both
+
+
+def test_toolcall_hash_does_not_read_the_payload_at_all() -> None:
+    """O(1), structurally proven rather than timed: a 100_000-key arguments
+    dict hashes IDENTICALLY to a 1-key one, which is only possible if the
+    payload is never walked. Measured 0.130 µs vs 0.128 µs; a
+    ``stable_hash``-based hash measured 4.99 µs vs 87.8 ms on the same pair.
+    The hash runs once per message per union merge, so payload-linear here
+    would be a fan-in-sized regression."""
+    small = ToolCall("c1", "search", {"q": "hi"})
+    huge = ToolCall("c1", "search", {f"k{i}": {"v": [i, str(i)]} for i in range(100_000)})
+    assert hash(small) == hash(huge)
+    assert small != huge
+
+
+def test_toolcall_hash_separates_distinct_ids_and_names() -> None:
+    """The other side of the bucket trade: identity IS in the hash, so the
+    common case — distinct provider-issued call ids — spreads across buckets
+    instead of degrading a set to a linear scan."""
+    base = ToolCall("c1", "search", {"q": "x"})
+    assert hash(base) != hash(ToolCall("c2", "search", {"q": "x"}))
+    assert hash(base) != hash(ToolCall("c1", "lookup", {"q": "x"}))
+
+
+def test_toolcall_with_reused_id_but_different_name_is_unequal() -> None:
+    """A provider echoing an id it already used (retry, replay, a buggy
+    adapter) must not collapse two different tools into one entry."""
+    a = ToolCall("c1", "search", {"q": "x"})
+    b = ToolCall("c1", "delete_everything", {"q": "x"})
+    assert a != b
+    assert len({a, b}) == 2
+
+
+def test_toolcall_survives_pickle_round_trip() -> None:
+    """``__deepcopy__`` covered ``copy.deepcopy``; ``pickle`` had no hook and
+    hit the same stdlib limitation head-on::
+
+        pickle.dumps(tc)  TypeError: cannot pickle 'mappingproxy' object
+
+    Tool calls reach durable stores (checkpointer, replay recorder) and a
+    ``FrozenContext`` is advertised as shareable across an agent boundary —
+    which means pickle once that boundary is a process. ``__reduce__`` rebuilds
+    through the constructor, so the round trip comes back FROZEN, not as a
+    plain dict."""
+    import pickle
+    from types import MappingProxyType
+
+    original = ToolCall("c1", "search", {"q": "hello", "nested": {"k": [1, 2, 3]}})
+    clone = pickle.loads(pickle.dumps(original))
+
+    assert clone == original
+    assert hash(clone) == hash(original)
+    assert isinstance(clone.arguments, MappingProxyType)
+    assert clone.arguments["nested"] == {"k": [1, 2, 3]}
+    with pytest.raises(TypeError):
+        clone.arguments["q"] = "mutated"  # type: ignore[index]
+
+
+def test_toolcall_construction_and_access_are_unchanged() -> None:
+    """POSITIVE CONTROL: adding ``__hash__`` / ``__reduce__`` must not disturb
+    the constructor, the field defaults, or read access — passes identically
+    before and after the fix."""
+    tc = ToolCall("c1", "search", {"q": "hello"})
+    assert (tc.id, tc.name) == ("c1", "search")
+    assert tc.arguments["q"] == "hello"
+    assert dict(tc.arguments) == {"q": "hello"}
+    assert ToolCall("c2", "ping").arguments == {}
+    assert tc == ToolCall("c1", "search", {"q": "hello"})
+
+
+def test_toolcall_equality_still_compares_arguments() -> None:
+    """POSITIVE CONTROL for the ``__eq__`` half specifically: ``hash=False``-style
+    hashing must never leak into equality. Passes before and after."""
+    assert ToolCall("c1", "s", {"a": 1}) != ToolCall("c1", "s", {"a": 2})
+    assert ToolCall("c1", "s", {"a": 1}) == ToolCall("c1", "s", {"a": 1})
+    # Insertion order is not identity — the underlying dicts compare equal.
+    assert ToolCall("c1", "s", {"a": 1, "b": 2}) == ToolCall("c1", "s", {"b": 2, "a": 1})
+
+
 # ── stable_hash: property + adversarial ──────────────────────────────────────
 
 

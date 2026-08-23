@@ -202,10 +202,12 @@ class FrozenContext:
 
     All fields are immutable: ``PrefixContext`` is frozen,
     ``messages`` is a tuple, ``scratchpad`` is a sorted tuple of
-    (key, value) pairs (so equality + hash are deterministic), and
+    (key, value) pairs (so equality is deterministic), and
     ``journal_entries`` is a tuple. A snapshot is therefore safe to
     share across agent boundaries without locking and to use as a
-    memoization-cache key.
+    memoization-cache key — see ``__hash__`` for what "hashable" can
+    and cannot mean when two of those tuples hold arbitrary
+    user objects.
 
     Round-tripping: ``WorkingContext(prefix=f.prefix,
     messages=list(f.messages), scratchpad=dict(f.scratchpad))`` is
@@ -216,6 +218,66 @@ class FrozenContext:
     messages: tuple[Message, ...]
     scratchpad: tuple[tuple[str, object], ...]
     journal_entries: tuple[Any, ...] = ()
+
+    def __hash__(self) -> int:
+        """Hash the transcript axis + the scratchpad KEYS. Never the scratchpad
+        VALUES, never the journal entries.
+
+        The docstring above has always promised a memoization-cache key, and
+        the type could not deliver it. The tuples are frozen CONTAINERS, but
+        two of them hold objects the framework does not own, so the generated
+        all-fields hash inherited whatever the caller put in. Measured before
+        this fix::
+
+            hash(WorkingContext().note("k", "v").freeze())        1304396713497489601
+            hash(WorkingContext().note("plan", {}).freeze())      TypeError: unhashable type: 'dict'
+
+        ``update_scratchpad({"plan": {...}})`` is the DOCUMENTED API, so the
+        promise broke on ordinary use, and it broke by value rather than by
+        type — the same code path works until a caller stores a dict.
+
+        Values are excluded because there is no honest alternative: a
+        scratchpad value is any Python object, and a snapshot that is hashable
+        only when the agent happened to store scalars is not a cache key, it is
+        a trap. Keys are kept because they are ``str`` by construction and cost
+        nothing (O(#keys) over interned strings), and they are the part that
+        actually varies between the snapshots a memoizer sees — a context that
+        has recorded a ``plan`` note differs from one that has not, even when
+        the plan itself is opaque.
+
+        ``journal_entries`` is excluded outright rather than reduced to a key
+        like the scratchpad: entries are project-defined mutation types
+        parameterising ``JournalEntryT``, very often plain dicts, so there is no
+        ``str``-typed part to lift out — only the COUNT would be safe, and a
+        count is a poor discriminator. The journal already has its own
+        watermark-based identity (``MutationJournal.diff``), which a cache key
+        has no business duplicating.
+
+        Excluding all of that is sound rather than a workaround: ``__eq__``
+        still compares every field, and the hash invariant only requires EQUAL
+        objects to hash equally. Two snapshots differing only in a scratchpad
+        VALUE or a journal entry collide into one bucket and ``__eq__``
+        separates them there — a correct cache, one extra comparison.
+
+        Cost is O(#messages + #keys) and linear in practice — tuple hashes are
+        not cached, though the ``str`` hashes underneath them are. Measured on
+        tool-calling transcripts: 5.2 µs at 10 messages, 41 µs at 100, 396 µs
+        at 1000. Fine for a cache key computed once per snapshot; if you find
+        yourself hashing the same ``FrozenContext`` in a tight loop, hold the
+        key rather than recomputing it. That linearity is inherent to a
+        STRUCTURAL hash — the alternative is an identity hash, which would
+        break the equal-objects-hash-equally invariant this type needs to be a
+        cache key at all.
+
+        No ``__reduce__`` here, unlike ``ToolCall`` / ``Prompt`` /
+        ``SignalEnvelope``: ``FrozenContext`` holds no ``MappingProxyType`` of
+        its own, so once ``ToolCall`` pickles, so does a snapshot containing
+        one. A scratchpad holding a genuinely unpicklable value (an open
+        socket, a lambda) still fails to pickle — correctly, and that failure
+        is the caller's object, not this type's shape. Hashing such a snapshot
+        works, which is the point of splitting the two.
+        """
+        return hash((self.prefix, self.messages, tuple(k for k, _ in self.scratchpad)))
 
 
 # ── WorkingContext — the unified primary ────────────────────────────
@@ -387,7 +449,13 @@ class WorkingContext:
 
         ``mode="union"`` deduplicates messages by value before
         appending, so a parent merging two siblings doesn't end up
-        with the same observation twice.
+        with the same observation twice. "By value" means ``__eq__``:
+        the ``set`` below only uses ``Message.__hash__`` to pick a
+        bucket, so two tool-call messages that share a call id but
+        differ in arguments collide and both survive, as they must.
+        That hash exists only because ``ToolCall`` defines one — this
+        line raised ``TypeError: unhashable type: 'dict'`` for every
+        message carrying tool calls, i.e. on every real fan-in.
         """
         if mode == "union":
             seen = set(self.messages)

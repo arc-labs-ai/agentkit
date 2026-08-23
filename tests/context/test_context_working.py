@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from agentkit.context import (
     AllOf,
     ApproxTokenCounter,
@@ -38,7 +40,7 @@ from agentkit.context import (
     Tagged,
     WorkingContext,
 )
-from agentkit.kernel.types import Message
+from agentkit.kernel.types import Message, ToolCall
 
 
 def _run(coro):
@@ -59,6 +61,18 @@ def _tool(text: str, *, name: str | None = None) -> Message:
 
 def _system(text: str) -> Message:
     return Message("system", text)
+
+
+def _tool_call_turn(call_id: str = "c1", **arguments) -> Message:
+    """An assistant turn that requested a tool — the shape EVERY message has on
+    the coordinator fan-in path, and the shape none of the original merge tests
+    used. ``arguments`` defaults to nested JSON because that is what a provider
+    actually sends back."""
+    return Message(
+        "assistant",
+        "",
+        tool_calls=(ToolCall(call_id, "search", arguments or {"q": {"terms": ["a", "b"]}}),),
+    )
 
 
 def _make(prefix: str = "sys", **kw) -> WorkingContext:
@@ -119,6 +133,54 @@ def test_merge_union_dedupes_messages():
     parent.merge(sibling, mode="union")
     # Only the NEW message from `sibling` lands; the shared "y" doesn't repeat.
     assert [m.content for m in parent.messages] == ["x", "y", "z"]
+
+
+def test_merge_union_dedupes_tool_call_messages():
+    """The bug ``mode="union"`` shipped with. Dedup does ``set(self.messages)``,
+    and a Message carrying tool calls was UNHASHABLE (``ToolCall.arguments`` is
+    a mappingproxy), so the documented parent-merging-two-siblings path raised::
+
+        parent.merge(sibling, mode="union")
+        TypeError: unhashable type: 'dict'
+
+    It passed review because every existing union test used plain messages;
+    on a real tool-using agent every assistant turn looks like this."""
+    parent = _make().append(_tool_call_turn("c1"))
+    sibling = _make().append(_tool_call_turn("c1"), _tool_call_turn("c2"))
+    parent.merge(sibling, mode="union")
+    # The identical tool-call turn collapses; the distinct one lands.
+    assert len(parent.messages) == 2
+    assert [m.tool_calls[0].id for m in parent.messages] == ["c1", "c2"]
+
+
+def test_merge_union_keeps_tool_calls_that_differ_only_in_arguments():
+    """The counterpart, and the reason hashing a SUBSET of the fields is safe:
+    these two share ``(id, name)`` so they land in the SAME hash bucket, and
+    only ``__eq__`` can tell them apart. If dedup had leaned on the hash rather
+    than equality, one of two genuinely different searches would vanish."""
+    a = _tool_call_turn("c1", q="alpha")
+    b = _tool_call_turn("c1", q="beta")
+    assert hash(a) == hash(b) and a != b  # same bucket, different message
+    parent = _make().append(a)
+    parent.merge(_make().append(b), mode="union")
+    assert [m.tool_calls[0].arguments["q"] for m in parent.messages] == ["alpha", "beta"]
+
+
+def test_merge_union_on_plain_messages_is_unchanged():
+    """POSITIVE CONTROL: the plain-message dedup that always worked keeps
+    working, including the duplicate-within-`other` case."""
+    parent = _make().append(_user("x"), _user("y"))
+    parent.merge(_make().append(_user("y"), _user("z"), _user("z")), mode="union")
+    assert [m.content for m in parent.messages] == ["x", "y", "z"]
+
+
+def test_merge_concat_still_duplicates_tool_call_messages():
+    """POSITIVE CONTROL: ``concat`` never hashed anything, so it worked before
+    the fix and must behave identically after — no accidental dedup leaking
+    into the default mode."""
+    parent = _make().append(_tool_call_turn("c1"))
+    parent.merge(_make().append(_tool_call_turn("c1")), mode="concat")
+    assert len(parent.messages) == 2
 
 
 # ── slice: scoped views over the tail ─────────────────────────────
@@ -203,6 +265,133 @@ def test_freeze_round_trip_is_functionally_equivalent():
     assert rehydrated.messages == wc.messages
     assert rehydrated.scratchpad == wc.scratchpad
     assert rehydrated.prefix == wc.prefix
+
+
+# ── freeze: hashable enough to be the cache key it advertises ─────
+#
+# ``FrozenContext``'s own docstring promises a snapshot is safe "to use
+# as a memoization-cache key". It wasn't. The dataclass hashed every
+# field, and two of those fields are frozen CONTAINERS of objects the
+# framework does not own. Measured before the fix::
+#
+#     hash(WorkingContext().note("k", "v").freeze())      1304396713497489601
+#     hash(WorkingContext().note("plan", {}).freeze())    TypeError: unhashable type: 'dict'
+#
+# i.e. it broke by VALUE, not by type — on ``update_scratchpad({"plan":
+# {...}})``, which is the documented API. The fix hashes the transcript
+# axis plus the scratchpad KEYS; ``__eq__`` still compares everything.
+
+
+def test_frozen_context_is_hashable_with_a_dict_scratchpad_value():
+    """The documented API, verbatim from the ``update_scratchpad`` docstring —
+    a plan object in the scratchpad — must not cost the snapshot its key."""
+    wc = _make().update_scratchpad({"plan": {"steps": ["a", "b"], "done": False}})
+    assert isinstance(hash(wc.freeze()), int)
+
+
+def test_frozen_context_is_hashable_with_arbitrary_unhashable_values():
+    """Lists, sets, nested dicts, and an object with no ``__hash__`` at all.
+    A scratchpad value is any Python object; a snapshot that is hashable only
+    when the agent stored scalars is not a cache key, it's a trap."""
+
+    class Unhashable:
+        __hash__ = None  # type: ignore[assignment]
+
+    wc = _make().update_scratchpad(
+        {"list": [1, 2], "set": {1, 2}, "deep": {"a": {"b": []}}, "obj": Unhashable()}
+    )
+    assert isinstance(hash(wc.freeze()), int)
+
+
+def test_frozen_context_is_hashable_with_tool_call_messages():
+    """The transcript half of the same problem: messages ARE hashed, so before
+    ``ToolCall.__hash__`` a snapshot of any tool-using agent was unhashable
+    even with an empty scratchpad."""
+    wc = _make().append(_tool_call_turn("c1"), _user("q"))
+    assert isinstance(hash(wc.freeze()), int)
+
+
+def test_frozen_context_is_hashable_with_opaque_journal_entries():
+    """``JournalEntryT`` is project-defined and very often a plain dict, so
+    journal entries are excluded from the hash outright."""
+    wc = _make()
+    wc.journal.record({"kind": "note", "payload": {"x": [1, 2]}})
+    assert isinstance(hash(wc.freeze()), int)
+
+
+def test_frozen_context_hash_ignores_values_while_eq_does_not():
+    """Same soundness argument as ``ToolCall``: hashing a subset only requires
+    that EQUAL objects hash equally. Two snapshots differing in a scratchpad
+    value share a bucket and ``__eq__`` separates them there — a correct cache
+    with one extra comparison, not a wrong one."""
+    a = _make().update_scratchpad({"plan": {"v": 1}}).freeze()
+    b = _make().update_scratchpad({"plan": {"v": 2}}).freeze()
+    assert hash(a) == hash(b)
+    assert a != b
+    assert len({a, b}) == 2
+
+
+def test_frozen_context_hash_separates_transcript_and_scratchpad_keys():
+    """The parts that ARE hashed have to earn their place: two snapshots that
+    differ in messages, or in WHICH notes exist, must land in different buckets
+    or a memo cache degrades to a linear scan."""
+    base = _make().append(_user("a"))
+    assert hash(base.freeze()) != hash(_make().append(_user("b")).freeze())
+    assert hash(base.note("k", {}).freeze()) != hash(base.fork().note("j", {}).freeze())
+
+
+def test_frozen_context_works_as_a_memoization_cache_key():
+    """The promise the docstring makes, exercised the way a caller would: equal
+    snapshots hit, an unequal one misses, and the value survives a lookup by a
+    DIFFERENT but equal snapshot object."""
+    wc = _make().append(_tool_call_turn("c1")).update_scratchpad({"plan": {"v": 1}})
+    cache = {wc.freeze(): "cached-result"}
+    assert cache[wc.freeze()] == "cached-result"  # equal snapshot, same entry
+    assert wc.fork().append(_user("new")).freeze() not in cache
+
+
+def test_frozen_context_survives_deepcopy_and_pickle_with_tool_calls():
+    """``ToolCall.__reduce__`` is what makes this work — before it, pickling a
+    snapshot of a tool-using agent raised ``TypeError: cannot pickle
+    'mappingproxy' object``. ``FrozenContext`` needs no ``__reduce__`` of its
+    own: it holds no proxy, so it pickles as soon as its contents do."""
+    import copy as _copy
+    import pickle
+
+    snap = _make().append(_tool_call_turn("c1")).update_scratchpad({"plan": {"v": [1]}}).freeze()
+
+    assert _copy.deepcopy(snap) == snap
+    revived = pickle.loads(pickle.dumps(snap))
+    assert revived == snap
+    assert hash(revived) == hash(snap)
+    assert revived.messages[0].tool_calls[0].arguments["q"] == {"terms": ["a", "b"]}
+
+
+def test_frozen_context_hashes_even_when_the_scratchpad_cannot_be_pickled():
+    """Hashability and picklability are deliberately decoupled. A scratchpad
+    holding an open socket / a lambda / a live client cannot be serialised —
+    that is the CALLER's object failing, not this type's shape — but the
+    snapshot must still work as an in-process cache key."""
+    import pickle
+
+    # Unhashable AND unpicklable: a dict (no ``__hash__``) wrapping a closure
+    # (no pickle). Pre-fix this failed at ``hash`` before pickling was reached.
+    snap = _make().note("client", {"callback": lambda x: x}).freeze()
+
+    assert isinstance(hash(snap), int)
+    with pytest.raises((TypeError, AttributeError, pickle.PicklingError)):
+        pickle.dumps(snap)
+
+
+def test_frozen_context_equality_and_shape_are_unchanged():
+    """POSITIVE CONTROL: adding ``__hash__`` must not touch equality, field
+    order, or the sorted-scratchpad shape. Passes before and after."""
+    wc = _make().append(_user("hello")).update_scratchpad({"z": 1, "a": 2})
+    snap = wc.freeze()
+    assert snap == wc.freeze()
+    assert snap != _make().append(_user("other")).update_scratchpad({"z": 1, "a": 2}).freeze()
+    assert snap.scratchpad == (("a", 2), ("z", 1))  # sorted by key
+    assert snap.messages == (_user("hello"),)
 
 
 # ── diff: structural comparison ───────────────────────────────────

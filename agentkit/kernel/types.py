@@ -90,7 +90,13 @@ class ToolCall:
     because ``Checkpointer.snapshot`` deep-copies state that
     contains ``ToolCall``s. ``__deepcopy__`` / ``__copy__`` unwrap
     the view into a plain dict at copy time; the fresh ``ToolCall``
-    re-wraps it via ``__post_init__``."""
+    re-wraps it via ``__post_init__``. ``__reduce__`` covers the
+    ``pickle`` path, which had no such hook.
+
+    A mappingproxy is also UNHASHABLE, which silently made every
+    ``ToolCall`` — and every ``Message`` / ``PrefixContext`` /
+    ``FrozenContext`` reachable from one — unhashable too. See
+    ``__hash__``."""
 
     id: str
     name: str
@@ -108,6 +114,79 @@ class ToolCall:
 
     def __copy__(self) -> ToolCall:
         return ToolCall(id=self.id, name=self.name, arguments=dict(self.arguments))
+
+    def __hash__(self) -> int:
+        """Hash on IDENTITY — ``(id, name)`` — never on ``arguments``.
+
+        A frozen dataclass derives ``__hash__`` from every compared field, and
+        ``arguments`` is the ``MappingProxyType`` above, which is unhashable.
+        So the immutability guarantee cost hashability, silently and only at
+        the call site that hashed one. Measured before this fix::
+
+            hash(ToolCall("c1", "search", {"q": "hi"}))    TypeError: unhashable type: 'dict'
+            hash(Message("assistant", tool_calls=(tc,)))   TypeError: unhashable type: 'dict'
+            parent.merge(sibling, mode="union")            TypeError: unhashable type: 'dict'
+
+        The third line is the one that shipped broken. ``WorkingContext.merge``
+        with ``mode="union"`` deduplicates via ``set(self.messages)`` and is
+        documented for a parent merging two siblings' contexts — it passed its
+        tests because they use plain messages, and raised on the real
+        coordinator fan-in path where every assistant turn carries tool calls.
+
+        Excluding ``arguments`` is sound rather than a shortcut: ``__eq__``
+        still compares it, and the hash invariant only requires that EQUAL
+        objects hash equally — never that unequal ones differ. Two calls to the
+        same tool with different arguments collide into one bucket, where
+        ``__eq__`` separates them; that is what a bucket is for, and it is why
+        union-mode dedup stays exact (a ``set`` consults ``__eq__``, the hash
+        only chooses the bucket).
+
+        It is also the only option that WORKS. Arguments are decoded provider
+        JSON, so the values are routinely ``list`` / ``dict`` — unhashable
+        themselves — and a value-inclusive hash would inherit that fragility:
+        hashability would depend on what the model happened to emit. Hashing a
+        stable serialisation instead (``resilience.stable_hash``) makes the
+        hash O(payload), which this is not: measured 0.130 µs for a 1-key
+        arguments dict and 0.128 µs for a 100_000-key one (the payload is never
+        read), against 4.99 µs / 87.8 ms for ``stable_hash`` on the same two —
+        a 675_000× gap on the large one, paid once per message per union merge.
+        ``stable_hash`` remains the right tool where the CONTENT is the
+        identity (memoize keys, idempotency keys); it is the wrong tool for
+        ``__hash__``.
+        """
+        return hash((self.id, self.name))
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Rebuild through the constructor — a mappingproxy cannot be pickled.
+
+        ``copy.deepcopy`` has ``__deepcopy__`` above; ``pickle`` had nothing
+        and hit the stdlib limitation head-on::
+
+            pickle.dumps(ToolCall("c1", "search", {"q": "hi"}))
+            TypeError: cannot pickle 'mappingproxy' object
+
+        Not academic: tool calls reach durable stores through the checkpointer
+        and the replay recorder, and a ``FrozenContext`` is advertised as safe
+        to hand across an agent boundary — which, once that boundary is a
+        process, means pickle. Same hook and same reason as
+        ``Prompt.__reduce__`` and ``SignalEnvelope.__reduce__``. The arguments
+        travel as a plain ``dict`` because the constructor ARGUMENTS have to be
+        picklable too, not just the result; ``__post_init__`` re-freezes on the
+        way back in.
+
+        ``__deepcopy__`` stays beside this rather than deferring to it (``copy``
+        would happily use ``__reduce__``): the direct hook skips the
+        reduce-and-reconstruct round trip, measured 4.30 µs vs 6.23 µs per copy
+        on a small ToolCall, and ``Checkpointer.snapshot`` deep-copies every
+        ToolCall in state on every snapshot. That is the opposite of the call
+        made in ``Prompt``, where nothing measured the difference.
+        """
+        return (_rebuild_tool_call, (self.id, self.name, dict(self.arguments)))
+
+
+def _rebuild_tool_call(id_: str, name: str, arguments: dict[str, Any]) -> ToolCall:
+    """Module-level factory for ``ToolCall.__reduce__`` — pickle needs a global."""
+    return ToolCall(id=id_, name=name, arguments=arguments)
 
 
 @dataclass(frozen=True)
@@ -128,6 +207,11 @@ class Message:
     name: str | None = None  # tool name on a result message
     tool_call_id: str | None = None  # set on a role="tool" result message
     tool_calls: tuple[ToolCall, ...] = ()  # set on an assistant turn that requested tools
+    # Every field is hashable, so the dataclass-generated ``__hash__`` works —
+    # but only because ``ToolCall`` defines one. Before that, a Message with
+    # tool calls was unhashable while a plain one was not, which is how
+    # ``merge(mode="union")`` passed its tests and failed in production. See
+    # ``ToolCall.__hash__``.
 
 
 @dataclass(frozen=True)
