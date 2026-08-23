@@ -115,6 +115,7 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+APPROVAL_TESTS = ("tests/integrations/mcp/test_approvals.py",)
 CLI_SESSION_TESTS = ("tests/agents/cognition/test_claude_cli_session.py",)
 CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
 CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
@@ -149,6 +150,79 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the CLI's permission prompts reach a person ─────────────────────────
+    Mutant(
+        tag="approvals",
+        why="the result carries structuredContent, which the CLI rejects outright",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        @mcp.tool(name=TOOL_NAME, structured_output=False)",
+        after="        @mcp.tool(name=TOOL_NAME)",
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="an approval gate that fails OPEN when the transport breaks",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='            return _deny(f"the approval transport failed ({type(exc).__name__}: {exc})")',
+        after="            return _allow(arguments)",
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="an expired prompt allows, so a slow reviewer becomes a yes",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='            return Decision(kind="expired", note=f"no answer within {self.timeout_s}s")',
+        after='            return Decision(kind="approve", note="timed out")',
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="the timeout is not enforced, so a turn can park forever",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        if self.timeout_s is None:\n            return await self.asker.ask(request)",
+        after="        if True:\n            return await self.asker.ask(request)",
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="a modify decision is treated as a plain approval, discarding the reviewer's edits",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='        if decision.kind == "modify" and isinstance(decision.value, dict):',
+        after="        if False:",
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="a denial reaches the model with no reason, so it cannot adapt",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='        return _deny(decision.note or f"a reviewer declined the {tool_name} call")',
+        after='        return _deny("")',
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="auto_allow is ignored, so every read prompts and habituates the reviewer",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        if tool_name in self.auto_allow:",
+        after="        if False:",
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="the arguments never reach the human, who then approves a path they cannot see",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='            tool_call={"name": tool_name, "arguments": arguments},',
+        after="            tool_call=None,",
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="the CLI is left to load whatever MCP servers the working directory defines",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='            "strict_mcp_config": True,',
+        after='            "strict_mcp_config": False,',
+        tests=APPROVAL_TESTS,
+    ),
     # ── one process, many turns ─────────────────────────────────────────────
     Mutant(
         tag="clisession",

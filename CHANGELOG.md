@@ -11,6 +11,41 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — `ApprovalServer`: the CLI's permission prompts reach an `Asker`
+
+`ClaudeCliCognition` delegates the whole loop to the CLI, which owns its own
+permissions. That left a service two options, both bad: `bypassPermissions`
+(the agent may do anything, unattended) or `dontAsk` (anything not pre-approved
+is denied outright and the run fails). agentkit already had the missing middle
+— `Asker`, the injected human transport behind its own HITL path — but nothing
+connected the two.
+
+The CLI's seam is `--permission-prompt-tool`, which names an MCP tool it calls
+instead of prompting a terminal. `ApprovalServer` (in
+`agentkit.integrations.mcp`, needs the `mcp` extra) is that tool: each prompt
+becomes an `Elicitation` carrying the tool name and its **arguments**, the
+application's `Asker` answers, and the `Decision` maps back onto the CLI's
+allow/deny shape. `modify` becomes an approve-with-changes, so a reviewer can
+redirect a write into a sandbox without derailing the run.
+
+```python
+async with ApprovalServer(asker=my_asker, auto_allow=("Read",)) as approvals:
+    cognition = ClaudeCliCognition(model="claude-sonnet-4-6", **approvals.cli_kwargs())
+```
+
+- **It fails closed.** A broken transport, a timeout, an unrecognised decision
+  — all deny with the reason attached. An approval gate that fails open is not
+  a gate.
+- **`timeout_s` is enforced by the server**, not trusted to the `Asker`: the
+  protocol lets an implementation wait forever.
+- **`auto_allow` exists to prevent habituation** — the CLI prompts for reads
+  too, and forty reflexive yeses are not oversight.
+- The server binds loopback on an ephemeral port with **no authentication**;
+  loopback-only is the containment.
+
+No new dependency: `uvicorn` and `starlette` arrive with the existing `mcp`
+extra.
+
 ### Added — `ClaudeCliCognition.session()`: one process, many turns
 
 `drive()` spawns a subprocess per turn. That costs two to five seconds of CLI

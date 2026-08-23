@@ -259,6 +259,55 @@ if result.evals.get("cli_init", {}).get("mcp_server_errors"):
     raise SystemExit("an MCP server did not load")
 ```
 
+## Human approval, without bypassing permissions
+
+The CLI owns its own permissions, which left a service two options: 
+`bypassPermissions` (the agent may do anything, unattended) or `dontAsk`
+(anything not pre-approved is denied outright and the run fails). agentkit
+already had the missing middle — `Asker`, the injected human transport behind
+its own HITL path — but nothing connected the two.
+
+The CLI's seam is `--permission-prompt-tool`, which names an MCP tool it calls
+instead of prompting a terminal. `ApprovalServer` is that tool:
+
+```python
+from agentkit.integrations.mcp import ApprovalServer   # needs the `mcp` extra
+
+async with ApprovalServer(asker=my_asker, auto_allow=("Read", "Glob"),
+                          timeout_s=300) as approvals:
+    cognition = ClaudeCliCognition(
+        model="claude-sonnet-4-6",
+        **approvals.cli_kwargs(),      # mcp_config + strict + permission_prompt_tool
+    )
+    result = await Agent(name="dev", cognition=cognition).run(task, ctx)
+```
+
+Each prompt becomes an `Elicitation` carrying the tool name and its
+**arguments** — the path, the shell command — so your UI can show what is
+actually being approved. The `Decision` maps back:
+
+| `Decision.kind` | CLI behaviour |
+|---|---|
+| `approve` / `value` | runs with the arguments Claude requested |
+| `modify` | runs with **your** arguments (`updatedInput`) — redirect a write into a sandbox without derailing the run |
+| `deny` | blocked; `note` reaches the model, which may adapt |
+| `expired` | blocked, with the deadline named |
+
+Because an `Asker` may await a person indefinitely, the CLI turn parks in
+place — same behaviour agentkit's own tool loop gets from the same protocol.
+
+- **`auto_allow` exists to prevent habituation.** The CLI prompts for reads
+  too, and a person clicking yes on forty `Read` calls gives the fortieth
+  prompt — the one that mattered — the same reflexive yes.
+- **`timeout_s` is enforced by the server**, not trusted to the `Asker`: the
+  protocol lets an implementation wait forever, and a queue worker holding a
+  CLI subprocess open indefinitely is a resource leak with a model attached.
+- **It fails closed.** A broken transport, a timeout, an unexpected decision —
+  all deny, with the reason attached. An approval gate that fails open is not
+  a gate.
+- **The server binds loopback on an ephemeral port with no authentication.**
+  Loopback-only is the containment; do not bind it to a routable address.
+
 ## Running it as a service
 
 Four flags matter once this is behind an API rather than on your laptop.
