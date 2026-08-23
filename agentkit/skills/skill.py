@@ -83,6 +83,59 @@ class Skill:
     memory: MemorySource | None = None
     model: str | None = None
 
+    def __hash__(self) -> int:
+        """Hash the RECIPE's identity — ``(name, description, prompt, model)`` —
+        never ``cognition``, never ``memory``.
+
+        What made this one unhashable is not visible in the annotations, which
+        is why it needed diagnosing rather than reading. Every field here looks
+        like a value: two ``str``s, a ``Prompt | str``, a ``Cognition``, an
+        optional ``MemorySource``, an optional ``str``. Measured before this
+        fix::
+
+            hash(Skill("researcher", "digs"))
+            TypeError: unhashable type: 'SingleCallCognition'
+
+        Not ``'dict'`` — the payload here is a whole object. Every cognition
+        the framework ships (``SingleCallCognition``, ``ReActCognition``,
+        ``CoordinatorCognition``, ``ClaudeCliCognition``) is a MUTABLE
+        ``@dataclass(slots=True)``, and a mutable dataclass with the default
+        ``eq=True`` gets ``__hash__ = None`` from ``@dataclass`` itself. They
+        are mutable on purpose — ``ReActCognition`` carries live
+        ``TerminationCondition`` state (``MaxTurns.turn``, ``Timeout._start``)
+        that ``as_agent`` deep-copies precisely because it is per-run — so this
+        is not a defect to fix over there. ``cognition`` also defaults to
+        ``field(default_factory=SingleCallCognition)``, which means the
+        ergonomic ``Skill("x", "y")`` form the docstring recommends produced an
+        unhashable Skill: every Skill, not some.
+
+        ``memory`` is excluded for a related reason: ``MemorySource`` is a
+        ``Protocol``, so the object is whatever the application wired in — very
+        often a mutable dataclass or a live client holding a connection pool.
+        The framework cannot promise anything about its hash.
+
+        The other four are hashable by construction, so this hash is TOTAL —
+        no Skill you can build can break it. ``Prompt`` earns its place: it is
+        a frozen value with an explicit ``__hash__`` over ``(id, version,
+        template, inputs)``, all ``str``/``tuple[str, ...]``, so including it
+        cannot reintroduce the bug, and a Skill IS mostly its prompt.
+
+        This is the identity a registry keys on anyway — ``name`` is documented
+        as the "stable identifier" and becomes the ``Tool`` name at
+        ``as_tool()`` time, where duplicate names are already the thing a
+        registry has to detect. Cost is O(1) in the excluded configuration:
+        measured at 0.25 µs for a bare ``SingleCallCognition`` and 0.23 µs for
+        a ``ReActCognition`` holding 1000 tools, because neither is read.
+
+        Sound rather than a workaround: ``__eq__`` still compares every field,
+        including the cognition, and the hash invariant only requires EQUAL
+        objects to hash equally. Two Skills that differ only in cognition
+        collide into one bucket and ``__eq__`` separates them there — which is
+        the useful behaviour for a cache keyed on skill identity, and it keeps
+        ``set``/dict membership exact.
+        """
+        return hash((self.name, self.description, self.prompt, self.model))
+
     def as_agent(self, *, model: str | None = None) -> Agent:
         """Materialise the Skill as a runnable ``Agent``.
 

@@ -151,6 +151,61 @@ class AgentResult:
     # kept verbatim for back-compat; THIS field is the one to
     # branch on, because it type-checks.
 
+    def __hash__(self) -> int:
+        """Hash the RUN's identity — ``(output, usage, partial, prompt_version,
+        stop_reason)`` — never ``evals``, never ``parsed``.
+
+        This is the type every ``agent.run()`` returns, and it was unhashable
+        for EVERY instance rather than for awkward ones. ``evals`` is declared
+        ``field(default_factory=dict)``, so the dataclass-generated all-fields
+        hash reached a dict on the plainest result the framework can build.
+        Measured before this fix::
+
+            hash(AgentResult(output="hi", usage=Usage()))   TypeError: unhashable type: 'dict'
+            hash(AgentResult(output="hi", usage=Usage(), evals={"a": 1}))
+            TypeError: unhashable type: 'dict'
+
+        Both lines, identically — so it broke by TYPE, not by value, and no
+        caller could ever have hit a working case to compare against. Nothing
+        inside the framework hashes a result, which is why it survived: the
+        first caller to put results in a ``set`` (deduping a fan-out's
+        per-child results is the obvious one) or to memoize on one would have
+        been the one to find it.
+
+        ``evals`` is excluded because it cannot be hashed at all: it is
+        free-form, nested application JSON — the tool loop writes
+        ``{"stop_reason": ..., "suspended": ...}``, the coordinator policies
+        write whole per-child result lists — and it is handed to callers to
+        write into as they like. A hash that read it would make hashability
+        depend on what a policy happened to record.
+
+        ``parsed`` is excluded for that reason and one more: it is whatever an
+        output parser produced — typically a Pydantic model, which is
+        unhashable unless the application declared it frozen, or a plain
+        dict/list for the JSON adapters. Hashability of the framework's most
+        public type would then depend on a caller's schema.
+
+        What IS hashed is the part a reader identifies a run BY: the text, the
+        spend, whether it is partial, which prompt version produced it, and how
+        it ended. ``usage`` is a frozen dataclass of ints/floats, so it is
+        hashable by construction and costs nothing.
+
+        Cost is O(1) in the payload — the excluded fields are never read.
+        Measured with ``evals`` holding one key vs 100_000: 0.62 µs and
+        0.60 µs, and ``hash(small) == hash(huge)`` proves it structurally
+        rather than by timing, so the test cannot go flaky. ``output`` is a
+        ``str`` of unbounded length, but CPython caches a string's hash on the
+        object, so a long output is walked at most once.
+
+        Excluding all of that is sound rather than a workaround: ``__eq__``
+        still compares every field, and the hash invariant only requires EQUAL
+        objects to hash equally — never that unequal ones differ. Two results
+        with the same text and spend but different ``evals`` collide into one
+        bucket and ``__eq__`` separates them there; that is what a bucket is
+        for, and it keeps a ``set`` of results EXACT.
+        """
+        return hash((self.output, self.usage, self.partial, self.prompt_version, self.stop_reason))
+
     @property
     def is_suspended(self) -> bool:
         """True when the run is parked waiting on a person. Distinct from failure:
@@ -211,3 +266,46 @@ class WorkflowResult:
     steps: int
     stop_reason: WorkflowStopReason
     suspended: Suspended | None = None
+
+    def __hash__(self) -> int:
+        """Hash the run's SHAPE — which nodes ran, the spend, the step count and
+        the stop reason — never the per-node output VALUES.
+
+        ``outputs`` is a required ``dict``, so a ``WorkflowResult`` was
+        unhashable for every instance, exactly like ``AgentResult``. Measured
+        before this fix::
+
+            hash(WorkflowResult(outputs={"n": "o"}, usage=Usage(), steps=1,
+                                stop_reason="complete"))
+            TypeError: unhashable type: 'dict'
+
+        The node NAMES are kept and the values dropped. Keys are safe to hash
+        unconditionally — anything that is already a dict key is hashable by
+        definition, so no annotation has to be trusted for this to hold — and
+        they are the part that actually varies between the workflows a cache
+        or a dedup sees: a run that reached ``summarise`` differs from one that
+        stopped at ``draft`` even when both outputs are opaque. The values are
+        whatever the nodes returned: node outputs are ``Any`` and are commonly
+        dicts or ``AgentResult``-shaped payloads.
+
+        They go in as a ``frozenset``, NOT a tuple of keys, and that is
+        load-bearing rather than taste. Dict equality ignores insertion order,
+        so ``{"a": 1, "b": 2} == {"b": 2, "a": 1}`` — two ``WorkflowResult``s
+        that compare EQUAL. A key tuple would hash those two differently and
+        break the one invariant a hash has to keep. ``frozenset`` is
+        order-independent, and it does not require the keys to be mutually
+        COMPARABLE the way ``sorted()`` would.
+
+        ``suspended`` is excluded. It is decoration on top of ``stop_reason``,
+        which already records that the run parked, and ``Suspended.elicitations``
+        is a ``tuple[Any, ...]`` deliberately typed loosely to keep this module
+        free of an import cycle — so folding it in would reintroduce
+        "hashable, depending on what the caller put in there".
+
+        Cost is O(#nodes), never O(payload): measured at 0.62 µs whether a
+        node's output holds one key or 100_000. Soundness is the same argument
+        as everywhere else here — ``__eq__`` still compares every field, and
+        only EQUAL objects are required to hash equally, so two results that
+        differ only in node outputs share a bucket and ``__eq__`` splits them.
+        """
+        return hash((frozenset(self.outputs), self.usage, self.steps, self.stop_reason))

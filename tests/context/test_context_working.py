@@ -32,6 +32,7 @@ import pytest
 from agentkit.context import (
     AllOf,
     ApproxTokenCounter,
+    ContextDiff,
     FrozenContext,
     LastNTurns,
     PrefixContext,
@@ -415,6 +416,136 @@ def test_diff_prefix_changed_flag_is_structural():
     b = _make("sys-B")
     assert a.diff(b).prefix_changed is True
     assert a.diff(_make("sys-A")).prefix_changed is False
+
+
+# ── diff: hashable, exactly as its own docstring says ─────────────
+#
+# ``ContextDiff``'s docstring states that its message tuples are frozen
+# "so a ``ContextDiff`` is itself hashable / pickleable". Pickleable was
+# true; hashable never was — ``scratchpad_changes`` is a plain dict, so
+# the generated all-fields hash reached it on EVERY instance. Measured
+# before the fix::
+#
+#     hash(ContextDiff((), (), {}, False))   TypeError: unhashable type: 'dict'
+#     hash(a.diff(b))                        TypeError: unhashable type: 'dict'
+#
+# Even the empty diff, which is what makes this different from the
+# ``FrozenContext`` bug above: that one broke by VALUE, this one by TYPE.
+# The fix hashes the message tuples + the changed KEYS + prefix_changed.
+
+
+def test_context_diff_is_hashable_when_it_is_empty():
+    """The degenerate diff — no messages, no changes — was unhashable too, so
+    the dict payload never even had to be reached to break it."""
+    assert isinstance(hash(ContextDiff((), (), {}, False)), int)
+
+
+def test_context_diff_from_the_documented_helper_is_hashable():
+    """``WorkingContext.diff(other)`` is the only sanctioned producer, and the
+    scratchpad values it copies in are whatever the agent noted — here a plan
+    object and a tool-call transcript, i.e. the ordinary case."""
+    a = _make().append(_tool_call_turn("c1")).update_scratchpad({"plan": {"steps": ["a"]}})
+    b = _make().append(_user("other")).update_scratchpad({"plan": {"steps": ["b"]}})
+    assert isinstance(hash(a.diff(b)), int)
+
+
+def test_context_diff_is_hashable_with_arbitrary_unhashable_changed_values():
+    """A changed value is any Python object — lists, sets, nested dicts, and a
+    class that has opted out of hashing entirely. Same rule as the scratchpad:
+    a diff that is hashable only when the agent stored scalars is a trap."""
+
+    class Unhashable:
+        __hash__ = None  # type: ignore[assignment]
+
+    changes = {"list": [1, 2], "set": {1, 2}, "deep": {"a": {"b": []}}, "obj": Unhashable()}
+    assert isinstance(hash(ContextDiff((), (), changes, False)), int)
+
+
+def test_context_diff_hash_ignores_changed_values_while_eq_does_not():
+    """The soundness argument, exercised: two diffs that touched the SAME key
+    with different new values share a bucket, stay unequal, and both survive in
+    a ``set``. Hashing a subset only requires that EQUAL objects hash equally."""
+    a = ContextDiff((), (), {"plan": {"v": 1}}, False)
+    b = ContextDiff((), (), {"plan": {"v": 2}}, False)
+    assert hash(a) == hash(b)
+    assert a != b
+    assert len({a, b}) == 2
+
+
+def test_context_diff_hash_is_o1_in_the_changed_payload():
+    """Proven STRUCTURALLY, never by timing, so this cannot go flaky: a diff
+    carrying a 100_000-key changed value hashes to the same number as one
+    carrying a single key, which is only possible if the value is never read."""
+    huge = {f"k{i}": i for i in range(100_000)}
+    assert hash(ContextDiff((), (), {"plan": {"k0": 0}}, False)) == hash(
+        ContextDiff((), (), {"plan": huge}, False)
+    )
+
+
+def test_context_diff_hash_does_not_depend_on_scratchpad_insertion_order():
+    """Why the changed keys go in as a ``frozenset`` and not a key tuple. Dict
+    equality ignores insertion order, so these two diffs are EQUAL — an
+    order-sensitive key tuple would hash them differently and break the one
+    invariant a hash has to keep."""
+    a = ContextDiff((), (), {"a": 1, "b": 2}, False)
+    b = ContextDiff((), (), {"b": 2, "a": 1}, False)
+    assert a == b
+    assert hash(a) == hash(b)
+    assert len({a, b}) == 1
+
+
+def test_context_diff_hash_separates_the_parts_it_keeps():
+    """The hashed parts have to earn their place: diffs differing in messages,
+    in WHICH keys changed, or in the prefix flag must land in different buckets
+    or a set of diffs degrades to a linear scan."""
+    base = ContextDiff((_user("a"),), (), {"k": 1}, False)
+    assert hash(base) != hash(ContextDiff((_user("b"),), (), {"k": 1}, False))
+    assert hash(base) != hash(ContextDiff((_user("a"),), (_user("z"),), {"k": 1}, False))
+    assert hash(base) != hash(ContextDiff((_user("a"),), (), {"other": 1}, False))
+    assert hash(base) != hash(ContextDiff((_user("a"),), (), {"k": 1}, True))
+
+
+def test_context_diff_hash_survives_tool_call_messages():
+    """The message half: ``Message`` is hashable only because ``ToolCall`` is,
+    so a diff over a tool-using transcript was doubly broken before."""
+    d = ContextDiff((_tool_call_turn("c1"),), (_tool_call_turn("c2"),), {}, False)
+    assert isinstance(hash(d), int)
+
+
+def test_context_diff_equality_and_shape_are_unchanged():
+    """POSITIVE CONTROL: adding ``__hash__`` must not touch equality, field
+    access, or the mutable-dict shape a debug caller reads. Passes before and
+    after the fix."""
+    d = ContextDiff((_user("a"),), (), {"k": 1, "removed": None}, False)
+    assert d == ContextDiff((_user("a"),), (), {"k": 1, "removed": None}, False)
+    assert d != ContextDiff((_user("a"),), (), {"k": 2, "removed": None}, False)
+    assert d.scratchpad_changes["k"] == 1
+    assert d.scratchpad_changes.get("removed") is None
+    assert isinstance(d.scratchpad_changes, dict)  # NOT frozen into a proxy
+    assert d.messages_added[0].content == "a"
+
+
+def test_context_diff_still_deepcopies_and_pickles():
+    """POSITIVE CONTROL: the payload stays a plain dict, so both paths keep
+    working — the fix adds a hash, it does not freeze anything."""
+    import copy as _copy
+    import pickle
+
+    d = ContextDiff((_tool_call_turn("c1"),), (), {"plan": {"v": [1, 2]}}, True)
+    assert _copy.deepcopy(d) == d
+    assert pickle.loads(pickle.dumps(d)) == d
+
+
+def test_context_diff_hash_survives_deepcopy_and_pickle():
+    """A copied diff is an EQUAL diff, so it must hash equally — otherwise a
+    diff that crossed a process boundary would miss in a set the original
+    populated."""
+    import copy as _copy
+    import pickle
+
+    d = ContextDiff((_tool_call_turn("c1"),), (), {"plan": {"v": [1, 2]}}, True)
+    assert hash(_copy.deepcopy(d)) == hash(d)
+    assert hash(pickle.loads(pickle.dumps(d))) == hash(d)
 
 
 # ── assembled = prefix + messages ─────────────────────────────────

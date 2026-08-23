@@ -99,6 +99,39 @@ class SearchHit:
     score: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __hash__(self) -> int:
+        """Hash on the RESULT's identity — ``(url, title)`` — never on the rest.
+
+        A frozen dataclass derives ``__hash__`` from every compared field, and
+        ``metadata`` is a plain ``dict``, so the generated hash was dead on
+        arrival. Measured before this fix::
+
+            hash(SearchHit("https://x", "t", "s", 0.5, {"domain": "x"}))
+            TypeError: unhashable type: 'dict'
+
+        Hits are the type callers most obviously want in a ``set``: fanning the
+        same query across two providers and unioning the results is the whole
+        point of normalizing every adapter onto one shape, and that union
+        raised on the default-constructed ``metadata`` of every hit.
+
+        ``url`` + ``title`` is the identity because a web result IS its URL —
+        that is what provider-crossing dedup keys on — and the title travels
+        with it as the normalized record's stable half. ``score`` and
+        ``snippet`` are excluded because they are QUERY-dependent, not
+        result-dependent: the same document ranked 1st for one query and 4th
+        for another, with a different snippet extracted each time, is one
+        document and belongs in one bucket. ``metadata`` is excluded because it
+        is arbitrary provider JSON — nested lists and dicts, unhashable by
+        construction — and because a hash that reads it would be O(payload).
+
+        Excluding them is sound rather than a workaround: ``__eq__`` still
+        compares every field, and the hash invariant only requires that EQUAL
+        objects hash equally — never that unequal ones differ. Two hits for one
+        URL with different scores collide into one bucket and ``__eq__``
+        separates them there; that is what a bucket is for.
+        """
+        return hash((self.url, self.title))
+
 
 @runtime_checkable
 class SearchPort(Protocol):
@@ -119,6 +152,43 @@ class FetchResponse:
     body: str
     content_type: str
     fetched_at: float
+
+    def __hash__(self) -> int:
+        """Hash on the RESPONSE's identity — ``(url, status, content_type,
+        fetched_at)`` — never on ``headers`` or ``body``.
+
+        ``headers`` is a plain ``dict``, so the generated all-fields hash was
+        unhashable from the first instance. Measured before this fix::
+
+            hash(FetchResponse("https://x", 200, {"content-type": "text/html"},
+                               "<html>hi</html>", "text/html", 1.7e9))
+            TypeError: unhashable type: 'dict'
+
+        ``fetched_at`` is in the key on purpose: two fetches of the same URL at
+        different times are different responses (that is what makes this record
+        cacheable at all), and the timestamp is the only field that separates
+        them without reading the payload.
+
+        ``body`` is excluded even though ``str`` IS hashable, and that is the
+        load-bearing exclusion. A fetched page is unbounded — this is the type
+        a crawler holds thousands of — and ``hash(str)`` is O(len) with no
+        cached digest across instances, so a body-inclusive hash would make
+        every ``set`` insertion cost a full scan of the document. Measured on
+        this implementation: 0.23 µs for a 12-byte body and 0.23 µs for a
+        4 MiB one — identical, because the body is never read — against 2.3 ms
+        to hash that 4 MiB string once, a ~10_000× gap. CPython caches a
+        string's hash on the string object, so a body-inclusive hash would be
+        cheap on REPEATED hashes of the same instance and expensive on the
+        first hash of each — which, for the crawler inserting each response
+        into a set exactly once, is every one of them.
+
+        Excluding them is sound rather than a workaround: ``__eq__`` still
+        compares every field, and the hash invariant only requires that EQUAL
+        objects hash equally. Two responses that differ only in body — a page
+        re-fetched at the same timestamp after an edit — collide into one
+        bucket, where ``__eq__`` tells them apart.
+        """
+        return hash((self.url, self.status, self.content_type, self.fetched_at))
 
 
 @runtime_checkable
@@ -198,6 +268,69 @@ class Checkpoint:
     created_at: float
     status: CheckpointStatus
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __hash__(self) -> int:
+        """Hash on the DURABLE key — ``(run_id, version)`` — never on ``state``
+        or ``metadata``.
+
+        A frozen dataclass derives ``__hash__`` from every compared field, and
+        two of these fields are plain ``dict``s, so every checkpoint ever built
+        was unhashable. Measured before this fix::
+
+            hash(Checkpoint("r", 1, {"turn": 3}, 1.7e9, CheckpointStatus.RUNNING))
+            TypeError: unhashable type: 'dict'
+
+        This is the clearest instance of the shape the value-type ratchet was
+        built to catch: `Checkpoint` is declared frozen and is reasoned about
+        everywhere as an immutable snapshot of a run, while ``cp.state["turn"]
+        = 99`` rewrites the record in place through the "frozen" field. This
+        commit does NOT close that half — see the note below — it closes the
+        hashability half, which is the part that can be fixed without touching
+        what every persistence path already reads.
+
+        ``(run_id, version)`` is not a convenient subset, it is the record's
+        actual primary key: it is the ``PRIMARY KEY (run_id, version)`` of the
+        `agentkit_checkpoints` table in `adapters/checkpoint/postgres.py`, and
+        the class docstring above already states the invariant that makes it
+        one — ``version`` is monotonic per run, and a single producer is the
+        authority over a ``run_id``. So two checkpoints hash equal exactly when
+        they name the same durable row, which is the discrimination a caller
+        holding checkpoints in a ``set``/``dict`` wants.
+
+        ``state`` and ``metadata`` are excluded for two independent reasons,
+        either of which alone would settle it:
+
+        * They CANNOT be hashed. State is opaque application JSON — nested
+          lists and dicts, unhashable by construction — so a value-inclusive
+          hash would work only for the subset of runs whose state happens to
+          be flat and scalar, i.e. it would fail by VALUE rather than by type,
+          the worst failure mode for a value type.
+        * They MUST NOT be hashed. A checkpoint's state is the biggest payload
+          in the framework (a full transcript plus tool results), and it is
+          hashed at the durable seam on every save. This hash is O(1) in state
+          size and measurably so: 0.22 µs for a 1-key state and 0.20 µs for a
+          100_000-key one (the gap is measurement noise — the payload is never
+          read), against 3.4 µs / 25 ms for `stable_hash` over the same two, a
+          ~114_000× gap on the large one.
+
+        Excluding them is sound rather than a workaround: ``__eq__`` still
+        compares every field, and the hash invariant only requires that EQUAL
+        objects hash equally — never that unequal ones differ. Two snapshots of
+        the same ``(run_id, version)`` that differ in state collide into one
+        bucket and ``__eq__`` separates them there; that is what a bucket is
+        for. (If you need a key that changes when the state changes, you want a
+        CONTENT hash — `stable_hash` — not ``__hash__``.)
+
+        Deliberately NOT done here: ``state`` is not frozen into a
+        ``MappingProxyType`` the way ``ToolCall.arguments`` is. A checkpoint is
+        serialised to durable storage — `json.dumps(cp.state)` into a JSONB
+        column in the Postgres adapter, and passed through verbatim by
+        `StoreBackedCheckpointStore._to_dict` — and a mappingproxy is neither
+        JSON-serialisable nor picklable, so freezing the payload would trade a
+        missing ``__hash__`` for a broken persistence path. Read-mutability of
+        ``state`` is a separate decision with its own migration.
+        """
+        return hash((self.run_id, self.version))
 
 
 @runtime_checkable

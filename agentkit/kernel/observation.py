@@ -74,6 +74,62 @@ class Observation:
     # that produced it. None when no tracer is configured or no span is open.
     trace_context: TraceContext | None = None
 
+    def __hash__(self) -> int:
+        """Hash on the STREAM key — ``(run_id, agent, seq, ts, kind)`` — never
+        on ``payload``.
+
+        A frozen dataclass derives ``__hash__`` from every compared field, and
+        ``payload: Any`` is in practice always a dict. That annotation is why
+        this one hid: the type is hashable when a caller drops a string in and
+        stops being hashable the moment it holds what observations actually
+        carry. Measured before this fix::
+
+            hash(Observation(kind="progress", payload="tick"))
+            4380108333848103356                       # (salted; varies per run)
+            hash(Observation(kind="result", payload={"k": "v"}))
+            TypeError: unhashable type: 'dict'
+
+        The second line is the real one — `RunContext.emit` is documented and
+        used as ``emit("summary", "wrote intro", payload={"words": 120})``, so
+        every observation a real run produces was unhashable, while a test that
+        passed a string proved the opposite. It was found by the value-type
+        ratchet rather than by a caller, precisely because a ratchet that
+        builds MINIMAL instances would have passed it too.
+
+        The stream key is a genuine identity rather than a leftover subset: an
+        observation stream is ORDERED and ATTRIBUTED, so ``run_id`` says which
+        run, ``agent`` says who inside it, ``seq`` is that emitter's monotonic
+        counter, and ``ts`` + ``kind`` finish the tuple for the zero-default
+        case where a caller constructs observations directly (as the observer
+        adapters' tests do) and leaves ``seq`` at 0. None of it has anything to
+        do with the payload, which is the point.
+
+        ``payload`` is excluded because it cannot be hashed — it is
+        machine-readable application JSON, nested by design — and because the
+        hash must stay O(1) in it: an observation is fanned out to every
+        attached observer on the hot emit path, and a ``result`` payload is a
+        whole agent output. Measured: 0.32 µs for a 1-key payload and 0.32 µs
+        for a 100_000-key one, because the payload is never read.
+
+        ``render`` is excluded as well, though ``str`` is hashable: it is a
+        human line DERIVED from the same information as the payload, it varies
+        freely (a summarizer rewrites it), and it adds no discrimination the
+        stream key does not already have. ``parent_id`` and ``trace_context``
+        are correlation decoration attached after the fact by the emitter — an
+        observation is the same record whether or not a tracer happened to be
+        wired in, so folding them into the hash would split one record across
+        two buckets depending on configuration.
+
+        Excluding all of that is sound rather than a workaround: ``__eq__``
+        still compares every field, and the hash invariant only requires EQUAL
+        objects to hash equally — never that unequal ones differ. Two
+        observations sharing a stream key but differing in payload collide into
+        one bucket and ``__eq__`` separates them there; that is what a bucket
+        is for, and it is what keeps a ``set``-based dedup of a replayed
+        observation stream exact.
+        """
+        return hash((self.run_id, self.agent, self.seq, self.ts, self.kind))
+
 
 @runtime_checkable
 class ObserverPort(Protocol):

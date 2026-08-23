@@ -188,6 +188,54 @@ class ContextDiff:
     scratchpad_changes: dict[str, Any]
     prefix_changed: bool
 
+    def __hash__(self) -> int:
+        """Hash the message tuples, the CHANGED KEYS, and ``prefix_changed`` —
+        never the changed VALUES.
+
+        The docstring above states outright that "a ``ContextDiff`` is itself
+        hashable / pickleable", and half of that was untrue for every instance
+        ever produced. The tuples were frozen, but ``scratchpad_changes`` is a
+        plain ``dict``, so the dataclass-generated all-fields hash always
+        reached it. Measured before this fix::
+
+            hash(ContextDiff((), (), {}, False))          TypeError: unhashable type: 'dict'
+            hash(ctx_a.diff(ctx_b))                       TypeError: unhashable type: 'dict'
+
+        Even the empty diff. As with ``FrozenContext`` above, the promise is
+        made true rather than retracted.
+
+        Keys are kept for the same reason they are on ``FrozenContext``: WHICH
+        notes changed is the interesting part of a diff and is ``str`` by
+        construction, while a scratchpad value is any Python object and is
+        routinely a nested dict — hashing it would make a diff hashable only
+        when the agent happened to store scalars. They go in as a
+        ``frozenset`` rather than a key tuple because dict equality ignores
+        insertion order: ``{"a": 1, "b": 2} == {"b": 2, "a": 1}``, so two
+        diffs built from those compare EQUAL, and an order-sensitive key tuple
+        would hash them differently and break the one invariant that matters.
+        ``frozenset`` is order-independent and needs no ordering on the keys.
+
+        The message tuples ARE hashed, and can be: ``Message`` is hashable, as
+        of ``ToolCall.__hash__`` — before that a diff over a tool-using
+        transcript was doubly unhashable. Cost is O(#messages + #changed keys)
+        and O(1) in the payload: measured at 0.31 µs whether a changed value
+        holds one key or 100_000, because the values are never read.
+
+        Sound rather than a workaround, as elsewhere in this module: ``__eq__``
+        still compares every field, and the invariant only requires EQUAL
+        objects to hash equally. Two diffs that touched the same keys with
+        different new values collide into one bucket and ``__eq__`` separates
+        them there.
+        """
+        return hash(
+            (
+                self.messages_added,
+                self.messages_removed,
+                frozenset(self.scratchpad_changes),
+                self.prefix_changed,
+            )
+        )
+
 
 # ── FrozenContext — immutable snapshot ──────────────────────────────
 

@@ -691,6 +691,304 @@ def test_toolcall_equality_still_compares_arguments() -> None:
     assert ToolCall("c1", "s", {"a": 1, "b": 2}) == ToolCall("c1", "s", {"b": 2, "a": 1})
 
 
+# ── ChatRequest / ToolRequest / ToolSchema hashability ───────────────────────
+#
+# The same bug shape as ``ToolCall`` above, three more times: a
+# ``frozen=True`` dataclass carrying a mutable payload, so the
+# generated ``__hash__`` never ran. Measured before the fix::
+#
+#     hash(ChatRequest([Message("user", "hi")], "gpt-4"))     TypeError: unhashable type: 'list'
+#     hash(ToolRequest("search", {"q": "hi"}, tool=None))     TypeError: unhashable type: 'dict'
+#     hash(ToolSchema("search", "", {"type": "object"}))      TypeError: unhashable type: 'dict'
+#
+# ``ChatRequest`` is the worst of the three: ``messages`` is a ``list``,
+# so EVERY request was unhashable, not only the ones carrying an
+# awkward payload. Nothing in the framework hashed one — ``memoize``
+# keys on ``stable_hash`` of the content, deliberately — so the break
+# was caller-facing (a ``dict[ChatRequest, LLMResult]`` double, an
+# ``lru_cache``, ``set(request.tools)`` to dedupe two registries) and
+# surfaced only at the call site that hashed one.
+#
+# Each hash is a SUBSET: the call shape for ``ChatRequest``, the routing
+# fields for ``ToolRequest``, the advertisement for ``ToolSchema``. The
+# tests below pin both halves of that trade — that hashing works
+# whatever the payload holds, and that ``__eq__`` still sees everything,
+# because dedup correctness rides on equality, not on the hash.
+
+
+def test_chatrequest_is_hashable_with_transcript_and_payload_dicts() -> None:
+    """The representative request: a transcript, tool schemas, a structured
+    output format and a provider cache hint — every one of them a container
+    the generated hash choked on."""
+    req = ChatRequest(
+        messages=[Message("user", "hi"), Message("assistant", "", tool_calls=(ToolCall("c1", "s", {"q": [1]}),))],
+        model="gpt-4",
+        tools=[ToolSchema("search", "find things", {"type": "object", "properties": {"q": {"type": "string"}}})],
+        response_format={"type": "json_schema", "schema": {"properties": {"a": {"type": "array"}}}},
+        cache_hint={"prefix_tokens": 2048},
+    )
+    assert isinstance(hash(req), int)
+    assert {req} == {req}
+
+
+def test_chatrequest_with_empty_transcript_and_none_payloads_is_hashable() -> None:
+    """The degenerate end: no messages, no tools, no response format. It shares
+    the code path, and it is the shape a compaction middleware can transiently
+    produce."""
+    assert isinstance(hash(ChatRequest(messages=[], model="m")), int)
+
+
+def test_chatrequest_hash_ignores_message_content_while_eq_does_not() -> None:
+    """The whole design in one assertion. Hashing a subset is sound because the
+    invariant only requires EQUAL objects to hash equally — so two requests of
+    the same shape but different content share a bucket, and must NOT compare
+    equal, or a request-keyed cache would serve one conversation's answer to
+    another."""
+    a = ChatRequest([Message("user", "alpha")], "m")
+    b = ChatRequest([Message("user", "beta")], "m")
+    assert hash(a) == hash(b)  # same bucket — deliberate
+    assert a != b  # ...but not the same request
+    assert len({a, b}) == 2  # so the set keeps both
+
+
+def test_chatrequest_hash_does_not_read_the_transcript_or_the_payloads() -> None:
+    """O(1) in payload size, proven structurally rather than by timing: a
+    request whose single message carries a megabyte of text, a 10_000-key
+    response format and a 10_000-key cache hint hashes IDENTICALLY to a
+    one-character one. That equality is only possible if none of the three is
+    ever walked. Measured 0.28 µs at every transcript size from 1 to 1000
+    turns, against 273 µs for a messages-inclusive hash at 1000."""
+    small = ChatRequest([Message("user", "x")], "m")
+    huge = ChatRequest(
+        [Message("user", "x" * 1_000_000)],
+        "m",
+        response_format={f"k{i}": [i] for i in range(10_000)},
+        cache_hint={f"c{i}": {"v": i} for i in range(10_000)},
+    )
+    assert hash(small) == hash(huge)
+    assert small != huge
+
+
+def test_chatrequest_hash_separates_the_shapes_that_actually_vary() -> None:
+    """The other side of the bucket trade. ``model`` and the sampling settings
+    are the fields a fallback or a router rewrites, and the transcript LENGTH
+    is what changes between successive turns of one loop — an appended message
+    moves the request to a different bucket for O(1), which is why ``len`` is
+    in the hash while the messages are not."""
+    base = ChatRequest([Message("user", "q")], "gpt-4")
+    assert hash(base) != hash(ChatRequest([Message("user", "q")], "claude-sonnet"))
+    assert hash(base) != hash(ChatRequest([Message("user", "q"), Message("assistant", "a")], "gpt-4"))
+    assert hash(base) != hash(ChatRequest([Message("user", "q")], "gpt-4", temperature=0.7))
+    assert hash(base) != hash(ChatRequest([Message("user", "q")], "gpt-4", max_tokens=512))
+
+
+def test_chatrequest_hashability_survives_an_unhashable_cache_hint() -> None:
+    """``cache_hint`` is annotated ``Any`` and holds whatever the provider
+    adapter wants. If the hash read it, hashability would depend on what a
+    caller happened to put there — the bug, reintroduced one field over."""
+    req = ChatRequest([Message("user", "hi")], "m", cache_hint={"blocks": [{"type": "text"}]})
+    assert isinstance(hash(req), int)
+
+
+def test_chatrequest_construction_and_field_access_are_unchanged() -> None:
+    """POSITIVE CONTROL: adding ``__hash__`` must not disturb the constructor,
+    the defaults or read access — passes identically before and after."""
+    tools = [ToolSchema("search")]
+    req = ChatRequest([Message("user", "hi")], "gpt-4", tools=tools, temperature=0.5, max_tokens=64)
+    assert req.model == "gpt-4"
+    assert req.messages[0].content == "hi"
+    assert req.tools is tools  # no defensive copy, no proxy — plumbing unchanged
+    assert (req.temperature, req.max_tokens) == (0.5, 64)
+    assert ChatRequest([], "m").tools is None and ChatRequest([], "m").response_format is None
+
+
+def test_chatrequest_equality_still_compares_every_field() -> None:
+    """POSITIVE CONTROL for the ``__eq__`` half: hashing a subset must never
+    leak into equality. Passes before and after."""
+    msgs = [Message("user", "hi")]
+    assert ChatRequest(msgs, "m") == ChatRequest([Message("user", "hi")], "m")
+    assert ChatRequest(msgs, "m") != ChatRequest(msgs, "other")
+    assert ChatRequest(msgs, "m", tools=[ToolSchema("a")]) != ChatRequest(msgs, "m", tools=[ToolSchema("b")])
+    assert ChatRequest(msgs, "m", response_format={"a": 1}) != ChatRequest(msgs, "m", response_format={"a": 2})
+    assert ChatRequest(msgs, "m", cache_hint={"x": 1}) != ChatRequest(msgs, "m", cache_hint={"x": 2})
+
+
+def test_toolrequest_is_hashable_with_nested_json_arguments() -> None:
+    """Arguments are decoded provider JSON, so nested lists/dicts are the
+    NORMAL case. Hashability must not depend on what the model emitted."""
+    req = ToolRequest("search", {"q": "hi", "filters": [{"k": [1, 2]}, None]}, tool=None)
+    assert isinstance(hash(req), int)
+    assert {req} == {req}
+
+
+def test_toolrequest_hash_ignores_arguments_while_eq_does_not() -> None:
+    """Two calls to the same tool with different arguments share a bucket —
+    deliberate — but must stay distinct, or a request-keyed set would drop a
+    genuine second call."""
+    a = ToolRequest("search", {"q": "alpha"}, tool=None)
+    b = ToolRequest("search", {"q": "beta"}, tool=None)
+    assert hash(a) == hash(b)
+    assert a != b
+    assert len({a, b}) == 2
+
+
+def test_toolrequest_hash_does_not_read_the_arguments_at_all() -> None:
+    """O(1), proven structurally rather than timed: a 100_000-key arguments
+    dict hashes IDENTICALLY to a 1-key one. Measured 0.229 µs vs 0.237 µs;
+    ``stable_hash`` on the same pair measured 3.28 µs vs 80.0 ms."""
+    small = ToolRequest("search", {"q": "hi"}, tool=None)
+    huge = ToolRequest("search", {f"k{i}": {"v": [i, str(i)]} for i in range(100_000)}, tool=None)
+    assert hash(small) == hash(huge)
+    assert small != huge
+
+
+def test_toolrequest_hashability_does_not_depend_on_the_resolved_tool() -> None:
+    """``tool`` is the resolved port, annotated ``Any``. A plain ``@dataclass``
+    tool gets ``__eq__`` and therefore ``__hash__ = None`` — so reading it here
+    would resurrect the same failure one indirection further from the call
+    site, and only for some registries."""
+
+    @dataclass
+    class _UnhashableTool:  # eq=True by default → unhashable
+        label: str
+
+    tool = _UnhashableTool("search")
+    with pytest.raises(TypeError):
+        hash(tool)
+    assert isinstance(hash(ToolRequest("search", {"q": "hi"}, tool=tool)), int)
+
+
+def test_toolrequest_hash_separates_the_routing_fields() -> None:
+    """The fields the chain routes on are the fields that spread the buckets:
+    the tool name, the idempotency gate's ``side_effecting``, the egress
+    guard's ``url_arg``."""
+    base = ToolRequest("search", {"q": "x"}, tool=None)
+    assert hash(base) != hash(ToolRequest("delete_everything", {"q": "x"}, tool=None))
+    assert hash(base) != hash(ToolRequest("search", {"q": "x"}, tool=None, side_effecting=True))
+    assert hash(base) != hash(ToolRequest("search", {"q": "x"}, tool=None, url_arg="url"))
+
+
+def test_toolrequest_construction_access_and_equality_are_unchanged() -> None:
+    """POSITIVE CONTROL: constructor, defaults, read access and equality all
+    behave exactly as before — including that ``arguments`` is still a plain
+    mutable ``dict``, not a proxy, because the terminal hands it to
+    ``tool.run(**arguments)``."""
+    sentinel = object()
+    req = ToolRequest("search", {"q": "hi"}, tool=sentinel)
+    assert (req.name, req.tool) == ("search", sentinel)
+    assert req.arguments == {"q": "hi"} and type(req.arguments) is dict
+    assert (req.side_effecting, req.url_arg) == (False, None)
+    assert req == ToolRequest("search", {"q": "hi"}, tool=sentinel)
+    assert ToolRequest("s", {"a": 1}, tool=None) != ToolRequest("s", {"a": 2}, tool=None)
+    assert ToolRequest("s", {"a": 1}, tool=None) != ToolRequest("s", {"a": 1}, tool=None, side_effecting=True)
+
+
+def test_toolschema_is_hashable_with_a_real_json_schema_body() -> None:
+    """A JSON Schema body nests dict and list by construction — ``properties``,
+    ``required``, ``enum`` — so the empty schema was the ONLY hashable one
+    before the fix, which is exactly the vacuous-pass trap."""
+    schema = ToolSchema(
+        "search",
+        "find things",
+        {
+            "type": "object",
+            "properties": {"q": {"type": "string"}, "mode": {"enum": ["fast", "deep"]}},
+            "required": ["q"],
+        },
+    )
+    assert isinstance(hash(schema), int)
+    assert {schema} == {schema}
+
+
+def test_toolschema_with_empty_parameters_is_hashable() -> None:
+    """The degenerate payload — a no-argument tool — shares the code path."""
+    assert isinstance(hash(ToolSchema("ping")), int)
+
+
+def test_toolschema_hash_ignores_parameters_while_eq_does_not() -> None:
+    """Two revisions of one tool's schema collide into a bucket — deliberate —
+    and ``__eq__`` separates them there, so ``set(request.tools)`` deduping
+    across registries stays exact rather than dropping a revision."""
+    a = ToolSchema("search", "find things", {"properties": {"q": {"type": "string"}}})
+    b = ToolSchema("search", "find things", {"properties": {"q": {"type": "integer"}}})
+    assert hash(a) == hash(b)
+    assert a != b
+    assert len({a, b}) == 2
+
+
+def test_toolschema_hash_does_not_read_the_schema_body() -> None:
+    """O(1) in the schema size, proven structurally: a 20_000-key body hashes
+    IDENTICALLY to a one-key one. Measured 0.192 µs for both; ``stable_hash``
+    of a mere 20-property body measured 23.4 µs, and that cost would be paid
+    per bucket probe rather than once per cache key."""
+    small = ToolSchema("search", "d", {"type": "object"})
+    huge = ToolSchema("search", "d", {f"p{i}": {"type": "string", "enum": [i]} for i in range(20_000)})
+    assert hash(small) == hash(huge)
+    assert small != huge
+
+
+def test_toolschema_hash_separates_names_and_descriptions() -> None:
+    """Identity IS in the hash: distinct tools spread across buckets instead of
+    degrading a registry-sized set to a linear scan, and a rewritten
+    description — the field that changes while the name does not — moves too,
+    for the 0.063 µs it costs to include."""
+    base = ToolSchema("search", "find things", {"type": "object"})
+    assert hash(base) != hash(ToolSchema("lookup", "find things", {"type": "object"}))
+    assert hash(base) != hash(ToolSchema("search", "find things FAST", {"type": "object"}))
+
+
+def test_toolschema_set_dedupes_identical_advertisements() -> None:
+    """The caller-facing use the missing hash blocked: two registries
+    advertising the same tool collapse to one entry, by VALUE."""
+    body = {"type": "object", "properties": {"q": {"type": "string"}}}
+    pair = {ToolSchema("search", "find things", dict(body)), ToolSchema("search", "find things", dict(body))}
+    assert len(pair) == 1
+
+
+def test_toolschema_parameters_stay_a_plain_serialisable_dict() -> None:
+    """POSITIVE CONTROL, and the constraint this commit deliberately did NOT
+    take: the payload is hashability's problem, not the payload's. Freezing
+    ``parameters`` into a ``MappingProxyType`` would have been the other way to
+    a hash, and it would have broken every existing reader — a mappingproxy is
+    not JSON-serialisable and ``dataclasses.asdict`` does not unwrap it. These
+    two lines are what provider adapters do with a schema on every call."""
+    import json
+    from dataclasses import asdict
+
+    schema = ToolSchema("search", "find things", {"type": "object", "properties": {"q": {"type": "string"}}})
+    assert type(schema.parameters) is dict
+    assert json.loads(json.dumps(schema.parameters)) == schema.parameters
+    assert asdict(schema)["parameters"]["properties"] == {"q": {"type": "string"}}
+
+
+def test_request_types_still_deepcopy_and_pickle_after_the_hash() -> None:
+    """POSITIVE CONTROL for the other two thirds of the value contract. All
+    three already round-tripped — only ``__hash__`` was missing — so this pins
+    that the fix took nothing away. ``Checkpointer.snapshot`` deep-copies state
+    at the durable seam, and the replay recorder pickles.
+
+    ``ToolRequest.tool`` is left as ``None`` on purpose: a resolved port is a
+    live object with no copy contract of its own, and it is not what this test
+    is about."""
+    import copy
+    import pickle
+
+    values = [
+        ChatRequest(
+            [Message("user", "hi")],
+            "m",
+            tools=[ToolSchema("search", "d", {"type": "object"})],
+            response_format={"type": "json_object"},
+        ),
+        ToolRequest("search", {"q": "hi", "nested": {"k": [1, 2]}}, tool=None),
+        ToolSchema("search", "find things", {"properties": {"q": {"type": "string"}}}),
+    ]
+    for original in values:
+        for clone in (copy.deepcopy(original), pickle.loads(pickle.dumps(original))):
+            assert clone == original
+            assert hash(clone) == hash(original)  # equal objects hash equally — across a boundary too
+
+
 # ── stable_hash: property + adversarial ──────────────────────────────────────
 
 
@@ -1288,3 +1586,33 @@ def test_a_permanent_failure_does_not_sleep_before_giving_up() -> None:
     with pytest.raises(ValueError):
         _run(run_with_resilience(permanent, max_attempts=3, sleep=record))
     assert slept == []
+
+
+def test_mutating_a_requests_messages_invalidates_its_hash() -> None:
+    """A `ChatRequest` is frozen but its `messages` list is not, and `len` is in
+    the hash — so mutating it in place moves the object to a different bucket.
+
+    This pins the contract rather than pretending it away. It is NOT a new
+    failure mode: `__eq__` already compares `messages`, so a mutated request is
+    unusable as a stable set member whatever the hash does — a payload-free
+    hash would land it in the right bucket and fail `__eq__` instead. Both
+    outcomes are "not found"; this test exists so the behaviour is discovered
+    here rather than in someone's cache.
+
+    Nothing in the framework does this — middleware REPLACES a request rather
+    than mutating it — which is why `len(messages)` is affordable at all.
+    """
+    req = ChatRequest(messages=[Message(role="user", content="hi")], model="m")
+    seen = {req}
+    before = hash(req)
+
+    req.messages.append(Message(role="user", content="more"))
+
+    assert hash(req) != before, "len(messages) is in the hash, so this must move"
+    assert req not in seen, (
+        "a request mutated after insertion is no longer findable — treat a "
+        "frozen value's list as immutable, or copy before mutating"
+    )
+    # And the same is true of equality alone, which is the point: the hash is
+    # not what made this fragile.
+    assert req != ChatRequest(messages=[Message(role="user", content="hi")], model="m")

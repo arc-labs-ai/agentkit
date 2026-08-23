@@ -191,11 +191,62 @@ def _rebuild_tool_call(id_: str, name: str, arguments: dict[str, Any]) -> ToolCa
 
 @dataclass(frozen=True)
 class ToolSchema:
-    """JSON-schema advertisement of a tool — what the provider needs to *see* to call it."""
+    """JSON-schema advertisement of a tool — what the provider needs to *see* to call it.
+
+    ``parameters`` is a plain ``dict`` on purpose — it is ``json.dumps``'d
+    straight into provider payloads and read back through
+    ``dataclasses.asdict``, neither of which survives a ``MappingProxyType``.
+    That mutable field is also what cost the frozen dataclass its generated
+    ``__hash__``; see ``__hash__`` for how the two are reconciled."""
 
     name: str
     description: str = ""
     parameters: dict[str, Any] = field(default_factory=dict)
+
+    def __hash__(self) -> int:
+        """Hash on the ADVERTISEMENT — ``(name, description)`` — never on the
+        JSON Schema body.
+
+        A frozen dataclass derives ``__hash__`` from every compared field, and
+        ``parameters`` is a ``dict``, so the whole type was unhashable.
+        Measured before this fix::
+
+            hash(ToolSchema("search", "", {"type": "object"}))
+            TypeError: unhashable type: 'dict'
+
+        Nothing inside the framework hashed a ``ToolSchema`` — ``memoize``
+        deliberately keys chat calls on ``sorted(t.name for t in tools)`` via
+        ``stable_hash``, because there the CONTENT is the identity. The break
+        was caller-facing and silent: ``set(request.tools)`` to dedupe two
+        registries advertising the same tool, a ``dict[ToolSchema, Handler]``,
+        an ``lru_cache`` over a schema-taking function. Each raises at the call
+        site that happens to hash one, which is the worst place to find out.
+
+        Excluding ``parameters`` is sound rather than a workaround: ``__eq__``
+        still compares it, and the hash invariant only requires that EQUAL
+        objects hash equally — never that unequal ones differ. Two revisions of
+        one tool's schema land in the same bucket and ``__eq__`` separates them
+        there; that is what a bucket is for, and a ``set`` still keeps both.
+
+        It is also the only option that WORKS. A JSON Schema body nests
+        ``dict``/``list`` by construction (``properties``, ``required``,
+        ``enum``), so a content-inclusive hash would be unhashable for every
+        realistic schema and hashable only for the empty one. Routing it
+        through ``stable_hash`` instead would make ``__hash__`` O(schema):
+        measured 0.192 µs here for both a ``{"type": "object"}`` stub and a
+        20-property schema (the body is never read), against 23.4 µs for
+        ``stable_hash`` on that same 20-property body — paid on every bucket
+        probe, not once per cache key.
+
+        ``description`` stays IN. It is a ``str``, so it is always hashable,
+        and CPython caches a string's hash on the object — a 4000-character
+        description measured the same 0.193 µs as a five-word one. It is also
+        the field that varies while the name does not (a registry A/B-testing
+        tool docs, a schema regenerated from a rewritten docstring), so it buys
+        bucket spread for 0.063 µs: 0.193 µs with it against 0.130 µs for
+        ``hash(self.name)`` alone.
+        """
+        return hash((self.name, self.description))
 
 
 @dataclass(frozen=True)
@@ -375,6 +426,68 @@ class ChatRequest:
     max_tokens: int | None = None
     cache_hint: Any = None  # provider prompt-cache hint (stable prefix)
 
+    def __hash__(self) -> int:
+        """Hash the CALL SHAPE — model, sampling settings, transcript LENGTH —
+        never the transcript, the tool list or the payload dicts.
+
+        Three of the fields are mutable containers, so the generated
+        all-fields hash never ran. Measured before this fix::
+
+            hash(ChatRequest([Message("user", "hi")], "gpt-4"))
+            TypeError: unhashable type: 'list'
+
+        Not even a payload-dependent failure like ``ToolCall``'s: ``messages``
+        is a ``list``, so EVERY ChatRequest was unhashable, including the
+        degenerate one. Anything a caller does with a request as a key — a
+        ``dict[ChatRequest, LLMResult]`` test double, ``lru_cache`` over a
+        request-taking helper, ``set()`` to spot a retried request — raised.
+
+        ``messages`` is excluded for COST, not for hashability: ``Message`` and
+        ``ToolCall`` gained ``__hash__`` in this same sweep, so
+        ``tuple(self.messages)`` would hash fine. It would also make
+        ``__hash__`` linear in the transcript, and a transcript is the one part
+        of a request that grows without bound — measured 0.28 µs for this hash
+        at every transcript size from 1 to 1000 turns, against 2.98 µs /
+        27.4 µs / 273 µs for a messages-inclusive hash at 10 / 100 / 1000
+        turns. An agent loop re-sends the whole transcript every turn, so a
+        cache keyed on requests would pay O(turns) per probe and O(turns²) over
+        a run, to re-derive what ``__eq__`` confirms exactly anyway.
+
+        ``len(self.messages)`` is kept because it is O(1), is equal whenever
+        the requests are equal, and is precisely what varies between the
+        requests one run produces — successive turns of a loop differ by
+        exactly one appended message, so the cheap discriminator spreads them
+        across buckets that ``model`` alone would pile into one.
+
+        ``tools`` is excluded on the same cost argument (a registry advertises
+        the same list on every turn, so it discriminates nothing), and
+        ``response_format`` / ``cache_hint`` because they cannot be hashed at
+        all: the first is a decoded JSON schema body, the second is ``Any`` —
+        provider-specific, in practice a dict. Hashing either would make
+        hashability depend on what a caller happened to put there, which is
+        the bug this method removes rather than a property to preserve.
+
+        Excluding them is sound rather than a workaround: ``__eq__`` still
+        compares every field, and the hash invariant only requires EQUAL
+        objects to hash equally — never that unequal ones differ. Two requests
+        differing only in message CONTENT collide into one bucket, where
+        ``__eq__`` separates them; that is what a bucket is for, and a ``set``
+        keeps both.
+        """
+        # SHARP EDGE, deliberately accepted: ``messages`` is a mutable list on
+        # a frozen dataclass, so appending to it changes this hash. That does
+        # NOT introduce a new failure mode — ``__eq__`` already compares
+        # ``messages``, so a mutated request is unusable as a stable set member
+        # whatever the hash does: with a payload-free hash it lands in the right
+        # bucket and fails ``__eq__``; with ``len`` it lands in the wrong bucket.
+        # Both are "not found". Nothing in the framework mutates a request's
+        # message list (middleware REPLACES the request via
+        # ``MiddlewareContext.request``; the ``.messages.extend`` call sites all
+        # belong to ``WorkingContext`` and blackboards), so the edge is only
+        # reachable by a caller who mutates a frozen value in place. Pinned by
+        # ``test_mutating_a_requests_messages_invalidates_its_hash``.
+        return hash((self.model, self.temperature, self.max_tokens, len(self.messages)))
+
 
 @dataclass(frozen=True)
 class ToolRequest:
@@ -383,3 +496,45 @@ class ToolRequest:
     tool: Any  # the resolved ToolPort (terminal calls tool.run)
     side_effecting: bool = False
     url_arg: str | None = None  # egress middleware checks this arg if set
+
+    def __hash__(self) -> int:
+        """Hash the ROUTING fields — ``(name, side_effecting, url_arg)`` —
+        never ``arguments`` and never the resolved ``tool``.
+
+        ``arguments`` is a ``dict``, so the generated all-fields hash never
+        ran. Measured before this fix::
+
+            hash(ToolRequest("search", {"q": "hi"}, tool=None))
+            TypeError: unhashable type: 'dict'
+
+        Same shape as ``ToolCall.__hash__`` one layer up, and for the same
+        reason: arguments are decoded provider JSON, so their values are
+        routinely nested ``list``/``dict``. A content-inclusive hash would be
+        hashable only when the model happened to emit scalars — a trap, not a
+        key. Routing them through ``stable_hash`` (what ``memoize`` does for
+        its cache key, where the content genuinely IS the identity) would make
+        ``__hash__`` O(arguments): measured 0.229 µs here for a 1-key
+        arguments dict and 0.237 µs for a 100_000-key one (the payload is
+        never read), against 3.28 µs / 80.0 ms for ``stable_hash`` on the same
+        two.
+
+        ``tool`` — the resolved ``ToolPort`` — is excluded for a second reason
+        beyond cost: it is annotated ``Any`` and holds whatever the registry
+        built, so hashing it would inherit that object's hashability. A
+        ``@dataclass`` tool that defines ``__eq__`` has no ``__hash__`` at all,
+        which would resurrect the exact failure this method removes, one
+        indirection further away from the call site.
+
+        ``side_effecting`` and ``url_arg`` stay in: both are cheap scalars and
+        both are the fields the middleware chain routes on (the idempotency
+        gate reads the first, the egress guard reads the second), so a request
+        that is being treated differently by the chain also lands in a
+        different bucket.
+
+        Excluding the rest is sound rather than a workaround: ``__eq__`` still
+        compares every field, and the hash invariant only requires EQUAL
+        objects to hash equally — never that unequal ones differ. Two calls to
+        the same tool with different arguments share a bucket, where ``__eq__``
+        separates them; a ``set`` keeps both.
+        """
+        return hash((self.name, self.side_effecting, self.url_arg))

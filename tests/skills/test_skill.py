@@ -118,6 +118,147 @@ def test_skill_is_frozen():
         skill.name = "renamed"  # type: ignore[misc]
 
 
+# ---- hashability: frozen in name only -------------------------------------------------------
+#
+# A Skill is documented as an immutable value object "you compose at wire-time,
+# register once, reuse across runs" — and it could not go in a set or be a dict
+# key. What made it unhashable is invisible in the annotations, which is why it
+# needed diagnosing rather than reading. Measured before the fix::
+#
+#     hash(Skill("researcher", "digs"))
+#     TypeError: unhashable type: 'SingleCallCognition'
+#
+# Not ``'dict'``, and not from a payload the caller passed: EVERY cognition the
+# framework ships is a mutable ``@dataclass(slots=True)``, and a mutable
+# dataclass with the default ``eq=True`` gets ``__hash__ = None`` from
+# ``@dataclass`` itself. They are mutable on purpose — ``ReActCognition`` holds
+# live termination state that ``as_agent`` deep-copies per run — so the defect
+# was in Skill's hash, not in the cognitions. And because ``cognition``
+# defaults to ``field(default_factory=SingleCallCognition)``, the ergonomic
+# ``Skill("x", "y")`` form the docstring recommends produced an unhashable
+# Skill: every Skill, not some.
+#
+# The fix hashes ``(name, description, prompt, model)`` — all hashable by
+# construction, so the hash is total — and leaves ``__eq__`` alone.
+
+
+def test_skill_is_hashable_in_its_ergonomic_two_argument_form():
+    """The exact form the class docstring recommends for tests and small
+    examples. It carries the default ``SingleCallCognition``, which is what
+    used to make it unhashable."""
+    assert isinstance(hash(Skill("researcher", "digs")), int)
+
+
+def test_skill_is_hashable_with_every_cognition_the_framework_ships():
+    """Not one unhashable cognition but the whole family — each is a mutable
+    dataclass, so each broke Skill the same way."""
+    from agentkit.agents.cognition import CoordinatorCognition
+    from agentkit.agents.policies.roundrobin import RoundRobinPolicy
+
+    for cognition in (
+        SingleCallCognition(),
+        ReActCognition(tools=ToolRegistry()),
+        CoordinatorCognition(children={"a": Agent("a", "m")}, policy=RoundRobinPolicy()),
+    ):
+        assert isinstance(hash(Skill("s", "d", cognition=cognition)), int)
+
+
+def test_skill_is_hashable_with_an_arbitrary_memory_implementation():
+    """``MemorySource`` is a Protocol, so ``memory`` is whatever the
+    application wired in — very often a mutable dataclass or a live client.
+    The framework can promise nothing about its hash, so it stays out."""
+    from dataclasses import dataclass
+
+    @dataclass  # mutable + eq=True → __hash__ is None, exactly like a cognition
+    class _MutableMemory:
+        name: str = "stub"
+
+        async def query(self, query, *, k, ctx, where=None):
+            return []
+
+        async def write(self, items, *, ctx):
+            return None
+
+    memory = _MutableMemory()
+    with pytest.raises(TypeError):
+        hash(memory)  # the field's own type is unhashable...
+    assert isinstance(hash(Skill("s", "d", memory=memory)), int)  # ...the Skill is not
+
+
+def test_skill_hash_ignores_cognition_and_memory_while_eq_does_not():
+    """The soundness argument, exercised. Two Skills that differ only in
+    cognition collide into one bucket, stay UNEQUAL, and both survive in a
+    ``set`` — the hash invariant only requires EQUAL objects to hash equally."""
+    a = Skill("researcher", "digs", cognition=SingleCallCognition())
+    b = Skill("researcher", "digs", cognition=ReActCognition(tools=ToolRegistry()))
+    assert hash(a) == hash(b)
+    assert a != b
+    assert len({a, b}) == 2
+
+
+def test_skill_hash_is_o1_in_the_cognition_it_holds():
+    """Proven STRUCTURALLY rather than by timing, so it cannot go flaky: a
+    Skill wired to a ReAct cognition holding 1000 tools hashes to the same
+    number as the bare one. Only possible if the cognition is never read."""
+    tools = ToolRegistry()
+    for i in range(1000):
+        tools.register(
+            FunctionTool(name=f"t{i}", description="d", fn=lambda **kw: None, side_effecting=False)
+        )
+    assert hash(Skill("s", "d")) == hash(Skill("s", "d", cognition=ReActCognition(tools=tools)))
+
+
+def test_skill_hash_separates_the_parts_it_keeps():
+    """The hashed subset earns its place — name, description, prompt and model
+    are the recipe's identity, and a registry keying on it needs them apart."""
+    base = Skill("researcher", "digs", prompt="be diligent", model="m")
+    assert hash(base) != hash(Skill("summariser", "digs", prompt="be diligent", model="m"))
+    assert hash(base) != hash(Skill("researcher", "other", prompt="be diligent", model="m"))
+    assert hash(base) != hash(Skill("researcher", "digs", prompt="be terse", model="m"))
+    assert hash(base) != hash(Skill("researcher", "digs", prompt="be diligent", model="m2"))
+
+
+def test_skill_hash_accepts_a_versioned_prompt_as_well_as_a_string():
+    """``prompt`` is ``Prompt | str`` and both halves are hashable by
+    construction — ``Prompt`` has its own identity hash over
+    ``(id, version, template, inputs)`` — so including it cannot reintroduce
+    the bug. A bound prompt hashes too."""
+    p = Prompt(id="researcher", version="v1", template="be {how}", inputs=("how",))
+    assert isinstance(hash(Skill("s", "d", prompt=p)), int)
+    assert isinstance(hash(Skill("s", "d", prompt=p.bind(how="diligent"))), int)
+    assert hash(Skill("s", "d", prompt=p)) != hash(Skill("s", "d", prompt="be diligent"))
+
+
+def test_skills_can_be_registered_in_a_set_and_keyed_in_a_dict():
+    """The caller this unlocks, in the words of the class docstring: compose at
+    wire-time, register once, reuse. Equal recipes collapse; lookup by an
+    EQUAL-but-distinct Skill hits, which an identity hash would not do."""
+    registry = {Skill("researcher", "digs"): "wired"}
+    assert registry[Skill("researcher", "digs")] == "wired"
+    assert Skill("summariser", "condenses") not in registry
+    assert len({Skill("a", "x"), Skill("a", "x"), Skill("b", "x")}) == 2
+
+
+def test_skill_construction_and_materialisation_are_unchanged():
+    """POSITIVE CONTROL: adding ``__hash__`` touches nothing else — fields,
+    equality (which still compares the cognition), and ``as_agent`` all behave
+    as before. Passes before and after the fix."""
+    cognition = SingleCallCognition()
+    skill = Skill("researcher", "digs", prompt="be diligent", cognition=cognition, model="m")
+
+    assert (skill.name, skill.description, skill.model) == ("researcher", "digs", "m")
+    assert skill.cognition is cognition
+    assert skill == Skill("researcher", "digs", prompt="be diligent", cognition=cognition, model="m")
+    # ``__eq__`` still compares the cognition — a different one is a different
+    # recipe, even though the two now share a hash bucket.
+    assert skill != Skill(
+        "researcher", "digs", prompt="be diligent", cognition=ReActCognition(tools=ToolRegistry())
+    )
+    agent = skill.as_agent()
+    assert agent.name == "researcher" and agent.model == "m"
+    assert agent.cognition is not cognition  # still deep-copied per materialisation
+
+
 # ---- end-to-end: outer agent calls a Skill as a tool ----------------------------------------
 
 
