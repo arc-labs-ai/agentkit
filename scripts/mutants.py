@@ -214,6 +214,22 @@ REPLAY_TESTS = ("tests/adapters/test_replay_file.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
     Mutant(
+        tag="approvals",
+        why="auto_allow_when can BROADEN instead of only narrowing, becoming a second way in",
+        path="agentkit/integrations/mcp/approvals.py",
+        before=(
+            "        if tool_name in self.auto_allow and self._arguments_are_auto_allowed(\n"
+            "            tool_name, arguments\n"
+            "        ):"
+        ),
+        after=(
+            "        if tool_name in self.auto_allow or self._arguments_are_auto_allowed(\n"
+            "            tool_name, arguments\n"
+            "        ):"
+        ),
+        tests=APPROVAL_TESTS,
+    ),
+    Mutant(
         tag="frozen",
         why="deep_freeze goes shallow, so cp.state['a']['b'] = 1 rewrites a durable record again",
         path="agentkit/kernel/_frozen.py",
@@ -313,8 +329,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="hashable",
         why="Observation hashes its payload, so it is unhashable the moment it carries a dict",
         path="agentkit/kernel/observation.py",
-        before="        return hash((self.run_id, self.agent, self.seq, self.ts, self.kind))",
-        after="        return hash((self.run_id, self.agent, self.seq, self.ts, self.kind, self.payload))",
+        before="        return hash((self.run_id, self.agent, self.kind))",
+        after="        return hash((self.run_id, self.agent, self.kind, self.payload))",
         tests=PORTS_TESTS,
     ),
     Mutant(
@@ -1184,7 +1200,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="approvals",
         why="auto_allow is ignored, so every read prompts and habituates the reviewer",
         path="agentkit/integrations/mcp/approvals.py",
-        before="        if tool_name in self.auto_allow:",
+        before=(
+            "        if tool_name in self.auto_allow and self._arguments_are_auto_allowed(\n"
+            "            tool_name, arguments\n"
+            "        ):"
+        ),
         after="        if False:",
         tests=APPROVAL_TESTS,
     ),
