@@ -503,6 +503,44 @@ It is also blunt: the match is on tool name only. In the run above,
 arguments are not consulted. Put only tools you would allow with *any*
 arguments in that tuple.
 
+That is worth stating plainly because the mistake is easy to make in the
+safe-sounding direction: it is tempting to read `auto_allow=("Read",)` as
+"reading is fine", when it means "reading **anything** is fine, including
+`~/.ssh/id_rsa`".
+
+#### Narrowing it by argument
+
+`auto_allow_when(tool_name, arguments) -> bool` is the opt-in filter for
+when a tool is *mostly* safe:
+
+```python
+from agentkit.integrations.mcp.approvals import ApprovalServer
+
+server = ApprovalServer(
+    asker=None,  # your reviewer
+    auto_allow=("Read",),
+    auto_allow_when=lambda tool, args: not str(
+        args.get("file_path", "")
+    ).startswith("/etc/"),
+)
+```
+
+```text
+Read README.md    auto-allowed: True
+Read /etc/passwd  auto-allowed: False   # falls through to the reviewer
+```
+
+Two properties make this safe to put on an approval seam:
+
+- **It can only subtract.** The gate is `tool_name in auto_allow` **and**
+  the predicate, so the predicate filters an already-approved set. A
+  predicate returning `True` for a tool that is not in `auto_allow`
+  cannot let it through — it is never a second way in.
+- **A raising predicate falls through to the reviewer.** A bug in your
+  filter costs a prompt, not an approval.
+
+Leaving it unset (the default) keeps the old behaviour exactly.
+
 ## Gotchas
 
 - **Every MCP tool is `side_effecting=True`.** MCP has no standard

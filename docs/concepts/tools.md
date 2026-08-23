@@ -614,10 +614,55 @@ the tool path.
 | Error | Fires | Who can fix it |
 |---|---|---|
 | `ToolDefinitionError` | at **decoration/registration** time | **you** — missing `side_effecting=`, thin docstring |
-| `ToolArgumentError` | at **call** time, before the function runs | **the model** — it authored a bad call |
+| `ToolArgumentError` | at **call** time, before the function runs | **the model** — it authored a bad call (missing, unexpected, or uncoercible argument) |
 | `ToolShapeError` | at **call** time, after the function returned | **the tool** — it produced a bad value |
 
 The split is about *recovery*, not taxonomy.
+
+`ToolArgumentError` carries three kinds of complaint, because a repair
+turn recovers from all of them the same way — reflect and reissue:
+`missing` and `unexpected` name arguments, and `invalid` names arguments
+that were present but could not be coerced to the annotated type.
+
+```python
+import asyncio
+import enum
+
+from agentkit.tools import ToolArgumentError, tool
+
+
+class Unit(enum.Enum):
+    C = "celsius"
+    F = "fahrenheit"
+
+
+@tool(side_effecting=False)
+async def weather(city: str, unit: Unit) -> str:
+    """Report the weather for a city in the requested unit of measure."""
+    return f"{type(unit).__name__}={unit!r}"
+
+
+async def main() -> None:
+    # A legal value arrives as the Enum member, not the wire string.
+    print(await weather.run({"city": "Lisbon", "unit": "celsius"}, None))
+
+    # An illegal one is refused before the body runs.
+    try:
+        await weather.run({"city": "Lisbon", "unit": "kelvin"}, None)
+    except ToolArgumentError as exc:
+        print(exc.invalid)
+
+
+asyncio.run(main())
+```
+
+```text
+Unit=<Unit.C: 'celsius'>
+(('unit', "'kelvin' is not a valid Unit; expected one of ['celsius', 'fahrenheit']"),)
+```
+
+All bad arguments are collected before raising, so one repair turn learns
+every mistake at once rather than discovering them one call at a time.
 
 `ToolDefinitionError` is a bug in your wiring and there is no runtime
 recovery for it, so it fires at import — before an agent exists, let
@@ -705,6 +750,17 @@ recovery.
 
 ### Other things in the box
 
+!!! note "`FileTool` advertises itself as `memory`, and that is deliberate"
+    `FileTool().schema.name` is `"memory"`, which reads like a clash with
+    the `agentkit.memory` package. It is not a naming slip: this is
+    agentkit's implementation of Anthropic's client-side memory tool, and
+    four things are fixed by that contract — the name, the six commands
+    (`view`, `create`, `str_replace`, `insert`, `delete`, `rename`),
+    single-call `command=` dispatch, and the `/memories` root. Renaming
+    it would break the vendor integration, so the name is pinned by a
+    test rather than left to judgement.
+
+
 `FileTool` is a duck-typed tool that gives the model a self-managed note
 tree — `view` · `create` · `str_replace` · `insert` · `delete` ·
 `rename` — over a backend that defaults to `InMemoryFiles`. It is
@@ -724,13 +780,20 @@ memory True False
 
 ## Gotchas
 
-!!! warning "Arguments are not coerced to the annotated type"
-    The schema tells the model which values are legal; it does not
-    convert them. A parameter annotated `unit: Unit` receives the raw
-    JSON value — a `str` — not an `Enum` member. Coerce inside the tool
-    body (`Unit(unit)`) if you need the enum, or annotate the parameter
-    `Literal["celsius", "fahrenheit"]`, which produces the same schema
-    and is honest about what arrives.
+!!! tip "Rich types arrive as the type you annotated"
+    An `Enum`, a `Literal` or a typed struct is coerced at the call
+    boundary, driven by the same annotation the schema was derived from.
+    This used to be the opposite — the body received the raw JSON value,
+    so a parameter annotated `unit: Unit` got a `str` and `unit.value`
+    raised `AttributeError` at runtime on a value the schema said was a
+    `Unit`.
+
+    Primitives are deliberately **not** coerced. Nothing turns `"3"` into
+    `3`: a provider sending a string for an integer parameter has a bug
+    the framework should surface, not launder.
+
+    A value that cannot be coerced raises `ToolArgumentError` before the
+    function runs — see [the error table](#three-error-types-not-one).
 
 !!! warning "`Agent` has no `tools=` keyword"
     Tools go on the cognition: `ReActCognition(tools=[...])`. Passing

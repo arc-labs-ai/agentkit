@@ -542,6 +542,38 @@ recording.
     works), but it means `fail_times=2` fails twice *in total*, not
     twice per run. Build a fresh one per scenario when in doubt.
 
+!!! warning "`complete()` does not read the script"
+    `FakeLLM.complete()` answers from the single-response path and never
+    consults `turns`, so on a scripted fake it returns the default `"{}"`
+    rather than the turn you wrote:
+
+    ```python
+    import asyncio
+
+    from agentkit.kernel.types import Message
+    from agentkit.testing import FakeLLM, Turn
+
+
+    async def main() -> None:
+        llm = FakeLLM.script([Turn(content="scripted one")])
+        chatted = await llm.chat(messages=[Message("user", "hi")], model="m")
+        completed = await llm.complete(system="s", user="u", model="m")
+        print(repr(chatted.content), repr(completed.content))
+
+
+    asyncio.run(main())
+    ```
+
+    ```text
+    'scripted one' '{}'
+    ```
+
+    The single-response form is unaffected — `FakeLLM("plain")` completes
+    to `"plain"`. It only bites when a script is involved, and it bites
+    quietly: `"{}"` parses as an empty JSON object, so a test asserting
+    on structured output sees a plausible-looking empty result rather
+    than an error. Use `chat`/`stream` when you are driving a script.
+
 !!! warning "`FakeLLM` ignores `tools=` entirely"
 
     It replies from its script or its response map regardless of what

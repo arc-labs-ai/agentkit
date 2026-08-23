@@ -289,6 +289,13 @@ deterministic), and a tuple of journal entries. Hand one across an agent
 boundary when you want to brief a child without letting its writes leak
 back.
 
+Freezing is a property of the **snapshot**, not of the data. The inverse
+matters just as much: a `Checkpoint` is rightly frozen because it is a
+durable record, but a context *resumed* from one is a live working
+context again and has to be writable. `persistence.rehydrate` thaws it
+on the way back in, at every depth — a top-level copy alone would move
+the failure to the first nested write rather than fix it.
+
 ```python
 import copy
 import pickle
