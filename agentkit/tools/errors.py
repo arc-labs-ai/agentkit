@@ -33,6 +33,16 @@ class ToolArgumentError(ValueError):
 
     Subclasses ``ValueError``: the failure mode is a bad value, and existing
     ``except ValueError`` isolation around tool calls keeps working.
+
+    ``invalid`` is the third flavour of bad call, and it is the same kind of
+    mistake as the other two: the argument NAME was right, the VALUE was not one
+    the advertised schema permits. ``unit="kelvin"`` against
+    ``{"enum": ["celsius", "fahrenheit"]}`` used to be neither reported nor
+    converted — the string went straight into a body annotated ``Unit``. It
+    belongs on this type rather than a new one precisely because the recovery is
+    identical: reflect the message, let the model reissue the call. Each entry is
+    ``(argument name, why it was rejected)``, and the reason carries the legal
+    values so the repair turn does not have to guess.
     """
 
     def __init__(
@@ -42,12 +52,17 @@ class ToolArgumentError(ValueError):
         unexpected: tuple[str, ...] = (),
         missing: tuple[str, ...] = (),
         accepted: tuple[str, ...] = (),
+        invalid: tuple[tuple[str, str], ...] = (),
     ) -> None:
         parts = []
         if unexpected:
             parts.append(f"unexpected argument(s) {list(unexpected)}")
         if missing:
             parts.append(f"missing required argument(s) {list(missing)}")
+        if invalid:
+            parts.append(
+                "invalid argument(s): " + "; ".join(f"{k}: {why}" for k, why in invalid)
+            )
         super().__init__(
             f"tool {tool_name!r} call rejected: "
             + "; ".join(parts)
@@ -57,6 +72,7 @@ class ToolArgumentError(ValueError):
         self.unexpected = tuple(unexpected)
         self.missing = tuple(missing)
         self.accepted = tuple(accepted)
+        self.invalid = tuple(invalid)
 
 
 class ToolShapeError(Exception):

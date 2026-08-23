@@ -27,7 +27,9 @@ from agentkit.capabilities.output_schema import (
 from agentkit.kernel.protocols import Ctx
 from agentkit.tools.errors import ToolArgumentError, ToolDefinitionError, ToolShapeError
 from agentkit.tools.schema import (
+    _build_coercers,
     _build_schema,
+    _CoercionRejected,
     _infer_output_schema,
     _is_ctx_param,
     _resolved_description,
@@ -182,6 +184,10 @@ class FunctionTool:
         accepts_var_kw = any(
             p.kind is p.VAR_KEYWORD for p in inspect.signature(func).parameters.values()
         )
+        # Built from the SAME annotations ``_build_schema`` just read, once, here.
+        # Usually empty — a tool whose parameters are all ``str``/``int``/``bool``
+        # gets ``{}`` and pays a single falsy dict test per call.
+        coercers = _build_coercers(func)
         is_async = inspect.iscoroutinefunction(func)
 
         async def _invoke(args: Any, ctx: Ctx) -> Any:
@@ -254,6 +260,41 @@ class FunctionTool:
                     missing=missing,
                     accepted=tuple(arg_params),
                 )
+
+            # Reconstitute the rich types the SCHEMA promised the model. This runs
+            # AFTER the unexpected/missing check so those diagnoses keep their
+            # precedence — a call that is missing ``city`` should be told it is
+            # missing ``city``, not that its ``unit`` was unparseable — and BEFORE
+            # ctx injection, so the injected ``RunContext`` is never a coercion
+            # candidate. ``coercers`` never contains a ctx parameter name anyway
+            # (``_build_coercers`` skips them via the same ``_is_ctx_param``
+            # predicate that keeps them out of the schema); the ordering is belt
+            # and braces on the path that was just fixed to accept ``Ctx``.
+            #
+            # Extras admitted by ``**kwargs`` were merged into ``kwargs`` above and
+            # are untouched here: the loop walks ``coercers``, which only has keys
+            # for DECLARED, ANNOTATED parameters. There is no annotation behind a
+            # ``**kwargs`` key, so there is nothing to honour.
+            #
+            # All failures are collected before raising rather than short-circuiting
+            # on the first. A model that got two arguments wrong should learn both
+            # in one turn — a repair loop that discovers them one per round trip
+            # burns a turn and a call per mistake.
+            if coercers:
+                invalid: list[tuple[str, str]] = []
+                for pname, coerce in coercers.items():
+                    if pname not in kwargs:
+                        continue  # absent → the parameter's own default applies, untouched
+                    try:
+                        kwargs[pname] = coerce(kwargs[pname])
+                    except _CoercionRejected as exc:
+                        invalid.append((pname, exc.reason))
+                if invalid:
+                    raise ToolArgumentError(
+                        fname,
+                        invalid=tuple(invalid),
+                        accepted=tuple(arg_params),
+                    )
 
             for cp in ctx_params:
                 kwargs[cp] = ctx
