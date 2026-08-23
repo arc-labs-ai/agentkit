@@ -909,7 +909,9 @@ def test_the_real_cli_honours_an_interrupt_and_stays_alive() -> None:
             stopping = None
             first = None
             async for ev in chat.turn(
-                "Count slowly from 1 to 300, one per line, commenting on each."
+                "Count slowly from 1 to 300, one number per line, with a short "
+                "comment on each. When you have finished all 300, write the word "
+                "PIPPIN on the last line."
             ):
                 if ev.type == "message_delta" and stopping is None:
                     stopping = asyncio.create_task(chat.interrupt())
@@ -927,7 +929,13 @@ def test_the_real_cli_honours_an_interrupt_and_stays_alive() -> None:
     assert receipt.delivered, "the CLI did not acknowledge the interrupt"
     assert first.evals["stop_reason"] == "interrupted"
     assert first.stop_reason == "terminated"
-    assert "300" not in first.output, "the turn was not actually stopped early"
+    # A SENTINEL, not a proxy. The first version asserted `"300" not in output`
+    # and flaked: the model echoes the target in its preamble ("I'll count from
+    # 1 to 300..."), so the assertion tested its phrasing rather than whether
+    # the turn was stopped. `PIPPIN` exists only if the turn ran to completion.
+    assert "PIPPIN" not in first.output.upper(), (
+        f"the turn was not actually stopped early: {first.output[-200:]!r}"
+    )
     # The session survived: the same process answered a second turn.
     assert second.stop_reason == "complete"
     assert "still here" in second.output.lower()
