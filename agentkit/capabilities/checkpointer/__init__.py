@@ -2,9 +2,9 @@
 
 `base.py` houses the `Checkpointer` class (the ergonomic facade over `CheckpointPort`).
 `persistence.py` houses the shape-conversion plumbing (Message/Usage/ToolCall ↔ dict, the
-coordinator-state shape, and the legacy `StoreBackedCheckpointStore` bridge) that the
-ReAct loop and the coordinator policies use to round-trip mid-run state through a
-checkpoint.
+coordinator-state shape, and `StoreBackedCheckpointStore` — the `CheckpointPort` over a
+plain `StorePort` that makes `Services(store=...)` a durable wiring) that the ReAct loop
+and the coordinator policies use to round-trip mid-run state through a checkpoint.
 
 Everything here is re-exported so callers say
 ``from agentkit.capabilities.checkpointer import …`` — they shouldn't have to know which

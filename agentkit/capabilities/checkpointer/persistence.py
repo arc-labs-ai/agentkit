@@ -9,17 +9,18 @@ checkpoints read consistently.
 
 The *transport* (where the snapshot lives and how versions are numbered) is no longer here;
 that's the `Checkpointer` capability + `CheckpointPort`. A wiring that injects only
-`ctx.store` still gets durable resume through the `StoreBackedCheckpointStore` bridge,
-which `capabilities.checkpointer.resolve_checkpointer` synthesizes on demand.
+`ctx.store` still gets durable resume through `StoreBackedCheckpointStore`, which
+`capabilities.checkpointer.resolve_checkpointer` synthesizes on demand — that is the
+ergonomic default, not a compatibility shim.
 
 EVERY producer resolves through that one function — the tool loop, `Workflow`, the
 coordinator policies, `PlanPolicy`'s human gate. An earlier version of this docstring
-claimed coordinator runs deliberately excluded the bridge and "require a real
+claimed coordinator runs deliberately excluded the store-backed port and "require a real
 `Checkpointer`"; that divergence was not a simplification, it was a silent failure — a
 `Services(store=...)` wiring left a completed coordinator run with zero keys in the store
-and no warning. The bridge is exactly as durable as the store behind it, and its one
-limitation (a single slot per run, no version history) costs nothing to a producer that
-only ever reads `latest`.
+and no warning. It is exactly as durable as the store behind it, and its one limitation
+(a single slot per run, no version history) costs nothing to a producer that only ever
+reads `latest`.
 """
 
 from __future__ import annotations
@@ -115,12 +116,43 @@ def prefix_to_dict(p: PrefixContext) -> dict[str, Any]:
     }
 
 
-def dict_to_prefix(d: dict[str, Any] | None) -> PrefixContext:
-    """Inverse of ``prefix_to_dict``. Tolerates ``None`` so a
-    pre-context-split checkpoint round-trips into an empty prefix
-    instead of crashing on missing keys."""
-    if not d:
-        return PrefixContext()
+def dict_to_prefix(d: dict[str, Any]) -> PrefixContext:
+    """Inverse of ``prefix_to_dict``.
+
+    Takes the block ``prefix_to_dict`` writes, and only that. An earlier
+    version also accepted ``None``/absent and returned an empty
+    ``PrefixContext``, so that a snapshot written before the context split
+    (system prompt inline as the first ``messages`` entry) still resumed.
+    That second shape has no writer: ``ReActCognition._save`` is the only
+    thing in the tree that produces a ``{"messages": ...}`` state and it has
+    always emitted ``prefix`` since the split, which landed unreleased — the
+    only tagged version is 0.1.0 and it predates ``PrefixContext``
+    entirely. A decoder branch that no writer can reach is not tolerance,
+    it is a silent default: a state that lost its ``prefix`` on the wire
+    would have rehydrated with an EMPTY system prompt and re-run the agent
+    with no instructions. Requiring the key turns that into a ``KeyError``
+    naming the field, which is what the rest of ``rehydrate``'s required
+    set already does.
+
+    The per-field ``.get`` defaults below are a different thing and stay:
+    they let a caller hand-assembling a prefix block omit the parts it does
+    not use (these helpers are exported for exactly that), and they cost
+    nothing because each field's absence has one obvious meaning.
+    """
+    if not isinstance(d, dict):
+        # An explicit ``None`` used to be the second accepted shape, so it is
+        # the one malformed value a caller is most likely to still send. Reject
+        # it by NAME: without this it reaches ``d.get`` and surfaces as
+        # ``AttributeError: 'NoneType' object has no attribute 'get'`` from
+        # inside the decoder, which says nothing about which field was wrong.
+        # An absent key already fails clearly with ``KeyError('prefix')``; this
+        # makes the null case fail just as clearly.
+        raise TypeError(
+            f"checkpoint field 'prefix' must be the block prefix_to_dict writes, "
+            f"got {type(d).__name__}. A prefix-less state is not resumable — it "
+            f"would restore an empty system prompt and re-run the agent with no "
+            f"instructions."
+        )
     return PrefixContext(
         system_prompt=d.get("system_prompt", "") or "",
         grounding=tuple(dict_to_msg(m) for m in d.get("grounding") or []),
@@ -132,17 +164,17 @@ def rehydrate(saved: dict[str, Any]) -> tuple[WorkingContext, Usage, int, bool]:
     """Rebuild ``(WorkingContext, Usage, next_iteration, repaired)`` from
     a checkpoint dict.
 
-    The shape is implicitly v2 after the context-split: the dict now
-    carries a ``prefix`` block (system prompt + grounding + schema)
-    alongside the tail messages and scratchpad. A missing ``prefix``
-    key (older snapshot) round-trips into an empty ``PrefixContext``,
-    so a checkpoint written before the split still rehydrates — its
-    transcript will have the prompt as the first ``system`` message in
-    ``messages`` (the legacy shape), which is functionally equivalent
-    on resume.
+    ONE shape, the one ``ReActCognition._save`` writes. Four keys are
+    REQUIRED — the ``prefix`` block (system prompt + grounding + schema),
+    the tail ``messages``, the accrued ``usage`` and the next
+    ``iteration`` — and a missing one raises a ``KeyError`` naming it — an operator gets a diagnosable failure rather
+    than a run that quietly resumes with half its state. ``scratchpad`` /
+    ``limit`` / ``shared`` / ``repaired`` stay optional because each has a
+    single unambiguous default (empty, unbounded, unshared, unrepaired)
+    that is indistinguishable from having been written.
     """
     context = WorkingContext(
-        prefix=dict_to_prefix(saved.get("prefix")),
+        prefix=dict_to_prefix(saved["prefix"]),
         messages=[dict_to_msg(d) for d in saved["messages"]],
         # ``thaw``, not a bare pass-through and not ``dict(...)``. The stored
         # state is deep-frozen (a durable record should be), but what we are
@@ -164,29 +196,44 @@ def rehydrate(saved: dict[str, Any]) -> tuple[WorkingContext, Usage, int, bool]:
     )
 
 
-# ---- legacy compatibility ---------------------------------------------------------------
+# ---- the store-backed CheckpointPort ------------------------------------------------------
 
 
 def ckpt_key(run_id: str) -> str:
-    """Legacy KV key used by the original `ctx.store`-backed checkpoint format.
-    Kept for back-compat: the `StoreBackedCheckpointStore` bridge writes at this key so an
-    older wiring that only injected `ctx.store` continues to round-trip cleanly."""
+    """The KV key `StoreBackedCheckpointStore` reads and writes for `run_id`.
+
+    Public because "where is this run's checkpoint in my store?" is an operator
+    question — an admin tool clearing a stuck suspend, or a test asserting a
+    snapshot really reached the backend, needs the same derivation the port
+    uses, and hardcoding `checkpoint:<id>` in a second place is how the two
+    drift. `tests/adapters/test_durable_resume_backends.py` asserts against
+    this key precisely so the store round trip stays pinned to it.
+    """
     return f"checkpoint:{run_id}"
 
 
 class StoreBackedCheckpointStore:
     """A minimal `CheckpointPort` over a generic `StorePort`.
 
-    Built ONLY as a legacy bridge inside `Agent`: when neither `Agent.checkpointer` nor
-    `ctx.checkpointer` is wired but `ctx.store` exists, we synthesize one of these so the
-    pre-existing `InMemoryStore`-driven tests keep working. New code wires a real
-    `CheckpointPort` adapter (e.g. `InMemoryCheckpointStore`) directly.
+    This is what makes `Services(store=...)` a durable wiring. `resolve_checkpointer`
+    synthesizes one when a `ctx.store` is present and no `Checkpointer` was injected,
+    which is the ergonomic path every producer depends on: the tool loop, `Workflow`,
+    the coordinator policies and `PlanPolicy`'s human gate all resolve through that one
+    function, and `Workflow`'s own unpersisted-gate warning names `Services(store=...)`
+    to the user as one of the two ways to make a suspend resumable. Measured by deleting
+    the synthesis and running the suite: 23 tests fail across workflow gates, plan gates,
+    tool-loop approve/resume and coordinator slot isolation. It is the DEFAULT, not a
+    compatibility shim — an app with a `StorePort` already wired should not also have to
+    hand-construct a `CheckpointPort` to get resume.
 
-    The bridge keeps a single-slot-per-run model — only the latest version survives on the
-    store. Time-travel / history is NOT available through this adapter; callers that need
-    versions list `Checkpointer.list_versions()`, which returns at most one element. This
-    is intentional: a generic KV cannot losslessly model a version history without leaking
-    a schema, and we don't want to retrofit that into `StorePort`.
+    Wire a real `CheckpointPort` adapter (`InMemoryCheckpointStore`, `PostgresCheckpointStore`)
+    when you want version HISTORY, which is the one thing this cannot give you.
+
+    The single-slot-per-run model is deliberate: only the latest version survives on the
+    store, so time-travel / replay is unavailable here and `Checkpointer.list_versions()`
+    returns at most one element. A generic KV cannot losslessly model a version history
+    without leaking a schema into `StorePort`, and resume — which reads `latest` and
+    nothing else — pays nothing for the limitation.
     """
 
     def __init__(self, store: Any) -> None:

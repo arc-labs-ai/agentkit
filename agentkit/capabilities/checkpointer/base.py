@@ -65,9 +65,16 @@ def resolve_checkpointer(ctx: Any, explicit: Checkpointer | None = None) -> Chec
     """The ONE durable-state resolution order, shared by every producer.
 
     ``explicit`` (a producer's own ``checkpointer=``) > ``ctx.checkpointer`` >
-    a legacy bridge synthesized over ``ctx.store`` (so a wiring that only
-    injected a ``StorePort`` keeps working). ``None`` when nothing is wired,
-    which callers treat as "durable resume disabled".
+    a ``StoreBackedCheckpointStore`` synthesized over ``ctx.store``. ``None``
+    when nothing is wired, which callers treat as "durable resume disabled".
+
+    That third step is an ERGONOMIC default, not a compatibility shim: an app
+    that already wired a ``StorePort`` gets durable resume without also
+    hand-constructing a ``CheckpointPort``, and ``Workflow`` advertises
+    ``Services(store=...)`` to users as one of the two supported ways to make a
+    human-gate suspend resumable. It gives up version history (one slot per
+    run) and nothing else, which costs a resumer that only reads ``latest``
+    exactly nothing.
 
     This lives here rather than on any one producer because having two
     resolution orders is how a seam silently stops working: ``Workflow``

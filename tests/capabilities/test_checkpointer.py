@@ -530,33 +530,35 @@ def test_concurrent_snapshots_of_same_run_id_produce_distinct_versions() -> None
     assert set(versions) == set(range(1, 11))
 
 
-# ── Checkpoint schema evolution: forward compat on optional fields ──────────
+# ── Checkpoint schema: required fields are loud, optional ones default ──────
 #
-# Production checkpoints outlive code deployments. A checkpoint
-# written by v1 code may load into v2 code long after the field
-# shape drifted. ``rehydrate`` accepts missing OPTIONAL fields (safe
-# defaults) and raises LOUDLY on missing REQUIRED fields — so an
-# operator gets either a clean recovery or an obvious failure, never
+# ``rehydrate`` accepts missing OPTIONAL fields (each has one
+# unambiguous default) and raises LOUDLY on missing REQUIRED ones — so
+# an operator gets either a clean recovery or an obvious failure, never
 # silent corruption.
+#
+# ``prefix`` is REQUIRED, and that is the point of these tests rather
+# than an incidental detail. ``ReActCognition._save`` — the only writer
+# of this shape in the tree — has always emitted it, so a state without
+# one is a state that lost data on the wire, not an old state. When
+# ``rehydrate`` defaulted it to an empty ``PrefixContext`` that loss
+# resumed the agent with NO system prompt and no complaint.
+
+# What ``prefix_to_dict(PrefixContext())`` produces. Spelled out rather
+# than ``{}`` so these fixtures stay the shape the writer really emits.
+_EMPTY_PREFIX = {"system_prompt": "", "grounding": [], "schema_block": None}
 
 
 def test_rehydrate_tolerates_missing_optional_fields():
-    """A v1-shaped state (no ``prefix``, no ``scratchpad``, no
-    ``limit``, no ``shared``, no ``repaired``) still round-trips.
-    The load defaults cover a checkpoint written before every
-    field-addition landed."""
+    """A state carrying only the required keys (no ``scratchpad``, no
+    ``limit``, no ``shared``, no ``repaired``) still round-trips on the
+    load defaults."""
     from agentkit.capabilities.checkpointer.persistence import rehydrate
 
     minimal_state = {
         # Required keys — the invariants below MUST hold.
+        "prefix": {"system_prompt": "sys", "grounding": [], "schema_block": None},
         "messages": [
-            {
-                "role": "system",
-                "content": "sys",
-                "tool_call_id": None,
-                "name": None,
-                "tool_calls": [],
-            },
             {"role": "user", "content": "hi", "tool_call_id": None, "name": None, "tool_calls": []},
         ],
         "usage": {"input": 10, "output": 20, "cost": 0.05},
@@ -573,32 +575,41 @@ def test_rehydrate_tolerates_missing_optional_fields():
     assert context.limit is None
     assert context.shared is False
     assert repaired is False
-    # An absent ``prefix`` → empty PrefixContext (legacy shape).
-    assert context.prefix.system_prompt == ""
+    # The prefix came back off the wire, not off a default.
+    assert context.prefix.system_prompt == "sys"
 
 
 def test_rehydrate_raises_clearly_on_missing_required_field():
-    """A state missing a required field (``messages``, ``usage``,
-    ``iteration``) fails LOUDLY. Callers see a KeyError naming the
-    missing field — enough signal for an operator to diagnose schema
+    """A state missing a required field (``prefix``, ``messages``,
+    ``usage``, ``iteration``) fails LOUDLY. Callers see a KeyError naming
+    the missing field — enough signal for an operator to diagnose schema
     drift instead of silent misbehaviour later in the loop."""
     from agentkit.capabilities.checkpointer.persistence import rehydrate
 
+    # Missing ``prefix``. Previously this defaulted to an empty
+    # PrefixContext and the run resumed with an empty system prompt.
+    with pytest.raises(KeyError, match="prefix"):
+        rehydrate({"messages": [], "usage": {"input": 0, "output": 0, "cost": 0.0}, "iteration": 0})
+
     # Missing ``messages``.
     with pytest.raises(KeyError, match="messages"):
-        rehydrate({"usage": {"input": 0, "output": 0, "cost": 0.0}, "iteration": 0})
+        rehydrate(
+            {"prefix": _EMPTY_PREFIX, "usage": {"input": 0, "output": 0, "cost": 0.0}, "iteration": 0}
+        )
 
     # Missing ``usage``.
     with pytest.raises(KeyError, match="usage"):
-        rehydrate({"messages": [], "iteration": 0})
+        rehydrate({"prefix": _EMPTY_PREFIX, "messages": [], "iteration": 0})
 
     # Missing ``usage`` sub-field.
     with pytest.raises(KeyError):
-        rehydrate({"messages": [], "usage": {"input": 0}, "iteration": 0})
+        rehydrate({"prefix": _EMPTY_PREFIX, "messages": [], "usage": {"input": 0}, "iteration": 0})
 
     # Missing ``iteration``.
     with pytest.raises(KeyError, match="iteration"):
-        rehydrate({"messages": [], "usage": {"input": 0, "output": 0, "cost": 0.0}})
+        rehydrate(
+            {"prefix": _EMPTY_PREFIX, "messages": [], "usage": {"input": 0, "output": 0, "cost": 0.0}}
+        )
 
 
 def test_checkpoint_can_survive_forward_compat_new_optional_fields():
@@ -610,6 +621,7 @@ def test_checkpoint_can_survive_forward_compat_new_optional_fields():
     from agentkit.capabilities.checkpointer.persistence import rehydrate
 
     forward_state = {
+        "prefix": _EMPTY_PREFIX,
         "messages": [],
         "usage": {"input": 0, "output": 0, "cost": 0.0},
         "iteration": 0,
@@ -734,7 +746,7 @@ def test_a_resumed_context_is_writable_all_the_way_down():
     saved = deep_freeze(
         {
             "messages": [],
-            "prefix": None,
+            "prefix": {"system_prompt": "", "grounding": [], "schema_block": None},
             "iteration": 0,
             "results": [],
             "pending": [],
@@ -751,3 +763,38 @@ def test_a_resumed_context_is_writable_all_the_way_down():
 
     # ...and the durable record it came from is untouched by any of that.
     assert dict(saved["scratchpad"]["plan"])["steps"] == ["a"]
+
+
+def test_a_prefix_less_checkpoint_fails_by_name_not_by_accident():
+    """`prefix` is required, and BOTH ways of omitting it must say so.
+
+    An absent key already raised `KeyError('prefix')`. An explicit `None` did
+    not: it reached `d.get` inside the decoder and surfaced as
+    `AttributeError: 'NoneType' object has no attribute 'get'`, which names
+    neither the field nor the problem. `None` is the likeliest malformed value
+    precisely because it used to be an accepted second shape.
+
+    The stakes are why this is worth an explicit check rather than letting it
+    crash somewhere: a prefix-less state that decoded successfully would
+    restore an EMPTY system prompt and re-run the agent with no instructions.
+    """
+    from agentkit.capabilities.checkpointer.persistence import rehydrate
+
+    base = {
+        "messages": [],
+        "iteration": 0,
+        "results": [],
+        "pending": [],
+        "usage": {"input": 0, "output": 0, "cost": 0.0},
+        "scratchpad": {},
+    }
+
+    with pytest.raises(KeyError, match="prefix"):
+        rehydrate(base)
+
+    with pytest.raises(TypeError, match=r"'prefix' must be the block"):
+        rehydrate({**base, "prefix": None})
+
+    # POSITIVE CONTROL: the real shape still decodes, and carries its content.
+    ctx, *_ = rehydrate({**base, "prefix": {"system_prompt": "you are terse"}})
+    assert ctx.prefix.system_prompt == "you are terse"
