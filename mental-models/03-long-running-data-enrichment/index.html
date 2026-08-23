@@ -2236,9 +2236,12 @@ the framework's invariants slip.</p>
    loop's continued mutation of <code>done_ids</code> corrupts every prior checkpoint
    on <code>InMemoryStore</code> (and diverges from serializing backends). <em>Locked by
    <code>test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it</code>.</em></li>
-<li><strong>Deep-copy fails on nested containers or <code>MappingProxyType</code>.</strong> State
-   carrying a <code>ToolCall.arguments</code> (a <code>MappingProxyType</code>) fails pickle on
-   Redis/Postgres → resume is broken on any real backend. <em>Locked by
+<li><strong>Deep-copy fails on a frozen nested payload.</strong> State carrying a
+   <code>ToolCall.arguments</code> fails pickle on Redis/Postgres → resume is broken
+   on any real backend. That is exactly what a <code>MappingProxyType</code> would
+   have caused, and why the freeze is a <code>dict</code> subclass instead: a
+   <code>FrozenDict</code> carries its own <code>__reduce__</code> / <code>__deepcopy__</code>, so it
+   round-trips. <em>Locked by
    <code>test_snapshot_state_containing_toolcalls_survives_deepcopy</code>.</em></li>
 <li><strong><code>Usage.__add__</code> becomes non-associative.</strong> Concurrent workers fold
    Usage in different orders → cost totals drift → cost cap trips
@@ -2658,7 +2661,7 @@ snapshots periodically.</p>
 <td><code>test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it</code></td>
 </tr>
 <tr>
-<td><strong>Deep-copy handles nested containers + <code>MappingProxyType</code></strong></td>
+<td><strong>Deep-copy handles nested frozen containers (<code>FrozenDict</code> / <code>FrozenList</code>)</strong></td>
 <td>State containing <code>ToolCall.arguments</code> fails pickle on serializing backends → job cannot resume across a real (non-InMemory) backend</td>
 <td><code>test_snapshot_state_containing_toolcalls_survives_deepcopy</code></td>
 </tr>
@@ -2769,9 +2772,26 @@ The specific things this design proves the framework must support:</p>
    live loop and the durable record. Any shared reference is a bug.</li>
 <li><code>Usage.__add__</code> associativity + commutativity means "the numbers add up"
    is a real property, not a hope. Verified by Hypothesis.</li>
-<li><code>MappingProxyType</code> (via <code>ToolCall.arguments</code>) survives every backend the
-   <code>Checkpointer</code> might use — proved by our <code>tc_to_dict</code> unwrap + the
-   <code>stable_hash</code> <code>_stable_default</code> Mapping branch.</li>
+<li>The frozen <code>ToolCall.arguments</code> payload survives every backend the
+   <code>Checkpointer</code> might use — because it is a <code>FrozenDict</code>, a <code>dict</code>
+   subclass that json-dumps, deep-copies and pickles like the plain dict
+   it subclasses. Neither mechanism this line used to credit is what makes
+   that true any more: <code>stable_hash</code>'s <code>_stable_default</code> Mapping branch is
+   never reached for a <code>FrozenDict</code> (stdlib <code>json</code> encodes it directly),
+   and <code>tc_to_dict</code>'s <code>dict()</code> unwrap is not what carries it across the
+   wire either — it is there so the exported helper hands callers an
+   editable plain dict. Nor is a <code>MappingProxyType</code> the shape they guard
+   against any more: <code>deep_freeze</code> now normalises the stdlib proxy into a
+   <code>FrozenDict</code>, nested ones included, so
+   <code>ToolCall("c", "s", MappingProxyType({...})).arguments</code> is a <code>FrozenDict</code>
+   and json-dumps cleanly. What <code>deep_freeze</code> still returns by identity is
+   every OTHER <code>Mapping</code> — reconstructing a project's own type is the line
+   it refuses to cross — so a <code>ChainMap</code> in the arguments is stored verbatim,
+   and <code>json.dumps</code> of it raises <code>Object of type ChainMap is not JSON
+   serializable</code> (it pickles and deep-copies fine, unlike the proxy did, so
+   only the JSON backends are exposed). <code>arguments</code> is annotated
+   <code>dict[str, Any]</code>, so that needs a caller mypy would reject; it is the
+   residue those two lines cover, not the everyday case.</li>
 <li><code>gather_bounded</code> respects its semaphore under any interleaving of
    worker starts and completions.</li>
 <li><code>run_with_resilience</code> retries the right classes, records the right
@@ -2820,7 +2840,7 @@ in the targeted slice are green. The design holds in the current tree.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 12:01:19 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 17:19:12 UTC">August 23, 2026</span>
   </span>
 
     

@@ -2467,12 +2467,12 @@ one terminal <code>StreamEvent("final", result=AgentResult(...), usage=...)</cod
 <td><code>test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating</code></td>
 </tr>
 <tr>
-<td><strong><code>Handoff</code> / <code>handoff_tool</code> accepts <code>MappingProxyType</code> args</strong></td>
-<td>Tool receives <code>ToolCall.arguments</code> (a proxy view); <code>isinstance(dict)</code> fails → every handoff rejected as "unknown target"</td>
+<td><strong><code>Handoff</code> / <code>handoff_tool</code> accepts a non-dict <code>Mapping</code></strong></td>
+<td>Tool receives arguments that are a <code>Mapping</code> but not a <code>dict</code>; <code>isinstance(dict)</code> fails → every handoff rejected as "unknown target"</td>
 <td><code>test_handoff_tool_accepts_mappingproxy_arguments</code></td>
 </tr>
 <tr>
-<td><strong><code>as_tool</code> extracts <code>task</code> from a <code>MappingProxyType</code></strong></td>
+<td><strong><code>as_tool</code> extracts <code>task</code> from a non-dict <code>Mapping</code></strong></td>
 <td>Skill invoked as a tool receives <code>str(args)</code> instead of the task string → sub-run gets garbage</td>
 <td><code>test_as_tool_forwards_task_from_mappingproxy_arguments</code></td>
 </tr>
@@ -2911,11 +2911,23 @@ proves the framework must support:</p>
    at the call site. Any Protocol saying "may be sync or async" must have
    every consumer honour it — <code>LedgerPolicy</code> did, <code>PlanPolicy</code> had to catch
    up (regression documented in the review pass).</li>
-<li><code>MappingProxyType</code> (arriving via <code>ToolCall.arguments</code>) flows through
-   every tool boundary: <code>FunctionTool._invoke</code>, <code>as_tool._fn</code>,
-   <code>handoff_tool._fn</code>, and the provider serializers
-   (<code>openai_compat._to_msg</code>, <code>anthropic._to_msg</code>). Missing one is a
-   silently-broken feature.</li>
+<li>A non-dict <code>Mapping</code> flows through every tool boundary:
+   <code>FunctionTool._invoke</code>, <code>as_tool._fn</code>, <code>handoff_tool._fn</code>, and the
+   provider serializers (<code>openai_compat._to_msg</code>, <code>anthropic._to_msg</code>).
+   Missing one is a silently-broken feature. The ordinary payload is a
+   <code>FrozenDict</code> — a <code>dict</code> subclass, so a <code>dict</code>-only test would pass —
+   and a <code>MappingProxyType</code> no longer changes that: <code>deep_freeze</code>
+   normalises the stdlib proxy into a <code>FrozenDict</code>, nested ones included,
+   so nothing arrives at these seams as a proxy <em>by way of a <code>ToolCall</code> or
+   <code>ToolRequest</code></em>. Two routes still deliver a non-dict <code>Mapping</code>. The
+   three tool seams take <code>args: Any</code> and <code>FunctionTool.run</code> passes it down
+   untouched, so any caller invoking a tool WITHOUT building a
+   <code>ToolRequest</code> hands its mapping over raw — which is what the two tests
+   below do, calling <code>tool.fn(MappingProxyType({...}), ctx)</code> directly. All
+   five seams are additionally reachable with the mappings <code>deep_freeze</code>
+   declines to rewrite (a <code>ChainMap</code>, a project's own <code>Mapping</code>), since
+   returning those by identity rather than reconstructing them is a
+   deliberate limit of the freeze.</li>
 <li><code>ActorBudget</code> + shared <code>CancellationToken</code> mean the parent has real
    control over children — cost, concurrency, and lifecycle.</li>
 </ol>
@@ -2961,7 +2973,7 @@ The design holds in the current tree.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 16:46:05 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 17:19:12 UTC">August 23, 2026</span>
   </span>
 
     

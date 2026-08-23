@@ -2182,8 +2182,10 @@ branch: <code>if autonomy == Autonomy.MANUAL: return True</code>. Even a read-on
 <p>The SSE stream carries the <code>interrupt</code> event to the browser. The operator
 UI renders a REVIEW REQUIRED card with <code>tc.name="get_logs"</code> and
 <code>tc.arguments={"service": "checkout-api", "since_minutes": 15}</code> verbatim
-— the <code>MappingProxyType</code> on <code>ToolCall.arguments</code> prevents any downstream
-render code from mutating it.</p>
+— the <code>FrozenDict</code> on <code>ToolCall.arguments</code> prevents any downstream render
+code from mutating it. It was a <code>MappingProxyType</code> originally; a <code>dict</code>
+SUBCLASS replaced it (see <code>agentkit/kernel/_frozen.py</code>) so the card's own
+<code>json.dumps</code> of the arguments keeps working, which a proxy refused.</p>
 <p><strong>t=~603ms → t=~90s — Human wall clock.</strong> The oncall reads the card,
 clicks Approve. The API server receives <code>POST /runs/incident-2f9a/approve
 {"c1": "approve"}</code> and calls <code>agent.resume(run_id="incident-2f9a",
@@ -2220,10 +2222,11 @@ For THIS tool, <code>tools.requires_approval("kubectl_rollout") = True</code> AN
 <code>tool.side_effecting = True</code> AND <code>tool.caps = ("egress",)</code> — the tool
 itself demands approval regardless of autonomy tier.</p>
 <p><code>_needs_approval</code> returns True. Suspend #4. The interrupt card renders
-the <strong>verbatim</strong> <code>MappingProxyType</code> arguments — <code>args.pop("dry_run")</code>
-would raise <code>TypeError('mappingproxy' object does not support item
-deletion)</code>. The operator sees <code>revision="abc123"</code>. What they see is
-exactly what will run.</p>
+the <strong>verbatim</strong> frozen arguments — <code>args.pop("dry_run")</code> raises
+<code>TypeError: this payload belongs to a frozen value and cannot be mutated
+in place.</code> (measured on <code>ToolCall("c1", "kubectl_rollout", {"dry_run":
+True})</code>; <code>__setitem__</code> and <code>__delitem__</code> raise the same). The operator
+sees <code>revision="abc123"</code>. What they see is exactly what will run.</p>
 <p><strong>t=~180s — Approve + execute.</strong> Operator clicks Approve. <code>resume</code> runs
 <code>kubectl_rollout</code> with the frozen args. The tool shells out (this is the
 one blast-radius call). Its result: <code>"rollout undone; new revision xyz789
@@ -2269,10 +2272,11 @@ the framework's invariants slip.</p>
    <em>Locked by the <code>should_gate</code> truth-table in
    <code>tests/agents/test_gate.py</code>.</em></li>
 <li><strong>Approval snapshot mutable across the seam.</strong> If
-   <code>ToolCall.arguments</code> were a plain <code>dict</code> instead of <code>MappingProxyType</code>,
+   <code>ToolCall.arguments</code> were a plain <code>dict</code> instead of a <code>FrozenDict</code>,
    a tool implementation could <code>args.pop("dry_run")</code> between the UI
    render and execution — the operator sees "dry run" but the actual
-   call is destructive. <em>Locked by
+   call is destructive. The freeze is DEEP, so
+   <code>args["filters"]["tags"].append(...)</code> is refused too. <em>Locked by
    <code>test_toolcall_arguments_view_rejects_item_assignment</code> in
    <code>tests/kernel/test_kernel.py</code>.</em></li>
 <li><strong><code>Checkpointer.snapshot</code> shares state by reference.</strong> If the
@@ -2525,12 +2529,16 @@ deep-copy, and cancellation propagation.</p>
 </span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="c1"># Expected: at least one ctx.check_cancelled() at the top of _iterate&#39;s loop.</span>
 </span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
 </span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="c1"># Tool arguments are frozen at construction.</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;MappingProxyType&quot;</span><span class="w"> </span>agentkit/kernel/types.py
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="c1"># Expected: ToolCall.arguments wrapped in MappingProxyType on __post_init__.</span>
-</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
-</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="c1"># Snapshot deep-copies state.</span>
-</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;deepcopy&quot;</span><span class="w"> </span>agentkit/capabilities/checkpointer/base.py
-</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="c1"># Expected: Checkpointer.snapshot deep-copies both state and metadata.</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;deep_freeze&quot;</span><span class="w"> </span>agentkit/kernel/types.py
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="c1"># Expected: `ToolCall.__post_init__` passes `arguments` through `deep_freeze`</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="c1"># (which returns a FrozenDict — a dict subclass that refuses mutation).</span>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="c1"># Grepping for MappingProxyType here is the OLD check and now only finds</span>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="c1"># prose: the freeze stopped being a proxy view when `kernel/_frozen.py`</span>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="c1"># landed, because a proxy broke json.dumps / asdict / isinstance(_, dict).</span>
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>
+</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="c1"># Snapshot deep-copies state.</span>
+</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;deepcopy&quot;</span><span class="w"> </span>agentkit/capabilities/checkpointer/base.py
+</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a><span class="c1"># Expected: Checkpointer.snapshot deep-copies both state and metadata.</span>
 </span></code></pre></div>
 <h3 id="3-adversarial-hitl-smoke-test">3. Adversarial: HITL smoke test<a class="headerlink" href="#3-adversarial-hitl-smoke-test" title="Anchor link">&para;</a></h3>
 <p>Build the smallest reproduction of the gate + resume flow:</p>
@@ -2574,7 +2582,7 @@ deep-copy, and cancellation propagation.</p>
 </span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>    <span class="k">try</span><span class="p">:</span>
 </span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>        <span class="n">susp</span><span class="o">.</span><span class="n">pending</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">arguments</span><span class="p">[</span><span class="s2">&quot;namespace&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;hacked&quot;</span>
 </span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
-</span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>        <span class="k">pass</span>   <span class="c1"># expected: MappingProxyType blocks item assignment</span>
+</span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>        <span class="k">pass</span>   <span class="c1"># expected: the FrozenDict payload refuses __setitem__</span>
 </span><span id="__span-8-42"><a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>    <span class="c1"># Also: pending is a tuple, not a list — a rebind attempt raises.</span>
 </span><span id="__span-8-43"><a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>
 </span><span id="__span-8-44"><a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
@@ -2883,7 +2891,7 @@ current tree.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 14:32:21 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 17:19:12 UTC">August 23, 2026</span>
   </span>
 
     

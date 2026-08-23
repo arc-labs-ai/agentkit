@@ -2342,8 +2342,17 @@ regardless of which concrete impl backs them.</p>
 schema) or a <code>ToolSchema</code>; <code>output_schema</code> accepts the same
 shapes <code>FunctionTool.output_schema</code> does — a JSON-Schema dict, a
 Pydantic / dataclass / attrs class, or <code>None</code> (no check).
-<code>run.args</code> is <code>Mapping[str, Any]</code> — a plain dict OR a
-<code>MappingProxyType</code> handed down from a <code>ToolCall</code> both satisfy it.</p>
+<code>run.args</code> is <code>Mapping[str, Any]</code>, and the widest type is
+deliberate: a plain dict, the <code>FrozenDict</code> the runtime normally
+hands down (<code>ToolRequest.arguments</code> — a <code>dict</code> SUBCLASS that
+refuses mutation, see <code>kernel._frozen</code>), and any other mapping a
+caller supplies all satisfy it. An impl READING <code>args</code> needs to
+know only that it is a mapping. An impl WRITING to it is the case
+the freeze exists to stop: measured, a <code>Tool.run</code> reached through
+the <code>Invoker</code> receives a <code>FrozenDict</code> and <code>args["x"] = 1</code>
+inside the tool raises <code>TypeError</code>. Copy first if you need to
+edit — <code>dict(args)</code> — and note that copy is SHALLOW, so nested
+values stay frozen.</p>
 
 
 

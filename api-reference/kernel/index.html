@@ -5367,8 +5367,13 @@ isinstance(_, dict)         False                                   True
 a ToolCall does not have to be the argument, only reachable from it, so
 <code>asdict</code> of ANY dataclass holding a ToolCall raised. That is why
 <code>resilience.stable_hash</code> walks dataclass fields by hand instead of
-calling <code>asdict</code> (see the note at its <code>_stable_default</code>) and why four
-other call sites carry a defensive <code>dict(tc.arguments)</code> unwrap.</p>
+calling <code>asdict</code> (see the note at its <code>_stable_default</code>) and why five
+other call sites carry a defensive <code>dict(tc.arguments)</code> unwrap
+(<code>anthropic</code>, <code>openai_compat</code>, <code>checkpointer.persistence</code>,
+<code>context.tokens</code>, <code>middlewares.memoize</code>), plus <code>tools.function</code>'s
+<code>dict(args)</code>, which is a snapshot rather than an unwrap. The count is
+spelled out because the previous "four" was wrong and nothing would have
+caught it.</p>
 <p>One consequence to know about: <code>asdict</code> rebuilds each nested container as
 <code>type(obj)(...)</code>, so it hands back a <code>FrozenDict</code>, not a plain one. The
 freeze survives serialisation, which is what a durable record wants — but
