@@ -426,6 +426,59 @@ could shadow the strict one.
     mid-stream. Hold the last non-`None` value; do not read a `None` as
     "the object went away".
 
+## Errors: one base, and a three-way retry verdict
+
+Every typed error the framework raises inherits `AgentkitError`, so an
+application that wants a single boundary can catch that one name:
+
+```python
+from agentkit import AgentkitError, StoreUnavailable
+
+try:
+    ...
+except StoreUnavailable:
+    ...          # the store could not be reached — degrade, or fail the run
+except AgentkitError:
+    ...          # anything else the framework raised, typed
+```
+
+`StoreUnavailable` is the one worth naming separately, because it is
+infrastructure rather than logic: a `StorePort` operation could not reach
+its backing store. Everything a memoize or checkpoint layer does on top
+of a store has to decide what that means for the run.
+
+!!! note "Not every error in the tree is an `AgentkitError`"
+    The tool errors are the deliberate exception — `ToolArgumentError`
+    subclasses `ValueError`, because the model sending a bad argument is
+    a value problem and callers already catch `ValueError` around
+    argument handling. `issubclass(ToolArgumentError, AgentkitError)` is
+    `False`, on purpose.
+
+`ErrorClass` is the separate question retry asks — not *what went wrong*
+but *is trying again worth anything*:
+
+| Member | Meaning | What `retry()` does |
+|---|---|---|
+| `transient` | a timeout, a 429, a 5xx | back off and try again |
+| `permanent` | a 401, a malformed request | give up immediately |
+| `unknown` | anything unrecognised | give up — guessing costs money |
+
+`unknown` defaulting to "do not retry" is the conservative direction on
+purpose: an unrecognised failure retried is a bill with no upside.
+Measured — `classify(TimeoutError(...))` is `transient`,
+`classify(ValueError(...))` is `unknown`.
+
+## Two helpers worth knowing
+
+`collect_one(stream)` reduces a one-item stream to its single value —
+the tool seam's counterpart to `collect`, which assembles a chat stream's
+deltas into an `LLMResult`. You need it when writing a middleware that
+has to see a tool's result rather than pass the stream through.
+
+`compose_failures(...)` aggregates child failures into one, returning
+`None` when there are none. It is what a fan-out uses to answer "did any
+of these fail, and what do I raise" without inventing its own shape.
+
 ## What bites people
 
 - **`ctx.messages` inside a middleware is a copy.** Mutating it does

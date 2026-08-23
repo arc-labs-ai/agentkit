@@ -836,6 +836,8 @@ memory True False
   handed to another agent as a tool.
 - [Human-in-the-loop tool approval](../recipes/hitl-tool-approval.md) —
   the resume half of `requires_approval=True`.
+- [Concepts · Integrations](integrations.md) — MCP tools adapted into this
+  same `Tool` Protocol, and the server side where agentkit exposes one.
 - [Consume MCP tools from an agent](../recipes/mcp-tools.md).
 
 ## API

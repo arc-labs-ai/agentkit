@@ -146,6 +146,17 @@ and ships four implementations:
   supports `agent.resume(...)`.
 - **`CoordinatorCognition`** — drives many child agents according to a
   `Policy`, merging their signals through a `SignalChannel`.
+
+Those signals come in two families, and the split is enforced by the type
+system rather than by convention: `ControlSignal` is parent → child
+(cancel, retask, reduce budget, broadcast context) and `DataSignal` is
+child → parent (progress, done, escalate, blocked). A parent cannot emit
+a `DoneSignal` and a child cannot emit a `CancelSignal`, because they do
+not share a base. Projects subclass whichever direction they need —
+`ControlSignal` and `DataSignal` are the extension points — and the
+framework dispatches on `isinstance`, so no discriminator field is
+required. See [Concepts · Observability](observability.md) for how the
+resulting stream is recorded.
 - **`ClaudeCliCognition`** — delegates the loop to a locally-installed
   `claude` CLI, so no API key is handled on your server; the CLI's own
   auth is used. Emits the same `StreamEvent`s the others do.

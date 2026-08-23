@@ -324,6 +324,13 @@ In-process pub/sub for stream-scoped events, generic over the event type
 (`EventBus[MyEvent]`). The mechanism is framework-level; what counts as
 an event is yours.
 
+Subscribers receive a `VersionedEvent[E]` — your event plus a monotonic
+`version` the bus stamps at publish time. The version is bus bookkeeping,
+not part of your payload: it exists so a subscriber can dedupe, and so a
+reconnecting one can ask for `from_version=K` and replay the ring from
+there. Unwrap `.event` before sending anything onward; the version does
+not cross a wire on its own.
+
 ```python
 import asyncio
 

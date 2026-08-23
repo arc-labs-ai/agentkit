@@ -180,6 +180,9 @@ prompts = await mcp_prompts(client)
 
 ## Related
 
+- [Concepts · Integrations](../concepts/integrations.md) — what MCP is,
+  the two transports, the caching behaviour, and the server side
+  (`ApprovalServer`). This recipe is the task; that page is the model.
 - [Concepts · Agents](../concepts/agents.md) — how `Tool` / `Memory`
   slot into an `Agent`.
 - [Human-in-the-loop tool approval](hitl-tool-approval.md) — the

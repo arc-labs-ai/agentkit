@@ -168,10 +168,7 @@ def test_every_symbol_the_docs_import_actually_exists(
 #
 # Do not add to this list to make a build green. Write the doc.
 KNOWN_UNDOCUMENTED: frozenset[str] = frozenset({
-    "AgentkitError",
-    "ControlSignal",
-    "DataSignal", "ErrorClass",
-    # "PrefixContext" / "FrozenContext" / "ContextDiff" / "ContextScope" /
+                # "PrefixContext" / "FrozenContext" / "ContextDiff" / "ContextScope" /
     # "LastNTurns" / "RoleFilter" / "Tagged" / "Since" / "AllOf" / "AnyOf" /
     # "ApproxTokenCounter" / "TiktokenCounter" ratcheted off:
     # docs/concepts/context.md documents the four axes, the cache-stable
@@ -193,9 +190,7 @@ KNOWN_UNDOCUMENTED: frozenset[str] = frozenset({
     # as_tool result renderer.
     # "Reranker" / "score_sort_rerank" ratcheted off: docs/concepts/memory.md
     # documents the CompositeMemory rerank seam and its default.
-    "StoreUnavailable",
-    "VersionedEvent", "collect_one", "compose_failures",
-})
+        })
 
 
 def test_every_public_export_is_mentioned_in_the_docs() -> None:

@@ -194,4 +194,38 @@ guarantees and a side-by-side against the alternatives.
 
     [:octicons-arrow-right-24: Browse the recipes](recipes/index.md)
 
+-   __Worked scenarios__
+
+    ---
+
+    Four end-to-end designs — multi-tenant chat over documents, an
+    autonomous devops investigator, long-running data enrichment, and
+    coordinated multi-agent research — each tracing which primitives
+    carry which requirement.
+
+    [:octicons-arrow-right-24: Read the mental models](mental-models/README.md)
+
+-   __Runnable examples__
+
+    ---
+
+    Six scripts you can execute from a clone, each showing one seam:
+    streaming, tools, typed output, budgets, checkpoints, coordination.
+
+    [:octicons-arrow-right-24: Run the examples](examples.md)
+
+-   __Coming from something else__
+
+    ---
+
+    Side-by-side translations from LangChain and from hand-rolled
+    `asyncio`, showing what the framework takes over and what it leaves
+    to you.
+
+    [:octicons-arrow-right-24: See the migration guides](migrating/index.md)
+
 </div>
+
+Contributions and bug reports are welcome — see
+[contributing](contributing.md) for the local gate (`make check`) and
+what a good change looks like here.
