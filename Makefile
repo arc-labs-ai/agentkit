@@ -3,7 +3,7 @@
 # even if the underlying tool changes. Python via uv; builds via hatchling.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint typecheck check cov mutants build publish-dry docs-serve clean
+.PHONY: help setup test test-matrix lint typecheck check cov mutants docs-check docs-examples build publish-dry docs-serve clean
 
 # ── Help ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ help: ## Show this help
 	@echo "    make cov             # tests + branch-coverage threshold"
 	@echo "    make mutants         # do the tests actually catch a broken invariant?"
 	@echo "    make check           # the gate that must be green before 'done'"
+	@echo "    make docs-examples   # slow: execute every code block in docs/"
 	@echo ""
 	@echo "  All targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -31,6 +32,16 @@ setup: ## Install all dependencies (runtime + dev) via uv
 
 test: ## Run pytest
 	uv run pytest
+
+test-matrix: ## Run the suite on every supported interpreter (3.12 and 3.13)
+	@# `check` runs ONE interpreter — whichever .venv happens to hold — and CI
+	@# runs the matrix, so a version-specific break passes locally and fails on
+	@# push. That is not hypothetical: a test pinned a CPython error message,
+	@# then pinned a CPython bug that upstream fixed in a 3.13 PATCH release,
+	@# and both landed green here and red in CI. `requires-python = ">=3.12"`
+	@# and the classifiers promise 3.13, so the gate should check it.
+	uv run --python 3.12 pytest -q
+	uv run --python 3.13 pytest -q
 
 # ── Lint ────────────────────────────────────────────────────────────────────
 
@@ -58,9 +69,19 @@ mutants: ## Run the curated mutant catalogue (see scripts/mutants.py)
 mutants-verify: ## Fast: check every mutant anchor still resolves
 	uv run python scripts/mutants.py --verify
 
+# ── Docs examples ───────────────────────────────────────────────────────────
+# `mkdocs build --strict` proves the links resolve and the meta tests prove the
+# symbols are mentioned; neither runs a line of the code a reader copies.
+
+docs-check: ## Fast: every documented `from agentkit… import X` resolves
+	uv run python scripts/docs_examples.py --imports-only
+
+docs-examples: ## Slow: execute every ```python block in docs/
+	uv run python scripts/docs_examples.py
+
 # ── The gate ────────────────────────────────────────────────────────────────
 
-check: lint typecheck mutants-verify cov ## The gate: lint + types + coverage-gated tests
+check: lint typecheck mutants-verify docs-check cov test-matrix ## The gate: lint + types + docs + coverage-gated tests on every supported Python
 	@echo "✓ all checks passed"
 
 # ── Build / publish ─────────────────────────────────────────────────────────
