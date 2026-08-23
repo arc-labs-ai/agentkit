@@ -514,8 +514,8 @@ class, so a full disk cannot flood the log) and bumps a counter. Alert
 on `dropped_writes` / `failed_reads` if replay data matters; an ordinary
 cache miss is neither logged above `DEBUG` nor counted.
 
-Configuration and the deprecated `RIO_REPLAY_DIR` migration rule are in
-[API › adapters](../api-reference/adapters.md).
+Configuration — the `AGENTKIT_REPLAY_DIR` env var and the default
+directory — is in [API › adapters](../api-reference/adapters.md).
 
 ## The model registry
 

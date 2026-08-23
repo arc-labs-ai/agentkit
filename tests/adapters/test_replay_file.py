@@ -1,32 +1,31 @@
-"""FileReplayStore — round-trip, concurrency, failure REPORTING, env migration.
+"""FileReplayStore — round-trip, concurrency, failure REPORTING, configuration.
 
-Two defect classes are pinned here.
+The defect class pinned here is silent failure. The store's contract is that a
+write must not raise into the run, and it used to honour that by swallowing
+every exception with a bare ``except Exception: return``. A store whose root
+was unwritable, whose disk was full, or whose file on disk was corrupt behaved
+identically to one that was working perfectly — nothing logged, nothing
+counted. The tests below assert on captured log records and on the public
+counters, so "it reports the failure" is proven rather than assumed. They also
+pin the inverse: a genuine cache MISS is not a failure and must stay quiet.
 
-1. Silent failure. The store's contract is that a write must not raise into
-   the run, and it used to honour that by swallowing every exception with a
-   bare ``except Exception: return``. A store whose root was unwritable, whose
-   disk was full, or whose file on disk was corrupt behaved identically to one
-   that was working perfectly — nothing logged, nothing counted. The tests
-   below assert on captured log records and on the public counters, so "it
-   reports the failure" is proven rather than assumed. They also pin the
-   inverse: a genuine cache MISS is not a failure and must stay quiet.
-
-2. ``RIO_*`` branding in a package called agentkit. The env var and default
-   directory were renamed; the tests pin the compatibility rules (new name
-   wins, old name keeps working with a once-only ``DeprecationWarning``, an
-   existing legacy directory is adopted rather than orphaned).
+Configuration is deliberately small and is pinned as such: one env var
+(``AGENTKIT_REPLAY_DIR``, empty meaning unset) and one default path derived
+from ``XDG_DATA_HOME``. There is no fallback env var and no directory probing,
+so ``default()`` is a pure function of the environment — the tests at the
+bottom pin that a leftover ``RIO_*`` name or a pre-rename directory changes
+nothing.
 
 Note for readers: this suite runs with ``filterwarnings = ["error"]``, so any
-``DeprecationWarning`` that fires where a test does not explicitly expect one
-fails that test. That is what makes the "emitted exactly once" assertions
-below real — a second emission raises.
+warning that fires where a test does not explicitly expect one fails that
+test. That is what makes "the legacy name is silently ignored" a real
+assertion rather than a hopeful one.
 """
 
 import asyncio
 import errno
 import logging
 import os
-from pathlib import Path
 
 import pytest
 
@@ -38,27 +37,9 @@ LOGGER_NAME = "agentkit.adapters.replay.file"
 
 
 @pytest.fixture(autouse=True)
-def _reset_migration_latches(monkeypatch):
-    """Re-arm the process-global one-shot notices for every test.
-
-    They are global on purpose (the condition they report is a property of
-    the environment, not of a store instance), which means test order would
-    otherwise decide whether a given test sees the notice at all.
-    """
-    # ``raising=False``: the latches do not exist in the pre-fix module, and
-    # this fixture is autouse — without it every test in the file would error
-    # in setup instead of failing on its own assertion, which would make the
-    # "these tests catch the bug" check meaningless.
-    monkeypatch.setattr(file_mod, "_LEGACY_ENV_USED_WARNED", False, raising=False)
-    monkeypatch.setattr(file_mod, "_LEGACY_ENV_IGNORED_WARNED", False, raising=False)
-    monkeypatch.setattr(file_mod, "_LEGACY_ROOT_WARNED", False, raising=False)
-
-
-@pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch):
     """No test may inherit a real operator's replay configuration."""
     monkeypatch.delenv("AGENTKIT_REPLAY_DIR", raising=False)
-    monkeypatch.delenv("RIO_REPLAY_DIR", raising=False)
 
 
 def _rec(span: str, **kw):
@@ -433,7 +414,7 @@ async def test_write_and_read_failures_are_reported_independently(tmp_path, capl
     assert store.failed_reads == 1
 
 
-# ── defect 2: RIO_* → AGENTKIT_* migration ───────────────────────────────────
+# ── configuration: one env var, one default path ─────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -451,78 +432,53 @@ async def test_from_env_reads_the_agentkit_var(monkeypatch, tmp_path):
     assert (tmp_path / f"{rec.span_id}.json").exists()
 
 
-@pytest.mark.asyncio
-async def test_legacy_env_var_still_works_and_warns(monkeypatch, tmp_path):
-    """Backwards compatibility is not optional — but it is announced."""
-    monkeypatch.setenv("RIO_REPLAY_DIR", str(tmp_path))
-    with pytest.warns(DeprecationWarning, match="AGENTKIT_REPLAY_DIR"):
-        store = FileReplayStore.from_env()
-    assert store is not None
-    assert store.root == tmp_path.resolve()
+def test_pre_rename_env_var_is_ignored_entirely(monkeypatch, tmp_path, caplog):
+    """``RIO_REPLAY_DIR`` is not a name this package knows any more.
 
-
-def test_legacy_env_deprecation_is_emitted_exactly_once(monkeypatch, tmp_path):
-    """Once per process, not once per call.
-
-    Python's own ``__warningregistry__`` de-dup is disabled under
-    ``-W error`` / ``-W always`` — precisely the configurations a warning
-    matters in — so the module must latch it explicitly. The suite runs with
-    ``filterwarnings = ["error"]``, so a second emission raises here.
+    It used to be read as a deprecated fallback. Now it is just another
+    variable in the environment: ``from_env()`` reports "not configured" and
+    the caller falls back to ``NoopReplayStore``, exactly as it would on a
+    machine where nothing was set at all. Pinned because "silently ignored"
+    is only correct if it is also QUIET — no ``DeprecationWarning`` (which
+    ``filterwarnings = ["error"]`` would turn into a failure here) and no log
+    line for a variable this package has no opinion about.
     """
     monkeypatch.setenv("RIO_REPLAY_DIR", str(tmp_path))
-    with pytest.warns(DeprecationWarning):
-        FileReplayStore.from_env()
-    for _ in range(5):
-        assert FileReplayStore.from_env() is not None  # no second warning → no error
+    with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
+        assert FileReplayStore.from_env() is None
+    assert caplog.records == []
 
 
-def test_new_env_var_wins_over_legacy(monkeypatch, tmp_path, caplog):
-    """Both set: the new name takes effect, the stale one is reported.
+def test_agentkit_var_is_used_even_with_the_pre_rename_one_set(monkeypatch, tmp_path, caplog):
+    """A leftover ``RIO_REPLAY_DIR`` export cannot influence the outcome.
 
-    Not a DeprecationWarning — nothing deprecated is being USED — but an
-    ignored config value is exactly what an operator needs told once.
+    There is no precedence rule left to get wrong — the new name is not
+    "winning" a contest, it is the only name read — so this must be
+    indistinguishable from the case where the stale var was never exported.
     """
     new = tmp_path / "new"
-    old = tmp_path / "old"
     monkeypatch.setenv("AGENTKIT_REPLAY_DIR", str(new))
-    monkeypatch.setenv("RIO_REPLAY_DIR", str(old))
+    monkeypatch.setenv("RIO_REPLAY_DIR", str(tmp_path / "old"))
     with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
         store = FileReplayStore.from_env()
     assert store is not None
     assert store.root == new.resolve()
-    warnings_seen = [r for r in caplog.records if r.levelno >= logging.WARNING]
-    assert len(warnings_seen) == 1
-    assert "RIO_REPLAY_DIR" in warnings_seen[0].getMessage()
+    assert caplog.records == []
 
 
-@pytest.mark.parametrize(
-    ("new", "old", "expect"),
-    [
-        ("", "", None),
-        ("", None, None),
-        (None, "", None),
-        ("", "legacy", "legacy"),
-    ],
-)
-def test_empty_env_values_count_as_unset(monkeypatch, tmp_path, new, old, expect):
+@pytest.mark.parametrize("value", ["", None])
+def test_empty_env_value_counts_as_unset(monkeypatch, value):
     """``FOO=`` is how a shell profile spells "not configured".
 
     Treating it as a path would resolve to the process CWD and quietly
     scatter replay JSON through whatever directory the app was started in.
+    ``None`` here is the unset control: both spellings must behave the same.
     """
-    for name, value in (("AGENTKIT_REPLAY_DIR", new), ("RIO_REPLAY_DIR", old)):
-        if value is None:
-            monkeypatch.delenv(name, raising=False)
-        else:
-            monkeypatch.setenv(name, str(tmp_path / value) if value else "")
-
-    if expect is None:
-        assert FileReplayStore.from_env() is None
+    if value is None:
+        monkeypatch.delenv("AGENTKIT_REPLAY_DIR", raising=False)
     else:
-        with pytest.warns(DeprecationWarning):
-            store = FileReplayStore.from_env()
-        assert store is not None
-        assert store.root == (tmp_path / expect).resolve()
+        monkeypatch.setenv("AGENTKIT_REPLAY_DIR", value)
+    assert FileReplayStore.from_env() is None
 
 
 def test_default_root_is_agentkit_branded(monkeypatch, tmp_path):
@@ -538,121 +494,27 @@ def test_default_root_without_xdg_uses_local_share(monkeypatch, tmp_path):
     assert "rio" not in str(FileReplayStore.default().root)
 
 
-def test_default_adopts_existing_legacy_dir_rather_than_orphaning_it(monkeypatch, tmp_path, caplog):
-    """An upgrading user's already-written replays must stay reachable.
+def test_default_ignores_a_pre_rename_directory(monkeypatch, tmp_path, caplog):
+    """``default()`` probes nothing on disk.
 
-    Silently switching to the new path would leave the store looking healthy
-    while every historical lookup missed — the same class of "reports success
-    while broken" bug this module is being fixed for. The library does not
-    move the files itself; it keeps reading where they are and tells the
-    operator how to migrate.
+    An existing ``$XDG_DATA_HOME/rio/replays`` used to be ADOPTED as the root
+    when the agentkit directory did not exist yet. That branch is gone, so the
+    returned path is a pure function of ``XDG_DATA_HOME`` — the same answer
+    whether or not a pre-rename directory happens to be sitting there, and
+    with nothing logged about it.
     """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    legacy = tmp_path / "rio" / "replays"
-    legacy.mkdir(parents=True)
-    (legacy / f"{'a' * 16}.json").write_text("{}")
-
-    with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
-        store = FileReplayStore.default()
-
-    assert store.root == legacy.resolve()
-    warnings_seen = [r for r in caplog.records if r.levelno >= logging.WARNING]
-    assert len(warnings_seen) == 1
-    assert "agentkit" in warnings_seen[0].getMessage()
-
-
-def test_legacy_root_notice_is_emitted_once(monkeypatch, tmp_path, caplog):
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     (tmp_path / "rio" / "replays").mkdir(parents=True)
     with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
-        for _ in range(5):
-            FileReplayStore.default()
-    assert len([r for r in caplog.records if r.levelno >= logging.WARNING]) == 1
-
-
-def test_default_prefers_new_root_once_it_exists(monkeypatch, tmp_path, caplog):
-    """Self-healing: after the operator migrates, the legacy path is dead."""
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    (tmp_path / "rio" / "replays").mkdir(parents=True)
-    new = tmp_path / "agentkit" / "replays"
-    new.mkdir(parents=True)
-
-    with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
         store = FileReplayStore.default()
-
-    assert store.root == new.resolve()
-    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+    assert store.root == (tmp_path / "agentkit" / "replays").resolve()
+    assert caplog.records == []
 
 
 def test_default_uses_new_root_on_a_clean_machine(monkeypatch, tmp_path, caplog):
-    """No legacy directory → no notice, no legacy path."""
+    """Nothing on disk, nothing in the env → the conventional path, quietly."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
         store = FileReplayStore.default()
     assert store.root == (tmp_path / "agentkit" / "replays").resolve()
     assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
-
-
-@pytest.mark.asyncio
-async def test_adopted_legacy_root_actually_round_trips(monkeypatch, tmp_path):
-    """The whole point of adoption: old records are readable, new ones land
-    next to them instead of in a directory nobody is looking at."""
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    legacy = tmp_path / "rio" / "replays"
-    legacy.mkdir(parents=True)
-    seeded = FileReplayStore(legacy)
-    await seeded.put(_rec("a" * 16, request={"old": True}))
-
-    store = FileReplayStore.default()
-    got = await store.get("a" * 16)
-    assert got is not None and got.request == {"old": True}
-
-    await store.put(_rec("b" * 16, request={"new": True}))
-    assert (legacy / f"{'b' * 16}.json").exists()
-    assert not (tmp_path / "agentkit").exists()
-
-
-def test_the_deprecation_and_the_ignored_notice_do_not_silence_each_other(caplog, monkeypatch):
-    """Two conditions, two latches — not one latch for the module.
-
-    These warnings answer different questions for different audiences: "you are
-    using a deprecated name" is about the CALLER's code, while "your leftover
-    stale name is being ignored" is about the OPERATOR's environment. A single
-    shared latch means whichever fires first permanently silences the other.
-
-    Measured with the shared latch that this test was written against: a
-    process that starts with only the legacy var set (firing the
-    DeprecationWarning), then later sees both set, is NEVER told that its stale
-    var is being ignored — `step 2 (both set) -> SILENT`. That is the same
-    swallow-the-second-class mistake `_warn_once` exists to avoid.
-    """
-    # Step 1: only the legacy var — the deprecation fires and trips its latch.
-    monkeypatch.setenv(file_mod.LEGACY_ENV_REPLAY_DIR, "/tmp/legacy-replays")
-    with pytest.deprecated_call():
-        file_mod.FileReplayStore.from_env()
-
-    # Step 2: now BOTH are set. The operator must still learn that the stale
-    # one is being ignored, even though the deprecation already fired.
-    monkeypatch.setenv(file_mod.ENV_REPLAY_DIR, "/tmp/new-replays")
-    caplog.clear()
-    with caplog.at_level(logging.WARNING, logger=file_mod.logger.name):
-        store = file_mod.FileReplayStore.from_env()
-
-    assert any("IGNORING" in r.getMessage() for r in caplog.records), (
-        "the deprecation latch swallowed the ignored-variable notice; the "
-        "operator is never told their stale RIO_REPLAY_DIR does nothing"
-    )
-    assert store is not None and store._root == Path("/tmp/new-replays").resolve()
-
-
-def test_each_legacy_notice_still_fires_only_once(caplog, monkeypatch):
-    """POSITIVE CONTROL for the test above. Splitting one latch into two must
-    not turn either warning into a per-call flood — the whole reason the latch
-    exists is that a store is often constructed per run."""
-    monkeypatch.setenv(file_mod.ENV_REPLAY_DIR, "/tmp/new-replays")
-    monkeypatch.setenv(file_mod.LEGACY_ENV_REPLAY_DIR, "/tmp/legacy-replays")
-    with caplog.at_level(logging.WARNING, logger=file_mod.logger.name):
-        for _ in range(5):
-            file_mod.FileReplayStore.from_env()
-    ignored = [r for r in caplog.records if "IGNORING" in r.getMessage()]
-    assert len(ignored) == 1, f"expected exactly one notice across 5 calls, got {len(ignored)}"

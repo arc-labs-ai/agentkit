@@ -12,15 +12,10 @@ atomicity is the only correctness primitive we depend on.
 
 Default location: ``$XDG_DATA_HOME/agentkit/replays`` or
 ``~/.local/share/agentkit/replays`` (the XDG Base Directory
-convention). Override by passing ``root=Path(...)`` or setting
-``AGENTKIT_REPLAY_DIR`` (the engine reads this env var at startup).
-
-``RIO_REPLAY_DIR`` and the old ``~/.rio/replays`` default are the
-pre-rename spellings from before this package was ``agentkit``.
-Both still work: the env var is honoured as a deprecated fallback
-(emitting a ``DeprecationWarning``), and ``default()`` keeps using
-an existing legacy directory rather than silently starting to write
-somewhere else. See ``default()`` for the full migration rule.
+convention). Override by passing ``root=Path(...)``, or set
+``AGENTKIT_REPLAY_DIR`` and construct via ``from_env()``. That env
+var is the ONLY one this module reads — there is no fallback
+spelling and no legacy directory to inherit.
 
 Failure reporting: this store is best-effort by contract —
 ``ReplayStore.put`` must not raise into the run — but "best-effort"
@@ -49,7 +44,6 @@ import logging
 import os
 import re
 import tempfile
-import warnings
 from pathlib import Path
 from typing import Any, Final
 
@@ -63,47 +57,17 @@ logger = logging.getLogger(__name__)
 # are hex strings per the OTel spec; reject anything else.
 _VALID_SPAN_ID = re.compile(r"^[0-9a-fA-F]{16,32}$")
 
-#: Env var an operator sets to point the store at a directory.
+#: Env var an operator sets to point the store at a directory. The only one.
 ENV_REPLAY_DIR: Final = "AGENTKIT_REPLAY_DIR"
-
-#: Pre-rename spelling, kept working as a deprecated fallback. This package
-#: ships as ``arc-agentkit``; ``RIO_*`` is a name from an unrelated project
-#: and instructing operators to set it in agentkit's own docs was a bug.
-LEGACY_ENV_REPLAY_DIR: Final = "RIO_REPLAY_DIR"
-
-# One-shot latches for the two legacy-migration notices. These are
-# process-global rather than per-instance on purpose: the condition they
-# report is a property of the ENVIRONMENT (an env var, a directory on disk),
-# not of any one store, so a program that builds a store per run would
-# otherwise re-emit the identical notice on every run. Tests reset them
-# directly — that is the only supported way to re-arm them.
-# One latch PER CONDITION, not one for the module. These two warnings answer
-# different questions for different audiences — "you are using a deprecated
-# name" (the caller's code) versus "your leftover stale name is being ignored"
-# (the operator's environment) — and a shared latch means whichever fires first
-# permanently silences the other. Measured with a single latch: a process that
-# starts with only the legacy var set, then later sees both, is NEVER told the
-# stale one is being ignored. Same reasoning as `_warn_once`'s per-class key.
-_LEGACY_ENV_USED_WARNED = False
-_LEGACY_ENV_IGNORED_WARNED = False
-_LEGACY_ROOT_WARNED = False
-
-
-def _legacy_default_root() -> Path:
-    """The default root this module used before the agentkit rename."""
-    xdg = os.environ.get("XDG_DATA_HOME")
-    return Path(xdg) / "rio" / "replays" if xdg else Path.home() / ".rio" / "replays"
 
 
 def _current_default_root() -> Path:
-    """The default root for this package name.
+    """The default root for this package.
 
     ``$XDG_DATA_HOME/agentkit/replays`` when the variable is set, otherwise
     ``~/.local/share/agentkit/replays`` — the XDG-specified fallback for
-    ``XDG_DATA_HOME``. The old code claimed "the standard convention" while
-    actually using a ``~/.rio`` dotdir, which is not what XDG specifies;
-    fixing the vendor name was the moment to also stop contradicting the
-    docstring.
+    ``XDG_DATA_HOME``, rather than a dotdir in ``$HOME`` (which is not what
+    XDG specifies).
     """
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg) if xdg else Path.home() / ".local" / "share"
@@ -166,62 +130,26 @@ class FileReplayStore:
         the env var isn't set so callers can fall back to
         ``NoopReplayStore``.
 
-        ``RIO_REPLAY_DIR`` is honoured as a deprecated fallback and emits a
-        ``DeprecationWarning`` naming the replacement. When both are set the
-        NEW name wins — an operator who has migrated must not be silently
-        held on the old value by a leftover export, and "the new setting is
-        the one that takes effect" is the only rule that makes a staged
-        rollout predictable. That case is reported through the logger rather
-        than as a ``DeprecationWarning``, because nothing deprecated is being
-        USED; the old var is merely present and ignored, and an unexpectedly
-        ignored config value is exactly the kind of thing an operator needs
-        told once.
-
-        An empty value counts as unset for both names — ``FOO=`` in a shell
-        profile or a compose file is how people spell "not configured", and
-        treating it as a path would resolve to the process CWD.
+        An empty value counts as unset. ``FOO=`` in a shell profile or a
+        compose file is how people spell "not configured", and ``Path("")``
+        resolves to the process CWD — so treating it as a path would scatter
+        replay JSON through whatever directory the app happened to start in,
+        while looking configured.
         """
-        new = os.environ.get(ENV_REPLAY_DIR) or ""
-        old = os.environ.get(LEGACY_ENV_REPLAY_DIR) or ""
-        if new:
-            if old:
-                _warn_legacy_env_ignored(new, old)
-            return cls(new)
-        if old:
-            _warn_legacy_env_used()
-            return cls(old)
-        return None
+        root = os.environ.get(ENV_REPLAY_DIR) or ""
+        return cls(root) if root else None
 
     @classmethod
     def default(cls) -> FileReplayStore:
         """Conventional location: ``$XDG_DATA_HOME/agentkit/replays`` or
         ``~/.local/share/agentkit/replays``.
 
-        Migration rule for the pre-rename default (``$XDG_DATA_HOME/rio/replays``
-        / ``~/.rio/replays``): if the current default does not exist yet but
-        the legacy one does, this keeps using the LEGACY directory and says
-        so once.
-
-        The alternatives were both worse. Writing to the new path regardless
-        orphans every replay the operator already has — the store would look
-        healthy while every historical lookup missed, which is the exact
-        "reports success while broken" failure this module is being fixed
-        for. Copying or moving the files automatically means a library
-        relocating user data behind their back, with no good answer for a
-        half-finished move. Adopting the existing directory keeps old data
-        reachable, writes nothing outside it, and self-heals: the moment the
-        operator moves the directory (or creates the new one, or sets
-        ``AGENTKIT_REPLAY_DIR``), the legacy path stops being consulted. The
-        blast radius is limited to the zero-config path — an explicit
-        ``root=`` or the env var always wins outright.
+        No directory probing and no fallbacks: the path is a pure function of
+        ``XDG_DATA_HOME``, so what this returns is predictable from the
+        environment alone. An explicit ``root=`` or ``AGENTKIT_REPLAY_DIR``
+        is how you point the store anywhere else.
         """
-        root = _current_default_root()
-        if not root.exists():
-            legacy = _legacy_default_root()
-            if legacy.is_dir():
-                _warn_legacy_root(legacy, root)
-                return cls(legacy)
-        return cls(root)
+        return cls(_current_default_root())
 
     async def put(self, record: ReplayRecord) -> None:
         if not _VALID_SPAN_ID.match(record.span_id):
@@ -414,72 +342,6 @@ class FileReplayStore:
         )
 
 
-def _warn_legacy_env_used() -> None:
-    """Announce the deprecated env var exactly once per process.
-
-    The latch is explicit rather than relying on Python's default
-    ``__warningregistry__`` de-duplication: that de-dup is per (message,
-    category, module, lineno) and is disabled outright by ``-W always`` or
-    by ``-W error`` (which this project's own test suite runs), so a caller
-    constructing a store per run would get the warning on every single call
-    in exactly the configurations that care most about warnings.
-    """
-    global _LEGACY_ENV_USED_WARNED
-    if _LEGACY_ENV_USED_WARNED:
-        return
-    _LEGACY_ENV_USED_WARNED = True
-    warnings.warn(
-        f"{LEGACY_ENV_REPLAY_DIR} is deprecated and will be removed in a future release; "
-        f"set {ENV_REPLAY_DIR} instead. This package is `agentkit` — the RIO_* spelling "
-        "predates the rename and is honoured only as a fallback.",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
-def _warn_legacy_env_ignored(new: str, old: str) -> None:
-    """Report a leftover ``RIO_REPLAY_DIR`` that is being overridden."""
-    global _LEGACY_ENV_IGNORED_WARNED
-    if _LEGACY_ENV_IGNORED_WARNED:
-        return
-    _LEGACY_ENV_IGNORED_WARNED = True
-    logger.warning(
-        "FileReplayStore: both %s=%s and the deprecated %s=%s are set; using %s and IGNORING "
-        "the deprecated one. Unset %s to silence this.",
-        ENV_REPLAY_DIR,
-        new,
-        LEGACY_ENV_REPLAY_DIR,
-        old,
-        new,
-        LEGACY_ENV_REPLAY_DIR,
-    )
-
-
-def _warn_legacy_root(legacy: Path, current: Path) -> None:
-    """Report that the pre-rename default directory is still in use.
-
-    Deliberately a log line and not a ``DeprecationWarning``: nothing about
-    the CALLER's code is deprecated — the condition is a directory on the
-    operator's disk, and the audience is whoever runs the process, not
-    whoever wrote the call. Emitting a fatal-under-``-W error`` warning for
-    a state the caller cannot fix in code would be hostile.
-    """
-    global _LEGACY_ROOT_WARNED
-    if _LEGACY_ROOT_WARNED:
-        return
-    _LEGACY_ROOT_WARNED = True
-    logger.warning(
-        "FileReplayStore: using the pre-rename replay directory %s because %s does not exist "
-        "yet. Your existing replays stay readable. To move to the new location: `mv %s %s` "
-        "(or set %s explicitly).",
-        legacy,
-        current,
-        legacy,
-        current,
-        ENV_REPLAY_DIR,
-    )
-
-
 def _repr_default(value: Any) -> Any:
     """Last-chance default for the JSON backend: coerce unknown
     types to their ``repr``. Reached only when ``_to_jsonable``
@@ -509,4 +371,4 @@ def _to_jsonable(value: Any) -> Any:
     return repr(value)
 
 
-__all__ = ["FileReplayStore", "ENV_REPLAY_DIR", "LEGACY_ENV_REPLAY_DIR"]
+__all__ = ["FileReplayStore", "ENV_REPLAY_DIR"]

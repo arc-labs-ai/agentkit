@@ -479,14 +479,6 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="replay",
-        why="both legacy notices share one latch again, so the first to fire silences the other",
-        path="agentkit/adapters/replay/file.py",
-        before="    global _LEGACY_ENV_IGNORED_WARNED\n    if _LEGACY_ENV_IGNORED_WARNED:\n        return\n    _LEGACY_ENV_IGNORED_WARNED = True",
-        after="    global _LEGACY_ENV_USED_WARNED\n    if _LEGACY_ENV_USED_WARNED:\n        return\n    _LEGACY_ENV_USED_WARNED = True",
-        tests=REPLAY_TESTS,
-    ),
-    Mutant(
-        tag="replay",
         why="a wrong-shape JSON document escapes get() as a TypeError instead of reading as a miss",
         path="agentkit/adapters/replay/file.py",
         before="            self._failed_reads += 1\n            self._warn_once(\n                \"decode-failed\",",
@@ -499,14 +491,6 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/adapters/replay/file.py",
         before="            tmp_path.unlink(missing_ok=True)\n            raise",
         after="            raise",
-        tests=REPLAY_TESTS,
-    ),
-    Mutant(
-        tag="replay",
-        why="the legacy-env deprecation fires on every call, spamming any run built per-request",
-        path="agentkit/adapters/replay/file.py",
-        before="    global _LEGACY_ENV_USED_WARNED\n    if _LEGACY_ENV_USED_WARNED:\n        return",
-        after="    global _LEGACY_ENV_USED_WARNED\n    if False:\n        return",
         tests=REPLAY_TESTS,
     ),
     Mutant(

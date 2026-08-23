@@ -75,20 +75,24 @@ Configuration, in precedence order:
 3. `FileReplayStore.default()` — `$XDG_DATA_HOME/agentkit/replays`, or
    `~/.local/share/agentkit/replays` when `XDG_DATA_HOME` is unset.
 
-!!! warning "`RIO_REPLAY_DIR` is deprecated"
+That list is exhaustive. `AGENTKIT_REPLAY_DIR` is the only env var
+read, and `default()` probes nothing on disk — it returns the same
+path whatever directories happen to exist, so where the store writes
+is always predictable from the environment alone.
 
-    `RIO_REPLAY_DIR` and the old `~/.rio/replays` default date from
-    before this package was `agentkit`. Both still work. The env var
-    is honoured only when `AGENTKIT_REPLAY_DIR` is absent and emits a
-    `DeprecationWarning`; when both are set, the `AGENTKIT_` one wins
-    and the stale one is reported through the logger.
+!!! warning "`RIO_REPLAY_DIR` no longer does anything"
 
-    `default()` will not orphan replays you already have: if the new
-    directory does not exist yet and the old one does, it keeps using
-    the OLD directory and logs how to migrate (`mv ~/.rio/replays
-    ~/.local/share/agentkit/replays`). It never moves your files for
-    you. Once the new directory exists, the old path is not consulted
-    again.
+    `RIO_REPLAY_DIR` and the `~/.rio/replays` default date from before
+    this package was `agentkit`, and neither is read any more. If you
+    still set the old variable, replay is simply **off** —
+    `from_env()` returns `None` and the caller falls back to
+    `NoopReplayStore`, with nothing logged. Set `AGENTKIT_REPLAY_DIR`
+    instead.
+
+    Replays under an old directory are not migrated for you and are
+    not found by `default()`. Move them yourself
+    (`mv ~/.rio/replays ~/.local/share/agentkit/replays`) or point the
+    store at them with `AGENTKIT_REPLAY_DIR`.
 
 Writes are best-effort by contract — `ReplayStore.put` must never
 raise into a run — but never silent: a dropped write logs (once per
