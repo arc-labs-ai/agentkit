@@ -1035,6 +1035,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="auto_allow, and why it exists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#narrowing-it-by-argument" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Narrowing it by argument
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -2954,6 +2971,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="auto_allow, and why it exists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#narrowing-it-by-argument" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Narrowing it by argument
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -3512,6 +3546,36 @@ same reflexive yes.</p>
 <code>Write /etc/passwd</code> was denied — because <code>Read</code> is in <code>auto_allow</code> and
 arguments are not consulted. Put only tools you would allow with <em>any</em>
 arguments in that tuple.</p>
+<p>That is worth stating plainly because the mistake is easy to make in the
+safe-sounding direction: it is tempting to read <code>auto_allow=("Read",)</code> as
+"reading is fine", when it means "reading <strong>anything</strong> is fine, including
+<code>~/.ssh/id_rsa</code>".</p>
+<h4 id="narrowing-it-by-argument">Narrowing it by argument<a class="headerlink" href="#narrowing-it-by-argument" title="Anchor link">&para;</a></h4>
+<p><code>auto_allow_when(tool_name, arguments) -&gt; bool</code> is the opt-in filter for
+when a tool is <em>mostly</em> safe:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp.approvals</span><span class="w"> </span><span class="kn">import</span> <span class="n">ApprovalServer</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">server</span> <span class="o">=</span> <span class="n">ApprovalServer</span><span class="p">(</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="n">asker</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># your reviewer</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">auto_allow</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,),</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">auto_allow_when</span><span class="o">=</span><span class="k">lambda</span> <span class="n">tool</span><span class="p">,</span> <span class="n">args</span><span class="p">:</span> <span class="ow">not</span> <span class="nb">str</span><span class="p">(</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>        <span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file_path&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="p">)</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;/etc/&quot;</span><span class="p">),</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="p">)</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Read README.md    auto-allowed: True
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Read /etc/passwd  auto-allowed: False   # falls through to the reviewer
+</span></code></pre></div>
+<p>Two properties make this safe to put on an approval seam:</p>
+<ul>
+<li><strong>It can only subtract.</strong> The gate is <code>tool_name in auto_allow</code> <strong>and</strong>
+  the predicate, so the predicate filters an already-approved set. A
+  predicate returning <code>True</code> for a tool that is not in <code>auto_allow</code>
+  cannot let it through — it is never a second way in.</li>
+<li><strong>A raising predicate falls through to the reviewer.</strong> A bug in your
+  filter costs a prompt, not an approval.</li>
+</ul>
+<p>Leaving it unset (the default) keeps the old behaviour exactly.</p>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong>Every MCP tool is <code>side_effecting=True</code>.</strong> MCP has no standard
@@ -3588,7 +3652,7 @@ arguments in that tuple.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 20:08:06 UTC">August 23, 2026</span>
   </span>
 
     
