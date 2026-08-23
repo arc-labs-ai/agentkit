@@ -379,7 +379,13 @@ def test_bare_super_in_post_init_is_the_trap_the_docstring_names() -> None:
         def __post_init__(self) -> None:
             super().__post_init__()
 
-    with pytest.raises(TypeError, match="must be an instance or subtype"):
+    # Match the substring both CPythons share, not either one's phrasing.
+    # 3.12 says "obj must be an instance or subtype of type"; 3.13 says
+    # "obj (instance of X) is not an instance or subtype of type". Pinning
+    # 3.12's wording turned a green 3.12 run into a red 3.13 one for a trap
+    # that behaves identically on both — the test was asserting the message,
+    # not the behaviour.
+    with pytest.raises(TypeError, match="instance or subtype"):
         BareSuperSlots(items=["a"])
 
     @dataclass(frozen=True)
