@@ -336,7 +336,7 @@ def test_workflow_resume_deep_copies_done() -> None:
     (``is not``) rather than by consequence, and from the other end: the
     caller's seed value is mutated instead, and the second resume must still
     read the original shape out of the store."""
-    from agentkit.agents.workflow import _ckpt_key
+    from agentkit.capabilities.checkpointer import ckpt_key
 
     def _wf() -> Workflow:
         # ``step_a`` is pre-satisfied via the checkpoint; ``review`` is a human_gate
@@ -349,14 +349,24 @@ def test_workflow_resume_deep_copies_done() -> None:
 
     store = InMemoryStore()
     original_value = [{"mutable": [1, 2]}]
+    # Seeded as the RAW record ``StoreBackedCheckpointStore`` reads, not via
+    # ``Checkpointer.snapshot`` — snapshot deep-copies at its own seam, which
+    # would un-alias ``original_value`` before the workflow ever sees it and
+    # leave this test proving the checkpointer's copy rather than the
+    # workflow's. Writing the KV directly is what a real serializing backend
+    # hands back, minus the serialization: ``InMemoryStore`` returns the very
+    # object it was given.
     checkpoint = {
-        "goal": "g",
-        "done": {"step_a": original_value},
-        "steps": 1,
+        "run_id": "run-1",
+        "version": 1,
+        "state": {"goal": "g", "done": {"step_a": original_value}, "steps": 1},
+        "created_at": 0.0,
+        "status": "suspended",  # non-terminal, or ``cp.resume`` filters it out
+        "metadata": {},
     }
 
     async def go() -> None:
-        await store.set(_ckpt_key("run-1"), checkpoint)
+        await store.set(ckpt_key("run-1"), checkpoint)
 
         # First resume — no decision provided, so it re-suspends at ``review``.
         res1 = await _wf().resume(
@@ -776,38 +786,77 @@ def test_a_workflow_gate_persists_through_a_checkpointer_alone() -> None:
     assert asyncio.run(cp.resume("wf-cp")) is None
 
 
-def test_a_suspend_written_by_the_legacy_store_format_still_resumes() -> None:
-    """Switching seams must not orphan IN-FLIGHT gates across an upgrade.
+def test_a_terminal_resume_reclaims_the_checkpoint_so_a_naive_rerun_starts_fresh() -> None:
+    """The hazard the reclaim in ``Workflow.resume`` exists for, stated end to end.
 
-    Older versions wrote `{"goal","done","steps"}` straight to
-    `workflow:<run_id>` on the raw store; the checkpointer bridge writes at
-    `checkpoint:<run_id>`. A suspended run is exactly the state that cannot be
-    reconstructed — it is waiting on a person — so `resume` falls back to
-    reading the legacy key.
+    The gate writes its checkpoint with status SUSPENDED and nothing downgrades
+    it on the way out, so a finished run that KEPT its record would still read
+    as resumable — which is exactly what ``on_existing="resume"`` and any
+    "resume if anything exists" supervisor act on.
+
+    Measured by disabling the reclaim branch on this graph: after the run
+    completed, a second ``resume(run_id, {"approve": "yes"})`` returned
+    ``complete`` again with ``act`` and ``ship`` each having executed TWICE
+    (2 instead of 1), and ``run(..., decisions=..., on_existing="resume")``
+    re-executed both the same way. There is one seam to clear now — Workflow
+    never writes the old private ``workflow:<run_id>`` KV slot — so this is the
+    whole of the protection.
     """
     import asyncio
 
     from agentkit import Scope, Workflow
-    from agentkit.adapters.store import InMemoryStore
+    from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+    from agentkit.capabilities import Checkpointer
     from agentkit.runtime import RunContext, Services
 
-    wf = Workflow(max_steps=10)
-    wf.fn("prep", lambda inputs: "ready")
-    wf.human_gate("approve", after="prep")
-    wf.fn("act", lambda inputs: "done", after="approve")
+    ran = {"prep": 0, "act": 0, "ship": 0}
 
-    store = InMemoryStore()
-    ctx = RunContext("wf-legacy", Scope(), services=Services(store=store))
-    # Hand-write the OLD format, as a pre-upgrade process would have left it.
-    asyncio.run(
-        store.set("workflow:wf-legacy", {"goal": "go", "done": {"prep": "ready"}, "steps": 1})
+    def _bump(key, out):
+        def _fn(inputs):
+            ran[key] += 1
+            return out
+        return _fn
+
+    def _wf() -> Workflow:
+        wf = Workflow(max_steps=10)
+        wf.fn("prep", _bump("prep", "ready"))
+        wf.human_gate("approve", after="prep")
+        wf.fn("act", _bump("act", "act"), after="approve")
+        wf.fn("ship", _bump("ship", "ship"), after="act")
+        return wf
+
+    cp = Checkpointer(port=InMemoryCheckpointStore())
+
+    def _ctx():
+        return RunContext("wf-reclaim", Scope(), services=Services(checkpointer=cp))
+
+    assert asyncio.run(_wf().run("go", _ctx())).stop_reason == "suspended"
+    # A suspended run still resumes — the reclaim must not fire mid-flight.
+    mid = asyncio.run(_wf().run("go", _ctx(), on_existing="resume"))
+    assert mid.stop_reason == "suspended" and mid.outputs["prep"] == "ready"
+
+    assert mid.steps == 1 and ran["prep"] == 1  # replayed the record; prep NOT re-run
+
+    assert asyncio.run(_wf().resume("wf-reclaim", {"approve": "yes"}, _ctx())).stop_reason == (
+        "complete"
     )
+    assert ran == {"prep": 1, "act": 1, "ship": 1}
 
-    resumed = asyncio.run(wf.resume("wf-legacy", {"approve": "yes"}, ctx))
-    assert resumed.stop_reason == "complete"
-    assert resumed.outputs["act"] == "done"
-    # And the legacy record is reclaimed on terminal completion.
-    assert not asyncio.run(store.get("workflow:wf-legacy"))
+    # Nothing is left to replay, at either level of the seam.
+    assert asyncio.run(cp.resume("wf-reclaim")) is None
+    assert asyncio.run(cp.resume("wf-reclaim", include_terminal=True)) is None
+
+    # So a naive "resume if anything exists" supervisor gets a FRESH run rather
+    # than a replay. ``prep`` is the discriminator: a replay would restore it
+    # from the finished run's ``done`` map and skip it (as the mid-flight call
+    # above did, ``ran["prep"] == 1``), while a fresh run must execute it again.
+    again = asyncio.run(_wf().run("go", _ctx(), decisions={"approve": "yes"}, on_existing="resume"))
+    assert again.stop_reason == "complete"
+    assert ran == {"prep": 2, "act": 2, "ship": 2}
+
+    # And a second ``resume`` of the reclaimed run refuses outright.
+    with pytest.raises(ValueError, match="no suspended workflow"):
+        asyncio.run(_wf().resume("wf-reclaim", {"approve": "yes"}, _ctx()))
 
 
 # --------------------------------------------------------------------------------------------

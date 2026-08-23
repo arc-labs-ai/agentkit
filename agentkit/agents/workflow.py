@@ -21,7 +21,6 @@ dict); a custom `fn`/`tool` node whose output crosses a gate must likewise retur
 
 from __future__ import annotations
 
-import contextlib
 import copy
 import inspect
 from collections.abc import Awaitable, Callable
@@ -48,39 +47,6 @@ class _Node:
         [dict[str, Any], str, Any], Awaitable[tuple[Any, Usage]]
     ]  # (inputs, goal, ctx) -> (output, usage)
     gate: bool = False
-
-
-def _ckpt_key(run_id: str) -> str:
-    return f"workflow:{run_id}"
-
-
-async def _read_legacy_checkpoint(ctx: Ctx, run_id: str) -> dict[str, Any] | None:
-    """Read a suspend written by a version that persisted straight to ``ctx.store``.
-
-    Workflow used to write ``{"goal", "done", "steps"}`` at ``workflow:<run_id>``
-    on the raw store, while the checkpointer bridge writes at
-    ``checkpoint:<run_id>``. Switching seams without this would orphan every
-    IN-FLIGHT human gate across an upgrade — and a suspended run is precisely
-    the state that cannot be reconstructed, because it is waiting on a person.
-    Read-only and best-effort; safe to delete once no old suspends can remain.
-    """
-    store = getattr(ctx, "store", None)
-    if store is None:
-        return None
-    with contextlib.suppress(Exception):
-        legacy = await store.get(_ckpt_key(run_id))
-        if legacy:
-            return dict(legacy)
-    return None
-
-
-async def _delete_legacy_checkpoint(ctx: Ctx, run_id: str) -> None:
-    """Reclaim a legacy-format checkpoint on terminal completion."""
-    store = getattr(ctx, "store", None)
-    if store is None:
-        return
-    with contextlib.suppress(Exception):
-        await store.delete(_ckpt_key(run_id))
 
 
 def _warn_unpersisted_gate(gate: str, run_id: str) -> None:
@@ -381,8 +347,6 @@ class Workflow:
         if cp is not None:
             checkpoint = await cp.resume(run_id)
             state = checkpoint.state if checkpoint is not None else None
-        if state is None:
-            state = await _read_legacy_checkpoint(ctx, run_id)
         if not state:
             raise ValueError(f"no suspended workflow {run_id!r} to resume")
         saved = state
@@ -404,14 +368,24 @@ class Workflow:
             decisions=dict(decisions),
             steps=saved["steps"],
         )
-        if result.stop_reason != "suspended":
-            # Terminal → reclaim the checkpoint so a naive
-            # "resume if anything exists" wiring cannot replay a finished run.
-            # Both seams are cleared: the run may have been suspended by an
-            # older version that wrote the legacy KV key.
-            if cp is not None:
-                await cp.delete(run_id)
-            await _delete_legacy_checkpoint(ctx, run_id)
+        if result.stop_reason != "suspended" and cp is not None:
+            # Terminal → reclaim the checkpoint so a naive "resume if anything
+            # exists" wiring cannot replay a finished run. There is ONE seam to
+            # clear: ``resolve_checkpointer``. The gate-suspend path in
+            # ``_execute`` writes through it and nowhere else, so whatever this
+            # resume read is the only record of the run.
+            #
+            # The record the gate wrote is marked SUSPENDED, and nothing
+            # downgrades it on the way out — so leaving it behind does not just
+            # waste a slot, it leaves a FINISHED run advertising itself as
+            # resumable. Measured by disabling this branch on a
+            # prep -> gate -> act -> ship graph: after the run completed, a
+            # second ``resume(run_id, {"approve": "yes"})`` returned
+            # ``complete`` again with ``act`` and ``ship`` each executed twice
+            # (2 instead of 1), and ``run(..., decisions=..., on_existing="resume")``
+            # re-executed both the same way. Deleting is what makes the second
+            # call raise "no suspended workflow ... to resume" instead.
+            await cp.delete(run_id)
         return result
 
     async def _execute(
