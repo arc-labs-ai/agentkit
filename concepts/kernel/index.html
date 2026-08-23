@@ -735,6 +735,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#errors-one-base-and-a-three-way-retry-verdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors: one base, and a three-way retry verdict
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-helpers-worth-knowing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two helpers worth knowing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-bites-people" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2973,6 +2995,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#errors-one-base-and-a-three-way-retry-verdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors: one base, and a three-way retry verdict
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-helpers-worth-knowing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two helpers worth knowing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-bites-people" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3536,6 +3580,70 @@ partial <em>changed</em>, so consecutive <code>message_delta</code>s may carry <
 mid-stream. Hold the last non-<code>None</code> value; do not read a <code>None</code> as
 "the object went away".</p>
 </div>
+<h2 id="errors-one-base-and-a-three-way-retry-verdict">Errors: one base, and a three-way retry verdict<a class="headerlink" href="#errors-one-base-and-a-three-way-retry-verdict" title="Anchor link">&para;</a></h2>
+<p>Every typed error the framework raises inherits <code>AgentkitError</code>, so an
+application that wants a single boundary can catch that one name:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentkitError</span><span class="p">,</span> <span class="n">StoreUnavailable</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="o">...</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">except</span> <span class="n">StoreUnavailable</span><span class="p">:</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="o">...</span>          <span class="c1"># the store could not be reached — degrade, or fail the run</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">except</span> <span class="n">AgentkitError</span><span class="p">:</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="o">...</span>          <span class="c1"># anything else the framework raised, typed</span>
+</span></code></pre></div>
+<p><code>StoreUnavailable</code> is the one worth naming separately, because it is
+infrastructure rather than logic: a <code>StorePort</code> operation could not reach
+its backing store. Everything a memoize or checkpoint layer does on top
+of a store has to decide what that means for the run.</p>
+<div class="admonition note">
+<p class="admonition-title">Not every error in the tree is an <code>AgentkitError</code></p>
+<p>The tool errors are the deliberate exception — <code>ToolArgumentError</code>
+subclasses <code>ValueError</code>, because the model sending a bad argument is
+a value problem and callers already catch <code>ValueError</code> around
+argument handling. <code>issubclass(ToolArgumentError, AgentkitError)</code> is
+<code>False</code>, on purpose.</p>
+</div>
+<p><code>ErrorClass</code> is the separate question retry asks — not <em>what went wrong</em>
+but <em>is trying again worth anything</em>:</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Meaning</th>
+<th>What <code>retry()</code> does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>transient</code></td>
+<td>a timeout, a 429, a 5xx</td>
+<td>back off and try again</td>
+</tr>
+<tr>
+<td><code>permanent</code></td>
+<td>a 401, a malformed request</td>
+<td>give up immediately</td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td>anything unrecognised</td>
+<td>give up — guessing costs money</td>
+</tr>
+</tbody>
+</table>
+<p><code>unknown</code> defaulting to "do not retry" is the conservative direction on
+purpose: an unrecognised failure retried is a bill with no upside.
+Measured — <code>classify(TimeoutError(...))</code> is <code>transient</code>,
+<code>classify(ValueError(...))</code> is <code>unknown</code>.</p>
+<h2 id="two-helpers-worth-knowing">Two helpers worth knowing<a class="headerlink" href="#two-helpers-worth-knowing" title="Anchor link">&para;</a></h2>
+<p><code>collect_one(stream)</code> reduces a one-item stream to its single value —
+the tool seam's counterpart to <code>collect</code>, which assembles a chat stream's
+deltas into an <code>LLMResult</code>. You need it when writing a middleware that
+has to see a tool's result rather than pass the stream through.</p>
+<p><code>compose_failures(...)</code> aggregates child failures into one, returning
+<code>None</code> when there are none. It is what a fan-out uses to answer "did any
+of these fail, and what do I raise" without inventing its own shape.</p>
 <h2 id="what-bites-people">What bites people<a class="headerlink" href="#what-bites-people" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong><code>ctx.messages</code> inside a middleware is a copy.</strong> Mutating it does
@@ -3608,7 +3716,7 @@ concurrency primitives; <strong>State</strong> threads the <code>Message</code> 
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 22:37:05 UTC">August 23, 2026</span>
   </span>
 
     
