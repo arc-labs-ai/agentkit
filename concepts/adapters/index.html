@@ -4013,15 +4013,32 @@ OpenAI provider (correct) and reports every capability as
 </ol>
 <h2 id="what-bites-people">What bites people<a class="headerlink" href="#what-bites-people" title="Anchor link">&para;</a></h2>
 <div class="admonition warning">
-<p class="admonition-title"><code>memoize()</code> on a chat chain needs <code>InMemoryStore</code></p>
-<p>Chat memoization stores an <code>LLMResult</code> object. <code>InMemoryStore</code>
-holds the object itself, so it works. Every durable adapter
-serialises with <code>json.dumps</code>, so the same wiring raises
+<p class="admonition-title"><code>memoize()</code> on a chat chain: a typed <code>parsed</code> is not cached durably</p>
+<p>Chat memoization used to store an <code>LLMResult</code> <strong>object</strong>.
+<code>InMemoryStore</code> holds objects, so it worked; every durable adapter
+serialises with <code>json.dumps</code>, so the same wiring raised
 <code>TypeError: Object of type LLMResult is not JSON serializable</code> on
 the first cache write against <code>FileStore</code>, <code>RedisStore</code> or
-<code>PostgresStore</code>. Tool-result memoization is fine on any of them —
-a tool result is ordinary JSON. Until this is fixed, keep chat
-memoization on the in-memory store.</p>
+<code>PostgresStore</code> — i.e. it failed for everyone who wired a cache
+that outlives the process. A chat result is now stored
+JSON-shaped and rebuilt on the way out (<code>tool_calls</code> come back as
+real <code>ToolCall</code>s with frozen <code>arguments</code>; all five <code>Usage</code> fields
+survive), so every store adapter caches a chat turn.</p>
+<p>One field cannot follow: <code>LLMResult.parsed</code>, the typed object
+<code>output_coerce()</code> produces. Rebuilding a Pydantic model or a
+dataclass from JSON would mean importing a class named in a cache
+entry. So the rule is <strong>carry it or refuse the entry, never
+downgrade it</strong>: a JSON-native <code>parsed</code> (dict/list/str/int/float/
+bool/<code>None</code>) round-trips, and anything else makes that call
+uncacheable on a serialising store — the call runs, the caller
+gets the complete typed result, nothing is stored, and a
+<code>UserWarning</code> plus <code>call.meta["cache_stored"] = False</code> say so.
+On <code>InMemoryStore</code> the typed object survives a hit as before.
+Storing a <code>parsed=None</code> copy instead would mean a miss returning
+<code>Plan(...)</code> and a hit returning <code>None</code> — a wrong answer beats a
+missed cache hit only in a benchmark.</p>
+<p>Tool-result memoization is unaffected on every adapter — a tool
+result is ordinary JSON and always was.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">TTL is not uniform across store adapters</p>
@@ -4095,7 +4112,7 @@ before you conclude retrieval quality is bad.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 19:55:26 UTC">August 23, 2026</span>
   </span>
 
     

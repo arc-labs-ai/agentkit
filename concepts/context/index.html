@@ -3299,6 +3299,17 @@ usable as cache keys for re-grounding decisions):</p>
 <p><code>ContextScope</code> is a <code>runtime_checkable</code> Protocol, so your own predicate
 class works anywhere the built-ins do — it needs one method,
 <code>matches(message, index) -&gt; bool</code>.</p>
+<p>One scope is different in kind. <code>LastNTurns</code> is <strong>positional</strong>: "the
+last two turns" is a property of the list, not of any message in it, so
+it cannot be decided from <code>(message, index)</code> alone. Positional scopes
+implement <code>_surviving_indices(messages) -&gt; set[int]</code> instead, and
+<code>slice()</code> prefers that hook. Composition happens in index space — <code>AllOf</code>
+intersects the surviving sets, <code>AnyOf</code> unions them, <code>Not</code> complements
+against <code>range(len(messages))</code> — so a window keeps working at any nesting
+depth. Write your own the same way if your predicate needs to see the
+whole list; <code>PositionalScope</code> is the protocol for it, and
+<code>surviving_indices(scope, messages)</code> is the helper that answers for
+either kind.</p>
 <h2 id="the-journal-axis">The journal axis<a class="headerlink" href="#the-journal-axis" title="Anchor link">&para;</a></h2>
 <p><code>MutationJournal</code> is an append-only log with a watermark. It exists for
 one job: letting a child stream progress upward without re-shipping
@@ -3552,14 +3563,22 @@ lock. <code>shared=True</code> does <strong>not</strong> auto-lock the mutators 
 public primitive and the boundary is explicit on purpose.</p>
 <h2 id="what-bites-people">What bites people<a class="headerlink" href="#what-bites-people" title="Anchor link">&para;</a></h2>
 <div class="admonition warning">
-<p class="admonition-title"><code>LastNTurns</code> loses its window inside a combinator</p>
-<p><code>LastNTurns</code> cannot decide membership from <code>(message, index)</code>
-alone — it needs the whole list to count back <code>n</code> turns, so it
-exposes a private <code>_surviving_indices</code> hook that <code>slice()</code> prefers.
-<code>AllOf</code> / <code>AnyOf</code> / <code>Not</code> do not forward that hook, and
-<code>LastNTurns.matches()</code> returns <code>True</code> for everything as a
-safe-by-default fallback. Wrap it in a combinator and the window
-silently disappears:</p>
+<p class="admonition-title">A positional scope refuses <code>matches()</code> — it does not guess</p>
+<p><code>LastNTurns.matches(message, index)</code> raises <code>PositionalScopeError</code>.
+There is no honest answer: the window is a property of the whole
+list, so a single message cannot be judged in isolation.</p>
+<p>It used to return <code>True</code> instead, "safe by default". That had the
+failure mode backwards. Nothing calls <code>.matches()</code> on a bare
+<code>LastNTurns</code> — what called it was <code>AllOf.matches</code>, once per
+message, where <code>True</code> means "this child has no opinion". So the
+window evaporated on contact with a combinator. Measured on a
+six-message transcript: <code>slice(LastNTurns(2))</code> gave 2 messages,
+<code>slice(AllOf((LastNTurns(2), RoleFilter(frozenset({"user"})))))</code>
+gave all 6, and <code>slice(Not(LastNTurns(2)))</code> gave 0. No error, no
+warning — just a prompt three times the size you asked for and an
+overflow a few turns later.</p>
+<p>The combinators now forward <code>_surviving_indices</code>, so composing is
+the right thing to do:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.context</span><span class="w"> </span><span class="kn">import</span> <span class="n">AllOf</span><span class="p">,</span> <span class="n">LastNTurns</span><span class="p">,</span> <span class="n">Not</span><span class="p">,</span> <span class="n">RoleFilter</span><span class="p">,</span> <span class="n">WorkingContext</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
 </span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
@@ -3569,17 +3588,15 @@ silently disappears:</p>
 </span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">ctx</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Message</span><span class="p">(</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;q</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">),</span> <span class="n">Message</span><span class="p">(</span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;a</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
 </span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
 </span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="nb">print</span><span class="p">([</span><span class="n">m</span><span class="o">.</span><span class="n">content</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">LastNTurns</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">messages</span><span class="p">])</span>
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># [&#39;House rules.&#39;, &#39;q1&#39;, &#39;a1&#39;, &#39;q2&#39;, &#39;a2&#39;]    — windowed</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># [&#39;House rules.&#39;, &#39;q1&#39;, &#39;a1&#39;, &#39;q2&#39;, &#39;a2&#39;]</span>
 </span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
 </span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="n">inside</span> <span class="o">=</span> <span class="n">AllOf</span><span class="p">((</span><span class="n">LastNTurns</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span> <span class="n">Not</span><span class="p">(</span><span class="n">RoleFilter</span><span class="p">(</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;system&quot;</span><span class="p">})))))</span>
 </span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="nb">print</span><span class="p">([</span><span class="n">m</span><span class="o">.</span><span class="n">content</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">inside</span><span class="p">)</span><span class="o">.</span><span class="n">messages</span><span class="p">])</span>
-</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="c1"># [&#39;q0&#39;, &#39;a0&#39;, &#39;q1&#39;, &#39;a1&#39;, &#39;q2&#39;, &#39;a2&#39;]        — window GONE</span>
-</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
-</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="n">narrowed</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">LastNTurns</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">Not</span><span class="p">(</span><span class="n">RoleFilter</span><span class="p">(</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;system&quot;</span><span class="p">}))))</span>
-</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="nb">print</span><span class="p">([</span><span class="n">m</span><span class="o">.</span><span class="n">content</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">narrowed</span><span class="o">.</span><span class="n">messages</span><span class="p">])</span>
-</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="c1"># [&#39;q1&#39;, &#39;a1&#39;, &#39;q2&#39;, &#39;a2&#39;]                    — do this instead</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="c1"># [&#39;q1&#39;, &#39;a1&#39;, &#39;q2&#39;, &#39;a2&#39;]    — window kept, system dropped</span>
 </span></code></pre></div>
-<p>Window first, then filter the result.</p>
+<p>If you filter a message list by hand rather than through <code>slice()</code>,
+call <code>surviving_indices(scope, messages)</code>, not <code>scope.matches</code> —
+the helper handles both kinds of scope.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title"><code>fork()</code> then <code>merge()</code> duplicates the shared history</p>
@@ -3591,22 +3608,37 @@ merges ends up with three messages, two of them identical. Use
 overlap does not matter.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title"><code>freeze()</code> does not deep-freeze scratchpad values</p>
-<p>The transcript axis of a <code>FrozenContext</code> is genuinely immutable —
-<code>messages</code> is a tuple of frozen <code>Message</code>s. The scratchpad is a
-tuple of <code>(key, value)</code> pairs, and the <strong>values are the live
-objects</strong>:</p>
+<p class="admonition-title">A snapshot's scratchpad values are frozen, and two kinds of value escape that</p>
+<p><code>freeze()</code> deep-freezes the scratchpad <strong>values</strong>, so a nested note
+reached through a snapshot refuses writes and the snapshot no longer
+tracks the live context:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.context</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkingContext</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">WorkingContext</span><span class="p">()</span><span class="o">.</span><span class="n">note</span><span class="p">(</span><span class="s2">&quot;plan&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;steps&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">]})</span>
 </span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">snap</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">freeze</span><span class="p">()</span>
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">ctx</span><span class="o">.</span><span class="n">scratchpad</span><span class="p">[</span><span class="s2">&quot;plan&quot;</span><span class="p">][</span><span class="s2">&quot;steps&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;b&quot;</span><span class="p">)</span>
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nb">print</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">snap</span><span class="o">.</span><span class="n">scratchpad</span><span class="p">))</span>     <span class="c1"># {&#39;plan&#39;: {&#39;steps&#39;: [&#39;a&#39;, &#39;b&#39;]}}</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">ctx</span><span class="o">.</span><span class="n">scratchpad</span><span class="p">[</span><span class="s2">&quot;plan&quot;</span><span class="p">][</span><span class="s2">&quot;steps&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;b&quot;</span><span class="p">)</span>   <span class="c1"># the live context is still live</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nb">print</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">snap</span><span class="o">.</span><span class="n">scratchpad</span><span class="p">))</span>                  <span class="c1"># {&#39;plan&#39;: {&#39;steps&#39;: [&#39;a&#39;]}}</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="nb">dict</span><span class="p">(</span><span class="n">snap</span><span class="o">.</span><span class="n">scratchpad</span><span class="p">)[</span><span class="s2">&quot;plan&quot;</span><span class="p">][</span><span class="s2">&quot;steps&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;b&quot;</span><span class="p">)</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>    <span class="c1"># this payload belongs to a frozen value and cannot be mutated in place</span>
 </span></code></pre></div>
-<p><code>ContextDiff</code> deep-freezes its payload; <code>FrozenContext</code> does not.
-If you are handing a snapshot across an agent boundary and the
-scratchpad holds mutable structures, deep-copy them yourself
-first.</p>
+<p>Two things are passed through by identity and stay mutable. A
+<strong>non-container leaf</strong> — your own object — is never reconstructed,
+which is the line <code>deep_freeze</code> refuses to cross everywhere in the
+framework; deep-copy it yourself, or note a plain-data projection of
+it. And <strong>journal entries</strong> are left alone deliberately: the journal
+is the unbounded append-only axis, so freezing every entry at every
+snapshot would be quadratic in a run's own history (measured: 1.0 µs
+to snapshot a 500-entry journal, 1536 µs with the entries frozen).
+That axis carries its own guarantee instead — a <code>MutationJournal</code>
+never rewrites an entry.</p>
+<p>Rehydrating is unaffected: <code>dict(snap.scratchpad)</code> rebuilds a plain,
+writable top level, so <code>note()</code> and <code>update_scratchpad()</code> work as
+always. To edit a nested value, build a new one —
+<code>ctx.note("plan", {**ctx.get("plan"), "steps": [...]})</code>.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">A <code>WorkingContext</code> is not a <code>RunContext</code>, and neither is a <code>Ctx</code></p>
@@ -3659,7 +3691,7 @@ the transcript get shortened", that is
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 19:55:54 UTC">August 23, 2026</span>
   </span>
 
     

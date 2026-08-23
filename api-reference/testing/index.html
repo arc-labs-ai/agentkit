@@ -2662,6 +2662,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.testing.FakeLLM.script" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;script
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.testing.FakeLLM.stream" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2729,6 +2740,45 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.testing.ScriptExhausted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ScriptExhausted
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" ScriptExhausted">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.testing.ScriptExhausted--why-this-exists-and-why-it-is-loud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHY THIS EXISTS, AND WHY IT IS LOUD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.testing.ScriptExhausted--why-baseexception-and-not-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHY FakeMemory AND NOT FakeTool
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2991,6 +3041,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.testing.FakeLLM.script" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;script
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.testing.FakeLLM.stream" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3058,6 +3119,45 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.testing.ScriptExhausted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ScriptExhausted
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" ScriptExhausted">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.testing.ScriptExhausted--why-this-exists-and-why-it-is-loud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHY THIS EXISTS, AND WHY IT IS LOUD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.testing.ScriptExhausted--why-baseexception-and-not-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHY FakeMemory AND NOT FakeTool
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3497,7 +3597,8 @@ canned block (empty string allowed to test the skip path).</p>
   
       dataclass
    (agentkit.testing.fakes.llm.Turn)" href="#agentkit.testing.Turn">Turn</a></span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">repeat_last</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3506,6 +3607,17 @@ canned block (empty string allowed to test the skip path).</p>
 
         <p>Deterministic offline LLM. dict {substring_of_user: content} | callable | str for single
 answers; <code>FakeLLM.script([Turn(...), …])</code> replays a multi-step tool loop across <code>chat</code> calls.</p>
+<p>The two forms differ ON PURPOSE once they run out of material:</p>
+<ul>
+<li>the single-answer forms (str / dict / callable) have nothing to run out
+  of — they are a rule for turning a request into a reply, so call 1 and
+  call 100 both answer. Repeating IS their meaning.</li>
+<li>a script is a finite, ordered claim about how many turns the run takes.
+  Asking for turn N+1 contradicts the claim, so it raises
+  <code>ScriptExhausted</code>. Pass <code>repeat_last=True</code> for the deliberate
+  never-terminating script — a single tool-call <code>Turn</code> used to drive a
+  loop until <code>max_iterations</code> or a budget cuts it.</li>
+</ul>
 
 
 
@@ -3527,6 +3639,44 @@ answers; <code>FakeLLM.script([Turn(...), …])</code> replays a multi-step tool
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.testing.FakeLLM.script" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">script</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+<a href="#agentkit.testing.FakeLLM.script" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">script</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">turns</span><span class="p">:</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Turn
+
+
+  
+      dataclass
+   (agentkit.testing.fakes.llm.Turn)" href="#agentkit.testing.Turn">Turn</a></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="o">*</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">repeat_last</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            FakeLLM (agentkit.testing.fakes.llm.FakeLLM)" href="#agentkit.testing.FakeLLM">FakeLLM</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Replay <code>turns</code> in order, one per <code>chat</code>/<code>stream</code> call, then raise <code>ScriptExhausted</code>.</p>
+<p><code>repeat_last=True</code> replays the final turn forever instead. Spelled out
+as a real keyword rather than left to <code>**kw</code> so it shows up in a
+signature and an IDE completion — it is the escape hatch a reader
+needs at the moment the exception fires, and <code>**kw</code> hides it.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -3904,6 +4054,59 @@ granularity tests care about).</p>
 
 
   </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.testing.ScriptExhausted" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">ScriptExhausted</span>
+
+
+<a href="#agentkit.testing.ScriptExhausted" class="headerlink" title="Anchor link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="BaseException">BaseException</span></code></p>
+
+
+
+        <p>A <code>FakeLLM.script</code> was asked for more turns than it has.</p>
+<h4 id="agentkit.testing.ScriptExhausted--why-this-exists-and-why-it-is-loud">WHY THIS EXISTS, AND WHY IT IS LOUD<a class="headerlink" href="#agentkit.testing.ScriptExhausted--why-this-exists-and-why-it-is-loud" title="Anchor link">&para;</a></h4>
+<p>This class used to be a <code>min()</code>. <code>stream</code> clamped the script index, so a
+2-turn script asked for 4 turns answered <code>['one', 'two', 'two', 'two']</code>
+— measured, not hypothetical. A scripted LLM exists to drive an agent
+through an EXPECTED number of turns, so "the agent asked for more turns
+than the script has" is a statement about the code under test: it looped
+when it should have stopped. The clamp turned exactly that finding into a
+stable, plausible, wrong answer, and the test went green. The harness
+built to catch non-termination was the thing hiding it — the same shape as
+a broad <code>except</code> that reports success.</p>
+<h4 id="agentkit.testing.ScriptExhausted--why-baseexception-and-not-exception">WHY <code>BaseException</code> AND NOT <code>Exception</code><a class="headerlink" href="#agentkit.testing.ScriptExhausted--why-baseexception-and-not-exception" title="Anchor link">&para;</a></h4>
+<p>Because the failure it reports is a failure of the code that would be
+doing the catching. <code>agentkit</code> has ~20 deliberate <code>except Exception</code>
+sites on the path between <code>FakeLLM.stream</code> and the test body — react
+reflects invalid output back to the model, <code>_invoke_tool_safe</code> turns every
+tool failure into a tool message, <code>resilience</code> classifies pre-stream
+failures into retry-vs-fail. Each one is correct for a real provider
+fault, and each one would convert "your loop does not terminate" into a
+retry or a reflected message and keep going. <code>asyncio.CancelledError</code> was
+promoted out of <code>Exception</code> in 3.8 for this exact reason; a test double's
+contract violation belongs in the same bucket. pytest reports a
+<code>BaseException</code> as a plain failure, so nothing is lost at the top.</p>
+
+
+
+
+
+
+
+
 
     </div>
 

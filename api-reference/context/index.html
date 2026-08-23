@@ -3887,15 +3887,25 @@ sharing mutation: a parent that wants to brief a child but
 doesn't want the child's writes to leak back.</p>
 <p>All fields are immutable: <code>PrefixContext</code> is frozen,
 <code>messages</code> is a tuple, <code>scratchpad</code> is a sorted tuple of
-(key, value) pairs (so equality is deterministic), and
-<code>journal_entries</code> is a tuple. A snapshot is therefore safe to
+(key, value) pairs (so equality is deterministic) whose VALUES are
+deep-frozen (see <code>__post_init__</code>), and <code>journal_entries</code> is a
+tuple. A snapshot is therefore safe to
 share across agent boundaries without locking and to use as a
 memoization-cache key — see <code>__hash__</code> for what "hashable" can
 and cannot mean when two of those tuples hold arbitrary
 user objects.</p>
+<p>The one deliberate exception is the CONTENTS of <code>journal_entries</code>:
+the tuple is frozen, the entries inside it are passed through by
+identity. <code>__post_init__</code> says why, with the measurement.</p>
 <p>Round-tripping: <code>WorkingContext(prefix=f.prefix,
 messages=list(f.messages), scratchpad=dict(f.scratchpad))</code> is
-functionally equivalent to the source (modulo identity).</p>
+functionally equivalent to the source (modulo identity). The
+rehydrated context is a fully live one — <code>dict(...)</code> rebuilds a
+plain, writable top level, so <code>note</code> / <code>update_scratchpad</code> work
+as always; what it inherits is frozen NESTED values, which is the
+point of taking a snapshot rather than a copy. A child that wants to
+edit one builds a new value: <code>ctx.note("plan", {**ctx.get("plan"),
+"steps": [...]})</code>.</p>
 
 
 
@@ -4672,6 +4682,18 @@ journal has its own watermark-based diff via
 
         <p>Immutable snapshot — safe to share across agent boundaries
 without locking. Equality is structural.</p>
+<p>Scratchpad values are deep-frozen and un-aliased by
+<code>FrozenContext.__post_init__</code>; read that docstring for what
+"immutable" covers and what it deliberately does not.</p>
+<p>This is the only one of the four composition seams that returns
+something IMMUTABLE, and that is what decides how each treats
+scratchpad values. <code>fork()</code> returns an independent live copy, so it
+<code>deepcopy</code>s them. <code>merge()</code> aggregates into a live context and
+hands values over by reference — last-write-wins means the receiver
+owns the object and keeps writing to it. <code>slice()</code> returns a live
+view with a fresh top-level dict and shared values, as its docstring
+says ("scratchpad ... inherited unchanged"). <code>freeze()</code> is the one
+whose result nobody may write to, so it is the one that freezes.</p>
 
 
     </div>
@@ -4985,8 +5007,11 @@ can't accidentally aliasing-corrupt the frozen prefix.</p>
 belongs in the sliced view. Composable via the obvious
 <code>AllOf</code> / <code>AnyOf</code> / <code>Not</code> combinators.</p>
 <p><code>index</code> is the message's index in the <em>original</em> message list
-(not the sliced output). This is what makes <code>Since</code> cheap and
-<code>LastNTurns</code> implementable.</p>
+(not the sliced output). This is what makes <code>Since</code> cheap.</p>
+<p>A scope that genuinely cannot answer from <code>(message, index)</code>
+alone — one whose answer depends on where the END of the list is —
+should implement <code>_surviving_indices</code> as well; see
+<code>PositionalScope</code>.</p>
 
 
 
@@ -5044,8 +5069,7 @@ framing the loop relies on.</p>
 from <code>(message, index)</code> — it needs the full list to count back
 <code>n</code> turns. <code>WorkingContext.slice()</code> pre-computes the set of
 surviving indices for any scope that exposes <code>_surviving_indices</code>,
-falling back to per-message <code>matches()</code> otherwise. The protocol
-surface stays simple; the windowing path is local to this class.</p>
+falling back to per-message <code>matches()</code> otherwise.</p>
 
 
 
@@ -5199,6 +5223,11 @@ surface stays simple; the windowing path is local to this class.</p>
 
 
         <p>Keeps messages with index ≥ <code>checkpoint_index</code>.</p>
+<p>Index-dependent but NOT positional: the checkpoint is an absolute
+coordinate the caller already knows, so <code>matches()</code> is the whole
+truth and this scope composes correctly through <code>matches()</code>
+alone. Only a scope that measures from the END of the list needs
+the <code>_surviving_indices</code> hook.</p>
 
 
 

@@ -3037,9 +3037,11 @@ staging.</p>
 <p>The trap is that a test which <em>looks</em> like it covers the wiring often
 covers nothing at all. A caching test with no cache, a budget assertion
 with no meter, a scripted tool loop that ran out of script and quietly
-repeated its last turn — all three pass. This page shows the doubles and
-then the traps, because the traps are the part that has actually cost
-this repo time.</p>
+repeated its last turn — all three used to pass. The third one is now an
+error rather than a trap (see <em>A script that runs out raises</em>), because
+it was the harness hiding the very thing it was built to catch. This page
+shows the doubles and then the traps, because the traps are the part that
+has actually cost this repo time.</p>
 <h2 id="the-smallest-thing-that-works">The smallest thing that works<a class="headerlink" href="#the-smallest-thing-that-works" title="Anchor link">&para;</a></h2>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
@@ -3249,6 +3251,10 @@ sent.</p>
 carrying tool calls sets <code>finish_reason="tool_calls"</code>; a turn with only
 content sets <code>"stop"</code>. That is what drives a <code>ReActCognition</code> through a
 real loop iteration.</p>
+<p>A script is a finite claim about how many turns the run takes. Asking for
+one more raises <code>ScriptExhausted</code>; pass <code>repeat_last=True</code> when a test
+deliberately drives an unbounded loop. See <em>A script that runs out
+raises</em> below.</p>
 <p><code>FakeLLM.calls</code> counts invocations, and every double in this package
 records something — that is the assertion surface.</p>
 <h3 id="failure-injection">Failure injection<a class="headerlink" href="#failure-injection" title="Anchor link">&para;</a></h3>
@@ -3529,30 +3535,53 @@ result and charges every meter in <code>ctx.all_meters</code>:</p>
 the chain is asserting that nothing happened.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title">A script that runs out repeats its last turn forever</p>
-<p><code>FakeLLM.script</code> clamps its index, so once the turns are exhausted
-every subsequent call replays the final turn:</p>
+<p class="admonition-title">A script that runs out raises</p>
+<p><code>FakeLLM.script</code> used to clamp its index, so once the turns were
+exhausted every subsequent call replayed the final turn — a 2-turn
+script asked for 4 turns answered <code>['one', 'two', 'two', 'two']</code>. A
+loop that should have terminated therefore did not fail; it settled
+into a stable, plausible, wrong answer and the test went green. The
+double built to catch non-termination was the thing hiding it.</p>
+<p>It now raises <code>ScriptExhausted</code>, naming how many turns the script had
+and which turn was asked for:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">Turn</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">ScriptExhausted</span><span class="p">,</span> <span class="n">Turn</span><span class="p">,</span> <span class="n">make_test_ctx</span>
 </span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
 </span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
 </span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 </span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="o">.</span><span class="n">script</span><span class="p">([</span><span class="n">Turn</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;one&quot;</span><span class="p">),</span> <span class="n">Turn</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;two&quot;</span><span class="p">)])</span>
 </span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">)</span>
 </span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;fake-model&quot;</span><span class="p">)</span>
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="nb">print</span><span class="p">([(</span><span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;go&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">))</span><span class="o">.</span><span class="n">output</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)])</span>
-</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    <span class="c1"># [&#39;one&#39;, &#39;two&#39;, &#39;two&#39;, &#39;two&#39;]</span>
-</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>            <span class="nb">print</span><span class="p">((</span><span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;go&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">))</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    <span class="k">except</span> <span class="n">ScriptExhausted</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span>  <span class="c1"># ... has 2 turn(s), but the agent asked for turn 3 ...</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<p>A loop that should have terminated therefore does not fail — it
-settles into a stable, wrong answer. Assert on <code>llm.calls</code> to pin
-how many turns you expected, and end a tool-loop script with a
-content-only <code>Turn</code> so the last repeated turn is a terminal one
-rather than another tool request.</p>
+<p><code>ScriptExhausted</code> is a <code>BaseException</code>, not an <code>Exception</code>, for the
+same reason <code>asyncio.CancelledError</code> is: the handlers between the
+fake and your test body — react reflecting bad output back to the
+model, tool failures becoming tool messages, <code>resilience</code> classifying
+a pre-stream fault as retryable — are all correct for a real provider
+fault, and all of them would swallow this one.</p>
+<p>When the unbounded loop is the point of the test, say so:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolCall</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">Turn</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># one tool-call turn, replayed forever; max_iterations ends the run</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="o">.</span><span class="n">script</span><span class="p">(</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="p">[</span><span class="n">Turn</span><span class="p">(</span><span class="n">tool_calls</span><span class="o">=</span><span class="p">(</span><span class="n">ToolCall</span><span class="p">(</span><span class="s2">&quot;c1&quot;</span><span class="p">,</span> <span class="s2">&quot;fetch&quot;</span><span class="p">,</span> <span class="p">{}),))],</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">repeat_last</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Only the script form has anything to exhaust. <code>FakeLLM("x")</code> and the
+dict/callable forms are rules for answering, not finite scripts, so
+they answer every call and always will.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">One <code>FakeLLM</code> shared across runs keeps counting</p>
@@ -3612,7 +3641,7 @@ agent. If a test fails there, you forgot the <code>llm=</code>.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 19:56:32 UTC">August 23, 2026</span>
   </span>
 
     

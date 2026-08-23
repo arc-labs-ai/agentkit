@@ -168,11 +168,31 @@
 :root {
   --md-text-font-family: "Inter", ui-sans-serif, system-ui, -apple-system,
                          "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  /* Base is 16px; tuning it here cascades to all rem-based Material tokens. */
-  --md-typeset-font-size: 0.82rem;
 }
 
+/* Body type size.
+ *
+ * This used to be set as `--md-typeset-font-size: 0.82rem`, with a comment
+ * claiming it "cascades to all rem-based Material tokens". It did nothing:
+ * that custom property is not a Material token and the built stylesheet reads
+ * it ZERO times, so the site silently rendered at Material's stock `.8rem`
+ * the whole time. Verified by grepping `var(--md-typeset-font-size` in
+ * `site/assets/stylesheets/main.*.min.css` — no matches.
+ *
+ * Material sets `html { font-size: 125% }`, so 1rem is 20px here, NOT the 16px
+ * the old comment assumed. The real knob is `.md-typeset`'s own `font-size`,
+ * which is what this now sets:
+ *
+ *     0.80rem = 16.0px   Material's default, and what this now sets
+ *
+ * Code rides along proportionally rather than needing its own rule: Material
+ * sizes `.md-typeset code` at `.85em`, i.e. relative to this, so inline code
+ * and fenced blocks scale with the body instead of drifting from it. This is a
+ * documentation site whose pages are mostly prose ABOUT code, so the two
+ * staying in proportion matters more than either absolute value.
+ */
 .md-typeset {
+  font-size: 0.80rem;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
   line-height: 1.65;
 }
@@ -181,6 +201,25 @@
   margin: 0 0 1.05em;
 }
 
+/* Heading scale.
+ *
+ * Sized in `em`, not `rem`, so headings scale WITH the body. The previous
+ * values were `rem`, which measures against the ROOT (Material sets
+ * `html { font-size: 125% }`, so 1rem = 20px, not 16px) — that decoupled the
+ * headings from the prose and made them run large:
+ *
+ *              was            now      Material stock
+ *     h1   42-52px  (rem)    32px          32px
+ *     h2   28-33px  (rem)    25px          25px
+ *     h3   22.4px   (rem)    20px          20px
+ *     h4   19.6px   (rem)    16px          16px
+ *
+ * The new values are the standard 1.25 modular scale — 1, 1.25, 1.5625, 2 —
+ * which is what Material itself uses. A ratio rather than four hand-picked
+ * numbers means the steps stay proportional if the body size is ever tuned,
+ * and it is the reason h1 no longer needs a viewport `clamp()` to look right:
+ * it is anchored to the text it introduces rather than to the window.
+ */
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3,
@@ -192,7 +231,7 @@
 }
 
 .md-typeset h1 {
-  font-size: clamp(2.1rem, 1.6rem + 1.8vw, 2.6rem);
+  font-size: 2em;
   line-height: 1.15;
   letter-spacing: -0.02em;
   font-weight: 700;
@@ -200,7 +239,7 @@
 }
 
 .md-typeset h2 {
-  font-size: clamp(1.4rem, 1.1rem + 1.1vw, 1.65rem);
+  font-size: 1.5625em;
   line-height: 1.25;
   margin-top: 2.6rem;
   margin-bottom: 0.9rem;
@@ -215,14 +254,14 @@
 }
 
 .md-typeset h3 {
-  font-size: 1.12rem;
+  font-size: 1.25em;
   line-height: 1.35;
   margin-top: 1.9rem;
   margin-bottom: 0.6rem;
 }
 
 .md-typeset h4 {
-  font-size: 0.98rem;
+  font-size: 1em;
   line-height: 1.4;
   margin-top: 1.4rem;
   margin-bottom: 0.5rem;
@@ -352,7 +391,18 @@
 
 .rio-hero__title {
   font-family: var(--md-text-font-family);
-  font-size: clamp(3rem, 2rem + 5.2vw, 5rem);
+  /* Display size, kept on the same footing as the body scale.
+   *
+   * Was `clamp(3rem, 2rem + 5.2vw, 5rem)` — and since Material's root is 125%,
+   * that is 60px at the low end and 100px at the high end. 100px is poster
+   * type; on a 1440px screen the title alone was three times the height of the
+   * h1 immediately beneath it.
+   *
+   * The range below is 44px -> 64px, which lands two steps above h1 (32px) on
+   * the same 1.25 scale the headings use. It still grows with the viewport,
+   * because a hero SHOULD, but it now tops out where a heading stops being a
+   * headline and starts being a banner. */
+  font-size: clamp(2.2rem, 1.6rem + 2.4vw, 3.2rem);
   line-height: 1.02;
   letter-spacing: -0.045em;
   font-weight: 750;
@@ -362,7 +412,9 @@
 }
 
 .rio-hero__tagline {
-  font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.3rem);
+  /* Lede: 19px -> 22px, one step above the 16px body. Was 21px -> 26px, which
+   * crowded the h1 it sits under. */
+  font-size: clamp(0.95rem, 0.85rem + 0.4vw, 1.1rem);
   line-height: 1.45;
   color: #c9d2df;
   margin: 0 0 1.6rem;
