@@ -34,12 +34,18 @@ DOCS = pathlib.Path(__file__).resolve().parents[2] / "docs"
 # (`{ .python title="x" }`) after the language tag.
 _FENCE = re.compile(r"^```(?:python|py)\b[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
 
-# ``mental-models/`` is NOT published (it is absent from the mkdocs nav) — it
-# is an internal design-narrative directory whose snippets use deliberate
-# placeholders like ``llm=<FakeLLM>``. Requiring those to parse would mean
-# rewriting narrative prose into runnable code for no reader's benefit. The
-# PUBLISHED docs are held to the strict standard, because those are the ones
-# someone copies from.
+# ``mental-models/`` is a design-narrative directory whose snippets use
+# deliberate placeholders like ``llm=<FakeLLM>``. Requiring those to parse
+# would mean rewriting narrative prose into runnable code for no reader's
+# benefit. The rest of the docs are held to the strict standard, because those
+# are the ones someone copies from.
+#
+# This exclusion used to justify itself with "it is absent from the mkdocs
+# nav". That stopped being true the moment those four scenarios were added to
+# the nav — they had been orphaned and invisible, which was its own bug. The
+# exclusion is still right; only its reason had to change. Recorded because a
+# stale justification is how a correct exclusion gets deleted later by someone
+# who checks the premise and finds it false.
 _UNPUBLISHED = {"mental-models", "PUBLISHING.md"}
 
 _MARKDOWN_FILES = sorted(

@@ -23,7 +23,13 @@ from agentkit.memory.base import (
     Reranker,
     score_sort_rerank,
 )
-from agentkit.memory.composite import CompositeMemory, SequentialMemory
+
+# ``CompositeWriteError`` is re-exported alongside the two sources that raise
+# it. It was the only public name in ``memory.composite`` that was not, so the
+# error a caller has to catch lived at a deeper import path than the class that
+# raises it — a caller writing ``except CompositeWriteError`` after
+# ``from agentkit.memory import CompositeMemory`` got an ImportError.
+from agentkit.memory.composite import CompositeMemory, CompositeWriteError, SequentialMemory
 from agentkit.memory.decorators import CachedMemory, CompactedMemory, ScopedMemory
 from agentkit.memory.file import FileMemory
 from agentkit.memory.grounder import as_grounder
@@ -33,6 +39,7 @@ from agentkit.memory.tool import ToolMemory, default_parse
 from agentkit.memory.vector import VectorMemory
 
 __all__ = [
+    "CompositeWriteError",
     "CachedMemory",
     "CompactedMemory",
     "CompositeMemory",
