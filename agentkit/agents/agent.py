@@ -101,9 +101,17 @@ class Agent:
             Composable: pass a ``CompositeMemory`` to fan out across vector
             + journal + tool-wrapped sources, or a single ``VectorMemory``
             for plain RAG. ``None`` (default) disables the memory hook.
-            Results are stamped onto ``working_context.scratchpad["memory"]``
-            and the cognition decides how to fold them into the prompt
-            (typically via the ``RequestBuilder``'s grounding hook).
+            Results reach the model through the ``RequestBuilder``'s
+            grounding hook: ``_resolve_request_builder`` wraps the source with
+            ``as_grounder(...)``, and the grounder pins a system message into
+            ``WorkingContext.prefix`` — the cache-stable head — so grounding
+            does not churn the KV cache every turn.
+
+            This previously said results are "stamped onto
+            ``working_context.scratchpad["memory"]``". Nothing writes that key;
+            grepping the tree finds exactly one occurrence, which was this
+            sentence. Corrected rather than deleted, because a reader who built
+            against the old claim needs to know where to look instead.
     """
 
     name: str

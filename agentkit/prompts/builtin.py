@@ -37,7 +37,7 @@ COMPACTION_SUMMARY = Prompt(
         "anything an agent would need to continue."
     ),
 )
-"""System prompt for `SummarizationStrategy`. Bump the version label
+"""System prompt for `SummarizationCompactor`. Bump the version label
 whenever the template wording changes so traces stay attributable."""
 
 COMPACTION_IMPORTANCE = Prompt(
@@ -49,7 +49,7 @@ COMPACTION_IMPORTANCE = Prompt(
         "Return only the essential turns or a concise synthesis of key points."
     ),
 )
-"""System prompt for `ImportanceFilteringStrategy`. Same versioning
+"""System prompt for `ImportanceFilteringCompactor`. Same versioning
 contract as the summary seed."""
 
 

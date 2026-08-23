@@ -64,15 +64,26 @@ _MIN_DESCRIPTION_LEN = 30  # the floor below which the model can't reliably unde
 
 
 def _is_ctx_param(p: inspect.Parameter) -> bool:
-    """A `ctx`/`context` param is the injected RunContext ONLY when it's unannotated or annotated as
-    RunContext — so a real data param like `def f(context: str)` is NOT hijacked (it stays advertised and
-    is passed normally). Checked by annotation name to avoid importing RunContext (keeps layers decoupled)."""
+    """A `ctx`/`context` param is the injected context ONLY when it's unannotated or annotated with a
+    context type — so a real data param like `def f(context: str)` is NOT hijacked (it stays advertised
+    and is passed normally). Checked by annotation NAME rather than by importing the types, to keep the
+    tools layer decoupled from runtime.
+
+    ``Ctx`` is accepted alongside ``RunContext``, and that omission was a trap. ``Ctx`` is the structural
+    Protocol the framework itself uses everywhere internally, so it is the natural annotation to reach
+    for — and annotating with it used to silently demote the parameter to an ordinary one. Measured: the
+    tool advertised ``{"ctx": {"type": "string"}}`` to the MODEL and listed it in ``required``, so every
+    call failed with ``ToolArgumentError: missing required argument(s) ['ctx']``. Nothing pointed at the
+    annotation; the author had written the most reasonable thing available.
+    """
     if p.name not in _CTX_PARAMS:
         return False
     ann = p.annotation
     if ann is inspect.Parameter.empty:
         return True
-    return getattr(ann, "__name__", "") == "RunContext" or "RunContext" in str(ann)
+    text = str(ann)
+    name = getattr(ann, "__name__", "")
+    return name in ("RunContext", "Ctx") or "RunContext" in text or text.endswith("Ctx")
 
 
 def _enum_fragment(ann: type[enum.Enum]) -> dict[str, Any]:

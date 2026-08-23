@@ -18,8 +18,12 @@ policy doesn't have to know which flavour is in play.
 
 When no adapter is set on the call, this middleware is a strict no-
 op: deltas flow through unchanged and ``LLMResult.parsed`` stays
-``None``. The intended chain placement is just outside ``tracing()``
-so the span timing covers the parse cost too:
+``None``. The intended chain placement is just INSIDE ``tracing()`` —
+i.e. immediately after it in the list — so the span timing covers the
+parse cost too. (This read "just outside" while the snippet below,
+which is correct, showed the opposite; a reader following the prose
+rather than the code put the parse outside the span it was meant to
+measure.):
 
     chat_middleware=[tracing(), output_coerce(), retry(...), ...]
 

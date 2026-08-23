@@ -259,3 +259,56 @@ def test_as_tool_forwards_task_from_mappingproxy_arguments():
     result = asyncio.run(tool.fn(args, ctx))
     assert result == "summarise this doc"
     assert seen_tasks == ["summarise this doc"]
+
+
+# ── ctx injection must recognise the annotation people actually reach for ───
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param("", id="unannotated"),
+        pytest.param(": RunContext", id="RunContext"),
+        pytest.param(": Ctx", id="Ctx-protocol"),
+    ],
+)
+def test_the_ctx_parameter_is_injected_however_it_is_annotated(annotation: str) -> None:
+    """`Ctx` is the structural Protocol the framework uses internally, so it is
+    the natural thing to annotate an injected context with — and it used to be
+    the one spelling that silently broke.
+
+    Measured before the fix: the tool advertised `{"ctx": {"type": "string"}}`
+    to the MODEL and listed it in `required`, so every call failed with
+    `ToolArgumentError: missing required argument(s) ['ctx']`. Nothing pointed
+    at the annotation; the author had written the most reasonable thing
+    available to them.
+    """
+    ns: dict[str, object] = {}
+    src = (
+        "from agentkit import RunContext\n"
+        "from agentkit.kernel.protocols import Ctx\n"
+        "from agentkit.tools import tool\n"
+        "@tool(side_effecting=False)\n"
+        f"async def probe(q: str, ctx{annotation}) -> str:\n"
+        '    """Look something up; ctx is injected by the framework, not the model."""\n'
+        "    return q\n"
+    )
+    exec(src, ns)  # noqa: S102 - the annotation must be a real one, so build it for real
+    params = ns["probe"].schema.parameters  # type: ignore[attr-defined]
+    assert "ctx" not in params.get("properties", {}), "ctx leaked into the model-facing schema"
+    assert params.get("required", []) == ["q"]
+
+
+def test_a_real_data_parameter_named_context_is_not_hijacked() -> None:
+    """POSITIVE CONTROL. Widening the check must not swallow a genuine
+    parameter that merely shares the name — it stays advertised and is passed
+    from the model like any other argument."""
+
+    @tool(side_effecting=False)
+    async def real_param(q: str, context: str) -> str:
+        """Search with a genuine string parameter that happens to be named context."""
+        return q + context
+
+    props = real_param.schema.parameters.get("properties", {})
+    assert props.get("context") == {"type": "string"}
+    assert set(real_param.schema.parameters.get("required", [])) == {"q", "context"}

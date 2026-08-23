@@ -7,7 +7,12 @@ of the same file tree (a uniform `MemorySource` over the backend) lives at
 `agentkit.memory.FileMemory`; both wrap the same backend but answer different questions
 ("the model wants to edit a note" vs "what notes match this query?"). Register it like any tool:
 
-    agent = Agent(name="reviewer", model=m, tools=[FileTool()])
+    agent = Agent(
+        name="reviewer", model=m, cognition=ReActCognition(tools=[FileTool()])
+    )
+    # NOTE: tools live on the COGNITION. This example used to read
+    # ``Agent(..., tools=[FileTool()])``, which raises
+    # ``TypeError: Agent.__init__() got an unexpected keyword argument 'tools'``.
     # the model then issues:  memory(command="view", path="/memories")
     #                         memory(command="create", path="/memories/bugs/race.md", file_text="…")
 
