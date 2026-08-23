@@ -115,6 +115,9 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+STREAMS_TESTS = ("tests/kernel/test_streams.py",)
+BREAKER_TESTS = ("tests/kernel/test_kernel.py",)
+CONC_TESTS = ("tests/kernel/test_concurrency.py",)
 WF_TESTS = ("tests/agents/test_workflow.py",)
 CEILING_TESTS = ("tests/agents/test_ceiling_propagation.py",)
 SURFACE_TESTS = ("tests/meta/test_public_surface.py",)
@@ -154,6 +157,63 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── a failure must never look like a clean finish ───────────────────────
+    Mutant(
+        tag="merge",
+        why="a raising source posts the DONE frame again, truncating the fan-in in silence",
+        path="agentkit/kernel/streams.py",
+        before="            elif error is not None:",
+        after="            elif False:",
+        tests=STREAMS_TESTS,
+    ),
+    Mutant(
+        tag="merge",
+        why="the error is dropped instead of transported, so gather() discards it",
+        path="agentkit/kernel/streams.py",
+        before="            error = exc",
+        after="            error = None",
+        tests=STREAMS_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="a permanent probe failure wedges the breaker in half_open forever",
+        path="agentkit/kernel/resilience.py",
+        before="    def release_probe(self) -> None:",
+        after="    def release_probe(self) -> None:\n        return",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="a lost probe is never presumed lost, so a silent caller wedges the gate",
+        path="agentkit/kernel/resilience.py",
+        before="            if now - self._probe_started_at >= self.cooldown:",
+        after="            if False:",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="the neutral release grants health credit, treating a 401 as a recovery",
+        path="agentkit/kernel/resilience.py",
+        before='            return  # nothing in flight — CLOSED / OPEN are unaffected\n        self.state = "open"',
+        after='            return  # nothing in flight — CLOSED / OPEN are unaffected\n        self.state = "open"\n        self._fails = 0',
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="backoff overflows on a large attempt number instead of saturating",
+        path="agentkit/kernel/resilience.py",
+        before="min(attempt - 1, 1023)",
+        after="attempt - 1",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="conc",
+        why="an abort leaves its siblings running detached, still spending",
+        path="agentkit/kernel/concurrency.py",
+        before="        for t in tasks:\n            t.cancel()\n        await asyncio.gather(*tasks, return_exceptions=True)",
+        after="        pass",
+        tests=CONC_TESTS,
+    ),
     # ── a declared ceiling must actually hold ───────────────────────────────
     Mutant(
         tag="workflow",

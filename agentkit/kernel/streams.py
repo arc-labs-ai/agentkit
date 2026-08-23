@@ -7,6 +7,8 @@ a `reactivex` bridge stays a pure opt-in at the edge, never a core requirement.
 
 Everything is a plain `async def` generator over `AsyncIterator[T]`; predicates/mappers may be sync OR
 async. Buffers are bounded and `merge` cancels its pumps on exit — no unbounded history, no leaked tasks.
+A source that raises fails the merge it feeds: the exception is re-raised at the consumer rather
+than silently truncating the fan-in.
 """
 
 from __future__ import annotations
@@ -116,38 +118,65 @@ async def buffer(src: AsyncIterator[T], n: int) -> AsyncIterator[list[T]]:
         yield batch
 
 
+# Queue frame tags. ``merge`` multiplexes three distinct events onto the one
+# bounded queue, and a two-state (ok, item) encoding could only express two of
+# them — which is exactly how a failing source became indistinguishable from a
+# finished one (see ``_ERROR`` below).
+_ITEM = "item"  # a value produced by a source
+_DONE = "done"  # a source completed (or was cancelled) — decrement ``remaining``
+_ERROR = "error"  # a source RAISED — the payload is the exception to re-raise
+
+
 async def merge(*sources: AsyncIterator[T], buffer: int = 64) -> AsyncIterator[T]:
     """Interleave several async iterables concurrently (multi-agent stream fan-in). The queue is **bounded**
     (`buffer`) so a slow consumer applies backpressure on the pumps (`put` awaits) instead of growing memory.
     On consumer exit, pumps are cancelled **and awaited** — no leaked tasks, no pending-task warnings.
 
-    Cancellation is deadlock-free. Two distinct sentinel paths keep
-    it that way:
+    A source that RAISES fails the merge: the exception travels the queue in
+    order and is re-raised at the consumer, after every item that source had
+    already yielded. Previously the failure was silently swallowed — the pump's
+    ``finally`` posted the completion sentinel on the non-cancelled path even
+    when the source had raised, the pump task's exception was then discarded by
+    ``gather(..., return_exceptions=True)``, and the consumer exited normally.
+    Measured: a source raising ``ValueError("PROVIDER BLEW UP")`` after one item
+    →  ``merge returned NORMALLY, items=[('b',0),('g',0),('g',1),('g',2)]``. A
+    truncated fan-in was indistinguishable from a clean one, which is the worst
+    shape a multi-agent aggregation can have: partial results reported as whole.
 
-    - Natural completion awaits the sentinel put — the consumer is
-      still draining, so the put resolves in at most one ``get``
-      cycle.
+    The FIRST exception to reach the queue wins (FIFO); the losing pumps are
+    cancelled by the ``finally`` below, exactly as on a consumer early-break.
+
+    Cancellation is deadlock-free. The sentinel paths keep it that way:
+
+    - Natural completion (and the error frame) awaits the put — the consumer is
+      still draining, so the put resolves in at most one ``get`` cycle.
     - A cancelled pump uses ``put_nowait`` and tolerates
       :class:`asyncio.QueueFull`. The consumer is gone (or going);
       it will never read the sentinel, so silently dropping it is
       correct AND avoids the blocking-forever scenario that a
       naive ``await queue.put(done)`` in the ``finally`` block
       would produce on an early-break with a full queue."""
-    queue: asyncio.Queue[tuple[bool, Any]] = asyncio.Queue(maxsize=max(1, buffer))
-    done = object()
+    queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=max(1, buffer))
 
     async def _pump(source: AsyncIterator[T]) -> None:
         cancelled = False
+        error: BaseException | None = None
         try:
             async for item in source:
                 try:
-                    await queue.put((True, item))
+                    await queue.put((_ITEM, item))
                 except asyncio.CancelledError:
                     cancelled = True
                     raise
         except asyncio.CancelledError:
             cancelled = True
             raise
+        except BaseException as exc:  # noqa: BLE001 — transported, not swallowed
+            # Captured rather than re-raised: a pump task's exception is only
+            # ever collected by the ``gather(..., return_exceptions=True)``
+            # below, which DISCARDS it. The queue is the only channel that
+            # reaches the consumer, so the exception goes there.
+            error = exc
         finally:
             if cancelled:
                 # Consumer is gone (or going) — best-effort sentinel, never
@@ -155,22 +184,31 @@ async def merge(*sources: AsyncIterator[T], buffer: int = 64) -> AsyncIterator[T
                 # the sentinel is silently dropped and the consumer (which
                 # is no longer reading) never needed it anyway.
                 try:
-                    queue.put_nowait((False, done))
+                    queue.put_nowait((_DONE, None))
                 except asyncio.QueueFull:
                     pass
+            elif error is not None:
+                # In-order delivery: everything this source already yielded is
+                # ahead of the error frame in the FIFO, so the consumer sees
+                # those items and THEN raises. If the consumer has meanwhile
+                # gone away this put is cancelled by the ``finally`` below —
+                # no deadlock.
+                await queue.put((_ERROR, error))
             else:
                 # Natural completion — sentinel must reach the consumer so
                 # ``remaining`` advances. The consumer is still pulling, so
                 # this awaits at most one ``get`` cycle.
-                await queue.put((False, done))
+                await queue.put((_DONE, None))
 
     tasks = [asyncio.create_task(_pump(s)) for s in sources]
     remaining = len(sources)
     try:
         while remaining:
-            ok, item = await queue.get()
-            if ok:
-                yield item
+            kind, payload = await queue.get()
+            if kind == _ITEM:
+                yield payload
+            elif kind == _ERROR:
+                raise payload  # the source's failure IS the merge's failure
             else:
                 remaining -= 1
     finally:

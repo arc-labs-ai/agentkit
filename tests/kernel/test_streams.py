@@ -3,6 +3,8 @@ map/filter/take/scan/distinct/merge/buffer. Stdlib-asyncio only, deterministic."
 
 import asyncio
 
+import pytest
+
 from agentkit.kernel import streams
 
 
@@ -334,3 +336,115 @@ def test_streams_operators_preserve_element_type_signature() -> None:
         return await streams.collect(streams.distinct_until_changed(kinds))
 
     assert asyncio.run(go()) == ["a", "b", "a"]
+
+
+# ── merge must not swallow a source's exception ──────────────────────────────
+#
+# The pump's ``finally`` posted the completion sentinel on the non-cancelled
+# path even when the source had raised; the pump task's exception was then
+# discarded by ``gather(..., return_exceptions=True)`` and the consumer exited
+# normally. Measured: a source raising ``ValueError("PROVIDER BLEW UP")`` →
+# ``merge returned NORMALLY, items=[('b',0),('g',0),('g',1),('g',2)]`` — a
+# truncated fan-in indistinguishable from a clean one.
+
+
+async def _raises_after(items, exc):
+    """A source that yields `items` and THEN fails."""
+    for x in items:
+        await asyncio.sleep(0)
+        yield x
+    raise exc
+
+
+def test_merge_propagates_a_source_exception_to_the_consumer():
+    """The headline regression: a raising source fails the merge instead of
+    quietly truncating it."""
+
+    async def go():
+        merged = streams.merge(_raises_after(["b0"], ValueError("PROVIDER BLEW UP")), _from(["g0"]))
+        items = []
+        async for item in merged:
+            items.append(item)
+        return items
+
+    with pytest.raises(ValueError, match="PROVIDER BLEW UP"):
+        _run(go())
+
+
+def test_merge_delivers_items_yielded_before_the_failure():
+    """Edge case — the source raises AFTER yielding. Those items are already in
+    the FIFO ahead of the error frame, so the consumer must still see every one
+    of them before the exception surfaces. A "fix" that abandoned the queue on
+    error would lose them."""
+
+    async def go():
+        merged = streams.merge(_raises_after(["a", "b", "c"], RuntimeError("late boom")))
+        seen = []
+        try:
+            async for item in merged:
+                seen.append(item)
+        except RuntimeError as exc:
+            return seen, str(exc)
+        return seen, None
+
+    seen, msg = _run(go())
+    assert seen == ["a", "b", "c"]  # nothing dropped on the way to the failure
+    assert msg == "late boom"
+
+
+def test_merge_first_exception_to_arrive_wins():
+    """Edge case — TWO sources raise. The merge fails with the one that reached
+    the queue first (FIFO), deterministically; the loser's pump is cancelled by
+    the same cleanup path an early-break uses."""
+
+    async def _boom(name, delay):
+        await asyncio.sleep(delay)
+        raise RuntimeError(f"BOOM-{name}")
+        yield  # pragma: no cover — makes this an async generator
+
+    async def go():
+        merged = streams.merge(_boom("first", 0.0), _boom("second", 0.05))
+        async for _ in merged:
+            pass
+
+    with pytest.raises(RuntimeError, match="BOOM-first"):
+        _run(asyncio.wait_for(go(), timeout=2.0))
+
+
+def test_merge_consumer_early_break_still_cleans_up_when_a_source_raises():
+    """Edge case — the consumer breaks BEFORE the failure is observed. The
+    generator's ``finally`` must still cancel and await both pumps: the raising
+    one and the infinite one. A leaked pump keeps the loop alive and surfaces
+    here as a timeout or a pending-task warning."""
+
+    async def _infinite():
+        i = 0
+        while True:
+            yield i
+            await asyncio.sleep(0)
+            i += 1
+
+    async def go():
+        merged = streams.merge(
+            _raises_after(["x"], ValueError("boom")), _infinite(), buffer=1
+        )
+        async for _ in merged:
+            break  # leave immediately — the error is never observed
+        await merged.aclose()  # run the generator's ``finally`` deterministically
+        # Everything merge spawned must be terminal by the time we get here.
+        return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+
+    assert _run(asyncio.wait_for(go(), timeout=2.0)) == []
+
+
+def test_merge_positive_control_clean_sources_never_raise():
+    """POSITIVE CONTROL for the three tests above: a merge whose sources all
+    complete normally must still return every item and raise NOTHING. A "fix"
+    that made ``merge`` raise unconditionally — or that dropped the ``_DONE``
+    accounting — fails here."""
+
+    async def go():
+        merged = streams.merge(_from([1, 2, 3]), _from([4, 5]), _from([]))
+        return await streams.collect(merged)
+
+    assert sorted(_run(asyncio.wait_for(go(), timeout=2.0))) == [1, 2, 3, 4, 5]

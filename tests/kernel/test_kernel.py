@@ -732,3 +732,230 @@ def test_idempotency_key_diverges_on_content_change() -> None:
     a = idempotency_key({"q": "hello"})
     b = idempotency_key({"q": "world"})
     assert a != b
+
+
+# ── CircuitBreaker: HALF_OPEN must always have an exit ───────────────────────
+#
+# ``allow()`` refused every caller while ``half_open`` and the only exits were
+# ``record_success`` / ``record_failure``. But ``run_with_resilience``
+# deliberately skips ``record_failure`` on PERMANENT errors, and a
+# ``BaseException`` escapes its ``except Exception`` entirely — so the probe
+# could resolve without ever reporting. Measured: one 401 on the post-cooldown
+# probe left ``state == "half_open"`` and every later call against a fully
+# healthy dependency raised ``CircuitOpen`` for the rest of the process
+# lifetime (10_000 simulated seconds later, still refused).
+
+
+def test_permanent_probe_failure_does_not_wedge_the_breaker():
+    """The headline regression. A 401 on the post-cooldown probe must release
+    the gate — and must NOT count toward the failure threshold."""
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+
+    async def transient():
+        raise TimeoutError("timed out")
+
+    with pytest.raises((TimeoutError, CircuitOpen)):
+        _run(run_with_resilience(transient, breaker=br, max_attempts=1, sleep=_nosleep))
+    assert br.state == "open"
+
+    t["now"] += 11.0  # cooled down → the next call is the probe
+
+    async def permanent():
+        raise ValueError("401 unauthorized")
+
+    fails_before = br._fails
+    with pytest.raises(ValueError):  # the real error still reaches the caller
+        _run(run_with_resilience(permanent, breaker=br, max_attempts=3, sleep=_nosleep))
+    assert br.state != "half_open", "the breaker wedged in half_open"
+    assert br._fails == fails_before, "a PERMANENT error was counted as a health failure"
+
+    # The dependency is healthy — the very next call must get through.
+    async def ok():
+        return "healthy"
+
+    assert _run(run_with_resilience(ok, breaker=br, max_attempts=1, sleep=_nosleep)) == "healthy"
+    assert br.state == "closed"
+
+
+def test_baseexception_probe_does_not_wedge_the_breaker():
+    """Edge case — the probe raises ``CancelledError``, which
+    ``except Exception`` never sees. It is not a health signal either, so it
+    must release the gate rather than hold it forever."""
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br.record_failure()  # → OPEN
+    t["now"] += 11.0
+
+    async def cancelled():
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        _run(run_with_resilience(cancelled, breaker=br, max_attempts=1, sleep=_nosleep))
+    assert br.state != "half_open"
+    assert br.allow() is True  # a fresh probe is admitted
+
+
+def test_half_open_gate_self_releases_after_one_cooldown():
+    """Structural backstop for callers that never report at all (a crash between
+    ``allow()`` and the verdict, or a third party driving ``allow()`` directly).
+    After one cooldown with no verdict the probe is presumed lost."""
+    t = {"now": 0.0}
+    br = CircuitBreaker("x", fail_threshold=1, cooldown=5.0, clock=lambda: t["now"])
+    br.record_failure()  # → OPEN
+    t["now"] = 5.0
+    assert br.allow() is True and br.state == "half_open"  # the probe
+    assert br.allow() is False  # in flight → nobody else
+    t["now"] = 9.9
+    assert br.allow() is False, "the probe deadline expired early"
+    t["now"] = 10.0
+    assert br.allow() is True, "the breaker wedged in half_open forever"
+    assert br.allow() is False, "the replacement probe is still a SINGLE probe"
+
+
+def test_successful_probe_still_closes_the_breaker():
+    """POSITIVE CONTROL 1 for the release path: the documented recovery edge
+    must survive. A "fix" that simply stopped honouring ``half_open`` — or that
+    left the breaker open on success — fails here."""
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br.record_failure()
+    t["now"] += 11.0
+
+    async def ok():
+        return "recovered"
+
+    assert _run(run_with_resilience(ok, breaker=br, max_attempts=1, sleep=_nosleep)) == "recovered"
+    assert br.state == "closed" and br._fails == 0
+
+
+def test_transient_probe_failure_still_reopens_with_a_fresh_cooldown():
+    """POSITIVE CONTROL 2: a TRANSIENT probe failure must still re-open the
+    breaker AND restart the cooldown — the release path must not have turned
+    every probe outcome into a free pass."""
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br.record_failure()
+    t["now"] += 11.0
+    assert br.allow() is True and br.state == "half_open"
+
+    br.record_failure()  # the probe failed transiently
+    assert br.state == "open"
+    assert br.allow() is False, "a failed probe left the gate open"
+    t["now"] += 5.0
+    assert br.allow() is False, "the cooldown clock was not restarted by the failed probe"
+
+
+def test_concurrent_probes_are_still_serialised_to_one():
+    """Edge case — N callers race the post-cooldown gate. Exactly ONE becomes
+    the probe; the rest see ``CircuitOpen``. The release path must not have
+    widened the gate into a stampede."""
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br.record_failure()  # → OPEN
+    t["now"] += 11.0
+
+    started = []
+
+    async def slow_ok(tag):
+        started.append(tag)
+        await asyncio.sleep(0.01)  # the probe is still in flight
+        return tag
+
+    async def go():
+        async def one(tag):
+            try:
+                return await run_with_resilience(
+                    lambda: slow_ok(tag), breaker=br, max_attempts=1, sleep=_nosleep
+                )
+            except CircuitOpen:
+                return "refused"
+
+        return await asyncio.gather(*(one(i) for i in range(5)))
+
+    results = _run(go())
+    assert len(started) == 1, f"{len(started)} callers stampeded the recovering dependency"
+    assert results.count("refused") == 4
+
+
+# ── backoff_delay must not overflow on an absurd attempt number ──────────────
+
+
+def test_release_probe_grants_no_health_credit():
+    """``release_probe`` is the NEUTRAL edge: it consumes nothing and grants
+    nothing. Zeroing ``_fails`` would make it a success in disguise — the
+    dependency would be treated as recovered on the strength of a 401, and the
+    next real failure would need the whole threshold again.
+
+    Not covered by the wedge tests, which assert on ``state``. Added after
+    probing the fix: the property holds by construction, and nothing pinned it.
+    """
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br.record_failure()
+    t["now"] = 20.0
+    assert br.allow() and br.state == "half_open"
+
+    before = br._fails
+    br.release_probe()
+
+    assert br.state == "open"
+    assert br._fails == before, "a neutral release must not look like a success"
+
+
+def test_a_permanently_failing_dependency_is_probed_every_call():
+    """Deliberate, and worth pinning because it looks like a missing backoff.
+
+    ``release_probe`` does NOT restart the cooldown, so the next caller becomes
+    a fresh probe immediately. For a dependency returning 401 that means every
+    call reaches it and fails fast with the REAL error — which is the point. The
+    alternative is masking a contract failure behind a ``CircuitOpen`` that
+    classifies as TRANSIENT and invites a retry that can never succeed.
+
+    Restarting the cooldown here would look like a tidy-up and would
+    reintroduce exactly that masking.
+    """
+    t = {"now": 0.0}
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=10.0, clock=lambda: t["now"])
+    br.record_failure()
+    t["now"] = 20.0
+    assert br.allow()
+
+    admitted = []
+    for _ in range(3):
+        br.release_probe()
+        admitted.append(br.allow())  # clock NOT advanced
+
+    assert admitted == [True, True, True]
+
+
+def test_backoff_delay_survives_huge_attempt_numbers():
+    """``2 ** (attempt - 1)`` is an arbitrary-precision int; multiplying it by
+    the float ``base`` raised ``OverflowError: int too large to convert to
+    float`` from ``attempt >= 1025``. A retry helper that crashes on its own
+    arithmetic turns a recoverable error into an unrecoverable one."""
+    from agentkit.kernel.resilience import backoff_delay
+
+    for attempt in (1025, 5000, 10**6):
+        d = backoff_delay(attempt, base=0.5, cap=30.0)
+        assert 0.0 <= d <= 30.0
+
+
+def test_backoff_delay_still_grows_then_saturates_at_cap():
+    """POSITIVE CONTROL: the clamp must not have flattened the curve. Low
+    attempts stay below the cap (so backoff still grows), and the clamped tail
+    is identical to the pre-clamp saturated value."""
+    from agentkit.kernel.resilience import backoff_delay
+
+    class _Max:  # deterministic rng: always return the ceiling
+        @staticmethod
+        def uniform(_lo, hi):
+            return hi
+
+    assert backoff_delay(1, base=0.5, cap=30.0, rng=_Max) == 0.5  # 0.5 * 2**0
+    assert backoff_delay(4, base=0.5, cap=30.0, rng=_Max) == 4.0  # 0.5 * 2**3
+    assert backoff_delay(10, base=0.5, cap=30.0, rng=_Max) == 30.0  # saturated
+    # The clamp is exact: everything past saturation is the cap, not a
+    # truncated exponent that drifted below it.
+    assert backoff_delay(1024, base=0.5, cap=30.0, rng=_Max) == 30.0
+    assert backoff_delay(10**9, base=0.5, cap=30.0, rng=_Max) == 30.0

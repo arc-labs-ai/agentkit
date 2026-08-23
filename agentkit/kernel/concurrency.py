@@ -127,7 +127,30 @@ async def gather_best_effort(
             except Exception as exc:  # noqa: BLE001 — a normal failure is isolated into the slot
                 return Failure.of(exc, source=f"gather_best_effort[{idx}]")
 
-    return await asyncio.gather(*(_run(i, c) for i, c in enumerate(coros)))
+    # Explicit tasks, not ``gather(*coros)``, so the escape hatches above can
+    # take the siblings down with them. ``asyncio.gather`` propagates the first
+    # exception IMMEDIATELY and leaves its remaining children running detached:
+    # measured on a ``Cancelled`` abort, ``live tasks after gather returned: 2``
+    # and the siblings' log kept filling AFTER the abort had already reached the
+    # caller. That is precisely the shape ``Cancelled`` exists to prevent — an
+    # abort that aborts nothing, with orphan work still spending the run's budget
+    # and racing whatever the caller does next.
+    tasks = [
+        asyncio.create_task(_run(i, c), context=contextvars.copy_context())
+        for i, c in enumerate(coros)
+    ]
+    try:
+        return await asyncio.gather(*tasks)
+    except BaseException:
+        # Only ``Cancelled`` / ``CancelledError`` can get here — every other
+        # exception is isolated into a ``Failure`` slot by ``_run``. Cancel AND
+        # await: without the await the tasks are merely *marked* cancelled and
+        # have not yet run their ``finally`` blocks (releasing the semaphore,
+        # closing resources) when the caller resumes.
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
 
 async def run_agents(

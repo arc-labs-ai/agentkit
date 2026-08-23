@@ -109,7 +109,21 @@ def classify(exc: BaseException) -> ErrorClass:
 
 def backoff_delay(attempt: int, *, base: float = 0.5, cap: float = 30.0, rng: Any = random) -> float:
     """Full-jitter exponential backoff (prevents retry storms across workers)."""
-    ceiling = min(cap, base * (2 ** (attempt - 1)))
+    # ``2 ** (attempt - 1)`` is an arbitrary-precision INT, so the multiplication
+    # by the float ``base`` has to convert it — and above 2**1024 that conversion
+    # raises (measured: ``backoff_delay(1025)`` →
+    # ``OverflowError: int too large to convert to float``). A retry helper
+    # crashing on its own arithmetic turns a recoverable error into an
+    # unrecoverable one, so the exponent is clamped and computed in float.
+    #
+    # The clamp is exact, not approximate: ``base * 2**1023`` (~9e307 * base)
+    # already exceeds any sane ``cap`` — a cap that large would be measured in
+    # more seconds than the age of the universe — so ``min`` picks ``cap`` for
+    # every attempt at or beyond the clamp anyway. Float multiplication that
+    # overflows yields ``inf`` rather than raising, and ``min(cap, inf)`` is
+    # ``cap`` too. Only the upper end is clamped: ``attempt <= 0`` still yields
+    # the same sub-``base`` ceiling it always did.
+    ceiling = min(cap, base * (2.0 ** min(attempt - 1, 1023)))
     delay: float = rng.uniform(0, ceiling)
     return delay
 
@@ -130,6 +144,7 @@ class CircuitBreaker:
     state: BreakerState = "closed"
     _fails: int = 0
     _opened_at: float = 0.0
+    _probe_started_at: float = 0.0
 
     def allow(self) -> bool:
         # No await inside → atomic within one event loop. The `half_open` state is itself the single-probe
@@ -138,10 +153,29 @@ class CircuitBreaker:
         # sharing, serialize the breaker externally.)
         if self.state == "closed":
             return True
+        now = self.clock()
         if self.state == "half_open":
-            return False  # a probe is already in flight → admit no others
-        if self.clock() - self._opened_at >= self.cooldown:  # open + cooled down → admit exactly ONE probe
+            # A probe is in flight → admit no others. But the gate is
+            # time-bounded, because "the probe always reports back" is an
+            # assumption the callers cannot honour: ``run_with_resilience``
+            # deliberately skips ``record_failure`` on PERMANENT errors, and a
+            # ``BaseException`` (``CancelledError``, ``SystemExit``) escapes its
+            # ``except Exception`` entirely. Measured before this guard: one 401
+            # on the post-cooldown probe left ``state == "half_open"`` and every
+            # later call — against a fully healthy dependency, 10_000 simulated
+            # seconds later — raised ``CircuitOpen`` for the rest of the process
+            # lifetime.
+            #
+            # After one cooldown with no verdict the probe is presumed lost and
+            # a fresh one is admitted. Still exactly ONE at a time, so the
+            # no-stampede property the half-open state exists for is intact.
+            if now - self._probe_started_at >= self.cooldown:
+                self._probe_started_at = now
+                return True
+            return False
+        if now - self._opened_at >= self.cooldown:  # open + cooled down → admit exactly ONE probe
             self.state = "half_open"
+            self._probe_started_at = now
             return True
         return False  # open, still cooling down
 
@@ -177,6 +211,30 @@ class CircuitBreaker:
         if self.state == "half_open" or self._fails >= self.fail_threshold:
             self.state = "open"
             self._opened_at = self.clock()
+
+    def release_probe(self) -> None:
+        """Hand the HALF_OPEN probe slot back after an outcome that says NOTHING
+        about dependency health — a PERMANENT contract failure (401 / 403 /
+        content filter) or a ``BaseException`` such as cancellation.
+
+        Neither ``record_success`` nor ``record_failure`` fits. ``record_failure``
+        would fold the outcome into ``_fails``, breaking the deliberate rule that
+        a contract failure is not an upstream health signal; ``record_success``
+        would grant health credit for a call that never proved the dependency
+        recovered. Doing NEITHER — which is what happened — wedged the breaker in
+        ``half_open`` forever, because the only exits were those two methods.
+
+        So this is the third, neutral edge: consume nothing, grant nothing. The
+        state returns to OPEN and the cooldown clock is **not** restarted, so the
+        already-elapsed cooldown still holds and the very next caller is admitted
+        as a fresh probe. A dependency that only ever answers with PERMANENT
+        errors therefore keeps failing fast (the correct, un-masked error reaches
+        the caller) instead of being hidden behind a ``CircuitOpen`` that
+        classifies as TRANSIENT and invites a retry that can never succeed.
+        """
+        if self.state != "half_open":
+            return  # nothing in flight — CLOSED / OPEN are unaffected
+        self.state = "open"
 
 
 def _stable_default(o: Any) -> Any:
@@ -309,9 +367,6 @@ async def run_with_resilience(
             raise CircuitOpen(f"circuit open: {breaker.name}") from last
         try:
             result = await fn()
-            if breaker is not None:
-                breaker.record_success()
-            return result
         except CircuitOpen:
             raise
         except Exception as exc:  # noqa: BLE001 — classify decides
@@ -322,9 +377,31 @@ async def run_with_resilience(
             # contract failure — not an upstream health signal — so folding
             # it into the counter would open the breaker for reasons
             # unrelated to dependency health.
-            if breaker is not None and cls is not ErrorClass.PERMANENT:
-                breaker.record_failure()
+            if breaker is not None:
+                if cls is not ErrorClass.PERMANENT:
+                    breaker.record_failure()
+                else:
+                    # ...but the call still CONSUMED the half-open probe slot,
+                    # and skipping the report left the breaker wedged in
+                    # ``half_open`` with no exit (measured: one 401 on the
+                    # post-cooldown probe refused a healthy dependency for the
+                    # rest of the process lifetime). ``release_probe`` returns
+                    # the slot without touching ``_fails``, so the rule above
+                    # is preserved exactly.
+                    breaker.release_probe()
             if cls is ErrorClass.PERMANENT or attempt == max_attempts:
                 raise
+        except BaseException:
+            # ``CancelledError`` / ``SystemExit`` never reach the ``except
+            # Exception`` above, so a probe that ended this way was the other
+            # half of the same wedge. Cancellation is not a health signal
+            # either — release the slot and let it unwind untouched.
+            if breaker is not None:
+                breaker.release_probe()
+            raise
+        else:
+            if breaker is not None:
+                breaker.record_success()
+            return result
             await asleep(backoff_delay(attempt, rng=rng))
     raise (last if last is not None else RuntimeError("run_with_resilience: no attempt ran"))  # pragma: no cover
