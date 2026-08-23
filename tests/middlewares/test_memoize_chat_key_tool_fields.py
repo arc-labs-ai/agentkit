@@ -25,7 +25,7 @@ from typing import Any
 from agentkit.adapters.store.memory import InMemoryStore
 from agentkit.kernel.types import ChatRequest, Message, Scope, ToolCall
 from agentkit.middlewares import memoize
-from agentkit.middlewares.memoize import default_key
+from agentkit.middlewares.memoize import _message_identity, default_key
 from agentkit.runtime import Budget, Invoker, RunContext, Services
 
 
@@ -115,7 +115,8 @@ def test_identical_transcripts_still_share_a_key() -> None:
 def test_the_key_is_stable_across_dict_ORDERING() -> None:
     """POSITIVE CONTROL. Tool-call arguments and `response_format` are dicts;
     insertion order is not identity. `stable_hash` sorts keys, and
-    `_message_identity` copies the `MappingProxyType` without re-ordering it."""
+    `_message_identity` copies the frozen arguments mapping without
+    re-ordering it."""
     a = [Message("assistant", "", tool_calls=(ToolCall("c1", "f", {"a": 1, "b": 2, "c": 3}),))]
     b = [Message("assistant", "", tool_calls=(ToolCall("c1", "f", {"c": 3, "b": 2, "a": 1}),))]
 
@@ -141,9 +142,14 @@ def test_unhashable_and_mutable_tool_call_arguments_key_cleanly() -> None:
 
 
 def test_a_mutated_argument_dict_does_not_reuse_the_old_key() -> None:
-    """`ToolCall` wraps `arguments` in a `MappingProxyType` over the caller's
-    dict — a live VIEW. Mutating that dict after the fact changes what the turn
-    means, and the key has to follow."""
+    """Different arguments must produce a different key.
+
+    `ToolCall` used to wrap `arguments` in a `MappingProxyType` over the
+    caller's dict — a live VIEW, where mutating that dict silently changed
+    what an already-built turn meant. `deep_freeze` COPIES, so it no longer
+    does, and this test builds a second `ToolCall` from the mutated dict
+    rather than relying on the old aliasing. What is locked either way is
+    the part that matters: the key follows the arguments."""
     live: dict[str, Any] = {"city": "SF"}
     tc = ToolCall("c1", "weather", live)
     before = _key(ChatRequest([Message("assistant", "", tool_calls=(tc,))], "m"))
@@ -212,3 +218,65 @@ def test_an_identical_chat_turn_is_still_served_from_cache() -> None:
 
     assert len(calls) == 1, "an identical chat turn was no longer memoized"
     assert a.content == b.content == "sunny"
+
+
+# ── the chat key must survive a duck-typed tool call ───────────────────────
+
+
+def test_the_chat_key_survives_an_openai_shaped_tool_call() -> None:
+    """`_message_identity` reads everything through `getattr` because `m` and
+    `tc` are duck-typed — a provider SDK object, a test double, a replayed
+    record. One line broke that contract: a bare `dict(tc.arguments)`.
+
+    The OpenAI wire shape carries `arguments` as the raw JSON STRING, and
+    `dict('{"q": "hi"}')` raises `ValueError: dictionary update sequence
+    element #0 has length 1; 2 is required`. So the single defensive-looking
+    line was the only way this function could fail, and it failed on the most
+    common foreign shape there is.
+    """
+    from dataclasses import dataclass
+
+    @dataclass
+    class _OpenAIShapedCall:
+        id: str
+        name: str
+        arguments: str  # the wire format: a JSON string, not a mapping
+
+    @dataclass
+    class _ShapedMessage:
+        role: str
+        content: str
+        tool_calls: tuple
+
+    msg = _ShapedMessage(
+        role="assistant",
+        content="",
+        tool_calls=(_OpenAIShapedCall("c1", "search", '{"q": "hi"}'),),
+    )
+    identity = _message_identity(msg)  # must not raise
+    assert identity["tool_calls"][0]["arguments"] == '{"q": "hi"}', (
+        "a string argument is passed through, not guessed at — parsing it would "
+        "invent a normalisation this function has no business performing"
+    )
+
+
+def test_guarding_the_unwrap_did_not_change_any_existing_cache_key() -> None:
+    """POSITIVE CONTROL, and the reason this change was safe to make.
+
+    The unwrap never affected the key: `_stable_default` already normalises
+    every mapping shape, so the unwrapped and raw forms hash identically for a
+    plain dict, a `MappingProxyType` and a `ChainMap` alike. Guarding it
+    therefore cannot re-key a single live cache entry — it only decides whether
+    we crash. If this ever fails, someone has changed the key's shape and every
+    persisted entry silently misses.
+    """
+    from collections import ChainMap
+    from types import MappingProxyType
+
+    from agentkit.kernel.resilience import stable_hash
+
+    base = {"id": "c1", "name": "search"}
+    for shape in ({"q": "hi"}, MappingProxyType({"q": "hi"}), ChainMap({"q": "hi"})):
+        assert stable_hash({**base, "arguments": dict(shape)}) == stable_hash(
+            {**base, "arguments": shape}
+        )

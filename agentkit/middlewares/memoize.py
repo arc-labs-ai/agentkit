@@ -14,7 +14,7 @@ never stored, so failures are never cached.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from typing import Any
 
 from agentkit.kernel.middleware import Call, Handler, Middleware, _assemble, _result_to_stream
@@ -38,6 +38,19 @@ def _is_tool_call(call: Call) -> bool:
     return getattr(r, "name", None) is not None and hasattr(r, "arguments")
 
 
+def _unwrap_arguments(value: Any) -> Any:
+    """A mapping becomes a plain dict; anything else is passed through.
+
+    Passing through rather than coercing is deliberate: a JSON-string
+    ``arguments`` is a legitimate shape from a provider SDK, and ``stable_hash``
+    keys it fine as a string. Guessing that it *should* be parsed would invent a
+    normalisation this function has no business performing.
+    """
+    if isinstance(value, Mapping):
+        return dict(value)
+    return value if value is not None else {}
+
+
 def _message_identity(m: Any) -> dict[str, Any]:
     """Everything about one transcript turn that can change the next answer.
 
@@ -52,9 +65,36 @@ def _message_identity(m: Any) -> dict[str, Any]:
     one branch of a ReAct loop could be served the other branch's answer.
 
     ``ToolCall`` is spelled out into primitives rather than handed to
-    ``stable_hash`` as a dataclass: ``arguments`` is a ``MappingProxyType``,
-    and pinning the shape here keeps the key from drifting if the dataclass
-    ever gains a derived field. Argument dicts are hashed by
+    ``stable_hash`` as a dataclass — but not for the reason this docstring used
+    to give. ``arguments`` is a ``FrozenDict``, not a ``MappingProxyType``, and
+    ``stable_hash(tool_call)`` works: measured, it returns a key rather than
+    raising. What survives is the reason that actually matters for a CACHE KEY.
+    This key is a PERSISTED identity, so pinning the shape here means a new
+    field on the dataclass cannot silently re-key every live cache entry the day
+    it lands. Spelling it out also keeps the key computable for the duck-typed
+    tool-call stand-ins the ``getattr`` chain below tolerates, which need not be
+    dataclasses at all.
+
+    The ``dict(...)`` unwrap on ``arguments`` is the one piece here that does
+    NOT pay for itself, and the comment that used to justify it was describing a
+    hazard that no longer exists. ``deep_freeze`` now normalises a
+    ``MappingProxyType`` into a ``FrozenDict``, nested ones included, so
+    agentkit's own ``ToolCall`` cannot be holding a proxy; and for the duck-typed
+    stand-ins that CAN hold one, ``stable_hash`` already normalises every
+    mapping shape itself in ``_stable_default``. Measured on this exact
+    identity dict with ``arguments`` as a plain dict, a ``MappingProxyType`` and
+    a ``ChainMap``, unwrapped and not: all six hash to ``9260f356e47f33f4``.
+
+    It has one measured effect, and it is the wrong direction. ``m`` is ``Any``
+    and read entirely through ``getattr`` precisely because the stand-ins need
+    not be agentkit types — and an OpenAI-shaped one carries ``arguments`` as
+    the raw JSON STRING the wire format uses, not a mapping. On that shape
+    ``dict('{"q": "hi"}')`` raises ``ValueError: dictionary update sequence
+    element #0 has length 1; 2 is required``, while the un-unwrapped form hashes
+    to ``3356adc0e09bf871`` without complaint. So the line is not the guard it
+    was documented as; it is the only way this function can fail. Left in place
+    deliberately — changing a cache key's shape re-keys every live entry, which
+    is not a thing to do from a comment pass. Argument dicts are hashed by
     ``json.dumps(sort_keys=True)``, so insertion order is not identity."""
     return {
         "role": getattr(m, "role", ""),
@@ -65,7 +105,22 @@ def _message_identity(m: Any) -> dict[str, Any]:
             {
                 "id": getattr(tc, "id", None),
                 "name": getattr(tc, "name", None),
-                "arguments": dict(getattr(tc, "arguments", None) or {}),
+                # Unwrap ONLY a mapping. This whole function is built on
+                # ``getattr`` because ``m``/``tc`` are duck-typed — a provider
+                # SDK object, a test double — and yet a bare ``dict(...)`` here
+                # was the one line that could not survive one. The OpenAI wire
+                # shape carries ``arguments`` as the raw JSON STRING, and
+                # ``dict('{"q": "hi"}')`` raises ``ValueError: dictionary
+                # update sequence element #0 has length 1; 2 is required``. So
+                # the defensive line was the only way this function could fail.
+                #
+                # Guarding cannot change a single existing cache key: measured
+                # over a plain dict, a MappingProxyType and a ChainMap, the
+                # unwrapped and raw forms hash identically (35a61432258b9654 in
+                # all six cases), because ``_stable_default`` already
+                # normalises every mapping shape. The unwrap never affected the
+                # key — it only decided whether we crashed.
+                "arguments": _unwrap_arguments(getattr(tc, "arguments", None)),
             }
             for tc in (getattr(m, "tool_calls", None) or ())
         ],
