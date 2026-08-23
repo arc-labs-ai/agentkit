@@ -400,6 +400,242 @@ def test_frozen_context_equality_and_shape_are_unchanged():
     assert snap.messages == (_user("hello"),)
 
 
+# ── freeze: immutable all the way down, not just at the tuples ────
+#
+# ``FrozenContext`` is documented as an "Immutable snapshot" that is
+# safe to share "without sharing mutation" — a parent briefing a child
+# without the child's writes leaking back. ``freeze()`` converted the
+# scratchpad to a tuple of pairs and stopped there, so every VALUE in a
+# snapshot was the caller's live object. Measured before the fix::
+#
+#     wc = WorkingContext()
+#     wc.update_scratchpad({"plan": {"steps": ["a"]}})
+#     f = wc.freeze()
+#     dict(f.scratchpad)["plan"]["steps"].append("b")
+#     dict(f.scratchpad)["plan"]        {'steps': ['a', 'b']}
+#
+# i.e. the frozen snapshot changed, in the exact shape the
+# ``update_scratchpad`` docstring documents. The neighbouring
+# ``ContextDiff`` already deep-froze its payload — two value types in
+# one file, two standards. The fix moves the freeze into
+# ``FrozenContext.__post_init__`` so it belongs to the TYPE rather than
+# to one producer, exactly as ``ContextDiff`` does it.
+
+
+def test_freeze_deep_freezes_nested_scratchpad_values():
+    """THE BUG, verbatim. A nested value reached through the snapshot must
+    refuse the write instead of accepting it and rewriting the snapshot."""
+    wc = WorkingContext()
+    wc.update_scratchpad({"plan": {"steps": ["a"]}})
+    f = wc.freeze()
+
+    with pytest.raises(TypeError, match="frozen value"):
+        dict(f.scratchpad)["plan"]["steps"].append("b")
+    with pytest.raises(TypeError, match="frozen value"):
+        dict(f.scratchpad)["plan"]["steps"] = ["rewritten"]
+    assert dict(f.scratchpad)["plan"] == {"steps": ["a"]}
+
+
+def test_freeze_unaliases_the_snapshot_from_the_live_context():
+    """The other half of the same bug, and the one no ``TypeError`` would ever
+    have caught: the snapshot held the LIVE object, so the parent's own later
+    write into a nested note retroactively edited a snapshot it had already
+    taken and possibly already shipped. ``deep_freeze`` copies the containers
+    it freezes, which un-aliases the two."""
+    wc = _make().note("plan", {"steps": ["a"]})
+    f = wc.freeze()
+
+    wc.scratchpad["plan"]["steps"].append("b")  # the live context is still live
+
+    assert wc.get("plan") == {"steps": ["a", "b"]}
+    assert dict(f.scratchpad)["plan"] == {"steps": ["a"]}  # the snapshot is not
+    assert dict(f.scratchpad)["plan"] is not wc.scratchpad["plan"]
+
+
+def test_a_child_briefed_from_a_snapshot_cannot_write_back_through_it():
+    """The stated use case, end to end: "a parent that wants to brief a child
+    but doesn't want the child's writes to leak back". Pre-fix the child's
+    ``append`` landed in the parent's LIVE scratchpad — the snapshot was a
+    pass-through, not a barrier."""
+    parent = _make().note("plan", {"steps": ["a"]})
+    f = parent.freeze()
+
+    child = WorkingContext(
+        prefix=f.prefix, messages=list(f.messages), scratchpad=dict(f.scratchpad)
+    )
+    with pytest.raises(TypeError, match="frozen value"):
+        child.scratchpad["plan"]["steps"].append("child-wrote-this")
+
+    assert dict(f.scratchpad)["plan"] == {"steps": ["a"]}  # snapshot intact
+    assert parent.get("plan") == {"steps": ["a"]}  # parent intact
+
+
+def test_the_round_trip_rehydrates_into_a_fully_writable_context():
+    """POSITIVE CONTROL for the migration hazard the fix could have introduced:
+    freezing the VALUES must not freeze the context built from them. The
+    docstring's round trip goes through ``dict(f.scratchpad)``, which rebuilds
+    a plain writable top level — so ``note`` / ``update_scratchpad`` / a whole
+    new value for an existing key all still work. (This is precisely where the
+    checkpointer's ``rehydrate`` differs: it passes a frozen dict straight
+    through as the live scratchpad.)"""
+    f = _make().append(_user("hello")).note("plan", {"steps": ["a"]}).freeze()
+    ctx = WorkingContext(prefix=f.prefix, messages=list(f.messages), scratchpad=dict(f.scratchpad))
+
+    ctx.note("stage", "act")
+    ctx.update_scratchpad({"other": 1})
+    ctx.note("plan", {**ctx.get("plan"), "steps": ["a", "b"]})  # the documented migration
+    del ctx.scratchpad["other"]
+
+    assert ctx.get("stage") == "act"
+    assert ctx.get("plan") == {"steps": ["a", "b"]}
+    assert dict(f.scratchpad)["plan"] == {"steps": ["a"]}  # ...and the snapshot never moved
+
+
+def test_freeze_reaches_lists_and_arbitrary_depth():
+    """A scratchpad value is any Python object, so the freeze has to cover the
+    shapes an agent actually notes: a list of dicts, a dict of lists, and
+    something nested deeper than anyone writes a test for."""
+    wc = _make().update_scratchpad(
+        {
+            "findings": [{"src": "a", "score": [1]}, {"src": "b"}],
+            "deep": {"a": {"b": {"c": [{"d": []}]}}},
+        }
+    )
+    f = wc.freeze()
+    sp = dict(f.scratchpad)
+
+    with pytest.raises(TypeError, match="frozen value"):
+        sp["findings"].append({"src": "c"})
+    with pytest.raises(TypeError, match="frozen value"):
+        sp["findings"][0]["score"].append(2)
+    with pytest.raises(TypeError, match="frozen value"):
+        sp["deep"]["a"]["b"]["c"][0]["d"].append(1)
+
+
+def test_a_hand_built_frozen_context_is_frozen_too():
+    """Why the freeze lives in ``__post_init__`` and not in ``freeze()``.
+    ``FrozenContext`` is exported: callers construct one directly (a
+    reconstructed snapshot, a test fixture, a transport decoder) and a
+    hand-built snapshot is advertised as no less immutable than one that came
+    through the method. ``ContextDiff`` makes the same call."""
+    f = FrozenContext(PrefixContext(), (), (("plan", {"steps": ["a"]}),))
+    with pytest.raises(TypeError, match="frozen value"):
+        dict(f.scratchpad)["plan"]["steps"].append("b")
+
+
+def test_a_snapshot_is_still_frozen_after_deepcopy_and_pickle():
+    """The lesson from the ``FrozenDict`` commit's own test gap: equality after
+    a copy proves nothing, because a plain-dict rebuild compares equal to a
+    frozen one. A snapshot that crosses a PROCESS boundary — the case the type
+    exists for — has to arrive still refusing writes."""
+    import copy as _copy
+    import pickle
+
+    f = _make().note("plan", {"steps": ["a"]}).freeze()
+
+    for clone in (_copy.deepcopy(f), pickle.loads(pickle.dumps(f))):
+        assert clone == f
+        assert isinstance(dict(clone.scratchpad)["plan"], FrozenDict)
+        with pytest.raises(TypeError, match="frozen value"):
+            dict(clone.scratchpad)["plan"]["steps"].append("b")
+
+
+def test_frozen_scratchpad_values_still_read_and_compare_as_plain_data():
+    """POSITIVE CONTROL, and the reason a ``dict`` SUBCLASS was chosen over a
+    proxy: every consumer of a snapshot keeps working. Reads, ``isinstance``,
+    equality against a plain dict, ``json.dumps`` — plus the module's own
+    equality and sorted-pairs shape."""
+    import json
+
+    wc = _make().update_scratchpad({"z": 1, "plan": {"steps": ["a"]}})
+    f = wc.freeze()
+    sp = dict(f.scratchpad)
+
+    assert sp["plan"]["steps"][0] == "a"
+    assert isinstance(sp["plan"], dict)
+    assert sp["plan"] == {"steps": ["a"]}  # == a PLAIN dict
+    assert json.loads(json.dumps(sp)) == {"z": 1, "plan": {"steps": ["a"]}}
+    assert f.scratchpad == (("plan", {"steps": ["a"]}), ("z", 1))  # still sorted by key
+    assert f == wc.freeze()
+    assert isinstance(hash(f), int)  # keys-only hash, untouched by the freeze
+
+
+def test_freeze_hands_back_non_container_leaves_by_identity():
+    """The line ``deep_freeze`` draws, pinned here because it is a real hole in
+    the guarantee rather than an accident: a caller's own object is returned
+    AS IS, not reconstructed into something else. Reconstructing arbitrary user
+    types would mean guessing a constructor per type and swapping identities.
+    A caller storing a mutable object in the scratchpad still shares it —
+    ``fork()`` is the seam for that, or freeze a plain-data projection.
+
+    A ``tuple`` of dicts is the same hole one step along: immutable as a
+    container, so ``deep_freeze`` does not descend."""
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls = 0
+
+    client = Client()
+    f = _make().update_scratchpad({"client": client, "pair": ({"n": 1},)}).freeze()
+    sp = dict(f.scratchpad)
+
+    assert sp["client"] is client
+    sp["client"].calls += 1  # still mutable — deliberately
+    assert client.calls == 1
+    sp["pair"][0]["n"] = 2  # a dict inside a tuple is not reached
+    assert sp["pair"][0]["n"] == 2
+
+
+def test_freeze_leaves_journal_entries_alone_deliberately():
+    """The measured non-fix. The journal is the UNBOUNDED axis — append-only,
+    never truncated, re-snapshotted at every briefing — so per-entry freezing
+    makes repeated ``freeze()`` calls quadratic in a run's own history: 1.0 µs
+    to snapshot a 500-entry journal today, 1536 µs with the entries frozen. And
+    the protection would be partial anyway, since ``JournalEntryT`` is
+    project-defined and ``deep_freeze`` returns non-container leaves untouched.
+    The axis carries its own guarantee instead: ``MutationJournal`` is
+    append-only and never rewrites an entry.
+
+    If that trade ever flips, this is the test that has to change — it is
+    pinning a decision, not an accident."""
+    wc = _make()
+    entry = {"kind": "note", "payload": {"x": [1]}}
+    wc.journal.record(entry)
+    f = wc.freeze()
+
+    assert f.journal_entries[0] is entry
+    f.journal_entries[0]["payload"]["x"].append(2)  # no TypeError — by design
+    assert isinstance(hash(f), int)  # journal is out of the hash too
+
+
+def test_the_four_composition_seams_stay_coherent_about_scratchpad_values():
+    """POSITIVE CONTROL over the siblings this bug was an inconsistency with.
+    Only ``freeze()`` returns something nobody may write to, so only ``freeze()``
+    freezes. The other three return LIVE contexts and must stay live:
+    ``fork()`` deep-copies (independent + writable), ``merge()`` hands values
+    over by reference (last-write-wins means the receiver owns them), and
+    ``slice()`` inherits the scratchpad unchanged under a fresh top-level dict,
+    exactly as its docstring says. Passes before and after the fix."""
+    wc = _make().append(_user("q")).note("plan", {"steps": ["a"]})
+
+    forked = wc.fork()
+    forked.scratchpad["plan"]["steps"].append("fork-only")
+    assert wc.get("plan") == {"steps": ["a"]}  # deep-copied: no leak back
+    assert forked.get("plan") == {"steps": ["a", "fork-only"]}  # ...and writable
+
+    sliced = wc.slice(RoleFilter(frozenset({"user"})))
+    sliced.scratchpad["plan"]["steps"].append("slice-shared")
+    assert wc.get("plan") == {"steps": ["a", "slice-shared"]}  # shared values
+    sliced.note("plan", {"steps": []})
+    assert wc.get("plan") == {"steps": ["a", "slice-shared"]}  # ...fresh top level
+
+    target = _make()
+    target.merge(wc)
+    assert target.get("plan") is wc.get("plan")  # handed over by reference
+    target.scratchpad["plan"]["steps"].append("merged-write")
+    assert wc.get("plan")["steps"][-1] == "merged-write"
+
+
 # ── diff: structural comparison ───────────────────────────────────
 
 

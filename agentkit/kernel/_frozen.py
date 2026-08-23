@@ -129,6 +129,30 @@ class FrozenList(list[Any]):
         return FrozenList(copy.deepcopy(list(self), memo))
 
 
+def thaw(value: Any) -> Any:
+    """The inverse of :func:`deep_freeze` — return plain, writable containers.
+
+    Needed because freezing is a property of a SNAPSHOT, not of the data. A
+    durable record is rightly frozen; a context RESUMED from that record is a
+    live working context and has to be writable again.
+
+    Measured before this existed: ``Checkpoint.state`` is deep-frozen, and
+    ``persistence.rehydrate`` passed the stored scratchpad straight through, so
+    a resumed run raised ``TypeError: this payload belongs to a frozen
+    value...`` on its FIRST ``ctx.note(...)``. A top-level ``dict(...)`` — the
+    obvious fix, and what a sibling decoder already did — only moves the
+    failure one level down, to the first nested write.
+
+    Like ``deep_freeze``, this rebuilds containers and returns everything else
+    by identity: a caller's own object is not reconstructed.
+    """
+    if isinstance(value, dict):
+        return {k: thaw(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [thaw(v) for v in value]
+    return value
+
+
 def deep_freeze(value: Any) -> Any:
     """Return ``value`` with every nested dict/list replaced by a frozen one.
 
@@ -180,4 +204,4 @@ def deep_freeze(value: Any) -> Any:
 # `__hash__` says only what its OWN subset is and why; this is the shared half.
 
 
-__all__ = ["FrozenDict", "FrozenList", "deep_freeze"]
+__all__ = ["FrozenDict", "FrozenList", "deep_freeze", "thaw"]

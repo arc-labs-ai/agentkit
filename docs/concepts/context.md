@@ -232,6 +232,18 @@ usable as cache keys for re-grounding decisions):
 class works anywhere the built-ins do — it needs one method,
 `matches(message, index) -> bool`.
 
+One scope is different in kind. `LastNTurns` is **positional**: "the
+last two turns" is a property of the list, not of any message in it, so
+it cannot be decided from `(message, index)` alone. Positional scopes
+implement `_surviving_indices(messages) -> set[int]` instead, and
+`slice()` prefers that hook. Composition happens in index space — `AllOf`
+intersects the surviving sets, `AnyOf` unions them, `Not` complements
+against `range(len(messages))` — so a window keeps working at any nesting
+depth. Write your own the same way if your predicate needs to see the
+whole list; `PositionalScope` is the protocol for it, and
+`surviving_indices(scope, messages)` is the helper that answers for
+either kind.
+
 ## The journal axis
 
 `MutationJournal` is an append-only log with a watermark. It exists for
@@ -523,15 +535,25 @@ public primitive and the boundary is explicit on purpose.
 
 ## What bites people
 
-!!! warning "`LastNTurns` loses its window inside a combinator"
+!!! warning "A positional scope refuses `matches()` — it does not guess"
 
-    `LastNTurns` cannot decide membership from `(message, index)`
-    alone — it needs the whole list to count back `n` turns, so it
-    exposes a private `_surviving_indices` hook that `slice()` prefers.
-    `AllOf` / `AnyOf` / `Not` do not forward that hook, and
-    `LastNTurns.matches()` returns `True` for everything as a
-    safe-by-default fallback. Wrap it in a combinator and the window
-    silently disappears:
+    `LastNTurns.matches(message, index)` raises `PositionalScopeError`.
+    There is no honest answer: the window is a property of the whole
+    list, so a single message cannot be judged in isolation.
+
+    It used to return `True` instead, "safe by default". That had the
+    failure mode backwards. Nothing calls `.matches()` on a bare
+    `LastNTurns` — what called it was `AllOf.matches`, once per
+    message, where `True` means "this child has no opinion". So the
+    window evaporated on contact with a combinator. Measured on a
+    six-message transcript: `slice(LastNTurns(2))` gave 2 messages,
+    `slice(AllOf((LastNTurns(2), RoleFilter(frozenset({"user"})))))`
+    gave all 6, and `slice(Not(LastNTurns(2)))` gave 0. No error, no
+    warning — just a prompt three times the size you asked for and an
+    overflow a few turns later.
+
+    The combinators now forward `_surviving_indices`, so composing is
+    the right thing to do:
 
     ```python
     from agentkit.context import AllOf, LastNTurns, Not, RoleFilter, WorkingContext
@@ -543,18 +565,16 @@ public primitive and the boundary is explicit on purpose.
         ctx.append(Message("user", f"q{i}"), Message("assistant", f"a{i}"))
 
     print([m.content for m in ctx.slice(LastNTurns(2)).messages])
-    # ['House rules.', 'q1', 'a1', 'q2', 'a2']    — windowed
+    # ['House rules.', 'q1', 'a1', 'q2', 'a2']
 
     inside = AllOf((LastNTurns(2), Not(RoleFilter(frozenset({"system"})))))
     print([m.content for m in ctx.slice(inside).messages])
-    # ['q0', 'a0', 'q1', 'a1', 'q2', 'a2']        — window GONE
-
-    narrowed = ctx.slice(LastNTurns(2)).slice(Not(RoleFilter(frozenset({"system"}))))
-    print([m.content for m in narrowed.messages])
-    # ['q1', 'a1', 'q2', 'a2']                    — do this instead
+    # ['q1', 'a1', 'q2', 'a2']    — window kept, system dropped
     ```
 
-    Window first, then filter the result.
+    If you filter a message list by hand rather than through `slice()`,
+    call `surviving_indices(scope, messages)`, not `scope.matches` —
+    the helper handles both kinds of scope.
 
 !!! warning "`fork()` then `merge()` duplicates the shared history"
 
@@ -565,26 +585,42 @@ public primitive and the boundary is explicit on purpose.
     `mode="union"`, or fork from a slice narrow enough that the
     overlap does not matter.
 
-!!! warning "`freeze()` does not deep-freeze scratchpad values"
+!!! warning "A snapshot's scratchpad values are frozen, and two kinds of value escape that"
 
-    The transcript axis of a `FrozenContext` is genuinely immutable —
-    `messages` is a tuple of frozen `Message`s. The scratchpad is a
-    tuple of `(key, value)` pairs, and the **values are the live
-    objects**:
+    `freeze()` deep-freezes the scratchpad **values**, so a nested note
+    reached through a snapshot refuses writes and the snapshot no longer
+    tracks the live context:
 
     ```python
     from agentkit.context import WorkingContext
 
     ctx = WorkingContext().note("plan", {"steps": ["a"]})
     snap = ctx.freeze()
-    ctx.scratchpad["plan"]["steps"].append("b")
-    print(dict(snap.scratchpad))     # {'plan': {'steps': ['a', 'b']}}
+    ctx.scratchpad["plan"]["steps"].append("b")   # the live context is still live
+    print(dict(snap.scratchpad))                  # {'plan': {'steps': ['a']}}
+
+    try:
+        dict(snap.scratchpad)["plan"]["steps"].append("b")
+    except TypeError as exc:
+        print(str(exc).split(".")[0])
+        # this payload belongs to a frozen value and cannot be mutated in place
     ```
 
-    `ContextDiff` deep-freezes its payload; `FrozenContext` does not.
-    If you are handing a snapshot across an agent boundary and the
-    scratchpad holds mutable structures, deep-copy them yourself
-    first.
+    Two things are passed through by identity and stay mutable. A
+    **non-container leaf** — your own object — is never reconstructed,
+    which is the line `deep_freeze` refuses to cross everywhere in the
+    framework; deep-copy it yourself, or note a plain-data projection of
+    it. And **journal entries** are left alone deliberately: the journal
+    is the unbounded append-only axis, so freezing every entry at every
+    snapshot would be quadratic in a run's own history (measured: 1.0 µs
+    to snapshot a 500-entry journal, 1536 µs with the entries frozen).
+    That axis carries its own guarantee instead — a `MutationJournal`
+    never rewrites an entry.
+
+    Rehydrating is unaffected: `dict(snap.scratchpad)` rebuilds a plain,
+    writable top level, so `note()` and `update_scratchpad()` work as
+    always. To edit a nested value, build a new one —
+    `ctx.note("plan", {**ctx.get("plan"), "steps": [...]})`.
 
 !!! warning "A `WorkingContext` is not a `RunContext`, and neither is a `Ctx`"
 

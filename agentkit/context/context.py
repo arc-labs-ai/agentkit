@@ -284,22 +284,103 @@ class FrozenContext:
 
     All fields are immutable: ``PrefixContext`` is frozen,
     ``messages`` is a tuple, ``scratchpad`` is a sorted tuple of
-    (key, value) pairs (so equality is deterministic), and
-    ``journal_entries`` is a tuple. A snapshot is therefore safe to
+    (key, value) pairs (so equality is deterministic) whose VALUES are
+    deep-frozen (see ``__post_init__``), and ``journal_entries`` is a
+    tuple. A snapshot is therefore safe to
     share across agent boundaries without locking and to use as a
     memoization-cache key — see ``__hash__`` for what "hashable" can
     and cannot mean when two of those tuples hold arbitrary
     user objects.
 
+    The one deliberate exception is the CONTENTS of ``journal_entries``:
+    the tuple is frozen, the entries inside it are passed through by
+    identity. ``__post_init__`` says why, with the measurement.
+
     Round-tripping: ``WorkingContext(prefix=f.prefix,
     messages=list(f.messages), scratchpad=dict(f.scratchpad))`` is
-    functionally equivalent to the source (modulo identity).
+    functionally equivalent to the source (modulo identity). The
+    rehydrated context is a fully live one — ``dict(...)`` rebuilds a
+    plain, writable top level, so ``note`` / ``update_scratchpad`` work
+    as always; what it inherits is frozen NESTED values, which is the
+    point of taking a snapshot rather than a copy. A child that wants to
+    edit one builds a new value: ``ctx.note("plan", {**ctx.get("plan"),
+    "steps": [...]})``.
     """
 
     prefix: PrefixContext
     messages: tuple[Message, ...]
     scratchpad: tuple[tuple[str, object], ...]
     journal_entries: tuple[Any, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Freeze the scratchpad VALUES — deeply — so "immutable snapshot" is
+        true of the snapshot rather than of its outer tuples.
+
+        ``freeze()`` converted the scratchpad to a tuple of pairs and stopped
+        there, so every value in a snapshot was the caller's live object.
+        Measured before this fix::
+
+            wc = WorkingContext()
+            wc.update_scratchpad({"plan": {"steps": ["a"]}})
+            f = wc.freeze()
+            dict(f.scratchpad)["plan"]["steps"].append("b")
+            dict(f.scratchpad)["plan"]        {'steps': ['a', 'b']}
+
+        That is not a corner: the class docstring's stated use case is a parent
+        briefing a child "without the child's writes leaking back", and the
+        child holding ``dict(f.scratchpad)`` could write straight through the
+        snapshot into the parent's LIVE scratchpad — the exact leak the type
+        exists to prevent, in the exact shape ``update_scratchpad({"plan":
+        {...}})`` documents.
+
+        Deep, because a scratchpad value is any Python object and a nested dict
+        is the ordinary case. A shallow freeze would leave
+        ``value["steps"].append(...)`` working, which is the same bug one level
+        down and harder to see.
+
+        Here rather than in ``freeze()`` for the same reason
+        ``ContextDiff.__post_init__`` is where it is: the guarantee belongs to
+        the TYPE, not to one producer. ``freeze()`` is the usual door, but
+        ``FrozenContext`` is exported, hand-constructed in tests and rebuilt by
+        callers, and a snapshot assembled by hand is advertised as no less
+        immutable than one that came through the method.
+
+        ``deep_freeze`` also COPIES the containers it freezes, which un-aliases
+        the snapshot from the context it was taken from — so the parent's own
+        later ``ctx.scratchpad["plan"]["steps"].append(...)`` no longer
+        retroactively edits what an already-taken snapshot says. Non-container
+        leaves are returned by identity: a snapshot holding a caller's mutable
+        OBJECT still shares it, because reconstructing arbitrary user types is
+        the line ``deep_freeze`` refuses to cross. Same for a value that is a
+        ``tuple`` of dicts — the tuple is immutable as a container and
+        ``deep_freeze`` does not descend into it.
+
+        Cost is O(scratchpad payload), and it lands under the ``deepcopy`` that
+        the sibling ``fork()`` already performs on the same data: 3.2 µs vs
+        4.6 µs for a two-note scratchpad, 159 µs vs 217 µs at 50 nested
+        entries, 4.2 ms vs 5.0 ms at 10_000 keys. Nothing inside the framework
+        calls ``freeze()`` — it is a boundary API a caller reaches for once per
+        handoff — so this is not on any per-token or per-turn path.
+
+        ``journal_entries`` is deliberately NOT given the same treatment, which
+        is a measurement rather than an oversight. The journal is the UNBOUNDED
+        axis: append-only, never truncated, and re-snapshotted at every
+        briefing, so a per-value freeze turns a run's repeated ``freeze()``
+        calls quadratic in its own history. Measured on a 500-entry journal of
+        dict entries: 1.0 µs to snapshot the tuple today, 1536 µs with the
+        entries frozen — three orders of magnitude, growing with the run.
+        Against that, the protection would be partial by construction: entries
+        are project-defined types parameterising ``JournalEntryT``, and
+        ``deep_freeze`` hands non-container leaves back untouched, so a project
+        using dataclass entries would pay the walk and get nothing. The axis
+        already carries its own guarantee instead — ``MutationJournal`` is
+        append-only and "never rewrites entries", so an entry mutated in place
+        is a caller breaking that contract, not this type failing to enforce
+        one.
+        """
+        object.__setattr__(
+            self, "scratchpad", tuple((k, deep_freeze(v)) for k, v in self.scratchpad)
+        )
 
     def __hash__(self) -> int:
         """Hash the transcript axis + the scratchpad KEYS. Never the scratchpad
@@ -629,7 +710,21 @@ class WorkingContext:
 
     def freeze(self) -> FrozenContext:
         """Immutable snapshot — safe to share across agent boundaries
-        without locking. Equality is structural."""
+        without locking. Equality is structural.
+
+        Scratchpad values are deep-frozen and un-aliased by
+        ``FrozenContext.__post_init__``; read that docstring for what
+        "immutable" covers and what it deliberately does not.
+
+        This is the only one of the four composition seams that returns
+        something IMMUTABLE, and that is what decides how each treats
+        scratchpad values. ``fork()`` returns an independent live copy, so it
+        ``deepcopy``s them. ``merge()`` aggregates into a live context and
+        hands values over by reference — last-write-wins means the receiver
+        owns the object and keeps writing to it. ``slice()`` returns a live
+        view with a fresh top-level dict and shared values, as its docstring
+        says ("scratchpad ... inherited unchanged"). ``freeze()`` is the one
+        whose result nobody may write to, so it is the one that freezes."""
         return FrozenContext(
             prefix=self.prefix,
             messages=tuple(self.messages),

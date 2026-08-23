@@ -27,6 +27,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from agentkit.context import PrefixContext, WorkingContext
+from agentkit.kernel._frozen import thaw
 from agentkit.kernel.ports import Checkpoint
 from agentkit.kernel.types import Message, ToolCall, Usage
 
@@ -143,7 +144,14 @@ def rehydrate(saved: dict[str, Any]) -> tuple[WorkingContext, Usage, int, bool]:
     context = WorkingContext(
         prefix=dict_to_prefix(saved.get("prefix")),
         messages=[dict_to_msg(d) for d in saved["messages"]],
-        scratchpad=saved.get("scratchpad", {}),
+        # ``thaw``, not a bare pass-through and not ``dict(...)``. The stored
+        # state is deep-frozen (a durable record should be), but what we are
+        # building here is a LIVE working context that the resumed run writes
+        # to. Measured before this call existed: the first ``ctx.note(...)``
+        # after a durable resume raised ``TypeError: this payload belongs to a
+        # frozen value``. A top-level ``dict(...)`` only moves that failure to
+        # the first NESTED write.
+        scratchpad=thaw(saved.get("scratchpad") or {}),
         limit=saved.get("limit"),
         shared=bool(saved.get("shared", False)),
     )
@@ -334,7 +342,7 @@ def coord_state_from_dict(
     return (
         int(d.get("turn", 0)),
         [dict_to_msg(m) for m in d.get("transcript", [])],
-        dict(d.get("scratchpad") or {}),
+        thaw(d.get("scratchpad") or {}),  # same reason as ``rehydrate`` above
         [dict_to_result(r) for r in d.get("results", [])],
         Usage(u.get("input", 0), u.get("output", 0), u.get("cost", 0.0)),
     )

@@ -715,3 +715,39 @@ def test_concurrent_snapshots_different_run_ids_do_not_serialize_each_other():
     # Sanity: wall time is close to a single snapshot's cost, not 10×.
     # Allow generous headroom for scheduler overhead.
     assert elapsed < 0.5, f"per-run lock serialised across run_ids (elapsed={elapsed:.3f}s)"
+
+
+def test_a_resumed_context_is_writable_all_the_way_down():
+    """A durable record is rightly frozen; a context RESUMED from one is a live
+    working context and must be writable again.
+
+    `Checkpoint.state` is deep-frozen, and `rehydrate` used to pass the stored
+    scratchpad straight through — so a resumed run raised
+    `TypeError: this payload belongs to a frozen value` on its FIRST
+    `ctx.note(...)`. The obvious fix, a top-level `dict(...)`, only moves that
+    failure one level down to the first nested write, which is why this asserts
+    both depths.
+    """
+    from agentkit.capabilities.checkpointer.persistence import rehydrate
+    from agentkit.kernel._frozen import deep_freeze
+
+    saved = deep_freeze(
+        {
+            "messages": [],
+            "prefix": None,
+            "iteration": 0,
+            "results": [],
+            "pending": [],
+            "usage": {"input": 0, "output": 0, "cost": 0.0},
+            "scratchpad": {"plan": {"steps": ["a"]}, "stage": "plan"},
+        }
+    )
+    ctx, *_ = rehydrate(saved)
+
+    ctx.note("stage", "act")                      # top level
+    ctx.scratchpad["plan"]["steps"].append("b")   # nested
+    assert ctx.scratchpad["stage"] == "act"
+    assert ctx.scratchpad["plan"]["steps"] == ["a", "b"]
+
+    # ...and the durable record it came from is untouched by any of that.
+    assert dict(saved["scratchpad"]["plan"])["steps"] == ["a"]
