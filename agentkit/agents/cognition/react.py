@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING, Any
 
 from agentkit.agents._agent_helpers import (
     _assistant,
+    _ceiling_errors,
     _exhausted_ceiling,
     _final_events,
     _last_assistant,
     _parse_args,
     _to_text,
+    _unwrap_ceiling,
 )
 from agentkit.agents.control.elicitation import (
     Decision,
@@ -460,10 +462,22 @@ class ReActCognition:
 
                 for tc in res.tool_calls:
                     yield StreamEvent("tool_call", tool_call=tc)
-                results = await gather_bounded(
-                    [self._invoke_tool_safe(ctx, tc) for tc in res.tool_calls],
-                    sem=ctx.semaphore(),
-                )
+                try:
+                    results = await gather_bounded(
+                        [self._invoke_tool_safe(ctx, tc) for tc in res.tool_calls],
+                        sem=ctx.semaphore(),
+                    )
+                except BaseExceptionGroup as group:
+                    # ``TaskGroup`` wraps everything, so a ceiling that
+                    # correctly escaped ``_invoke_tool_safe`` would still reach
+                    # the caller as an ``ExceptionGroup`` — and the documented
+                    # ``except MeterExceeded`` would miss it. Unwrap the ceiling
+                    # and raise it as itself; anything else keeps its group,
+                    # because a genuine multi-failure fan-out IS a group.
+                    ceiling = _unwrap_ceiling(group)
+                    if ceiling is not None:
+                        raise ceiling from group
+                    raise
                 for tc, r in zip(res.tool_calls, results, strict=False):
                     context.append(self._tool_message(tc, r))
                     yield StreamEvent("tool_result", tool_call=tc, tool_result=r)
@@ -709,6 +723,12 @@ class ReActCognition:
                 "ERROR: tool returned a value that does not match its declared "
                 f"output schema {exc.expected!r}. Details: {details}"
             )
+        except _ceiling_errors():
+            # NOT a tool failure — the framework stopping the run. A tool that
+            # failed is information the model can act on; a ceiling handed back
+            # as a retryable-looking error string is how a hard limit gets
+            # violated in silence. See ``_ceiling_errors`` for the measurement.
+            raise
         except Exception as exc:  # noqa: BLE001 — reflect ALL tool failures to the model
             return f"ERROR: tool {tc.name!r} failed: {type(exc).__name__}: {exc}"
 

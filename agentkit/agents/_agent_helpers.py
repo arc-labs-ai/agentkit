@@ -16,6 +16,68 @@ def _assistant(res: Any) -> Message:
     return Message("assistant", content=res.content, tool_calls=res.tool_calls)
 
 
+def _ceiling_errors() -> tuple[type[BaseException], ...]:
+    """Exception types that mean "the FRAMEWORK is stopping this run".
+
+    These must never be reflected to the model as a tool result. A tool that
+    failed is information the model can act on — a different argument, another
+    approach. A ceiling is the opposite: the run is over, and handing the model
+    a retryable-looking error string is how a hard limit came to be violated
+    silently.
+
+    Measured before this existed, with ``Budget(max_depth=4)`` and an ``as_tool``
+    chain 8 deep::
+
+        tool msg the model saw: "ERROR: tool 'sub3' failed: MeterExceeded:
+                                 agent depth 5 > max_depth 4"
+        result.stop_reason:     complete
+        result.evals:           {}
+
+    The ceiling was breached, the model retried, and the caller — whom the
+    cheatsheet tells to ``except MeterExceeded`` — got ``complete``.
+
+    Imported lazily and cached: ``runtime.meter`` is a layer this module does
+    not otherwise depend on, and importing it at module scope would put
+    ``agents`` → ``runtime`` → ``agents.control.budget`` in the import graph at
+    definition time.
+    """
+    global _CEILING_ERRORS
+    if _CEILING_ERRORS is None:
+        from agentkit.agents.control.budget import BudgetExhausted
+        from agentkit.runtime.meter import MeterExceeded
+
+        _CEILING_ERRORS = (MeterExceeded, BudgetExhausted)
+    return _CEILING_ERRORS
+
+
+_CEILING_ERRORS: tuple[type[BaseException], ...] | None = None
+
+
+def _unwrap_ceiling(group: BaseException) -> BaseException | None:
+    """The ceiling error inside a ``TaskGroup``'s ``ExceptionGroup``, if any.
+
+    Letting a ceiling escape ``_invoke_tool_safe`` is only half the fix: the
+    tool fan-out runs under ``asyncio.TaskGroup``, which re-raises everything
+    wrapped, so a caller writing the documented ``except MeterExceeded`` still
+    misses it::
+
+        ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+        +-- MeterExceeded: agent depth 1 > max_depth 0
+
+    Recurses, because nested fan-out nests the groups. Returns the FIRST ceiling
+    found: with several, the run is over either way and the first is as true as
+    any other.
+    """
+    for exc in getattr(group, "exceptions", ()):
+        if isinstance(exc, _ceiling_errors()):
+            return exc
+        if isinstance(exc, BaseExceptionGroup):
+            found = _unwrap_ceiling(exc)
+            if found is not None:
+                return found
+    return None
+
+
 def _last_assistant(context: Any) -> str:
     """The most recent assistant text in a working context, or ``""``.
 
