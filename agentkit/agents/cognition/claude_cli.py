@@ -43,7 +43,7 @@ import os
 import uuid
 import weakref
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -439,17 +439,8 @@ class ClaudeCliCognition:
         cfg_dir = str(self.config_dir) if self.config_dir is not None else None
         sem = _get_semaphore(self.claude_bin, cfg_dir, self.max_concurrent)
 
-        accumulated_text = ""
-        accumulated_thinking = ""
-        usage = Usage()
-        session_id: str | None = None
-        duration_ms: int | None = None
+        state = _TurnState()
         cancelled = False
-        is_error = False
-        stop_reason: str | None = None
-        structured_output: Any = None
-        init_info: dict[str, Any] = {}
-        api_retries: list[dict[str, Any]] = []
         # Set once the schema is resolved. Initialised False so a spawn that
         # dies before resolution still reaches the terminal event.
         schema_requested = False
@@ -518,26 +509,7 @@ class ClaudeCliCognition:
                         ):
                             if ev is not None:
                                 yield ev
-                            if delta.text:
-                                accumulated_text += delta.text
-                            if delta.thinking:
-                                accumulated_thinking += delta.thinking
-                            if delta.usage is not None:
-                                usage = delta.usage
-                            if delta.session_id is not None:
-                                session_id = delta.session_id
-                            if delta.duration_ms is not None:
-                                duration_ms = delta.duration_ms
-                            if delta.is_error:
-                                is_error = True
-                            if delta.stop_reason is not None:
-                                stop_reason = delta.stop_reason
-                            if delta.structured_output is not None:
-                                structured_output = delta.structured_output
-                            if delta.init:
-                                init_info = delta.init
-                            if delta.api_retry is not None:
-                                api_retries.append(delta.api_retry)
+                            state.fold(delta)
                 finally:
                     if cancelled and proc.returncode is None:
                         await _terminate(proc, self.terminate_grace_s)
@@ -563,7 +535,52 @@ class ClaudeCliCognition:
             # so timeouts propagate correctly.)
             fatal_exc = exc
 
-        return_code = proc.returncode if proc is not None else -1
+        result = await self._finalise(
+            agent=agent,
+            ctx=ctx,
+            state=state,
+            cancelled=cancelled,
+            fatal_exc=fatal_exc,
+            spawned=proc is not None,
+            return_code=proc.returncode if proc is not None else -1,
+            stderr_bytes=stderr_bytes,
+            schema_requested=schema_requested,
+        )
+        yield StreamEvent("final", usage=state.usage, result=result)
+        if should_reraise_cancel:
+            # Terminal event delivered; now propagate the cancel so
+            # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
+            # and TaskGroup cancels propagate to siblings.
+            raise asyncio.CancelledError()
+
+
+    async def _finalise(
+        self,
+        *,
+        agent: Agent,
+        ctx: Ctx,
+        state: _TurnState,
+        cancelled: bool,
+        fatal_exc: BaseException | None,
+        spawned: bool,
+        return_code: int | None,
+        stderr_bytes: bytes,
+        schema_requested: bool,
+    ) -> AgentResult:
+        """Turn one completed turn's state into its terminal ``AgentResult``.
+
+        Shared by the one-shot ``drive`` and by a persistent
+        :class:`ClaudeCliSession` turn, which differ only in process
+        lifecycle. The stop-reason priority, the structured-output
+        decision, the ``evals`` shape and the metering are identical
+        between them, and a second copy of that logic is precisely how the
+        two paths would drift apart.
+
+        ``return_code`` is ``None`` when the process is still ALIVE — a session
+        turn ends at its ``result`` payload, not at process exit — and ``-1``
+        when no process was ever spawned. Both mean "the exit code says
+        nothing about this turn", so neither is treated as a failure here.
+        """
 
         # Decide terminal stop_reason + partial flag.
         # Priority (highest first): cancellation → fatal exception → CLI
@@ -586,7 +603,7 @@ class ClaudeCliCognition:
                 # Matched by name so this module keeps its import of
                 # ``runtime.meter`` lazy.
                 final_stop_reason = "budget_exhausted"
-            elif proc is None:
+            elif not spawned:
                 if isinstance(fatal_exc, FileNotFoundError) and str(fatal_exc).startswith(
                     "working_dir does not exist:"
                 ):
@@ -596,23 +613,23 @@ class ClaudeCliCognition:
             else:
                 final_stop_reason = "parse_failed"
             final_partial = True
-        elif return_code != 0:
+        elif return_code not in (0, None):
             final_stop_reason = f"cli_exit_{return_code}"
             final_partial = True
-        elif is_error:
+        elif state.is_error:
             # When the CLI signals ``is_error: true`` while exiting 0, the
             # useful stop_reason is often on ``terminal_reason`` (e.g.,
             # ``"api_error"``) rather than ``subtype`` (which can still
             # read ``"success"``). We already prefer subtype in
             # ``_events_from_payload`` — but when subtype is the useless
             # ``"success"`` string, fall through to a generic marker.
-            if stop_reason == "success" or stop_reason is None:
+            if state.stop_reason == "success" or state.stop_reason is None:
                 final_stop_reason = "cli_reported_error"
             else:
-                final_stop_reason = stop_reason
+                final_stop_reason = state.stop_reason
             final_partial = True
         else:
-            final_stop_reason = stop_reason  # may still be None on clean success
+            final_stop_reason = state.stop_reason  # may still be None on clean success
             final_partial = False
 
         # ── structured output ───────────────────────────────────────────────
@@ -629,8 +646,8 @@ class ClaudeCliCognition:
         # had not been wired. Treating it as a failure makes it visible.
         parsed: Any = None
         if schema_requested:
-            if structured_output is not None:
-                parsed, coercion_error = _coerce_structured(agent, structured_output)
+            if state.structured_output is not None:
+                parsed, coercion_error = _coerce_structured(agent, state.structured_output)
                 if coercion_error is not None:
                     final_partial = True
                     final_stop_reason = "structured_output_mismatch"
@@ -642,7 +659,7 @@ class ClaudeCliCognition:
                 if final_stop_reason in (None, "success"):
                     final_stop_reason = "structured_output_missing"
                 evals_structured_error = (
-                    "the CLI returned no structured_output despite --json-schema"
+                    "the CLI returned no state.structured_output despite --json-schema"
                 )
         else:
             evals_structured_error = None
@@ -651,12 +668,12 @@ class ClaudeCliCognition:
         # the stop-reason decision (so a charge cannot change it) and before the
         # terminal event (so the books are straight by the time the caller sees
         # the result).
-        charge_error = await self._charge_meters(ctx, usage)
+        charge_error = await self._charge_meters(ctx, state.usage)
 
         evals: dict[str, Any] = {
-            "session_id": session_id or "",
-            "cli_duration_ms": duration_ms or 0,
-            "cli_return_code": return_code,
+            "session_id": state.session_id or "",
+            "cli_duration_ms": state.duration_ms or 0,
+            "cli_return_code": return_code if return_code is not None else 0,
         }
         # Bridge agentkit's correlation_id into the final result so downstream
         # observability can join on it (matching the env var we set on the
@@ -666,29 +683,29 @@ class ClaudeCliCognition:
             evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
-        if init_info:
+        if state.init:
             # Startup facts an operator needs when a run behaves oddly: which
             # model actually ran, which MCP servers connected — and which were
             # SKIPPED. ``mcp_server_errors`` / ``plugin_errors`` appear only
             # when non-empty, so their presence is the CI gate the CLI docs
             # recommend.
-            evals["cli_init"] = init_info
-        if api_retries:
+            evals["cli_init"] = state.init
+        if state.api_retries:
             # The CLI retried the provider. A run that took 40s with one API
             # call is explained by this and nothing else in the result.
-            evals["api_retries"] = api_retries
-        if structured_output is not None:
+            evals["api_retries"] = state.api_retries
+        if state.structured_output is not None:
             # The RAW validated dict, alongside the typed ``parsed`` object. A
             # caller that declared no Python type still wants the data.
-            evals["structured_output"] = structured_output
+            evals["structured_output"] = state.structured_output
         if evals_structured_error is not None:
             evals["structured_output_error"] = evals_structured_error
-        if accumulated_thinking:
+        if state.thinking:
             # Reasoning chain from ``thinking`` blocks — separate from
             # ``output`` (the final response). Live consumers already saw
             # each chunk as a ``message_delta``; this is the folded copy for
             # AgentResult callers.
-            evals["thinking"] = accumulated_thinking
+            evals["thinking"] = state.thinking
         if fatal_exc is not None:
             evals["error"] = f"{type(fatal_exc).__name__}: {fatal_exc}"
         if charge_error is not None:
@@ -701,29 +718,17 @@ class ClaudeCliCognition:
             if stderr_text:
                 evals["stderr"] = stderr_text
 
-        yield StreamEvent(
-            "final",
-            usage=usage,
-            result=AgentResult(
-                output=accumulated_text,
-                usage=usage,
-                partial=final_partial,
-                evals=evals,
-                parsed=parsed,
-                # This cognition reports failures as DATA (a terminal event is
-                # guaranteed even when the subprocess never starts), so it is
-                # the one producer that can legitimately stamp ``"failed"``.
-                # Leaving the field at its default made a spawn failure and a
-                # clean success indistinguishable to a typed reader.
-                stop_reason=_cli_stop_reason(final_stop_reason),
-            ),
+        return AgentResult(
+            output=state.text,
+            usage=state.usage,
+            partial=final_partial,
+            evals=evals,
+            parsed=parsed,
+            # This cognition reports failures as DATA (a terminal event is
+            # guaranteed even when the subprocess never starts), so it is
+            # the one producer that can legitimately stamp ``"failed"``.
+            stop_reason=_cli_stop_reason(final_stop_reason),
         )
-        if should_reraise_cancel:
-            # Terminal event delivered; now propagate the cancel so
-            # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
-            # and TaskGroup cancels propagate to siblings.
-            raise asyncio.CancelledError()
-
 
     # ---- helpers ---------------------------------------------------------------------------
 
@@ -995,6 +1000,52 @@ class _CliCall:
 
     ctx: Any
     request: Any = None
+
+
+@dataclass(slots=True)
+class _TurnState:
+    """Everything one turn accumulates from the CLI's stream.
+
+    Extracted so a persistent session and a one-shot drive fold the stream the
+    same way. It is a plain accumulator: no decisions live here, only the
+    "last value wins / text concatenates" rules the payload sequence implies.
+    """
+
+    text: str = ""
+    thinking: str = ""
+    usage: Usage = field(default_factory=Usage)
+    session_id: str | None = None
+    duration_ms: int | None = None
+    is_error: bool = False
+    stop_reason: str | None = None
+    structured_output: Any = None
+    init: dict[str, Any] = field(default_factory=dict)
+    api_retries: list[dict[str, Any]] = field(default_factory=list)
+
+    def fold(self, delta: _EventDelta) -> None:
+        """Apply one payload's state delta. ``None`` means "this payload said
+        nothing about that field", which is why every branch is a guard rather
+        than an assignment."""
+        if delta.text:
+            self.text += delta.text
+        if delta.thinking:
+            self.thinking += delta.thinking
+        if delta.usage is not None:
+            self.usage = delta.usage
+        if delta.session_id is not None:
+            self.session_id = delta.session_id
+        if delta.duration_ms is not None:
+            self.duration_ms = delta.duration_ms
+        if delta.is_error:
+            self.is_error = True
+        if delta.stop_reason is not None:
+            self.stop_reason = delta.stop_reason
+        if delta.structured_output is not None:
+            self.structured_output = delta.structured_output
+        if delta.init:
+            self.init = delta.init
+        if delta.api_retry is not None:
+            self.api_retries.append(delta.api_retry)
 
 
 @dataclass(slots=True)
