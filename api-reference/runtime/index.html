@@ -3099,7 +3099,12 @@ Both trace-side effects are best-effort — they must never break the run.</p>
 
 
 <a href="#agentkit.runtime.EventBus" class="headerlink" title="Anchor link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">EventBus</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">ring_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span> <span class="n">queue_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">256</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">EventBus</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="o">*</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">ring_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">queue_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">closed_memory</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3165,6 +3170,11 @@ event so callers can log or expose the version.</p>
 <em>that</em> subscriber's event to be dropped (logged), not the
 publish itself. The publisher never blocks waiting for a slow
 downstream.</p>
+<p>Publishing to a stream that was previously closed re-opens it
+(<code>reopen=True</code>): a write is an explicit statement that the id
+is live again, and this is the documented "subsequent publish
+creates a fresh channel" behaviour. Subscribe deliberately does
+NOT do this — see <code>_get_or_create_channel</code>.</p>
 
 
     </div>
@@ -3209,6 +3219,13 @@ downstream.</p>
   that has its own baseline snapshot and doesn't want historical
   deltas behind it).</li>
 </ul>
+<p>Subscribing to a stream that is already closed (or that closes
+while this call is attaching) does not block: the iterator
+yields whatever replay slice is still available and then ends,
+so the <code>async for</code> completes normally rather than leaking a
+task waiting for a sentinel that will never arrive. It does not
+re-open the stream either — a subsequent <code>publish</code> is what
+re-opens a stream id.</p>
 <p>The returned iterator's <code>finally</code> block unsubscribes; consumers
 just <code>async for ve in bus.subscribe(...)</code> and break out when
 done.</p>
@@ -3242,9 +3259,16 @@ every subscriber queue (their <code>async for</code> loops exit) and
 drop the channel. Called from the application's terminal phase
 and from <code>shutdown</code>.</p>
 <p>Idempotent — closing an already-closed (or never-opened) stream
-is a no-op. Subsequent <code>publish</code> calls create a fresh channel,
-which is harmless if the application is genuinely past the
-terminal phase (it shouldn't be).</p>
+is a no-op beyond recording the id as closed. That recording is
+unconditional: "closed" is a statement about the stream id, not
+about whether anyone happened to publish to it first, and a
+subscriber arriving afterwards must terminate either way.</p>
+<p>Subsequent <code>publish</code> calls create a fresh channel and clear the
+closed record, which is harmless if the application is genuinely
+past the terminal phase (it shouldn't be). Subsequent
+<code>subscribe</code> calls do <em>not</em> re-open the stream; they terminate
+immediately instead of blocking for a sentinel that will never
+come.</p>
 
 
     </div>
