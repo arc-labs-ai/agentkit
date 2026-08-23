@@ -126,6 +126,22 @@ class Agent:
     max_repairs: int = 1
     cognition: Cognition = field(default_factory=SingleCallCognition)
     memory: Any = None  # MemorySource | None — declared Any to avoid import gravity
+    # Re-run the memory lookup on every turn instead of grounding once.
+    #
+    # Only meaningful with ``memory`` set. It exists on ``Agent`` because
+    # ``_resolve_request_builder`` builds the ``RequestBuilder`` for you, and
+    # without this a caller had to hand-construct the whole builder — prompt,
+    # grounder and all — to flip one bool.
+    #
+    # ``False`` is the default deliberately, and it is a cost decision rather
+    # than an old behaviour. The grounded block lives in the CACHE-STABLE
+    # PREFIX, so re-grounding invalidates it every turn: measured over 20 turns
+    # on a 4k-token prefix, $0.0228 grounded once versus $0.2280 re-grounded —
+    # 10x, forever. The other side is real too: grounding once means turn 20
+    # answers with turn 1's evidence. Leave it ``False`` for a shared corpus (a
+    # handbook, a spec, a codebase digest); set it ``True`` when each question
+    # needs its own retrieval. See ``RequestBuilder.reground_every_turn``.
+    reground_every_turn: bool = False
     # Pre-run trifecta gate. When set, ``RunPolicy.check`` fires ONCE before the
     # first cognition drive so a deny-mode policy short-circuits the run before
     # any LLM call. ``None`` (default) opts out entirely.
@@ -406,9 +422,16 @@ class Agent:
            ``Agent("a", "m")`` still works in tests.
         3. When ``memory`` is set AND no explicit request_builder was
            provided, auto-wire ``memory`` as the grounder via
-           ``as_grounder(memory)``. The default rendering is
-           ``[source] content`` lines — callers wanting custom formatting
-           construct their own RequestBuilder + grounder explicitly.
+           ``as_grounder(memory)``, carrying ``reground_every_turn``
+           through. The default rendering is ``[source] content`` lines —
+           callers wanting custom formatting construct their own
+           RequestBuilder + grounder explicitly.
+
+        Note ``reground_every_turn`` is only forwarded on THIS path. An
+        explicitly wired ``request_builder=`` owns its own setting, because
+        the caller who built it already had the knob in hand and silently
+        overwriting their choice from the Agent would be the more surprising
+        behaviour.
         """
         if self.request_builder is not None:
             return self.request_builder
@@ -422,7 +445,9 @@ class Agent:
             from agentkit.memory import as_grounder
 
             grounder = as_grounder(self.memory)
-        return RequestBuilder(prompt=seed, grounder=grounder)
+        return RequestBuilder(
+            prompt=seed, grounder=grounder, reground_every_turn=self.reground_every_turn
+        )
 
     # ---- span attributes (OTel GenAI v1.41 alignment) --------------------------------------
 

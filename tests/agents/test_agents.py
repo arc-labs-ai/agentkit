@@ -537,3 +537,75 @@ def test_workflow_result_does_not_alias_the_engines_done_map() -> None:
 
     done["draft"] = "engine kept going"  # legal: the engine owns `done`
     assert r.outputs == {"draft": {"body": "x"}}
+
+
+# ── reground_every_turn is reachable from Agent ────────────────────────────
+
+
+def test_agent_forwards_reground_every_turn_to_the_builder_it_makes():
+    """`Agent(memory=...)` builds the `RequestBuilder` for you, so before this
+    the flag was unreachable on the ergonomic path: flipping one bool meant
+    hand-constructing the whole builder — prompt, grounder and all.
+
+    The default stays `False` for a cost reason, not an inherited one. The
+    grounded block sits in the cache-stable PREFIX, so re-grounding invalidates
+    it every turn — measured over 20 turns on a 4k-token prefix, $0.0228 versus
+    $0.2280, 10x forever. Flipping the default would have silently re-priced
+    every auto-wired agent.
+    """
+    assert Agent(name="a", model="m").reground_every_turn is False
+    assert Agent(name="a", model="m")._resolve_request_builder().reground_every_turn is False
+
+    on = Agent(name="a", model="m", reground_every_turn=True)
+    assert on._resolve_request_builder().reground_every_turn is True
+
+
+def test_an_explicit_request_builder_keeps_its_own_reground_setting():
+    """POSITIVE CONTROL. A caller who hand-built a `RequestBuilder` already had
+    the knob; the Agent's field must not silently overwrite their choice. Only
+    the auto-wired path forwards it."""
+    from agentkit.capabilities.request_builder import RequestBuilder
+    from agentkit.prompts import Prompt
+
+    mine = RequestBuilder(
+        prompt=Prompt(id="p", version="1", template="t"), reground_every_turn=True
+    )
+    agent = Agent(name="a", model="m", request_builder=mine, reground_every_turn=False)
+    assert agent._resolve_request_builder() is mine
+    assert agent._resolve_request_builder().reground_every_turn is True
+
+
+def test_the_flag_actually_changes_how_often_memory_is_consulted():
+    """Pins BEHAVIOUR, not the field. A forwarding bug that set the attribute
+    but never reached the grounder would pass the tests above."""
+    import asyncio
+
+    from agentkit.context import WorkingContext
+    from agentkit.memory.base import MemoryItem
+
+    class _CountingMemory:
+        name = "counter"
+
+        def __init__(self):
+            self.calls = 0
+
+        async def query(self, query, *, k, ctx, where=None):
+            self.calls += 1
+            return [MemoryItem(content=f"fact {self.calls}", source="m", score=1.0)]
+
+        async def write(self, items, *, ctx):
+            return None
+
+    def _turns(agent, n):
+        mem = agent.memory
+        builder = agent._resolve_request_builder()
+        wc = WorkingContext()
+        ctx = make_test_ctx(llm=FakeLLM("ok"))
+        for i in range(n):
+            asyncio.run(builder.build(f"q{i}", wc, ctx))
+        return mem.calls
+
+    once = Agent(name="a", model="m", memory=_CountingMemory())
+    every = Agent(name="a", model="m", memory=_CountingMemory(), reground_every_turn=True)
+    assert _turns(once, 3) == 1, "default must ground once for the whole run"
+    assert _turns(every, 3) == 3, "the flag must reach the grounder, not just the field"
