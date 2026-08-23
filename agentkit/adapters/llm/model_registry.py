@@ -308,10 +308,9 @@ class ModelRegistry:
     def register_rule(self, rule: Rule) -> ModelRegistry:
         """Add a name→provider rule, consulted when no ``ModelEntry`` matches.
 
-        Rules run in registration order, most-recently-added LAST, so the
-        built-in rules act as the fallback and an application's rule can be
-        made to win by registering a more specific one. A rule returns
-        ``None`` to abstain.
+        The most-recently-added rule wins: the built-in rules act as the
+        fallback, and an application's rule (registered after them) takes
+        precedence. A rule returns ``None`` to abstain.
 
             reg.register_rule(lambda n: "openai" if n.startswith("acme-") else None)
         """
@@ -333,12 +332,26 @@ class ModelRegistry:
 
         A registered ``ModelEntry`` wins over any rule — an explicit row is
         always more authoritative than a pattern.
+
+        Rules are the OUTER loop, most-recently-registered first: each rule
+        sees EVERY normalised candidate before the next rule is consulted.
+        Iterating candidates outermost meant the first candidate decided the
+        answer, so the coarsest rule that matched the raw name won and the
+        later, more specific rules never saw the bare name at all — measured:
+        ``provider_for('anthropic/claude-sonnet-9')`` returned ``openrouter``
+        because ``by_openrouter_prefix`` matched the slash before
+        ``by_family`` was offered ``claude-sonnet-9``, contradicting both
+        ``register_rule``'s promise and ``_builtin_rules``' own comment.
+        Reversing the rule order is the short-circuiting form of "run every
+        rule, last non-``None`` wins", which is what :meth:`register_rule`
+        documents.
         """
         entry = self.entry_for(model)
         if entry is not None:
             return entry.provider
-        for candidate in normalize_model_name(model):
-            for rule in self._rules:
+        candidates = normalize_model_name(model)
+        for rule in reversed(self._rules):
+            for candidate in candidates:
                 provider = rule(candidate)
                 if provider is not None:
                     return provider
@@ -714,8 +727,12 @@ def _builtin_rules() -> list[Rule]:
         return None
 
     # ``by_family`` last so it wins over the coarse slash rule for a name like
-    # "anthropic/claude-sonnet-4-6" — see ``provider_for``'s iteration order,
-    # which tries the bare name too.
+    # "anthropic/claude-sonnet-9" — ``provider_for`` consults rules
+    # most-recently-registered first and offers each one every normalised
+    # candidate, so ``by_family`` gets to see the bare "claude-sonnet-9"
+    # before ``by_openrouter_prefix`` is asked about the slash. A vendor we do
+    # NOT serve directly ("meta-llama/llama-4") still falls through to
+    # OpenRouter, which is exactly what that rule's comment claims.
     return [by_openrouter_prefix, by_family]
 
 

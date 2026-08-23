@@ -5,6 +5,8 @@ top-level field, content is blocks, prompt caching is `cache_control` on a block
 
 from __future__ import annotations
 
+import json
+import warnings
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from typing import Any
@@ -49,6 +51,59 @@ def _to_tool(schema: Any) -> dict[str, Any]:
     }
 
 
+def _response_format_instruction(response_format: Any) -> str | None:
+    """Translate an OpenAI-style ``response_format`` into an Anthropic system instruction.
+
+    The Messages API has NO ``response_format`` parameter. This adapter used to accept one and
+    DROP it: measured, the request payload keys were
+    ``['max_tokens', 'messages', 'model', 'temperature']`` — no trace of the caller's contract,
+    no error, and a caller that asked for JSON got prose. That silence is the bug.
+
+    Two honest options existed — translate, or refuse. Refusing outright would break callers that
+    work today (``capabilities/eval/base.py`` sends ``{"type": "json_object"}`` to whatever judge
+    model is wired, Anthropic included), so shapes with a faithful prompt-level equivalent are
+    TRANSLATED into a system instruction, and the translation announces itself once per client via
+    :meth:`AnthropicLLM._warn_prompt_level_json` because a prompt is best-effort where OpenAI's
+    ``strict`` schema is server-enforced. Anything we cannot translate is REFUSED loudly.
+
+    Returns ``None`` when nothing needs to be added (no format requested, or plain ``text``,
+    which is already the default).
+    """
+    if response_format is None:
+        return None
+    if not isinstance(response_format, dict):
+        raise ValueError(
+            "Anthropic has no response_format parameter; this adapter translates the OpenAI-style "
+            f"dict shapes {{'type': 'text'|'json_object'|'json_schema'}} and cannot translate "
+            f"{response_format!r}. Drop it, or use tools= for a schema-shaped answer."
+        )
+    kind = response_format.get("type")
+    if kind == "text":
+        return None  # already the default — nothing to say
+    if kind == "json_object":
+        return (
+            "Respond with a single valid JSON object and nothing else: "
+            "no prose before or after it, and no markdown code fences."
+        )
+    if kind == "json_schema":
+        schema = (response_format.get("json_schema") or {}).get("schema")
+        if schema is None:
+            raise ValueError(
+                "response_format {'type': 'json_schema'} needs json_schema.schema; got "
+                f"{response_format!r}."
+            )
+        return (
+            "Respond with a single valid JSON object and nothing else: no prose before or after "
+            "it, and no markdown code fences. It must validate against this JSON Schema:\n"
+            f"{json.dumps(schema, sort_keys=True)}"
+        )
+    raise ValueError(
+        f"Anthropic has no response_format parameter and response_format type {kind!r} has no "
+        "prompt-level translation. Use {'type': 'json_object'} or {'type': 'json_schema'}, or "
+        "drop the parameter and use tools= for a schema-shaped answer."
+    )
+
+
 class AnthropicLLM(HttpLLM):
     def __init__(
         self,
@@ -62,6 +117,34 @@ class AnthropicLLM(HttpLLM):
         super().__init__(api_key=api_key, base_url=base_url, **kw)
         self._version = version
         self._default_max_tokens = default_max_tokens
+        # One-shot latch for the response_format downgrade notice. Per-instance (like
+        # ``ModelRegistry._warned``) so a test can observe it on a fresh client and so a
+        # per-turn agent loop doesn't emit the same warning on every call.
+        self._warned_response_format = False
+
+    def _warn_prompt_level_json(self) -> None:
+        if self._warned_response_format:
+            return
+        self._warned_response_format = True
+        warnings.warn(
+            "Anthropic has no response_format parameter: this client translated it into a system "
+            "instruction, which the model follows best-effort rather than the provider enforcing "
+            "it. Validate the output (Agent(output=...) does) or use tools= for a schema-shaped "
+            "answer. Previously this parameter was accepted and silently dropped.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    def _system_prompt(self, messages: Any, response_format: Any) -> str:
+        """The payload's ``system`` text: the flattened system turns, plus the translated
+        ``response_format`` instruction when one was requested (Anthropic has no such field —
+        see :func:`_response_format_instruction`)."""
+        system = "\n\n".join(m.content for m in messages if m.role == "system")
+        instruction = _response_format_instruction(response_format)
+        if instruction is None:
+            return system
+        self._warn_prompt_level_json()
+        return f"{system}\n\n{instruction}" if system else instruction
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -101,7 +184,7 @@ class AnthropicLLM(HttpLLM):
         cache_hint: Any = None,
     ) -> LLMResult:
         model = model or self._default_model
-        system = "\n\n".join(m.content for m in messages if m.role == "system")
+        system = self._system_prompt(messages, response_format)
         payload: dict[str, Any] = {
             "model": model,
             "temperature": temperature,
@@ -161,7 +244,7 @@ class AnthropicLLM(HttpLLM):
         counts arrive split across `message_start` (input) and `message_delta` (output) — emitted on the
         final delta."""
         model = model or self._default_model
-        system = "\n\n".join(m.content for m in messages if m.role == "system")
+        system = self._system_prompt(messages, response_format)
         payload: dict[str, Any] = {
             "model": model,
             "temperature": temperature,

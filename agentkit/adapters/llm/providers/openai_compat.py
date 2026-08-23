@@ -52,12 +52,20 @@ def _to_tool(schema: Any) -> dict[str, Any]:
 
 
 def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
+    """Parse the non-streamed `tool_calls` array.
+
+    When the provider omits an id, the fallback is the POSITION, never the tool name — the exact
+    rule `_frag_to_toolcall` states for the streamed path, which this function contradicted.
+    Measured: two parallel calls to the same tool with no provider id produced ids
+    `['search', 'search']`. One id for two calls means the `tool` result messages keyed by
+    `tool_call_id` collide, so one tool's answer silently overwrites the other's and the model is
+    told a result it never asked for."""
     out: list[ToolCall] = []
-    for tc in message.get("tool_calls") or ():
+    for i, tc in enumerate(message.get("tool_calls") or ()):
         fn = tc.get("function", {})
         out.append(
             ToolCall(
-                id=str(tc.get("id") or fn.get("name") or ""),
+                id=str(tc.get("id") or f"call_{i}"),
                 name=fn.get("name", ""),
                 arguments=coerce_tool_args(fn.get("arguments")),
             )
@@ -184,6 +192,7 @@ class OpenAICompatibleLLM(HttpLLM):
 
         served_model, finish, usage = model, None, None
         frags: dict[int, dict[str, Any]] = {}  # tool-call fragments by index
+        open_slot = 0  # slot a fragment continues when the provider sends no `index`
         async for ev in self._stream_events("/chat/completions", payload):
             # See ``raise_if_error_frame``: an in-band error arrives inside a
             # 200 response and otherwise ends the stream as a complete answer.
@@ -197,7 +206,19 @@ class OpenAICompatibleLLM(HttpLLM):
                         text=delta["content"], model=served_model, provider="openai_compatible"
                     )
                 for tc in delta.get("tool_calls") or ():
-                    frag = frags.setdefault(tc.get("index", 0), {"id": "", "name": "", "args": ""})
+                    idx = tc.get("index")
+                    if idx is None:
+                        # `index` is how the spec tells parallel calls apart, and defaulting a
+                        # missing one to 0 MERGED them: measured, two index-less fragments naming
+                        # two distinct calls collapsed to one, `[('a2', 'search')]` instead of two.
+                        # A fragment that carries an id or a name STARTS a call; one carrying only
+                        # argument text continues the call most recently opened.
+                        if tc.get("id") or (tc.get("function") or {}).get("name") or not frags:
+                            open_slot = max(frags) + 1 if frags else 0
+                        idx = open_slot
+                    else:
+                        open_slot = idx
+                    frag = frags.setdefault(idx, {"id": "", "name": "", "args": ""})
                     if tc.get("id"):
                         frag["id"] = tc["id"]
                     fn = tc.get("function") or {}

@@ -436,3 +436,56 @@ def test_explicit_factories_are_untouched(monkeypatch) -> None:
         monkeypatch.delenv(var, raising=False)
     # No environment at all, explicit key — still works exactly as before.
     assert claude(api_key=SECRET).__class__.__name__ == "Chat"
+
+
+# ── rule ordering: specific beats coarse, latest beats built-in ─────────────
+
+
+def test_a_family_rule_beats_the_coarse_openrouter_slash_rule(reg: ModelRegistry) -> None:
+    """Regression: ``provider_for`` iterated CANDIDATES outermost, so the first candidate settled
+    the answer and ``by_openrouter_prefix`` matched the slash before ``by_family`` was ever
+    offered the bare name. Measured: ``provider_for('anthropic/claude-sonnet-9') = openrouter``,
+    contradicting ``_builtin_rules``' own comment ("``by_family`` last so it wins over the coarse
+    slash rule") and routing an unreleased Claude through a provider nobody asked for."""
+    assert reg.provider_for("anthropic/claude-sonnet-9") == "anthropic"
+    assert reg.provider_for("openai/gpt-9-mini") == "openai"
+
+
+def test_a_vendor_prefix_we_do_not_serve_still_routes_to_openrouter(reg: ModelRegistry) -> None:
+    """POSITIVE CONTROL. ``by_openrouter_prefix`` exists for exactly this — "if the vendor half
+    isn't one we serve directly, OpenRouter is the plausible route". A "fix" that simply removed
+    or demoted the rule into never firing fails here."""
+    assert reg.provider_for("meta-llama/llama-4-scout") == "openrouter"
+    assert reg.provider_for("qwen/qwen3-max") == "openrouter"
+
+
+def test_bare_names_are_unaffected_by_the_rule_ordering(reg: ModelRegistry) -> None:
+    """Positive control: a name with no slash only ever had one rule to match. It must still
+    resolve, and still resolve to the same provider."""
+    assert reg.provider_for("claude-sonnet-9") == "anthropic"
+    assert reg.provider_for("gpt-9-mini") == "openai"
+    assert reg.provider_for("deepseek-v9") == "deepseek"
+    assert reg.provider_for("mystery-model") is None
+
+
+def test_the_most_recently_registered_rule_wins(reg: ModelRegistry) -> None:
+    """``register_rule`` promises "the built-in rules act as the fallback and an application's
+    rule ... can be made to win". Under the old first-match-in-registration-order iteration the
+    built-ins were consulted first, so that promise was never kept for any name they claimed."""
+    reg.register_rule(lambda name: "myrouter" if name.startswith("claude-") else None)
+    assert reg.provider_for("claude-mystery") == "myrouter"
+    assert reg.provider_for("gpt-mystery") == "openai"  # untouched by the new rule
+
+
+def test_a_rule_that_abstains_defers_to_the_next_one(reg: ModelRegistry) -> None:
+    """Edge: returning ``None`` means "no opinion", not "no provider". An abstaining application
+    rule must not shadow the built-ins."""
+    reg.register_rule(lambda name: None)
+    assert reg.provider_for("claude-sonnet-9") == "anthropic"
+
+
+def test_a_registered_row_still_beats_every_rule(reg: ModelRegistry) -> None:
+    """Positive control: rule ordering is only consulted when nothing is declared. An explicit
+    row remains the most authoritative answer."""
+    reg.register_rule(lambda name: "myrouter")  # claims everything
+    assert reg.provider_for("anthropic/claude-sonnet-4-6") == "anthropic"

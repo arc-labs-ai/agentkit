@@ -76,27 +76,43 @@ def _zero_cost(model: Any, in_tok: int, out_tok: int) -> float:
     return 0.0
 
 
+def _first_int(obj: Any, *keys: str) -> int:
+    """First truthy value among `keys`, read dict- OR attribute-wise, as an int.
+
+    `getattr(raw, "usage", {})` followed by `usage.get(...)` had two failure modes, both
+    measured: a plain-dict `usage` was never even reached (see `_duck_to_result`), and a real
+    SDK response object CRASHED with `AttributeError: 'SdkUsage' object has no attribute 'get'`
+    — a hard failure in a coercion helper whose whole contract is best-effort duck typing.
+    Reading each key through `_get` degrades to 0 for both shapes instead."""
+    for key in keys:
+        value = _get(obj, key)
+        if value:
+            return int(value)
+    return 0
+
+
 def _duck_to_result(raw: Any, cost_fn: Callable[[Any, int, int], float] = _zero_cost) -> LLMResult:
+    """Coerce a duck-typed provider response into an `LLMResult`.
+
+    Every field is read with `_get`, which handles BOTH a mapping and an object. It used to use
+    bare `getattr`, so a dict-shaped response — the single most common shape for an injected
+    `CallableLLM` fn — matched nothing and coerced to an empty result: measured, a fn returning
+    `{"content": "the answer is 42", "usage": {...}}` produced `content='' usage=Usage(0, 0, 0.0)`.
+    Content, tool calls, tokens and cost were all lost with no exception, so the agent read the
+    empty string as the model's answer and the call was billed as free."""
     if isinstance(raw, LLMResult):
         return raw
-    usage = getattr(raw, "usage", {}) or {}
-    in_tok = int(
-        usage.get("input_tokens")
-        or usage.get("prompt_tokens")
-        or usage.get("prompt_token_count")
-        or 0
-    )
-    out_tok = int(
-        usage.get("output_tokens")
-        or usage.get("completion_tokens")
-        or usage.get("candidates_token_count")
-        or 0
-    )
-    model = getattr(raw, "model", None)
+    usage = _get(raw, "usage")
+    in_tok = _first_int(usage, "input_tokens", "prompt_tokens", "prompt_token_count")
+    out_tok = _first_int(usage, "output_tokens", "completion_tokens", "candidates_token_count")
+    model = _get(raw, "model")
     return LLMResult(
-        content=getattr(raw, "content", "") or "",
+        content=_get(raw, "content") or "",
         model=model,
-        provider=getattr(raw, "provider", None),
-        finish_reason=getattr(raw, "finish_reason", None),
+        provider=_get(raw, "provider"),
+        finish_reason=_get(raw, "finish_reason"),
         usage=Usage(in_tok, out_tok, cost_fn(model, in_tok, out_tok)),
+        # `CallableLLM.chat` back-fills these too; doing it here means the `complete()` path
+        # (which never called `_extract_tool_calls`) stops dropping a tool-calling response.
+        tool_calls=_extract_tool_calls(raw),
     )
