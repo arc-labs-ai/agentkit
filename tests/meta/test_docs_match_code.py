@@ -167,7 +167,10 @@ KNOWN_UNDOCUMENTED: frozenset[str] = frozenset({
     "DataSignal", "ErrorClass", "FetchResponse", "FrozenContext", "LastNTurns",
     "MutationJournal", "NoopMetrics", "NoopObserver", "NoopReplayStore",
     "OutputCoercionError", "PrefixContext", "ProviderAuthError", "ReplayRecord",
-    "ReplayStore", "Reranker", "RoleFilter", "SearchHit", "Since",
+    # "ReplayStore" ratcheted off: the replay-store section in
+    # docs/api-reference/adapters.md now names the protocol and its put()
+    # contract while documenting AGENTKIT_REPLAY_DIR.
+    "Reranker", "RoleFilter", "SearchHit", "Since",
     "StoreUnavailable", "Tagged", "TiktokenCounter", "ToolShapeError",
     "TraceIdRatioSampler", "VersionedEvent", "collect_one", "compose_failures",
     "render_result", "score_sort_rerank",

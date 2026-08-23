@@ -61,6 +61,43 @@ answer. See the
       show_source: false
       members_order: source
 
+## Replay store
+
+`FileReplayStore` keeps the full LLM request/response for a span on
+disk, keyed by span id, so the trace stays the index and the payloads
+live outside the span's attribute budget.
+
+Configuration, in precedence order:
+
+1. An explicit `FileReplayStore(root=...)`.
+2. `AGENTKIT_REPLAY_DIR` — the env var `FileReplayStore.from_env()`
+   reads. An empty value counts as unset.
+3. `FileReplayStore.default()` — `$XDG_DATA_HOME/agentkit/replays`, or
+   `~/.local/share/agentkit/replays` when `XDG_DATA_HOME` is unset.
+
+!!! warning "`RIO_REPLAY_DIR` is deprecated"
+
+    `RIO_REPLAY_DIR` and the old `~/.rio/replays` default date from
+    before this package was `agentkit`. Both still work. The env var
+    is honoured only when `AGENTKIT_REPLAY_DIR` is absent and emits a
+    `DeprecationWarning`; when both are set, the `AGENTKIT_` one wins
+    and the stale one is reported through the logger.
+
+    `default()` will not orphan replays you already have: if the new
+    directory does not exist yet and the old one does, it keeps using
+    the OLD directory and logs how to migrate (`mv ~/.rio/replays
+    ~/.local/share/agentkit/replays`). It never moves your files for
+    you. Once the new directory exists, the old path is not consulted
+    again.
+
+Writes are best-effort by contract — `ReplayStore.put` must never
+raise into a run — but never silent: a dropped write logs (once per
+failure class, to keep a full disk from flooding the log) and
+increments `FileReplayStore.dropped_writes`. Read failures that are
+not ordinary cache misses increment `failed_reads`. Alert on those
+counters if replay data matters to you; a miss on its own is normal
+and is neither logged above `DEBUG` nor counted.
+
 ::: agentkit.adapters.replay
     options:
       show_root_heading: false
