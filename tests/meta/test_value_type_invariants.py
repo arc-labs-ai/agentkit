@@ -73,22 +73,27 @@ import agentkit
 #
 # SHRINK ONLY. Deleting an entry is progress; adding one needs a reason.
 KNOWN_BROKEN: dict[str, str] = {
-    "AgentResult": "evals: dict[str, Any]",
-    "ChatRequest": "messages: list[Message], tools: list[ToolSchema], response_format: dict",
-    "Checkpoint": "state + metadata: dict[str, Any] — a DURABLE record whose state is rewritable",
-    "ContextDiff": "carries list payloads describing a diff",
-    "FetchResponse": "headers/body payload",
-    "MemoryItem": "metadata: dict[str, Any]",
-    # Found BY this ratchet, not before it: `payload: Any` hashes fine when a
-    # synthesizer puts a string there and fails the moment it holds a dict —
-    # which is what observations actually carry. That is the vacuous-pass trap
-    # this file's representative-payload rule exists to defeat.
-    "Observation": "payload: Any — in practice a dict",
-    "SearchHit": "metadata: dict[str, Any]",
-    "Skill": "holds unhashable configuration",
-    "ToolRequest": "arguments payload",
-    "ToolSchema": "parameters: dict[str, Any] — the JSON Schema body",
-    "WorkflowResult": "per-node result payloads",
+    # EMPTY, and that is the point of recording it.
+    #
+    # This started at twelve entries, every one the same shape: a `frozen=True`
+    # dataclass carrying a mutable dict/list payload, unhashable in fact while
+    # being reasoned about as a value. All twelve were fixed the same way — hash
+    # an identity SUBSET, leave `__eq__` untouched — after checking case by case
+    # that nothing in the framework mutated the payload in place.
+    #
+    # The payloads were deliberately NOT frozen. `Checkpoint.state` is
+    # `json.dumps`'d into a JSONB column, `AgentResult.evals` and memory
+    # metadata are serialised and written into after construction, and a
+    # `MappingProxyType` is neither JSON-serialisable nor compatible with
+    # `dataclasses.asdict`. Freezing them would have traded an inconvenience for
+    # a data-path break. That mutability is a separate, still-open question —
+    # `cp.state["turn"] = 99` does still rewrite a durable record through a
+    # "frozen" field — and `tests/kernel/test_value_type_hashability.py`
+    # guards the plain-dict shape so a future attempt to freeze them trips a
+    # test rather than the Postgres adapter in production.
+    #
+    # Adding an entry here needs a reason in review; the entry must say which
+    # field forces it. Deleting one is always progress.
 }
 
 # Types whose representative instance cannot be synthesized from annotations
@@ -107,6 +112,11 @@ FACTORIES: dict[str, Any] = {
     # exported as classes, so there is nothing to introspect.
     "Decision": lambda: agentkit.Decision(kind="approve"),
     "Observation": lambda: agentkit.Observation(kind="tool_result", payload={"k": "v"}),
+    # `WorkflowResult.stop_reason` is a Literal alias too, and it has no
+    # default, so synthesis cannot reach the type at all.
+    "WorkflowResult": lambda: agentkit.WorkflowResult(
+        outputs={"node": "value"}, usage=agentkit.Usage(), steps=1, stop_reason="complete"
+    ),
     # `VersionedEvent` is generic over the application's event type.
     "VersionedEvent": lambda: agentkit.VersionedEvent(version=1, event="e"),
 }
@@ -285,8 +295,20 @@ def test_a_known_broken_type_is_still_broken(name: str) -> None:
         pytest.fail(f"{name} is in KNOWN_BROKEN but is no longer a public frozen dataclass")
     try:
         inst = _build(cls)
+    except _Unsynthesizable as e:
+        # NOT "still broken" — "never actually checked". Swallowing this is how
+        # `WorkflowResult` sat on the allowlist looking verified while its hash
+        # was never once called: `stop_reason` is a Literal alias with no
+        # default, so `_build` raised and this test read the raise as proof of
+        # brokenness. An allowlist entry that cannot be evaluated is worse than
+        # no entry, because it looks like coverage.
+        pytest.fail(
+            f"{name} is on KNOWN_BROKEN but cannot be built (field type {e}), so "
+            f"its entry has never been verified. Register a FACTORIES entry."
+        )
+    try:
         hash(inst)
-    except (TypeError, _Unsynthesizable):
+    except TypeError:
         return
     pytest.fail(
         f"{name} is hashable now — delete it from KNOWN_BROKEN "

@@ -196,6 +196,12 @@ PARSED_TESTS = (
     "tests/middlewares/test_memoize_preserves_parsed.py",
 )
 MAPPING_TESTS = ("tests/adapters/test_callable_llm_mapping.py",)
+PORTS_TESTS = ("tests/kernel/test_value_type_hashability.py",)
+KERNELTYPE_TESTS = ("tests/kernel/test_kernel.py",)
+RESULT_TESTS = ("tests/agents/test_agents.py",)
+MEMITEM_TESTS = ("tests/memory/test_memory_item.py",)
+SKILL_TESTS = ("tests/skills/test_skill.py",)
+CTXDIFF_TESTS = ("tests/context/test_context_working.py",)
 VALUETYPE_TESTS = (
     "tests/kernel/test_kernel.py",
     "tests/context/test_context_working.py",
@@ -204,6 +210,102 @@ VALUETYPE_TESTS = (
 REPLAY_TESTS = ("tests/adapters/test_replay_file.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="hashable",
+        why="AgentResult hashes free-form evals, so the framework's most-returned type breaks again",
+        path="agentkit/agents/result.py",
+        before="        return hash((self.output, self.usage, self.partial, self.prompt_version, self.stop_reason))",
+        after="        return hash((self.output, self.usage, self.partial, str(self.evals)))",
+        tests=RESULT_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="WorkflowResult keys on insertion ORDER, so two equal results hash differently",
+        path="agentkit/agents/result.py",
+        before="        return hash((frozenset(self.outputs), self.usage, self.steps, self.stop_reason))",
+        after="        return hash((tuple(self.outputs), self.usage, self.steps, self.stop_reason))",
+        tests=RESULT_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="MemoryItem folds backend metadata into identity, so one passage lands in two buckets",
+        path="agentkit/memory/base.py",
+        before="        return hash((self.content, self.source, self.score))",
+        after="        return hash((self.content, self.source, self.score, str(self.metadata)))",
+        tests=MEMITEM_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="Skill hashes its cognition, which is a mutable dataclass with __hash__ = None",
+        path="agentkit/skills/skill.py",
+        before="        return hash((self.name, self.description, self.prompt, self.model))",
+        after="        return hash((self.name, self.description, self.prompt, self.model, self.cognition))",
+        tests=SKILL_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ContextDiff keys on insertion ORDER, breaking the hash invariant for equal diffs",
+        path="agentkit/context/context.py",
+        before="                frozenset(self.scratchpad_changes),",
+        after="                tuple(self.scratchpad_changes),",
+        tests=CTXDIFF_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="Checkpoint hashes its mutable state, so a durable record is unhashable again",
+        path="agentkit/kernel/ports.py",
+        before="        return hash((self.run_id, self.version))",
+        after="        return hash((self.run_id, self.version, tuple(self.state)))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="SearchHit folds query-dependent score into identity, so one document lands in two buckets",
+        path="agentkit/kernel/ports.py",
+        before="        return hash((self.url, self.title))",
+        after="        return hash((self.url, self.title, self.score))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="FetchResponse hashes the body, making hash O(page size) on every set insert",
+        path="agentkit/kernel/ports.py",
+        before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
+        after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="Observation hashes its payload, so it is unhashable the moment it carries a dict",
+        path="agentkit/kernel/observation.py",
+        before="        return hash((self.run_id, self.agent, self.seq, self.ts, self.kind))",
+        after="        return hash((self.run_id, self.agent, self.seq, self.ts, self.kind, self.payload))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ToolSchema hashes the JSON Schema body, so every non-empty schema is unhashable",
+        path="agentkit/kernel/types.py",
+        before="        return hash((self.name, self.description))",
+        after="        return hash((self.name, self.description, str(self.parameters)))",
+        tests=KERNELTYPE_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ChatRequest hashes the whole transcript, making the hash O(turns) in an agent loop",
+        path="agentkit/kernel/types.py",
+        before="        return hash((self.model, self.temperature, self.max_tokens, len(self.messages)))",
+        after="        return hash((self.model, self.temperature, self.max_tokens, tuple(self.messages)))",
+        tests=KERNELTYPE_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ToolRequest hashes its decoded-JSON arguments, so a nested payload is unhashable",
+        path="agentkit/kernel/types.py",
+        before="        return hash((self.name, self.side_effecting, self.url_arg))",
+        after="        return hash((self.name, self.side_effecting, self.url_arg, str(self.arguments)))",
+        tests=KERNELTYPE_TESTS,
+    ),
     Mutant(
         tag="valuetype",
         why="ToolCall is unhashable again, so union merge dies on every tool-using agent",
