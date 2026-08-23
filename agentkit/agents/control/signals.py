@@ -13,9 +13,24 @@ The common envelope (``correlation_id``, ``causation_id``,
 ``sender_id``, ``timestamp_us``) lets a signal stream be replayed
 or audited as a cascade graph.
 
+A signal is a VALUE, and that has to hold for its payload too, not
+just its fields. ``frozen=True`` alone only blocks reassignment: it
+left ``done.metrics["used_cost"] = 999.0`` and
+``done.final_delta.append(...)`` working on an already-emitted
+signal, and left the sender's own list aliased into it, so appending
+to that list after emit retroactively rewrote a signal the parent
+had already absorbed. Either one makes the audit trail above a
+claim rather than a guarantee. So every collection payload is
+COPIED and FROZEN at construction — see
+``SignalEnvelope.__post_init__``. Passing a plain ``list`` / ``dict``
+is still the ergonomic; you just get back a ``Sequence`` / ``Mapping``
+that nobody downstream can edit.
+
 Projects subclass ``ControlSignal`` / ``DataSignal`` for
 domain-specific findings and parameterise the generics
 (``RedirectSignal[MySnap]``, ``ContextUpdateSignal[MyMutation]``).
+Mark your own collection fields with ``metadata=FROZEN_PAYLOAD`` to
+get the same treatment.
 
 Stdlib-only (no Pydantic — agentkit is zero-dep). Validation lives
 at the agent boundary.
@@ -23,8 +38,10 @@ at the agent boundary.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Generic, TypeVar
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, fields
+from types import MappingProxyType
+from typing import Any, Final, Generic, TypeVar
 
 # ── Type variables ──────────────────────────────────────────────────
 
@@ -38,6 +55,82 @@ MutationT = TypeVar("MutationT")
 Defined by the agent project (typically a discriminated union of
 domain mutation kinds, each stamped with ``agent_id`` for
 attribution that survives merges)."""
+
+
+# ── Payload freezing ────────────────────────────────────────────────
+
+_PAYLOAD_KEY: Final = "agentkit.frozen_payload"
+
+FROZEN_PAYLOAD: Final[Mapping[str, bool]] = MappingProxyType({_PAYLOAD_KEY: True})
+"""Field metadata marking a field as a COLLECTION payload that the
+envelope copies and freezes at construction. Subclasses opt their own
+payload fields in the same way the built-ins do::
+
+    @dataclass(slots=True, frozen=True)
+    class FindingSignal(DataSignal):
+        urls: Sequence[str] = field(
+            default_factory=tuple, hash=False, metadata=FROZEN_PAYLOAD
+        )
+
+Opt-in per field, rather than "freeze every list/dict-valued field
+found", because ``StateT`` and ``MutationT`` are OPAQUE user types and
+are very often plain dicts. Freezing ``RedirectSignal.new_state``
+because it happened to be a dict would hand the child a
+``mappingproxy`` where it passed a dict — ``json.dumps`` and
+``**state`` both stop working — in exchange for a guarantee the caller
+never asked for. The framework freezes the containers it defines and
+leaves the user's own objects alone."""
+
+_PAYLOAD_FIELDS: dict[type[Any], tuple[str, ...]] = {}
+"""Per-class cache of the marked field names. ``fields()`` rebuilds a
+tuple and re-filters metadata on every call, and signals are
+constructed in the emit path of an ACK-less stream: on the 5-field
+envelope that cost 3.00 µs/construction vs 1.89 µs cached (1.6×).
+Keyed by the concrete class, so subclasses each get their own entry."""
+
+
+def _freeze_payload(owner: str, name: str, value: Any) -> Any:
+    """Copy ``value``, then return a read-only view of the copy.
+
+    The copy is the half that is easy to skip and the half that
+    matters most: freezing the caller's own object in place would not
+    un-alias it, and measured, the aliasing bug is the nastier of the
+    two — a sender that keeps appending to the list it emitted edits
+    signals the receiver already processed, with no traceable moment
+    where that happened.
+
+    Shallow by design. ``tuple(value)`` / ``dict(value)`` freeze the
+    CONTAINER; a ``list[dict]`` payload still hands out mutable dicts,
+    and a mutation object with a mutable attribute is still mutable.
+    Going deeper means recursively rewriting ``MutationT`` instances
+    the framework knows nothing about — it would have to guess a
+    reconstructor for every user type, and would silently swap
+    dataclasses for copies, breaking identity comparisons and any
+    ``__post_init__`` invariants those types maintain. The container is
+    what the protocol owns and what the audit trail depends on; the
+    contents belong to the project, which is where a deep-immutability
+    policy can actually be enforced (frozen mutation dataclasses).
+    """
+    if isinstance(value, Mapping):
+        return MappingProxyType(dict(value))
+    if isinstance(value, (str, bytes)):
+        # Under the old ``options: list[str]`` annotation, ``options="retry"``
+        # was a type error the checker caught. ``Sequence[str]`` accepts a bare
+        # ``str``, and tuple() would silently explode it into
+        # ``('r','e','t','r','y')`` — five options, none of them real. Refusing
+        # keeps the widened annotation from costing a check we used to get.
+        raise TypeError(
+            f"{owner}.{name} takes a sequence of items, not a bare "
+            f"{type(value).__name__} ({value!r:.40}) — wrap it: [{value!r:.30}]"
+        )
+    return tuple(value)
+
+
+def _rebuild_signal(cls: type[Any], values: dict[str, Any]) -> Any:
+    """Module-level factory for ``SignalEnvelope.__reduce__`` — pickle
+    needs a global to name, and it must work for user subclasses too,
+    hence the class travelling as an argument."""
+    return cls(**values)
 
 
 # ── Common envelope ─────────────────────────────────────────────────
@@ -60,12 +153,89 @@ class SignalEnvelope:
       leaves it unset at construction.
     - ``timestamp_us``   — monotonic microseconds since channel
       start. The channel stamps this at emit time too.
+
+    Also carries the payload-freezing machinery every signal in the
+    hierarchy inherits (``__post_init__`` / ``__reduce__``).
     """
 
     correlation_id: str | None = None
     causation_id: str | None = None
     sender_id: str | None = None
     timestamp_us: int = 0
+
+    def __post_init__(self) -> None:
+        """Copy-then-freeze every field marked ``FROZEN_PAYLOAD``.
+
+        Lives on the envelope rather than on each payload-carrying
+        signal so a subclass that adds a payload field inherits the
+        guarantee by marking it — and so there is exactly one place
+        that decides what "frozen" means. A subclass defining its own
+        ``__post_init__`` REPLACES this one and must chain, which is
+        why this exists as a callable no-op even on the payload-free
+        signals. Chain by NAMING the base, not with a bare ``super()``::
+
+            def __post_init__(self) -> None:
+                ...                                # your normalisation
+                SignalEnvelope.__post_init__(self)
+
+        ``super().__post_init__()`` is the obvious spelling and it
+        raises ``TypeError: super(type, obj): obj must be an instance
+        or subtype of type`` in a ``slots=True`` subclass — measured on
+        3.12.6. ``@dataclass(slots=True)`` cannot add slots in place, so
+        it builds a REPLACEMENT class; the zero-argument ``super()``
+        closes over the original, which the instance is not an instance
+        of. Non-slotted subclasses are unaffected, which is worse, not
+        better: the spelling works until someone adds ``slots=True``.
+
+        Otherwise compatible with ``slots=True``: slotted frozen
+        dataclasses still route writes through ``object.__setattr__``,
+        and the fields already exist as slot descriptors by the time
+        ``__post_init__`` runs.
+        """
+        own = type(self)
+        names = _PAYLOAD_FIELDS.get(own)
+        if names is None:
+            names = _PAYLOAD_FIELDS.setdefault(
+                own,
+                tuple(f.name for f in fields(self) if f.metadata.get(_PAYLOAD_KEY)),
+            )
+        for name in names:
+            object.__setattr__(
+                self, name, _freeze_payload(own.__name__, name, getattr(self, name))
+            )
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Rebuild through the constructor instead of restoring state.
+
+        ``MappingProxyType`` is what makes a mapping payload genuinely
+        read-only, and it is also unpicklable — with the default
+        protocol, a signal carrying a frozen mapping measured::
+
+            deepcopy  TypeError: cannot pickle 'mappingproxy' object
+            pickle    TypeError: cannot pickle 'mappingproxy' object
+
+        deepcopy is the one that would bite: ``Checkpointer.snapshot``
+        deep-copies state at the durable seam, so a signal reachable
+        from a checkpoint would take the run down rather than merely
+        failing to copy. This is the same hook, and the same reason, as
+        ``Prompt.__reduce__``.
+
+        One hook covers both paths — ``copy.deepcopy`` deep-copies the
+        constructor ARGUMENTS it finds here, so a round-tripped signal
+        gets its own payload contents rather than aliasing the
+        original's, and ``__post_init__`` re-freezes on the way back
+        in. Built from ``fields()`` rather than a hand-written argument
+        list so user subclasses with extra fields round-trip too;
+        ``mappingproxy`` values are handed back as plain dicts because
+        the ARGUMENTS have to be picklable, not just the result.
+        """
+        values: dict[str, Any] = {}
+        for f in fields(self):
+            if not f.init:
+                continue
+            value = getattr(self, f.name)
+            values[f.name] = dict(value) if isinstance(value, MappingProxyType) else value
+        return (_rebuild_signal, (type(self), values))
 
 
 # ── Direction-typed bases ───────────────────────────────────────────
@@ -106,9 +276,14 @@ class BudgetReducedSignal(ControlSignal):
     shapes (some care about tokens + cost only, some add wall-clock
     + steps). The child applies whichever keys it recognises and
     ignores the rest.
+
+    Pass a plain dict; you get back a read-only ``Mapping`` that
+    still compares equal to that dict.
     """
 
-    constraints: dict[str, float] = field(default_factory=dict)
+    constraints: Mapping[str, float] = field(
+        default_factory=dict, hash=False, metadata=FROZEN_PAYLOAD
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -120,9 +295,16 @@ class RedirectSignal(ControlSignal, Generic[StateT]):
     typically clears any role-cached state derived from the old
     snapshot. Local journal stays — the child's authored history
     survives the retask.
+
+    ``new_state`` is passed through untouched: it is an opaque
+    ``StateT``, so the framework neither copies nor freezes it (see
+    ``FROZEN_PAYLOAD``). It is excluded from the hash for the same
+    reason — a project's snapshot type is under no obligation to be
+    hashable, and ``RedirectSignal`` should not be the one signal in
+    the protocol whose hashability depends on a user type.
     """
 
-    new_state: StateT | None = None
+    new_state: StateT | None = field(default=None, hash=False)
     reason: str = ""
 
 
@@ -138,7 +320,9 @@ class ContextUpdateSignal(ControlSignal, Generic[MutationT]):
     mutation preserves the audit trail.
     """
 
-    mutations: list[MutationT] = field(default_factory=list)
+    mutations: Sequence[MutationT] = field(
+        default_factory=tuple, hash=False, metadata=FROZEN_PAYLOAD
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -163,9 +347,15 @@ class ProgressSignal(DataSignal, Generic[MutationT]):
     boundary and the parent absorbs without replying. The child
     advances its journal watermark only after the parent has
     absorbed (the runner orchestrates this via the merge loop).
+
+    ``mutations`` is frozen at construction, which matters more here
+    than anywhere else: the child typically emits a slice of a
+    journal list it goes on appending to.
     """
 
-    mutations: list[MutationT] = field(default_factory=list)
+    mutations: Sequence[MutationT] = field(
+        default_factory=tuple, hash=False, metadata=FROZEN_PAYLOAD
+    )
     confidence: float | None = None
 
 
@@ -180,11 +370,19 @@ class DoneSignal(DataSignal, Generic[MutationT]):
 
     The parent absorbs ``final_delta`` into its own journal, drops
     the child registry entry, and refunds the unused budget slice.
+    Both payloads are frozen because this is the signal the budget
+    ledger and the audit trail are reconciled from: a receiver that
+    could still write ``metrics["used_cost"] = 999.0`` after the fact
+    makes the reported spend unverifiable.
     """
 
-    final_delta: list[MutationT] = field(default_factory=list)
+    final_delta: Sequence[MutationT] = field(
+        default_factory=tuple, hash=False, metadata=FROZEN_PAYLOAD
+    )
     confidence: float = 0.0
-    metrics: dict[str, float] = field(default_factory=dict)
+    metrics: Mapping[str, float] = field(
+        default_factory=dict, hash=False, metadata=FROZEN_PAYLOAD
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -201,7 +399,9 @@ class EscalateSignal(DataSignal):
     """
 
     reason: str = ""
-    options: list[str] = field(default_factory=list)
+    options: Sequence[str] = field(
+        default_factory=tuple, hash=False, metadata=FROZEN_PAYLOAD
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -215,6 +415,7 @@ class BlockedSignal(DataSignal):
 
 
 __all__ = [
+    "FROZEN_PAYLOAD",
     "BlockedSignal",
     "BudgetReducedSignal",
     "CancelSignal",

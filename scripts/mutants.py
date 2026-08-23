@@ -189,8 +189,41 @@ MEMOIZE_TESTS = (
     "tests/middlewares/test_memoize_side_effects.py",
     "tests/middlewares/test_memoize_chat_key_tool_fields.py",
 )
+SIGNAL_TESTS = ("tests/agents/test_signal_immutability.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="signals",
+        why="a signal payload stops being copied, so the sender keeps editing what it already emitted",
+        path="agentkit/agents/control/signals.py",
+        before="        return MappingProxyType(dict(value))",
+        after="        return value",
+        tests=SIGNAL_TESTS,
+    ),
+    Mutant(
+        tag="signals",
+        why="a bare str payload silently explodes into one option per character",
+        path="agentkit/agents/control/signals.py",
+        before="    if isinstance(value, (str, bytes)):",
+        after="    if False:",
+        tests=SIGNAL_TESTS,
+    ),
+    Mutant(
+        tag="signals",
+        why="an opaque payload re-enters the hash, so a signal is unhashable whenever it carries one",
+        path="agentkit/agents/control/signals.py",
+        before="    new_state: StateT | None = field(default=None, hash=False)",
+        after="    new_state: StateT | None = field(default=None)",
+        tests=SIGNAL_TESTS,
+    ),
+    Mutant(
+        tag="signals",
+        why="__reduce__ goes away, so deepcopy and pickle hit the mappingproxy at the replay boundary",
+        path="agentkit/agents/control/signals.py",
+        before="    def __reduce__(self) -> tuple[Any, ...]:",
+        after="    def __reduce_unused__(self) -> tuple[Any, ...]:",
+        tests=SIGNAL_TESTS,
+    ),
     Mutant(
         tag="regress",
         why="an unbound prompt stops being refused at construction and dies mid-run instead",
