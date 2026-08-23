@@ -2465,7 +2465,10 @@ so consumers can attribute results and cognitions can format citations.
 vector search, recency for journal, etc.); <code>None</code> when the backend
 doesn't rank.
 <code>metadata</code> carries backend-specific extras (chunk id, file path,
-timestamp) that the cognition or the rendering layer may consult.</p>
+timestamp) that the cognition or the rendering layer may consult. It is
+FROZEN at construction (see <code>__post_init__</code>) — still a <code>dict</code> for
+every consumer, but a backend that wants to annotate an item builds a new
+one: <code>dataclasses.replace(item, metadata={**item.metadata, "path": p})</code>.</p>
 
 
 

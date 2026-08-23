@@ -7217,6 +7217,9 @@ third caller passing arbitrary objects.</p>
 usage, the number of node executions (incl. re-runs from loop-back), the stop reason
 (<code>complete</code> | <code>suspended</code> | <code>max_steps</code> | <code>deadlock</code>), and a <code>Suspended</code> when
 the run paused on a human-gate.</p>
+<p><code>outputs</code> is FROZEN at construction (see <code>__post_init__</code>) — still a
+<code>dict</code> for every consumer, but writing into it raises. Build a new
+result instead: <code>dataclasses.replace(res, outputs={**res.outputs, ...})</code>.</p>
 
 
 

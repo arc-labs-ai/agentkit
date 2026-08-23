@@ -1970,6 +1970,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.kernel.ToolRequest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ToolRequest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.kernel.ToolSchema" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2985,6 +2996,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ToolCall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.kernel.ToolRequest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ToolRequest
       
     </span>
   </a>
@@ -4880,6 +4902,42 @@ the model, compaction rewrites messages), build a new instance
 via <code>dataclasses.replace</code> and reassign <code>call.request</code> — the
 <code>Call</code> reference is mutable; the <code>ChatRequest</code> it points at
 is not.</p>
+<p>"Frozen" now includes the three CONTAINER fields — <code>messages</code>,
+<code>tools</code>, <code>response_format</code> — not just the references to them. Before,
+<code>frozen=True</code> stopped at the reference and <code>request.messages.append(m)</code>
+went straight through, which is a rewrite of the unit of work the chain is
+mid-way through executing: the retry middleware re-sends the request it
+kept, the tracing middleware snapshots <code>list(call.request.messages)</code>
+AFTER the call, and <code>memoize</code> keys on the transcript — an in-place append
+desyncs all three against a request that already went out on the wire.
+Compaction shows the intended shape: it reads <code>list(ctx.request.messages)</code>
+and REPLACES the request rather than editing the list.</p>
+<p><code>messages</code> and <code>tools</code> are <code>FrozenList</code>, <code>response_format</code> is a
+<code>FrozenDict</code>; all three are still <code>list</code>/<code>dict</code> subclasses, so
+<code>request.messages[-1].content</code>, <code>len()</code>, iteration, slicing and
+<code>json.dumps</code> are untouched. <code>None</code> stays <code>None</code> — the optional fields
+are not materialised into empty containers, because <code>tools is None</code>
+("advertise nothing") and <code>tools == []</code> mean different things to the
+provider adapters.</p>
+<p>The freeze is DEEP, but a <code>Message</code> and a <code>ToolSchema</code> are dataclasses,
+not containers, so <code>deep_freeze</code> passes each one through as a leaf: the
+walk is O(number of messages) and flat in transcript BYTES. Measured, min
+of five::</p>
+<div class="language-text highlight"><pre><span></span><code>1 msg x 5 chars / x 5000 chars      3.24 us / 3.25 us
+10 msgs, 1 tool, response_format    1.74 us -&gt; 6.67 us
+100 msgs                            26.4 us
+messages already frozen             0.12 us  (idempotent short-circuit)
+</code></pre></div>
+<p>Once per turn, against an LLM round trip measured in hundreds of ms. The
+honest caveat: an agent loop rebuilds the request from a transcript that
+grows every turn, so this is O(turns) per turn and O(turns^2) over a run —
+~26 us at turn 100. That is the same shape the transcript COPY the loop
+already does has, and it is why <code>deep_freeze</code> short-circuits: a caller
+that hands the same <code>FrozenList</code> back pays 0.12 us, not the walk.</p>
+<p>Not frozen: <code>cache_hint</code>, which is annotated <code>Any</code> and is whatever the
+provider wanted. Freezing it would mean rewriting a provider object we do
+not own — the same line <code>_frozen.deep_freeze</code> draws at non-container
+leaves. It is passed through, never read by the framework.</p>
 
 
 
@@ -5290,17 +5348,127 @@ result). <code>type</code> discriminates the payload.</p>
 
 
         <p>A tool invocation the model requested. <code>id</code> is echoed back on the matching tool-result message.</p>
-<p><code>arguments</code> is exposed as an immutable <code>MappingProxyType</code>: the
-ToolCall flows into the ReAct approval snapshot AND into the
-idempotency-key hash AND into the audit trail — a tool impl that
-did <code>args.pop("token")</code> would have desynced all three. Callers
-that need to mutate copy first: <code>dict(tc.arguments)</code>.</p>
-<p><code>MappingProxyType</code> is not natively <code>copy.deepcopy</code>-safe
-(stdlib limitation — the view can't be pickled), which matters
-because <code>Checkpointer.snapshot</code> deep-copies state that
-contains <code>ToolCall</code>s. <code>__deepcopy__</code> / <code>__copy__</code> unwrap
-the view into a plain dict at copy time; the fresh <code>ToolCall</code>
-re-wraps it via <code>__post_init__</code>.</p>
+<p><code>arguments</code> is IMMUTABLE: the ToolCall flows into the ReAct approval
+snapshot AND into the idempotency-key hash AND into the audit trail — a
+tool impl that did <code>args.pop("token")</code> would have desynced all three.
+Callers that need to mutate copy first: <code>dict(tc.arguments)</code>.</p>
+<p>The immutability was originally a <code>MappingProxyType</code> and is now a
+:class:<code>~agentkit.kernel._frozen.FrozenDict</code>. Same guarantee, without the
+stdlib limitation the proxy dragged in: a mappingproxy is not a <code>dict</code>
+subclass, so <code>json</code> refused it, <code>isinstance(args, dict)</code> was False, and
+<code>dataclasses.asdict</code> — which deep-copies every leaf — blew up on a type
+with no pickle protocol. Measured on <code>ToolCall("c1", "search", {...})</code>::</p>
+<div class="language-text highlight"><pre><span></span><code>                            MappingProxyType                       FrozenDict
+dataclasses.asdict(tc)      TypeError: cannot pickle &#39;mappingproxy&#39; ok
+json.dumps(tc.arguments)    TypeError: not JSON serializable        ok
+isinstance(_, dict)         False                                   True
+</code></pre></div>
+<p>The <code>asdict</code> line is the one that shipped broken, and it was contagious:
+a ToolCall does not have to be the argument, only reachable from it, so
+<code>asdict</code> of ANY dataclass holding a ToolCall raised. That is why
+<code>resilience.stable_hash</code> walks dataclass fields by hand instead of
+calling <code>asdict</code> (see the note at its <code>_stable_default</code>) and why four
+other call sites carry a defensive <code>dict(tc.arguments)</code> unwrap.</p>
+<p>One consequence to know about: <code>asdict</code> rebuilds each nested container as
+<code>type(obj)(...)</code>, so it hands back a <code>FrozenDict</code>, not a plain one. The
+freeze survives serialisation, which is what a durable record wants — but
+<code>asdict</code> is therefore NOT the "give me an editable copy" escape hatch.
+<code>dict(tc.arguments)</code> is, and always was.</p>
+<p><code>deep_freeze</code> is deep, so <code>tc.arguments["filters"]["tags"].append(...)</code>
+is refused too — a shallow freeze leaves the same bug one level down, where
+decoded provider JSON actually lives. It also COPIES, so a caller that
+keeps editing the dict it passed in cannot reach the stored payload.</p>
+<p>Cost is O(payload) and it is NOT free — measured, min of five runs, on a
+realistic 3-key/2-level arguments dict::</p>
+<div class="language-text highlight"><pre><span></span><code>ToolCall(id, name, args)      1.21 us -&gt; 3.97 us   (+2.8 us)
+ToolCall(id, name)  empty     1.22 us -&gt; 1.48 us   (+0.3 us)
+copy.deepcopy(tool_call)      7.96 us -&gt; 12.5 us
+pickle round trip             6.65 us -&gt; 12.9 us
+</code></pre></div>
+<p>Paid once per tool invocation, immediately before the tool does network or
+disk I/O, so it is ~3 us against a millisecond floor. The copy numbers grew
+because a <code>FrozenDict</code> deep-copies through its own <code>__reduce__</code>/
+<code>__deepcopy__</code> rather than the C fast path (6.6 us vs 3.7 us for the same
+payload as a plain dict) — that is <code>_frozen</code>'s price, and the
+checkpointer was already paying the 8 us.</p>
+<p><code>arguments</code> being an unhashable container is also what would have cost
+every <code>ToolCall</code> — and every <code>Message</code> / <code>PrefixContext</code> /
+<code>FrozenContext</code> reachable from one — its hashability. See <code>__hash__</code>;
+that decision is unchanged by this migration, and deliberately so.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.kernel.ToolRequest" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">ToolRequest</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#agentkit.kernel.ToolRequest" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ToolRequest</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">arguments</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">],</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">tool</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">side_effecting</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">url_arg</span><span class="p">:</span> <span class="n"><span title="str">str</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>The tool half of the unit of work — what the <code>Invoker</code> runs through
+the middleware chain before the terminal calls <code>tool.run</code>.</p>
+<p><code>arguments</code> is frozen deeply at construction, for the same reason as
+<code>ToolCall.arguments</code> one layer up but with a shorter fuse: this dict is
+read by the chain BEFORE the tool sees it (<code>egress_audit</code> pulls the URL
+out of <code>r.arguments[url_arg]</code>, <code>memoize</code> folds the whole dict into the
+idempotency key) and then handed to the tool impl as <code>run(args, ctx)</code>. A
+tool that did <code>args.pop("token")</code> on the way in would have made the
+arguments that were AUTHORISED and the arguments that were EXECUTED two
+different things, with the audit trail recording the first.</p>
+<p><code>FrozenDict</code> rather than a proxy because the same dict is
+<code>json.dumps</code>'d into the audit record and hashed through
+<code>stable_hash</code>. Cost measured at 1.05 us before against 4.31 us after for
+a realistic 3-key/2-level arguments dict — once per tool call, against the
+I/O the tool is about to do.</p>
+<p><code>tool</code> is deliberately NOT frozen: it is the resolved <code>ToolPort</code>, an
+object the registry built, and rewriting a caller's object is the line
+<code>deep_freeze</code> refuses to cross.</p>
 
 
 
@@ -5356,6 +5524,29 @@ re-wraps it via <code>__post_init__</code>.</p>
 
 
         <p>JSON-schema advertisement of a tool — what the provider needs to <em>see</em> to call it.</p>
+<p><code>parameters</code> is a <code>dict</code> SUBCLASS — a <code>FrozenDict</code>, frozen deeply at
+construction. It is <code>json.dumps</code>'d straight into provider payloads
+(<code>openai_compat</code> sends <code>schema.parameters or {}</code>, <code>anthropic</code> sends
+it as <code>input_schema</code>) and read back through <code>dataclasses.asdict</code>,
+neither of which survives a <code>MappingProxyType</code> — which is exactly why the
+freeze is a subclass and not a view. See <code>kernel._frozen</code>.</p>
+<p>The freeze matters most here because a schema is SHARED, not per-call: a
+<code>ToolRegistry</code> hands the same <code>ToolSchema</code> object to every
+<code>ChatRequest</code> for the life of the process, so one adapter doing
+<code>schema.parameters["properties"]["x"]["type"] = "number"</code> to fix up one
+provider's payload would have silently rewritten what every other provider
+advertises from then on.</p>
+<p>This is the WORST relative cost of the four — 0.74 us before against
+12.3 us after for an 8-property schema, 16x — and the one that matters
+least, because a schema is built once and then reused forever. Every
+construction site is registration-time (<code>@tool</code> decoration, <code>as_tool</code>,
+<code>handoff</code>, MCP discovery), and <code>ToolRegistry.schemas()</code> hands back the
+SAME cached <code>ToolSchema</code> objects on every turn rather than rebuilding
+them, so no per-turn path pays this. A 16x on a one-off is the right place
+to spend it; a 16x per turn would not have been.</p>
+<p>That mutable field is also what cost the frozen dataclass its generated
+<code>__hash__</code>, and freezing does not give it back — a <code>FrozenDict</code> is
+still a mapping, so still unhashable. See <code>__hash__</code>.</p>
 
 
 

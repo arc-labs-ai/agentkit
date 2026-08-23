@@ -2935,6 +2935,11 @@ new value in <code>self</code> (the right-hand side). A key present in
 to signal removal; ambiguity with a <code>None</code>-valued live key is
 accepted for a debug helper.</p>
 <p><code>prefix_changed</code> is True when the two prefixes compare unequal.</p>
+<p><code>scratchpad_changes</code> is FROZEN at construction (see <code>__post_init__</code>),
+which is what makes the "a <code>ContextDiff</code> is itself hashable /
+pickleable" promise above true of the WHOLE value rather than of its
+message tuples only. It is still a <code>dict</code> for every consumer; writing
+into it raises.</p>
 
 
 
@@ -3006,10 +3011,12 @@ sharing mutation: a parent that wants to brief a child but
 doesn't want the child's writes to leak back.</p>
 <p>All fields are immutable: <code>PrefixContext</code> is frozen,
 <code>messages</code> is a tuple, <code>scratchpad</code> is a sorted tuple of
-(key, value) pairs (so equality + hash are deterministic), and
+(key, value) pairs (so equality is deterministic), and
 <code>journal_entries</code> is a tuple. A snapshot is therefore safe to
 share across agent boundaries without locking and to use as a
-memoization-cache key.</p>
+memoization-cache key — see <code>__hash__</code> for what "hashable" can
+and cannot mean when two of those tuples hold arbitrary
+user objects.</p>
 <p>Round-tripping: <code>WorkingContext(prefix=f.prefix,
 messages=list(f.messages), scratchpad=dict(f.scratchpad))</code> is
 functionally equivalent to the source (modulo identity).</p>
@@ -3689,7 +3696,13 @@ Also applies the other's full journal entries — preserving
 each entry's attribution (the journal never rewrites).</p>
 <p><code>mode="union"</code> deduplicates messages by value before
 appending, so a parent merging two siblings doesn't end up
-with the same observation twice.</p>
+with the same observation twice. "By value" means <code>__eq__</code>:
+the <code>set</code> below only uses <code>Message.__hash__</code> to pick a
+bucket, so two tool-call messages that share a call id but
+differ in arguments collide and both survive, as they must.
+That hash exists only because <code>ToolCall</code> defines one — this
+line raised <code>TypeError: unhashable type: 'dict'</code> for every
+message carrying tool calls, i.e. on every real fan-in.</p>
 
 
     </div>
