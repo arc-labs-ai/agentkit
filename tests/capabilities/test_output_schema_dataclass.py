@@ -271,3 +271,103 @@ def test_constructor_rejects_non_dataclass():
 
     with pytest.raises(TypeError):
         DataclassAdapter(NotADataclass)
+
+
+# ---- field(init=False) ----------------------------------------------------
+#
+# REGRESSION. ``_dataclass_schema`` advertised every field as a property,
+# then ``_coerce_dataclass`` fed them all to ``cls(**kwargs)`` — which
+# rejects an ``init=False`` field. Measured: schema
+# ``{"properties": {"a": ..., "b": {"type": "integer"}}}`` and
+# ``parse('{"a":"x","b":5}')`` → ``TypeError: D.__init__() got an
+# unexpected keyword argument 'b'``. A raw TypeError escapes the
+# ``OutputCoercionError`` contract, so BOTH the repair loop and
+# ``FunctionTool``'s ``ToolShapeError`` seam missed it, and
+# ``parse(serialize(inst))`` was broken the same way.
+
+
+@dataclass
+class Derived:
+    """``length`` is computed by the class, never supplied by the model."""
+
+    text: str
+    length: int = field(init=False, default=0)
+
+    def __post_init__(self) -> None:
+        self.length = len(self.text)
+
+
+def test_init_false_field_parses_instead_of_raising_typeerror():
+    adapter = DataclassAdapter(Derived)
+    out = adapter.parse('{"text":"xy","length":5}')
+    assert isinstance(out, Derived)
+    assert out.text == "xy"
+    # The payload value wins over the recomputed one — that is what makes
+    # a durable rehydrate restore what was stored.
+    assert out.length == 5
+
+
+def test_init_false_field_round_trips_both_ways():
+    """``dataclasses.asdict`` emits the init=False field, so parse has to
+    accept it; and the schema must still describe what serialize emits."""
+    adapter = DataclassAdapter(Derived)
+    inst = Derived("hello")
+    assert adapter.parse(json.dumps(adapter.serialize(inst))) == inst
+    assert "length" in adapter.json_schema()["properties"]
+
+
+def test_init_false_field_is_not_required():
+    """The model cannot know a computed value — demanding it would send the
+    repair loop chasing a field it has no way to fix."""
+    adapter = DataclassAdapter(Derived)
+    assert adapter.json_schema().get("required") == ["text"]
+    assert adapter.parse('{"text":"abc"}').length == 3  # default/__post_init__ still applies
+
+
+def test_init_false_field_validates_from_a_plain_dict():
+    """``validate`` shares the walker, so it carried the same TypeError."""
+    adapter = DataclassAdapter(Derived)
+    assert adapter.validate({"text": "xy", "length": 9}).length == 9
+
+
+def test_init_false_on_a_frozen_dataclass_round_trips():
+    """EDGE: a frozen dataclass rejects ``setattr``; the post-construction
+    assignment goes through ``object.__setattr__``."""
+
+    @dataclass(frozen=True)
+    class Frozen:
+        a: str
+        tag: str = field(init=False, default="t")
+
+    adapter = DataclassAdapter(Frozen)
+    inst = Frozen("v")
+    assert adapter.parse(json.dumps(adapter.serialize(inst))) == inst
+
+
+def test_post_init_failure_surfaces_as_output_coercion_error():
+    """EDGE: any construction failure must stay inside the coercion
+    contract — a raw exception here is invisible to the repair loop."""
+
+    @dataclass
+    class Checked:
+        a: int
+
+        def __post_init__(self) -> None:
+            if self.a < 0:
+                raise ValueError("a must be >= 0")
+
+    adapter = DataclassAdapter(Checked)
+    with pytest.raises(OutputCoercionError) as exc:
+        adapter.parse('{"a":-1}')
+    assert "a must be >= 0" in str(exc.value.errors)
+
+
+def test_ordinary_dataclass_still_parses_unchanged():
+    """POSITIVE CONTROL — the init=False handling must not disturb the
+    ordinary all-init-able shape."""
+    adapter = DataclassAdapter(Address)
+    inst = Address(street="1 Main", city="Springfield")
+    assert adapter.parse('{"street":"1 Main","city":"Springfield"}') == inst
+    assert adapter.json_schema()["required"] == ["street", "city"]
+    with pytest.raises(OutputCoercionError):
+        adapter.parse('{"street":"1 Main"}')

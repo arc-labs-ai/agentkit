@@ -14,6 +14,7 @@ from agentkit.capabilities.compaction import (
     SummarizationCompactor,
     TruncationCompactor,
 )
+from agentkit.kernel.types import ToolCall
 from agentkit.testing import FakeCtx, FakeLLM
 
 # ---- Protocol membership ----------------------------------------------------------------------
@@ -239,3 +240,79 @@ async def test_middleware_honors_valid_compaction_result() -> None:
     # The aggressive result stuck — the middleware only rescues empty results.
     assert len(mctx.request.messages) == 1
     assert mctx.request.messages[0].role == "system"
+
+
+# ---- tool-heavy transcripts (compaction never fired) ------------------------------------------
+#
+# The default ``estimate`` summed ``len(m.content)`` only. A tool-heavy
+# transcript — the NORMAL agentic shape — carries its bulk in
+# ``Message.tool_calls``, so it scored ~0 and every compactor no-op'd.
+# Measured before the fix: 80 messages / 324,420 chars of tool arguments
+# (~81k tokens) estimated as 20, and ``TruncationCompactor(max_tokens=1000)``
+# kept 80/80 messages. The provider rejected the request with a 400, far
+# from the cause.
+
+
+def _tool_heavy(turns: int, arg_chars: int) -> list[Message]:
+    msgs: list[Message] = [Message("system", "sys")]
+    for i in range(turns):
+        msgs.append(
+            Message(
+                "assistant",
+                "",
+                tool_calls=(
+                    ToolCall(id=f"call-{i}", name="search", arguments={"q": "x" * arg_chars}),
+                ),
+            )
+        )
+        msgs.append(Message("tool", "ok", name="search", tool_call_id=f"call-{i}"))
+    return msgs
+
+
+@pytest.mark.asyncio
+async def test_truncation_fires_on_a_tool_heavy_transcript():
+    """REGRESSION: 80/80 messages survived a 1000-token ceiling."""
+    messages = _tool_heavy(turns=40, arg_chars=4000)
+    compacted = await TruncationCompactor(max_tokens=1000, keep_recent=4).compact(
+        messages, FakeCtx()
+    )
+    assert len(compacted) < len(messages)
+    assert compacted[0].role == "system"  # cache-stable head survives
+
+
+@pytest.mark.asyncio
+async def test_summarization_fires_on_a_tool_heavy_transcript():
+    """The same blindness hit every compactor that used the default estimate."""
+    messages = _tool_heavy(turns=10, arg_chars=4000)
+    strategy = SummarizationCompactor(
+        summarizer=FakeLLM(responses="Summarized"), max_tokens=1000, keep_recent=2
+    )
+    compacted = await strategy.compact(messages, FakeCtx())
+    assert len(compacted) < len(messages)
+    assert "Summarized" in compacted[1].content
+
+
+@pytest.mark.asyncio
+async def test_tool_heavy_estimate_matches_the_context_counter():
+    """The compactor's threshold check and a caller's ``ApproxTokenCounter``
+    pre-check must see the SAME number — disagreeing copies are how the
+    tool-blind estimate survived."""
+    from agentkit.capabilities.compaction.base import _approx_tokens
+    from agentkit.context import ApproxTokenCounter
+
+    messages = _tool_heavy(turns=5, arg_chars=800)
+    assert _approx_tokens(messages) == await ApproxTokenCounter().estimate(messages)
+
+
+@pytest.mark.asyncio
+async def test_short_tool_transcript_is_still_a_noop():
+    """POSITIVE CONTROL — counting tool calls must not make a small
+    tool-using transcript compact needlessly."""
+    messages = _tool_heavy(turns=2, arg_chars=20)
+    assert await TruncationCompactor(max_tokens=12_000).compact(messages, FakeCtx()) == messages
+    assert (
+        await SummarizationCompactor(
+            summarizer=FakeLLM(responses="s"), max_tokens=12_000
+        ).compact(messages, FakeCtx())
+        == messages
+    )

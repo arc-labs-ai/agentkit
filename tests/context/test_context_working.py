@@ -260,8 +260,9 @@ def test_tokens_matches_chars_over_four_of_assembled():
         messages=[Message("user", "wxyz")],  # 4 chars
         token_counter=ApproxTokenCounter(chars_per_token=4.0),
     )
-    # 8 total chars / 4 = 2 tokens.
-    assert _run(wc.tokens()) == 2
+    # 8 total chars / 4 = 2 tokens, plus the 4-token-per-message structural
+    # overhead every provider charges (2 assembled messages) = 10.
+    assert _run(wc.tokens()) == 2 + 2 * 4
 
 
 # ── shared=True: concurrent appends don't lose messages ───────────

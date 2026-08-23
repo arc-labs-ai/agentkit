@@ -108,11 +108,17 @@ def _attrs_schema(cls: type) -> dict[str, Any]:
     required: list[str] = []
     for f in attrs.fields(cls):
         ftype = hints.get(f.name, f.type)
+        # Keyed by ``f.name`` (``_secret``, not the ``secret`` init alias) because
+        # that is what ``attrs.asdict`` — i.e. ``serialize`` — emits; the schema and
+        # the serialised form have to describe the same document for the round-trip
+        # to hold under ``additionalProperties: false``.
         properties[f.name] = _type_to_schema(ftype)
         # attrs uses the sentinel ``attrs.NOTHING`` for "no default" — anything
         # else (including ``Factory(...)``) means the field is optional from the
-        # caller's standpoint.
-        if f.default is attrs.NOTHING:
+        # caller's standpoint. ``init=False`` fields are computed by the class, never
+        # supplied by the model, so they are never required either (see the
+        # dataclass adapter for the same rule).
+        if f.default is attrs.NOTHING and f.init:
             required.append(f.name)
     schema: dict[str, Any] = {
         "type": "object",
@@ -187,6 +193,16 @@ def _coerce_attrs(cls: type, payload: dict[str, Any], *, path: str) -> Any:
     hints = typing.get_type_hints(cls)
     fields = attrs.fields(cls)
     kwargs: dict[str, Any] = {}
+    # Two attrs facts the old ``cls(**kwargs)`` ignored, both of which escaped as a
+    # raw ``TypeError`` (measured: ``A.__init__() got an unexpected keyword argument
+    # '_secret'``) past the ``OutputCoercionError`` contract the repair loop and
+    # ``FunctionTool``'s ``ToolShapeError`` seam both depend on:
+    #   1. a private attribute is named ``_secret`` but its ``__init__`` parameter is
+    #      ``secret`` — attrs exposes that mapping as ``Attribute.alias``;
+    #   2. ``field(init=False)`` values are not accepted by ``__init__`` at all.
+    # (1) is keyword-remapped, (2) is applied after construction so the value stored
+    # by ``serialize`` survives ``parse(serialize(inst))``.
+    post_init_values: dict[str, Any] = {}
     errors: list[str] = []
     seen: set[str] = set()
     field_names = {f.name for f in fields}
@@ -196,18 +212,44 @@ def _coerce_attrs(cls: type, payload: dict[str, Any], *, path: str) -> Any:
         if f.name in payload:
             seen.add(f.name)
             try:
-                kwargs[f.name] = _coerce_value(ftype, payload[f.name], path=sub_path)
+                coerced_field = _coerce_value(ftype, payload[f.name], path=sub_path)
             except ValueError as e:
                 errors.append(str(e))
+            else:
+                if f.init:
+                    # ``alias`` is attrs >= 22.2; ``lstrip("_")`` reproduces attrs'
+                    # own default rule on older releases.
+                    kwargs[getattr(f, "alias", None) or f.name.lstrip("_")] = coerced_field
+                else:
+                    post_init_values[f.name] = coerced_field
         else:
-            if f.default is attrs.NOTHING:
+            if f.default is attrs.NOTHING and f.init:
                 errors.append(f"{sub_path}: missing required field")
     for key in payload:
         if key not in field_names:
             errors.append(f"{path + '.' if path else ''}{key}: unexpected field")
     if errors:
         raise ValueError("; ".join(errors))
-    return cls(**kwargs)
+    try:
+        inst = cls(**kwargs)
+    except Exception as e:
+        # attrs validators/converters raise from ``__init__``; surface them as a
+        # ValueError so the adapter wraps them in ``OutputCoercionError`` rather
+        # than letting a raw exception escape the coercion boundary.
+        raise ValueError(
+            f"{path + ': ' if path else ''}could not construct {cls.__name__}: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+    for fname, fvalue in post_init_values.items():
+        # ``object.__setattr__``: attrs classes are frozen by default under
+        # ``@attrs.frozen`` and their ``__setattr__`` would raise.
+        try:
+            object.__setattr__(inst, fname, fvalue)
+        except AttributeError as e:
+            # Slotted class without that slot — nothing we can do; still an
+            # OutputCoercionError rather than a raw AttributeError.
+            raise ValueError(f"{path + '.' if path else ''}{fname}: cannot set ({e})") from e
+    return inst
 
 
 class AttrsAdapter(Generic[T]):

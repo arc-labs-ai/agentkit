@@ -147,12 +147,26 @@ class PydanticAdapter(Generic[T]):
         if not isinstance(data, dict):
             return None
         try:
-            # ``model_construct`` only accepts known field names; silently
+            # ``model_construct`` only accepts known FIELD names; silently
             # discard any extras the partial parser might have produced from
             # a malformed prefix.
+            #
+            # The stream is alias-keyed — the model is shown
+            # ``model_json_schema()``, which uses aliases — so an aliased field
+            # arrived as ``{"userName": ...}`` and was dropped wholesale by the
+            # name-only filter, making every partial of an aliased model empty.
+            # Map alias → field name first; a field name that arrives verbatim
+            # still matches (mirrors ``populate_by_name``).
             model_any = cast(Any, self._model)
+            by_alias = {
+                (info.alias or fname): fname for fname, info in model_any.model_fields.items()
+            }
             field_names = set(model_any.model_fields)
-            cleaned = {k: v for k, v in data.items() if k in field_names}
+            cleaned = {
+                (k if k in field_names else by_alias[k]): v
+                for k, v in data.items()
+                if k in field_names or k in by_alias
+            }
             constructed: T = model_any.model_construct(**cleaned)
             return constructed
         except Exception:
@@ -161,8 +175,24 @@ class PydanticAdapter(Generic[T]):
     def serialize(self, value: T) -> dict[str, Any]:
         """``model_dump`` returns plain Python types (dicts, lists, primitives) — no
         Pydantic-specific objects leak into the durable store or transcript. That's
-        the round-trip guarantee: `parse(json.dumps(serialize(v))) == v`."""
-        dumped: dict[str, Any] = value.model_dump()  # type: ignore[attr-defined]
+        the round-trip guarantee: `parse(json.dumps(serialize(v))) == v`.
+
+        ``by_alias=True`` is what actually makes that guarantee true. Both of the
+        adapter's other surfaces speak ALIASES — ``model_json_schema()`` (validation
+        mode, what the model is shown) and ``model_validate*`` (what ``parse``
+        accepts) — while a bare ``model_dump()`` emits FIELD NAMES. Measured on
+        ``user_name: str = Field(alias="userName")``: serialize gave
+        ``{'user_name': 'bob'}`` and feeding that straight back to ``parse`` raised
+        ``OutputCoercionError: ['userName: Field required']``, so every durable
+        rehydrate of an aliased model failed. Aliasing is a no-op for models without
+        aliases, and ``populate_by_name`` models (which accept both spellings)
+        round-trip either way.
+
+        Known edge, deliberately not papered over: a model that sets ONLY
+        ``serialization_alias`` (a different string from its validation alias)
+        cannot round-trip through any single dump mode — that is a modelling
+        choice, and ``populate_by_name=True`` is its fix."""
+        dumped: dict[str, Any] = value.model_dump(by_alias=True)  # type: ignore[attr-defined]
         return dumped
 
     def validate(self, value: Any) -> T:

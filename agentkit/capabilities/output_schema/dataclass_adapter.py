@@ -128,7 +128,13 @@ def _dataclass_schema(cls: type) -> dict[str, Any]:
         is_optional_value = (
             f.default is not dataclasses.MISSING or f.default_factory is not dataclasses.MISSING
         )
-        if not is_optional_value:
+        # ``field(init=False)`` is computed by the class (a default or
+        # ``__post_init__``), never by the model — it stays a PROPERTY so
+        # ``serialize`` output (``dataclasses.asdict`` emits it) still validates
+        # against the schema and durable rehydrate can restore the stored value,
+        # but it must never be ``required``: demanding a value the model has no
+        # way to know sends the repair loop chasing a field it cannot fix.
+        if not is_optional_value and f.init:
             required.append(f.name)
     schema: dict[str, Any] = {
         "type": "object",
@@ -216,6 +222,15 @@ def _coerce_dataclass(cls: type, payload: dict[str, Any], *, path: str) -> Any:
     hints = typing.get_type_hints(cls)
     fields = dataclasses.fields(cls)
     kwargs: dict[str, Any] = {}
+    # ``field(init=False)`` values are NOT accepted by ``__init__`` — passing one
+    # raised a raw ``TypeError`` ("D.__init__() got an unexpected keyword argument
+    # 'b'") straight through ``parse``/``validate``, escaping the
+    # ``OutputCoercionError`` contract that both the repair loop and
+    # ``FunctionTool``'s ``ToolShapeError`` seam key off. They are still carried:
+    # applied AFTER construction so ``parse(serialize(inst))`` round-trips the
+    # stored value instead of silently reverting to whatever ``__post_init__``
+    # recomputes.
+    post_init_values: dict[str, Any] = {}
     errors: list[str] = []
     seen: set[str] = set()
     field_names = {f.name for f in fields}
@@ -225,14 +240,22 @@ def _coerce_dataclass(cls: type, payload: dict[str, Any], *, path: str) -> Any:
         if f.name in payload:
             seen.add(f.name)
             try:
-                kwargs[f.name] = _coerce_value(ftype, payload[f.name], path=sub_path)
+                coerced_field = _coerce_value(ftype, payload[f.name], path=sub_path)
             except ValueError as e:
                 errors.append(str(e))
+            else:
+                if f.init:
+                    kwargs[f.name] = coerced_field
+                else:
+                    post_init_values[f.name] = coerced_field
         else:
             has_default = (
                 f.default is not dataclasses.MISSING or f.default_factory is not dataclasses.MISSING
             )
-            if not has_default:
+            # An ``init=False`` field is the class's own business (default or
+            # ``__post_init__``), so its absence from the payload is never the
+            # model's error — mirrors the ``required`` list in ``_dataclass_schema``.
+            if not has_default and f.init:
                 errors.append(f"{sub_path}: missing required field")
     # Surface extra keys: the schema we hand the model declares
     # ``additionalProperties: false``, so any extra is a model mistake and
@@ -242,7 +265,23 @@ def _coerce_dataclass(cls: type, payload: dict[str, Any], *, path: str) -> Any:
             errors.append(f"{path + '.' if path else ''}{key}: unexpected field")
     if errors:
         raise ValueError("; ".join(errors))
-    return cls(**kwargs)
+    try:
+        inst = cls(**kwargs)
+    except Exception as e:
+        # Construction can still fail for reasons the walker can't see —
+        # a ``__post_init__`` that validates, a ``__init__`` override. Those
+        # must arrive as a ValueError so the adapter can wrap them in
+        # ``OutputCoercionError``; a raw TypeError/anything-else escaping here
+        # is invisible to the repair loop AND to ``ToolShapeError``.
+        raise ValueError(
+            f"{path + ': ' if path else ''}could not construct {cls.__name__}: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+    for fname, fvalue in post_init_values.items():
+        # ``object.__setattr__`` so this also works on ``frozen=True`` dataclasses,
+        # whose ``__setattr__`` raises FrozenInstanceError.
+        object.__setattr__(inst, fname, fvalue)
+    return inst
 
 
 class DataclassAdapter(Generic[T]):

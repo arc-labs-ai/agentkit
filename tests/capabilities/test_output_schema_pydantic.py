@@ -170,3 +170,88 @@ def test_partial_parse_empty_is_none():
 def test_constructor_rejects_non_basemodel():
     with pytest.raises(TypeError):
         PydanticAdapter(dict)  # type: ignore[arg-type]
+
+
+# ---- aliases -------------------------------------------------------------
+#
+# REGRESSION. ``serialize`` used a bare ``model_dump()`` (FIELD names)
+# while ``json_schema()`` and ``parse()`` both speak ALIASES. Measured on
+# ``user_name: str = Field(alias="userName")``: serialize gave
+# ``{'user_name': 'bob'}`` and parsing that back raised
+# ``OutputCoercionError: ['userName: Field required']`` — so the
+# documented ``parse(json.dumps(serialize(v))) == v`` guarantee that
+# durable rehydrate depends on was false for every aliased model.
+
+
+class Aliased(pydantic.BaseModel):
+    user_name: str = pydantic.Field(alias="userName")
+    id_: int = pydantic.Field(alias="id")
+
+
+class ByName(pydantic.BaseModel):
+    """``populate_by_name`` accepts BOTH spellings on the way in."""
+
+    model_config = pydantic.ConfigDict(populate_by_name=True)
+    user_name: str = pydantic.Field(alias="userName")
+
+
+def test_serialize_uses_aliases_so_parse_can_reconsume_it():
+    adapter = PydanticAdapter(Aliased)
+    value = Aliased(userName="bob", id=1)
+    dumped = adapter.serialize(value)
+    assert dumped == {"userName": "bob", "id": 1}
+    assert adapter.parse(json.dumps(dumped)) == value
+
+
+def test_serialize_keys_match_the_schema_shown_to_the_model():
+    """The schema is the contract the model is held to; a serialized value
+    that doesn't satisfy it is a transcript the model can't imitate."""
+    adapter = PydanticAdapter(Aliased)
+    dumped = adapter.serialize(Aliased(userName="bob", id=1))
+    assert set(dumped) == set(adapter.json_schema()["properties"])
+
+
+def test_alias_round_trip_survives_nesting():
+    """EDGE: nested models dump through the same ``by_alias`` pass."""
+
+    class Outer(pydantic.BaseModel):
+        inner: Aliased
+        top_level: int = pydantic.Field(alias="topLevel")
+
+    adapter = PydanticAdapter(Outer)
+    value = Outer(inner=Aliased(userName="b", id=2), topLevel=3)
+    assert adapter.serialize(value) == {"inner": {"userName": "b", "id": 2}, "topLevel": 3}
+    assert adapter.parse(json.dumps(adapter.serialize(value))) == value
+
+
+def test_populate_by_name_model_round_trips():
+    """EDGE: a ``populate_by_name`` model accepted its field name before the
+    fix and must keep round-tripping now that we emit the alias."""
+    adapter = PydanticAdapter(ByName)
+    value = ByName(userName="bob")
+    assert adapter.serialize(value) == {"userName": "bob"}
+    assert adapter.parse(json.dumps(adapter.serialize(value))) == value
+    assert adapter.parse('{"user_name":"bob"}') == value
+
+
+def test_partial_parse_accepts_the_alias_keyed_stream():
+    """EDGE: the model is shown the ALIASED schema, so a stream arrives
+    alias-keyed — the name-only filter in ``partial_parse`` dropped every
+    field and produced an empty partial."""
+    adapter = PydanticAdapter(Aliased)
+    partial = adapter.partial_parse('{"userName":"bo')
+    assert partial is not None
+    assert partial.user_name == "bo"
+
+
+def test_unaliased_model_round_trips_unchanged():
+    """POSITIVE CONTROL — ``by_alias`` is a no-op without aliases."""
+    adapter = PydanticAdapter(Report)
+    value = Report(title="t", tags=["a"], word_count=1, confidence=0.5)
+    assert adapter.serialize(value) == {
+        "title": "t",
+        "tags": ["a"],
+        "word_count": 1,
+        "confidence": 0.5,
+    }
+    assert adapter.parse(json.dumps(adapter.serialize(value))) == value

@@ -12,12 +12,24 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from agentkit.context.tokens import estimate_message_tokens
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message
 
 
 def _approx_tokens(messages: list[Message]) -> int:
-    return sum(len(m.content or "") for m in messages) // 4
+    """The default ``estimate`` every built-in compactor uses.
+
+    Delegates to ``context.tokens.estimate_message_tokens`` instead of
+    keeping its own chars/4 sum. The two used to be independent copies and
+    both ignored ``tool_calls``: on a measured 80-message transcript
+    carrying 324,420 chars of tool arguments (~81k tokens) this returned
+    **20**, so ``TruncationCompactor(max_tokens=1000)`` kept 80/80 messages
+    and the provider rejected the request with a 400. Sharing one
+    implementation is also what makes a caller's ``ApproxTokenCounter``
+    pre-check and the compactor's own threshold check agree — disagreeing
+    estimators are how this shipped unnoticed."""
+    return estimate_message_tokens(messages)
 
 
 @runtime_checkable

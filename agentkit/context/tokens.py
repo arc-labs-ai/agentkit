@@ -7,6 +7,12 @@ on ``tiktoken`` or a provider-side SDK. The default
 already uses; ``TiktokenCounter`` opt-in upgrades to provider-accurate
 counts when ``tiktoken`` is installed (extras: ``arc-agentkit[fast]``).
 
+Both count the SAME things via :func:`estimate_message_tokens`: message
+content, the tool-result ``name``/``tool_call_id``, the serialised
+``tool_calls`` of an assistant turn, and a per-wire-block structural
+overhead. Tool calls used to be ignored entirely, which made every
+compactor a no-op on exactly the transcripts that needed compacting.
+
 The counter is intentionally async — a real counter might call a remote
 counting endpoint (provider-side) or warm up an encoder lazily. The
 in-process counters are ``async def`` purely to keep the seam uniform
@@ -15,10 +21,92 @@ in-process counters are ``async def`` purely to keep the seam uniform
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from agentkit.kernel.types import Message
+
+_PER_BLOCK_OVERHEAD_TOKENS = 4
+"""Structural tokens every provider charges for a wire block on top of its text.
+
+A message is not just its text: role markers, block delimiters and the
+start/end-of-turn sentinels cost ~3-4 tokens EACH on every provider we
+target. Without this term 500 empty messages estimated as 0 tokens — a
+transcript that is genuinely ~2k tokens of scaffolding. Counted once per
+message and once per tool call (each tool call is its own wire block with
+``id``/``type``/``function`` keys)."""
+
+
+def _tool_call_texts(tc: Any) -> tuple[str, str, str]:
+    """The billable text of one ToolCall: ``(id, name, serialised arguments)``.
+
+    The provider bills the SERIALISED arguments, so that is what we
+    measure — ``ToolCall.arguments`` is a ``MappingProxyType`` (see
+    ``kernel.types.ToolCall``), which ``json.dumps`` refuses outright
+    (``TypeError: Object of type mappingproxy is not JSON serializable``),
+    hence the ``dict()`` unwrap. Falls back to ``repr`` for the
+    pathological non-JSON-able payload: an approximate number beats an
+    exception thrown from inside a budget pre-check.
+
+    Shared by both counters so the approximate and the tiktoken path
+    count the same THINGS and differ only in the chars→tokens step."""
+    args = getattr(tc, "arguments", None) or {}
+    try:
+        args_text = json.dumps(dict(args), default=str)
+    except Exception:
+        args_text = repr(args)
+    return (
+        str(getattr(tc, "id", "") or ""),
+        str(getattr(tc, "name", "") or ""),
+        args_text,
+    )
+
+
+def estimate_message_tokens(messages: list[Message], *, chars_per_token: float = 4.0) -> int:
+    """THE chars/N transcript estimate — the one every in-process estimator delegates to.
+
+    Why it exists as a shared function: ``compaction.base._approx_tokens``
+    and ``ApproxTokenCounter.estimate`` were independent copies of
+    ``sum(len(m.content or "")) // 4``, and BOTH ignored ``tool_calls``
+    entirely. Measured on an 80-message tool-heavy transcript carrying
+    324,420 chars of tool arguments (~81k real tokens): both estimators
+    reported **0**, and ``TruncationCompactor(max_tokens=1000)`` kept
+    80/80 messages — the whole transcript went to the provider and died
+    there as a 400, far from the cause. Tool-heavy IS the normal agentic
+    shape, so the "compaction never fires" failure was the default path.
+
+    What is counted, and why each term:
+
+    * ``content`` — text of the turn. A tool RESULT arrives as
+      ``Message.content`` on a ``role="tool"`` message, so results were
+      already covered and are NOT double-counted here.
+    * ``name`` / ``tool_call_id`` — echoed on the wire for every tool
+      result message; small, but they are real tokens.
+    * ``tool_calls`` — the requested calls on an assistant turn, measured
+      in their serialised wire form (see :func:`_tool_call_texts`). This
+      is the term whose absence caused the bug.
+    * ``_PER_BLOCK_OVERHEAD_TOKENS`` per message and per tool call — the
+      structural cost no chars/N ratio can see.
+
+    Deliberately NOT inflated beyond that: a short transcript must not
+    now over-count into a needless compaction. The overhead adds 4 tokens
+    per block, i.e. ~40 tokens on a 10-turn chat against a 12,000-token
+    default budget. An EMPTY transcript is exactly 0 — a zero-cost
+    starting point budget pre-checks rely on."""
+    if chars_per_token <= 0:
+        raise ValueError("chars_per_token must be > 0")
+    total_chars = 0
+    blocks = 0
+    for m in messages:
+        total_chars += len(getattr(m, "content", "") or "")
+        total_chars += len(getattr(m, "name", "") or "")
+        total_chars += len(getattr(m, "tool_call_id", "") or "")
+        blocks += 1
+        for tc in getattr(m, "tool_calls", ()) or ():
+            total_chars += sum(len(t) for t in _tool_call_texts(tc))
+            blocks += 1
+    return int(total_chars // chars_per_token) + blocks * _PER_BLOCK_OVERHEAD_TOKENS
 
 
 @runtime_checkable
@@ -37,22 +125,30 @@ class TokenCounter(Protocol):
 
 @dataclass(frozen=True)
 class ApproxTokenCounter:
-    """Default — chars/4 approximation.
+    """Default — chars/4 approximation over the whole wire payload.
 
     Free, no deps, ~ok within 30% of actual for English. Use
     ``TiktokenCounter`` when accuracy matters (right before a borderline
-    context-limit decision). Matches the heuristic ``RequestBuilder``
-    uses for its ``approx_tokens`` field, so a RequestBuilder-side
-    pre-check stays consistent with the WorkingContext-side view.
+    context-limit decision).
+
+    Shares :func:`estimate_message_tokens` with
+    ``capabilities.compaction.base._approx_tokens`` — the two were
+    separate copies of chars/4 and both silently ignored ``tool_calls``,
+    which is how a pre-check here could pass while the compactor over
+    there refused to fire on the same transcript. Note that
+    ``RequestBuilder.approx_tokens`` still carries its own content-only
+    copy; it reports a LOWER number on a tool-heavy transcript.
     """
 
     chars_per_token: float = 4.0
 
     async def estimate(self, messages: list[Message]) -> int:
-        if self.chars_per_token <= 0:
-            raise ValueError("chars_per_token must be > 0")
-        total_chars = sum(len(m.content or "") for m in messages)
-        return int(total_chars // self.chars_per_token)
+        # Delegates to the shared :func:`estimate_message_tokens` rather than
+        # re-implementing chars/4: the previous private copy here and the one in
+        # ``compaction.base`` had drifted into the SAME tool_calls-blind bug, and a
+        # caller that pre-checks a budget with this counter then compacts with the
+        # compactor MUST see the same number.
+        return estimate_message_tokens(messages, chars_per_token=self.chars_per_token)
 
 
 @dataclass(frozen=True)
@@ -81,10 +177,26 @@ class TiktokenCounter:
 
         total = 0
         for m in messages:
-            content = m.content or ""
-            if content:
-                total += len(enc.encode(content))
+            # Same accounting shape as the approximation (content + tool-call
+            # wire form + per-block overhead) — only the chars→tokens step is
+            # upgraded. An accurate counter that still ignored tool_calls would
+            # reproduce the exact bug this module was fixed for, just with
+            # better-looking numbers.
+            for text in (m.content or "", m.name or "", m.tool_call_id or ""):
+                if text:
+                    total += len(enc.encode(text))
+            total += _PER_BLOCK_OVERHEAD_TOKENS
+            for tc in m.tool_calls or ():
+                for text in _tool_call_texts(tc):
+                    if text:
+                        total += len(enc.encode(text))
+                total += _PER_BLOCK_OVERHEAD_TOKENS
         return total
 
 
-__all__ = ["ApproxTokenCounter", "TiktokenCounter", "TokenCounter"]
+__all__ = [
+    "ApproxTokenCounter",
+    "TiktokenCounter",
+    "TokenCounter",
+    "estimate_message_tokens",
+]
