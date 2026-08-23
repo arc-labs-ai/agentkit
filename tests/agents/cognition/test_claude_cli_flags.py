@@ -36,6 +36,7 @@ import pytest
 
 from agentkit import Agent
 from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.agents.cognition.claude_cli import _BARE_CREDENTIAL_ENV
 from agentkit.context import WorkingContext
 from agentkit.testing.fakes.ctx import FakeCtx
 from tests.agents.cognition.test_claude_cli import _FakeProcess, _happy_path_lines
@@ -238,9 +239,17 @@ def test_bare_mode_without_a_credential_warns(monkeypatch) -> None:
     ``claude`` that works perfectly in a terminal fails here with an auth error
     ("Not logged in · Please run /login") pointing at exactly the wrong fix.
     Warned, not refused: the credential may arrive through an ``apiKeyHelper``
-    in ``settings`` or a provider mechanism this list does not know."""
-    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
-                 "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"):
+    in ``settings`` or a provider mechanism this list does not know.
+
+    The names are cleared from ``_BARE_CREDENTIAL_ENV`` itself rather than from
+    a copy of it pasted here. A copy is a silent order-dependence: add a
+    credential variable to the tuple, leave one exported in the ambient
+    environment (or let another test leak one), and the warning is correctly
+    suppressed while this test reports ``DID NOT WARN`` — a failure about the
+    wrong thing, and one that only appears in a full run.
+    """
+    assert _BARE_CREDENTIAL_ENV, "nothing to clear — the check would pass vacuously"
+    for name in _BARE_CREDENTIAL_ENV:
         monkeypatch.delenv(name, raising=False)
 
     with pytest.warns(UserWarning, match="never reads OAuth"):

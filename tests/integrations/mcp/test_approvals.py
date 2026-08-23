@@ -168,14 +168,29 @@ async def test_a_broken_asker_denies_rather_than_breaking_the_prompt() -> None:
 async def test_a_slow_asker_is_bounded_by_the_timeout() -> None:
     """The timeout is enforced HERE rather than trusted to the ``Asker``: the
     protocol lets an implementation wait forever, and a queue worker holding a
-    CLI subprocess open indefinitely is a resource leak with a model attached."""
+    CLI subprocess open indefinitely is a resource leak with a model attached.
+
+    The slow asker waits on an ``Event`` nobody sets rather than sleeping a
+    fixed 10s. Those are the same claim — "this asker does not answer" — but
+    the sleep encoded the regression's cost into the suite: when the bound
+    stopped firing, the test did not fail, it ran the whole ten seconds and
+    then failed, once, in whichever full run happened to reach it. A wait that
+    never ends cannot be mistaken for a slow one, and the tripwire below turns
+    the same regression into a named failure instead of ten wasted seconds.
+    """
+    never_answered = asyncio.Event()  # deliberately never set
 
     class _Slow:
         async def ask(self, request: Elicitation) -> Decision:
-            await asyncio.sleep(10)
+            await never_answered.wait()
             return Decision(kind="approve")
 
-    out = await _decide(_server(_Slow(), timeout_s=0.05))
+    # Deliberately generous, and NOT a second assertion about the 0.05s
+    # deadline: a tight wall-clock budget on a loaded machine fails a test that
+    # is about whether a bound exists at all. If ``timeout_s`` stops being
+    # enforced this trips and names the regression; the suite-wide timeout
+    # never has to.
+    out = await asyncio.wait_for(_decide(_server(_Slow(), timeout_s=0.05)), timeout=10)
 
     assert out["behavior"] == "deny" and "0.05" in out["message"]
 

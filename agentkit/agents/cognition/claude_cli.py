@@ -118,8 +118,22 @@ _CLI_FAILURE_REASONS = frozenset(
         # than ``terminated``: nobody chose to stop this, the process was
         # already gone.
         "session_closed",
+        # THIS TURN could not run — per-turn structured output, which is a
+        # process-level CLI flag — while the session itself is untouched. Kept
+        # distinct from ``session_closed`` because the fix differs: re-send the
+        # turn without the schema versus open a new session. Measured: the
+        # refusal used to report ``session_closed`` on a process that was still
+        # alive and still answering.
+        "turn_refused",
     }
 )
+
+# How long a session waits for the tail of a turn that failed on OUR side (a
+# parse bug) before declaring the stream unusable. The CLI is still writing an
+# answer nobody will read; we need the stream back at a turn boundary, but not
+# at the cost of blocking the caller for the whole of a turn that already
+# failed. Five seconds is the same grace the terminate path uses.
+_RESYNC_TIMEOUT_S = 5.0
 
 # Structured-output failures are ``invalid_output`` in the closed taxonomy —
 # the same category the tool loop uses when parse-and-repair is exhausted. They
@@ -611,6 +625,13 @@ class ClaudeCliCognition:
                 # ``spawn_failed``: nothing failed to start — a conversation
                 # ended. The caller's fix is a new session, not a retry.
                 final_stop_reason = "session_closed"
+                if isinstance(fatal_exc, _TurnRefused):
+                    # ...except a TURN-level refusal, which leaves the process
+                    # alive and the conversation intact. Reporting it as
+                    # ``session_closed`` is the same conflation that used to
+                    # kill the session: the caller re-sends this turn without
+                    # the schema, they do not open a new session.
+                    final_stop_reason = "turn_refused"
             elif type(fatal_exc).__name__ == "MeterExceeded":
                 # The pre-flight refusal from ``_budget_cap``: no subprocess
                 # was spawned. ``budget_exhausted`` is a RESUMABLE stop reason,
@@ -1037,7 +1058,11 @@ class ClaudeCliSession:
     * **A dead process stays dead.** The CLI exiting mid-session (a crash, an
       OOM kill, ``--max-turns`` reached) ends the session; the turn that
       noticed reports it and every later ``turn()`` refuses rather than
-      silently starting a fresh conversation with no history.
+      silently starting a fresh conversation with no history. A TURN failing is
+      not that: a refused turn (``output=`` per turn) or a parse bug leaves the
+      process alive, so it costs one turn and the conversation continues —
+      measured, the turn after a refusal answers normally where it used to come
+      back ``failed session_closed`` from a healthy CLI.
     * **Cancelling a turn ends the session.** There is no way to tell the CLI
       "forget the turn you were mid-way through" over this protocol, so the
       process is terminated. That is the honest outcome: the alternative is a
@@ -1156,6 +1181,13 @@ class ClaudeCliSession:
         it returns an empty receipt rather than sending a request nobody would
         answer — the reader that resolves it only exists during a turn.
 
+        Safe to call as the turn ENDS, too. A stop button raced by the last
+        token is the same no-op arriving a few milliseconds later: the receipt
+        comes back ``delivered=False`` with an ``error`` saying the turn had
+        already finished. It is not an exception — this used to raise the
+        module-private ``_SessionClosed`` out of the caller's stop button,
+        which is precisely the try block this method exists to spare a UI.
+
         **The interrupt is delivered synchronously; the RECEIPT is best-effort.**
         The CLI answers on the same stdout the turn reader consumes, so the
         acknowledgement only arrives while somebody is draining the stream. Call
@@ -1223,6 +1255,19 @@ class ClaudeCliSession:
                         "turn()."
                     ),
                 )
+            except _SessionClosed as exc:
+                # The turn ended while this request was in flight, so
+                # ``_fail_pending`` resolved the future with the reason nobody
+                # will ever answer it. That is a NORMAL race — a stop button
+                # pressed as the answer lands — and the private exception used
+                # to escape the caller verbatim: measured, ``interrupt()``
+                # raised ``_SessionClosed: the turn ended before the CLI
+                # answered`` straight out of the stop button. A receipt says the
+                # same thing without asking every UI to catch it.
+                return InterruptReceipt(
+                    delivered=False,  # nothing was stopped; the turn had already finished
+                    error=f"{exc} — the turn had already finished, so nothing was interrupted",
+                )
         finally:
             self._pending.pop(request_id, None)
 
@@ -1269,6 +1314,44 @@ class ClaudeCliSession:
         future = self._pending.get(request_id)
         if future is not None and not future.done():
             future.set_result(payload)
+
+    async def _resync(self, proc: asyncio.subprocess.Process) -> bool:
+        """Read the rest of a half-consumed turn, up to its ``result`` payload.
+
+        Called when a turn failed for a reason that is NOT the process dying —
+        a parse bug, a fold that raised. The CLI does not know anything went
+        wrong and keeps writing that turn's answer, so the lines still in the
+        pipe belong to the turn that failed. Leaving them there is how a
+        healthy-looking session returns somebody else's answer: the next turn
+        reads this one's tail and ends at its stale ``result``.
+
+        Returns whether the stream is back at a turn boundary. ``False`` means
+        the session is genuinely over — an unsynchronised stdout cannot carry
+        another turn, and guessing is worse than saying so.
+        """
+        if proc.stdout is None or proc.returncode is not None:
+            return False
+
+        async def _drain() -> bool:
+            assert proc.stdout is not None
+            async for line in proc.stdout:
+                payload = _parse_line(line)
+                if payload is None:
+                    continue
+                # Everything here is discarded, control responses included:
+                # ``_fail_pending`` has already run, so there is no waiter left
+                # for a late acknowledgement to reach.
+                if payload.get("type") == "result":
+                    return True
+            return False  # EOF: the CLI is gone, not merely mid-turn
+
+        try:
+            return await asyncio.wait_for(_drain(), timeout=_RESYNC_TIMEOUT_S)
+        except Exception:
+            # Includes the timeout: a CLI still grinding through a turn we have
+            # already given up on. Bounded, because the alternative is a caller
+            # blocked on the answer to a turn that already failed.
+            return False
 
     def _fail_pending(self, reason: str) -> None:
         """Fail every outstanding control request.
@@ -1323,6 +1406,12 @@ class ClaudeCliSession:
         should_reraise_cancel = False
         stderr_bytes = b""
         schema_requested = False
+        # Did this turn reach the CLI, and did we read it to its ``result``?
+        # Together they say whether the stdout stream is parked at a turn
+        # boundary — which is what decides whether the SESSION survives a
+        # failure, see the ``finally`` below.
+        sent = False
+        turn_complete = False
         # Serialise turns: one stdin and one transcript mean two concurrent
         # turns would interleave into a single conversation.
         async with self._lock:
@@ -1344,7 +1433,11 @@ class ClaudeCliSession:
                         # ``--json-schema`` is a process-level flag, fixed at
                         # spawn. Saying so beats silently returning prose for an
                         # ``output=`` the caller believes is wired.
-                        raise _SessionClosed(
+                        #
+                        # ``_TurnRefused``, not ``_SessionClosed``: nothing was
+                        # written and the process never noticed, so THIS TURN is
+                        # refused and the conversation carries on.
+                        raise _TurnRefused(
                             "structured output is a process-level flag on the CLI, so it "
                             "cannot be turned on per turn. Use ClaudeCliCognition.drive() "
                             "for a typed run, or pass json_schema= on the cognition before "
@@ -1355,6 +1448,7 @@ class ClaudeCliSession:
                 self._turn_active = True
                 proc.stdin.write(_user_turn(task).encode())
                 await proc.stdin.drain()
+                sent = True
 
                 assert proc.stdout is not None  # PIPE
                 async for line in proc.stdout:
@@ -1396,6 +1490,12 @@ class ClaudeCliSession:
                     raise _SessionClosed(
                         "the CLI closed its output mid-turn; the session is over"
                     )
+                if not cancelled:
+                    # We left the loop on the turn's ``result`` payload, so the
+                    # stream is parked exactly at the next turn's first line.
+                    # (A cancel breaks out of the same loop mid-answer, which is
+                    # the opposite situation.)
+                    turn_complete = True
             except asyncio.CancelledError:
                 cancelled = True
                 should_reraise_cancel = True
@@ -1408,8 +1508,42 @@ class ClaudeCliSession:
                     # No protocol message retracts a half-finished turn, so the
                     # session ends with it.
                     await _terminate(proc, self._cog.terminate_grace_s)
-                if (cancelled or fatal_exc is not None) and proc is not None:
+                # ── does THIS turn's failure end the SESSION? ───────────────
+                # It used to: any exception at all set ``_closed``, so a
+                # per-turn refusal killed a healthy process. Measured before
+                # this fix — turn 1 'reply1' complete; turn 2 refused for
+                # carrying ``output=`` → ``_closed=True`` with the process
+                # still alive; turn 3, a plain valid turn, ``failed
+                # session_closed`` with no output. Only a dead process — or a
+                # stream we can no longer line up with a turn boundary — is a
+                # dead session.
+                session_over = cancelled or proc is None or proc.returncode is not None
+                if isinstance(fatal_exc, _SessionClosed) and not isinstance(
+                    fatal_exc, _TurnRefused
+                ):
+                    # The pre-flight checks and the mid-turn EOF: the process,
+                    # or its stdout, is gone. There is no conversation left to
+                    # continue, so every later turn must refuse rather than
+                    # silently start a fresh one.
+                    session_over = True
+                elif (
+                    fatal_exc is not None
+                    and not session_over
+                    and sent
+                    and not turn_complete
+                    and proc is not None
+                ):
+                    # A turn-level failure (a parse bug in ``_events_from_payload``,
+                    # a fold that raised) left the CLI's answer half-read. Those
+                    # lines belong to the turn that just failed: leaving them
+                    # would make the NEXT turn read this one's tail and stop at
+                    # its stale ``result``. Read to the boundary before letting
+                    # the session live on — and if we cannot get there, the
+                    # stream is unusable and the session really is over.
+                    session_over = not await self._resync(proc)
+                if session_over:
                     self._closed = True
+                if (cancelled or fatal_exc is not None) and proc is not None:
                     if proc.stderr is not None:
                         with contextlib.suppress(Exception):
                             stderr_bytes = await asyncio.wait_for(proc.stderr.read(), 0.5)
@@ -1475,6 +1609,23 @@ class _SessionClosed(RuntimeError):
     Surfaced through the normal terminal event as ``session_closed`` rather
     than raised at the caller, so a session turn keeps the same
     exactly-one-``final`` contract as a one-shot drive.
+    """
+
+
+class _TurnRefused(_SessionClosed):
+    """THIS turn cannot run; the session is fine.
+
+    Per-turn structured output is the case: ``--json-schema`` is fixed at
+    spawn, so the turn is refused with an explanation — but nothing was written
+    and the process never heard about it, so the conversation is intact and the
+    next turn answers normally. Measured before the two were distinguished: the
+    refusal closed the session, and the following plain turn came back ``failed
+    session_closed`` from a CLI that was alive and idle.
+
+    A subclass of :class:`_SessionClosed` so it keeps that class's
+    "not a spawn failure, no retry will help THIS turn" handling in
+    ``_finalise``; the extra type is what lets the terminal event say
+    ``turn_refused`` and the session stay open.
     """
 
 

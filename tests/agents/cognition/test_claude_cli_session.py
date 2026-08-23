@@ -35,7 +35,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from agentkit import Agent, Scope
-from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.agents.cognition import ClaudeCliCognition, claude_cli
 from agentkit.agents.cognition.claude_cli import _user_turn
 from agentkit.kernel.types import StreamEvent
 from agentkit.runtime import Budget, RunContext, Services
@@ -407,6 +407,193 @@ def test_structured_output_per_turn_is_refused_with_a_reason() -> None:
     assert proc.stdin.written == []
 
 
+def test_a_refused_turn_does_not_end_the_session() -> None:
+    """A turn-level rejection is not a session-level death.
+
+    THE headline. The refusal above is correct — structured output is a
+    process-level flag — but it used to leave the session marked closed on a
+    process that was alive and idle, so every LATER turn died too. Measured
+    before the fix::
+
+        t1: complete 'reply1'  closed=False
+        t2 (schema): failed session_closed  _closed=True  proc alive=True
+        t3 (plain, after): failed ''  evals=session_closed
+
+    and after::
+
+        t2 (schema): failed turn_refused  _closed=False  proc alive=True
+        t3 (plain, after): complete 'reply3'
+
+    Turn 3 is the assertion that matters: a healthy conversation must survive
+    one turn being turned away.
+    """
+    pydantic = pytest.importorskip("pydantic")
+
+    class Out(pydantic.BaseModel):
+        v: str
+
+    proc = _FakeSessionProcess([_turn_lines("reply1"), _turn_lines("reply3")])
+    with _patched(proc):
+
+        async def _go() -> tuple[Any, Any, Any, bool]:
+            async with ClaudeCliCognition().session() as chat:
+                first = (await _collect(chat, "one"))[-1].result
+                refused_events = [
+                    ev async for ev in chat.turn("two", agent=Agent(name="x", output=Out))
+                ]
+                # Sampled INSIDE the session: leaving the context manager closes
+                # the process, so a check afterwards proves nothing.
+                alive = proc.returncode is None and not chat._closed
+                third = (await _collect(chat, "three"))[-1].result
+                return first, refused_events, third, alive
+
+        first, refused_events, third, alive_after_refusal = asyncio.run(_go())
+
+    # The refusal still refuses, with the explanation intact.
+    refused = refused_events[-1].result
+    assert [e.type for e in refused_events] == ["final"]
+    assert "process-level flag" in str(refused.evals["error"])
+    assert refused.partial and refused.stop_reason == "failed"
+    # ...but it is named for what it is: THIS turn, not the conversation.
+    assert refused.evals["stop_reason"] == "turn_refused"
+    assert alive_after_refusal, "a refused turn must not close a live session"
+    # The turns either side of it are untouched.
+    assert first.output == "reply1" and first.stop_reason == "complete"
+    assert third.output == "reply3" and third.stop_reason == "complete"
+
+
+def _parse_bomb(marker: str) -> Any:
+    """Patch the payload parser to blow up on the line containing ``marker``.
+
+    A parse bug is the realistic non-process failure: the CLI is fine, our
+    reader is not. It used to take the session down with it.
+    """
+    real = claude_cli._events_from_payload
+
+    async def _boom(payload: dict[str, Any], **kw: Any) -> Any:
+        if marker in json.dumps(payload):
+            raise ValueError("synthetic parse bug")
+        async for item in real(payload, **kw):
+            yield item
+
+    return patch.object(claude_cli, "_events_from_payload", _boom)
+
+
+def test_a_parse_failure_costs_one_turn_not_the_session() -> None:
+    """Same bug as the refusal, reached from the other side: ANY exception
+    while reading a turn used to set ``_closed``. Measured before the fix,
+    ``parse t1: failed parse_failed closed=True`` and then
+    ``parse t2: failed ''`` — after it, turn 2 answers ``'reply2'``.
+
+    And it answers with its OWN words. The failed turn was abandoned mid-stream
+    with its ``result`` still in the pipe; a session that just carries on would
+    hand those leftovers to the next turn, which would end instantly on a stale
+    result with empty output. Asserting the TEXT is what separates "the session
+    survived" from "the session survived and is still in sync".
+    """
+    proc = _FakeSessionProcess(
+        [
+            [
+                _line(
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "boom"}]},
+                    }
+                ),
+                *_turn_lines("tail-of-the-failed-turn"),
+            ],
+            _turn_lines("reply2"),
+        ]
+    )
+    with _patched(proc), _parse_bomb("boom"):
+
+        async def _go() -> tuple[Any, Any, bool]:
+            async with ClaudeCliCognition().session() as chat:
+                first_events = await _collect(chat, "one")
+                alive = proc.returncode is None and not chat._closed
+                second = (await _collect(chat, "two"))[-1].result
+                return first_events, second, alive
+
+        first_events, second, alive_after_parse_failure = asyncio.run(_go())
+
+    first = first_events[-1].result
+    assert [e.type for e in first_events][-1] == "final"
+    assert sum(e.type == "final" for e in first_events) == 1
+    assert first.evals["stop_reason"] == "parse_failed" and first.partial
+    assert alive_after_parse_failure, "our own parse bug is not the CLI dying"
+    assert second.output == "reply2", "the next turn read the failed turn's leftovers"
+    assert second.stop_reason == "complete"
+
+
+def test_a_stream_that_cannot_be_resynced_does_close_the_session() -> None:
+    """The other half of that trade, and the reason it is not just "never
+    close". If the failed turn's ``result`` never arrives, the stream is stuck
+    mid-answer and the next turn would read one conversation as another. Being
+    unable to line the stream back up IS the session ending, so it closes —
+    bounded by ``_RESYNC_TIMEOUT_S`` rather than waiting out a turn nobody will
+    read."""
+    proc = _FakeSessionProcess(
+        [
+            # A turn that blows up on its first line and then goes quiet: no
+            # result, no EOF — exactly a CLI still grinding away.
+            [
+                _line(
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "boom"}]},
+                    }
+                )
+            ],
+            _turn_lines("never reached"),
+        ]
+    )
+    with _patched(proc), _parse_bomb("boom"), patch.object(claude_cli, "_RESYNC_TIMEOUT_S", 0.05):
+
+        async def _go() -> tuple[Any, Any, bool]:
+            chat = ClaudeCliCognition().session()
+            await chat.start()
+            first = (await _collect(chat, "one"))[-1].result
+            closed = chat._closed
+            second = [ev async for ev in chat.turn("two")][-1].result
+            return first, second, closed
+
+        first, second, closed = asyncio.run(_go())
+
+    assert first.evals["stop_reason"] == "parse_failed"
+    assert closed, "an unsynchronisable stream cannot carry another turn"
+    assert second.evals["stop_reason"] == "session_closed"
+    assert len(proc.stdin.messages) == 1, "a closed session must not send a turn"
+
+
+def test_a_process_that_dies_between_turns_still_closes_the_session() -> None:
+    """POSITIVE CONTROL for the fix above: keeping a session alive through a
+    turn-level failure must not keep it alive through a DEAD PROCESS. A CLI
+    that exited (crash, OOM kill, ``--max-turns``) has taken the conversation
+    with it, and a session that shrugged that off would silently start a fresh
+    one with no history — the failure the whole ``session_closed`` path
+    exists to prevent."""
+    proc = _FakeSessionProcess([_turn_lines("alive"), _turn_lines("never reached")])
+    with _patched(proc):
+
+        async def _go() -> tuple[Any, Any, bool]:
+            chat = ClaudeCliCognition().session()
+            await chat.start()
+            first = (await _collect(chat, "one"))[-1].result
+            proc._returncode = 1  # the CLI died between turns
+            second = [ev async for ev in chat.turn("two")][-1].result
+            closed = chat._closed
+            third = [ev async for ev in chat.turn("three")][-1].result
+            return first, (second, third), closed
+
+        first, (second, third), closed = asyncio.run(_go())
+
+    assert first.output == "alive"
+    assert second.evals["stop_reason"] == "session_closed"
+    assert closed, "a dead process must close the session"
+    assert third.evals["stop_reason"] == "session_closed"
+    assert len(proc.stdin.messages) == 1, "nothing may be written to a dead process"
+
+
 # ── 4. the shared per-turn contracts still hold ─────────────────────────────
 
 
@@ -724,7 +911,18 @@ def test_interrupting_an_idle_session_is_a_no_op() -> None:
 def test_a_turn_that_ends_first_does_not_strand_the_waiter() -> None:
     """The reader is what resolves a control response, so a turn that finishes
     before the CLI answers leaves nobody to deliver it. Failing the waiter beats
-    hanging it forever."""
+    hanging it forever — but it must fail as a RECEIPT.
+
+    A stop button pressed as the last token lands is a normal race, not an
+    error. It used to hand the caller a module-private exception straight out
+    of ``interrupt()``::
+
+        interrupt mid/after turn: RAISED _SessionClosed: the turn ended before
+        the CLI answered
+
+    which is exactly the try block this method's docstring promises a UI it
+    will not need ("a field on a receipt, not a hung application").
+    """
     proc = _FakeSessionProcess(
         [
             [
@@ -748,9 +946,33 @@ def test_a_turn_that_ends_first_does_not_strand_the_waiter() -> None:
 
         pending = asyncio.run(_go())
 
+    # Resolved by the turn ending, not by ``ack_timeout_s`` expiring: a waiter
+    # nobody will ever answer must not be left to time out.
     assert pending.done()
-    with pytest.raises(RuntimeError, match="before the CLI answered"):
-        pending.result()
+    receipt = pending.result()  # a receipt, not a raise
+    assert receipt.delivered is False, "the turn had already finished; nothing was stopped"
+    assert receipt.error is not None and "before the CLI answered" in receipt.error
+
+
+def test_interrupting_after_the_session_is_closed_is_a_no_op() -> None:
+    """Same reasoning as an idle session, one step further along: the process
+    is gone, so there is nothing to stop and nothing to raise about. A stop
+    button on a finished conversation is a no-op, and it must stay one whether
+    it is pressed a second before the end or a second after."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    with _patched(proc):
+
+        async def _go() -> Any:
+            chat = ClaudeCliCognition().session()
+            await chat.start()
+            await _collect(chat, "hello")
+            await chat.close()
+            return await asyncio.wait_for(chat.interrupt(), timeout=2.0)
+
+        receipt = asyncio.run(_go())
+
+    assert receipt.delivered is False and receipt.error is None
+    assert not [m for m in proc.stdin.messages if m["type"] == "control_request"]
 
 
 def test_a_control_response_is_not_folded_into_the_turn() -> None:
