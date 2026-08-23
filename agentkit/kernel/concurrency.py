@@ -3,7 +3,8 @@
 Uses `asyncio.TaskGroup` (a failing child cancels its siblings and raises an ExceptionGroup) bounded
 by a shared `asyncio.Semaphore`, and copies the current `contextvars` into each task so the active
 trace span / correlation id propagate. `gather_best_effort` is the opt-in "one failure shouldn't sink
-the batch" variant. Stdlib-only (asyncio + contextvars); needs Python ≥ 3.11 for TaskGroup.
+the batch" variant. Stdlib-only (asyncio + contextvars + logging); needs Python ≥ 3.11 for
+TaskGroup.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextvars
+import logging
 from collections.abc import Awaitable, Coroutine
 from decimal import Decimal
 from typing import Any, TypeVar
@@ -18,6 +20,26 @@ from typing import Any, TypeVar
 from agentkit.kernel.errors import Failure
 
 R = TypeVar("R")
+
+_LOGGER = logging.getLogger(__name__)
+
+#: How long an abort will wait for already-cancelled siblings to run their
+#: ``finally`` blocks before giving up on them and unwinding anyway.
+#:
+#: An abort must be BOUNDED. Awaiting the cancelled siblings unconditionally
+#: hands the abort's liveness to the slowest — or most badly behaved — child:
+#: measured with one sibling looping on ``except CancelledError: pass``, the
+#: gather was still wedged at 130s with no output, and an outer
+#: ``asyncio.wait_for(..., timeout=2)`` could NOT break it out, because the
+#: await sat inside an ``except BaseException`` handler (a shielded region from
+#: the caller's point of view). Five seconds is a graceful-shutdown grace, not a
+#: deadline: the cleanup this exists to buy — releasing a semaphore, closing a
+#: session, flushing a span — is sub-millisecond, and the worst well-behaved
+#: case measured (1s of post-cancel work) still finishes comfortably inside it.
+#: Module-level so a test can shrink it; deliberately NOT a parameter, because
+#: the bound is a safety property of the abort, not a per-call tuning knob.
+SIBLING_CLEANUP_GRACE_S = 5.0
+
 
 def _at_least_one(units: int) -> int:
     """Floor-divided slice, never zero.
@@ -147,9 +169,42 @@ async def gather_best_effort(
         # await: without the await the tasks are merely *marked* cancelled and
         # have not yet run their ``finally`` blocks (releasing the semaphore,
         # closing resources) when the caller resumes.
+        #
+        # But the await must be BOUNDED. Awaiting them unconditionally made the
+        # abort's liveness a function of the WORST-behaved child: a sibling
+        # looping on ``except CancelledError: pass`` left the gather wedged at
+        # 130s with no output, and an outer ``asyncio.wait_for(..., timeout=2)``
+        # could not break out either, because this await sits inside an
+        # ``except BaseException`` handler — a region the caller cannot
+        # interrupt. Measured after the bound: that same swallower unwinds in
+        # ~0.1s (the grace), while a sibling doing 1s of genuine post-cancel
+        # cleanup still completes it (1.05s, ``finally`` ran) exactly as before.
+        #
+        # ``asyncio.wait`` rather than ``wait_for(gather(...))``: it returns
+        # ``(done, pending)`` on timeout instead of raising, it does NOT cancel
+        # or re-await the stragglers on the way out (so it cannot itself wedge),
+        # and it stays interruptible — an outer cancel now lands here and
+        # propagates instead of being absorbed.
         for t in tasks:
             t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=SIBLING_CLEANUP_GRACE_S)
+            if pending:
+                # We are abandoning these. Whatever they hold — most importantly
+                # the semaphore permit taken by ``async with sem`` in ``_run`` —
+                # stays held, because a task that will not honour cancellation
+                # cannot be made to release anything from out here. Nothing can
+                # be done about it; what CAN be done is refuse to hang and say
+                # so loudly, since a permanently shrunk semaphore is otherwise a
+                # silent, drifting concurrency ceiling.
+                _LOGGER.warning(
+                    "gather_best_effort: abandoning %d sibling task(s) that did not "
+                    "finish cancelling within %.1fs; their cleanup (semaphore release, "
+                    "resource close) has NOT run: %s",
+                    len(pending),
+                    SIBLING_CLEANUP_GRACE_S,
+                    [t.get_name() for t in pending],
+                )
         raise
 
 

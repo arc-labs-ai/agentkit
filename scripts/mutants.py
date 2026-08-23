@@ -588,7 +588,8 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/kernel/concurrency.py",
         before=(
             "        for t in tasks:\n            t.cancel()\n"
-            "        await asyncio.gather(*tasks, return_exceptions=True)"
+            "        if tasks:\n"
+            "            _, pending = await asyncio.wait(tasks, timeout=SIBLING_CLEANUP_GRACE_S)"
         ),
         after="        pass",
         tests=CONC_TESTS,
