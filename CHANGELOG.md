@@ -11,6 +11,41 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — `security()` was uncallable, and `Prompt.render()` ignored its inputs
+
+Two documented entry points that failed on first contact.
+
+- **`from agentkit.middlewares import security; security()` raised
+  `TypeError: 'module' object is not callable`.** `middlewares/__init__.py`
+  imported the factory from `guard.py`, then a later line's
+  `from ...security import Audit, Egress` bound the SUBMODULE onto the package
+  over the top of it. It was in `__all__` and in the canonical middleware chain
+  in two docs pages. `security.py` is renamed to `egress_audit.py` — which is
+  also what it contains — rather than patching the binding, because reordering
+  imports is undone by the formatter and an explicit re-bind is one more thing
+  to forget.
+
+  This was the THIRD instance of a module shadowing a same-named callable in
+  this codebase (`registry.py`/`registry()`, `elicit.py`/`elicit()` were the
+  first two). `tests/meta/test_public_surface.py` now walks every public
+  package and fails on any recurrence. Writing it taught the precise rule:
+  `tracing`, `memoize`, `meter`, `compaction` and `output_coerce` are the same
+  collision and are all SAFE, because their factory lives in the same-named
+  file so the function binds last within one statement. The dangerous shape is
+  a name that collides with a submodule *and* is defined somewhere else.
+
+- **`Prompt.render()` took no arguments and returned `self.template.strip()`,**
+  so `inputs=` was decorative and placeholders shipped to the model verbatim:
+  `Prompt(template="Hello {name}", inputs=("name",)).render()` → `'Hello {name}'`.
+  That is worse than a crash — a plausible-looking prompt that quietly
+  describes the wrong task. It now substitutes, and raises `ValueError` on a
+  missing or unexpected input.
+
+  Substitution is a literal replacement of the declared names, not
+  `str.format`: system prompts are full of braces that are not placeholders,
+  and `format` would raise on a JSON Schema or eat a user's escaping. A prompt
+  declaring no `inputs` renders exactly as before.
+
 ### Added — `ClaudeCliSession.interrupt()`: stop a turn, keep the conversation
 
 The session could send turns but not stop one mid-flight, which left a chat UI

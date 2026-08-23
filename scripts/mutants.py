@@ -115,6 +115,8 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+SURFACE_TESTS = ("tests/meta/test_public_surface.py",)
+PROMPT_TESTS = ("tests/test_prompt_render.py",)
 APPROVAL_TESTS = ("tests/integrations/mcp/test_approvals.py",)
 CLI_SESSION_TESTS = ("tests/agents/cognition/test_claude_cli_session.py",)
 CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
@@ -150,6 +152,51 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── a documented entry point must actually work ─────────────────────────
+    Mutant(
+        tag="surface",
+        why="a submodule shadows an exported callable again (the bug, reintroduced)",
+        path="agentkit/middlewares/__init__.py",
+        # Mutating the RATCHET to disable its own assertion would prove nothing
+        # — a test cannot vouch for itself. This re-creates the defect in the
+        # SOURCE instead: bind an exported name to a module, exactly as the
+        # ``security.py`` submodule import did, and check the ratchet fails.
+        before="from agentkit.middlewares.tracing import tracing",
+        after="from agentkit.middlewares import egress_audit as security\nfrom agentkit.middlewares.tracing import tracing",
+        tests=SURFACE_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="declared inputs are ignored, so placeholders ship to the model verbatim",
+        path="agentkit/prompts/prompt.py",
+        before='            text = text.replace("{" + name + "}", str(values[name]))',
+        after="            pass",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="a missing input renders a half-filled prompt instead of refusing",
+        path="agentkit/prompts/prompt.py",
+        before="        if missing or unexpected:",
+        after="        if False:",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="str.format is used, so a JSON Schema in a template raises or is eaten",
+        path="agentkit/prompts/prompt.py",
+        before="        text = self.template\n        for name in self.inputs:",
+        after="        return self.template.format(**values).strip()\n        text = self.template\n        for name in self.inputs:",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="values passed to an input-less prompt are silently ignored",
+        path="agentkit/prompts/prompt.py",
+        before="            if values:",
+        after="            if False:",
+        tests=PROMPT_TESTS,
+    ),
     # ── interrupt: stop the turn, keep the conversation ─────────────────────
     Mutant(
         tag="cliinterrupt",
@@ -1333,7 +1380,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="security",
         why="egress can be constructed inert, silently disabling every URL check",
-        path="agentkit/middlewares/security.py",
+        path="agentkit/middlewares/egress_audit.py",
         before="        if guardrail is None:",
         after="        if False:",
         tests=SECURITY_TESTS,

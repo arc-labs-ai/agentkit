@@ -29,11 +29,29 @@ A `Prompt` bundles:
 - **`version`** — a semver string; every rendered prompt carries this
   into the trace envelope.
 - **`template`** — the template string.
-- **`inputs`** — a `tuple[str, ...]` of the input names the template
-  requires; declared once on the `Prompt` value rather than passed at
-  render time.
-- **`render()`** — the pure function from the pre-declared inputs to
-  a rendered string.
+- **`inputs`** — a `tuple[str, ...]` of the placeholder names the
+  template declares; the NAMES live on the `Prompt` value so a stored
+  prompt carries its own contract, while the VALUES are passed to
+  `render()`.
+- **`render(**values)`** — substitutes each declared `{name}` and
+  returns the text. A missing or unexpected input raises `ValueError`
+  rather than rendering a half-filled prompt: `{tenant}` reaching the
+  model unsubstituted is not a crash, which is the problem — it is a
+  plausible-looking prompt that quietly describes the wrong task.
+
+  Substitution is a literal replacement of the declared names, **not**
+  `str.format`. System prompts are full of braces that are not
+  placeholders — a JSON Schema, an example payload, a code fence — and
+  `format` would raise on them or eat a user's escaping:
+
+  ```python
+  p = Prompt(id="x", version="1", inputs=("kind",),
+             template='Return {"type": "object"} for {kind}.')
+  p.render(kind="invoices")   # 'Return {"type": "object"} for invoices.'
+  ```
+
+  A prompt that declares no `inputs` renders exactly as before —
+  the stripped template, no arguments.
 
 ## Built-ins
 

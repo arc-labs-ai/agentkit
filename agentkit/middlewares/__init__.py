@@ -13,15 +13,26 @@ Typical chat chain:  [tracing(), compaction(…), meter(), fallback([...]), retr
 Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit(), retry(breaker=…)]
 
 (`compaction` sits ahead of `meter` so the meter estimates tokens on the already-compacted transcript.)
+
+.. note::
+   ``Egress`` / ``Audit`` live in ``egress_audit.py``, not ``security.py``. A
+   submodule named ``security`` shadowed the ``security()`` factory re-exported
+   here — importing a submodule binds its name onto the parent package, and
+   that binding happened AFTER the ``from .guard import security`` line, so
+   ``middlewares.egress_audit`` was the MODULE and ``security()`` raised
+   ``TypeError: 'module' object is not callable``. The module was renamed
+   rather than the binding patched, because reordering the imports is undone by
+   the formatter and an explicit re-bind is one more thing to forget.
+   ``tests/meta/test_public_surface.py`` now fails on any recurrence.
 """
 
 from agentkit.middlewares.compaction import Compaction, compaction
+from agentkit.middlewares.egress_audit import Audit, Egress, audit, egress
 from agentkit.middlewares.guard import SecurityMiddleware, security
 from agentkit.middlewares.memoize import idempotent, memoize, semantic_memoize
 from agentkit.middlewares.meter import MeterMiddleware, meter
 from agentkit.middlewares.output_coerce import output_coerce
 from agentkit.middlewares.resilience import fallback, retry
-from agentkit.middlewares.security import Audit, Egress, audit, egress
 from agentkit.middlewares.tracing import tracing
 
 __all__ = [
