@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Any, Literal
+
+from agentkit.kernel._frozen import deep_freeze
 
 # Wire-level discriminator tag — a closed set typed as ``Literal``
 # so consumers can exhaust the branch table with mypy.
@@ -79,24 +80,60 @@ class Usage:
 class ToolCall:
     """A tool invocation the model requested. `id` is echoed back on the matching tool-result message.
 
-    ``arguments`` is exposed as an immutable ``MappingProxyType``: the
-    ToolCall flows into the ReAct approval snapshot AND into the
-    idempotency-key hash AND into the audit trail — a tool impl that
-    did ``args.pop("token")`` would have desynced all three. Callers
-    that need to mutate copy first: ``dict(tc.arguments)``.
+    ``arguments`` is IMMUTABLE: the ToolCall flows into the ReAct approval
+    snapshot AND into the idempotency-key hash AND into the audit trail — a
+    tool impl that did ``args.pop("token")`` would have desynced all three.
+    Callers that need to mutate copy first: ``dict(tc.arguments)``.
 
-    ``MappingProxyType`` is not natively ``copy.deepcopy``-safe
-    (stdlib limitation — the view can't be pickled), which matters
-    because ``Checkpointer.snapshot`` deep-copies state that
-    contains ``ToolCall``s. ``__deepcopy__`` / ``__copy__`` unwrap
-    the view into a plain dict at copy time; the fresh ``ToolCall``
-    re-wraps it via ``__post_init__``. ``__reduce__`` covers the
-    ``pickle`` path, which had no such hook.
+    The immutability was originally a ``MappingProxyType`` and is now a
+    :class:`~agentkit.kernel._frozen.FrozenDict`. Same guarantee, without the
+    stdlib limitation the proxy dragged in: a mappingproxy is not a ``dict``
+    subclass, so ``json`` refused it, ``isinstance(args, dict)`` was False, and
+    ``dataclasses.asdict`` — which deep-copies every leaf — blew up on a type
+    with no pickle protocol. Measured on ``ToolCall("c1", "search", {...})``::
 
-    A mappingproxy is also UNHASHABLE, which silently made every
-    ``ToolCall`` — and every ``Message`` / ``PrefixContext`` /
-    ``FrozenContext`` reachable from one — unhashable too. See
-    ``__hash__``."""
+                                    MappingProxyType                       FrozenDict
+        dataclasses.asdict(tc)      TypeError: cannot pickle 'mappingproxy' ok
+        json.dumps(tc.arguments)    TypeError: not JSON serializable        ok
+        isinstance(_, dict)         False                                   True
+
+    The ``asdict`` line is the one that shipped broken, and it was contagious:
+    a ToolCall does not have to be the argument, only reachable from it, so
+    ``asdict`` of ANY dataclass holding a ToolCall raised. That is why
+    ``resilience.stable_hash`` walks dataclass fields by hand instead of
+    calling ``asdict`` (see the note at its ``_stable_default``) and why four
+    other call sites carry a defensive ``dict(tc.arguments)`` unwrap.
+
+    One consequence to know about: ``asdict`` rebuilds each nested container as
+    ``type(obj)(...)``, so it hands back a ``FrozenDict``, not a plain one. The
+    freeze survives serialisation, which is what a durable record wants — but
+    ``asdict`` is therefore NOT the "give me an editable copy" escape hatch.
+    ``dict(tc.arguments)`` is, and always was.
+
+    ``deep_freeze`` is deep, so ``tc.arguments["filters"]["tags"].append(...)``
+    is refused too — a shallow freeze leaves the same bug one level down, where
+    decoded provider JSON actually lives. It also COPIES, so a caller that
+    keeps editing the dict it passed in cannot reach the stored payload.
+
+    Cost is O(payload) and it is NOT free — measured, min of five runs, on a
+    realistic 3-key/2-level arguments dict::
+
+        ToolCall(id, name, args)      1.21 us -> 3.97 us   (+2.8 us)
+        ToolCall(id, name)  empty     1.22 us -> 1.48 us   (+0.3 us)
+        copy.deepcopy(tool_call)      7.96 us -> 12.5 us
+        pickle round trip             6.65 us -> 12.9 us
+
+    Paid once per tool invocation, immediately before the tool does network or
+    disk I/O, so it is ~3 us against a millisecond floor. The copy numbers grew
+    because a ``FrozenDict`` deep-copies through its own ``__reduce__``/
+    ``__deepcopy__`` rather than the C fast path (6.6 us vs 3.7 us for the same
+    payload as a plain dict) — that is ``_frozen``'s price, and the
+    checkpointer was already paying the 8 us.
+
+    ``arguments`` being an unhashable container is also what would have cost
+    every ``ToolCall`` — and every ``Message`` / ``PrefixContext`` /
+    ``FrozenContext`` reachable from one — its hashability. See ``__hash__``;
+    that decision is unchanged by this migration, and deliberately so."""
 
     id: str
     name: str
@@ -104,24 +141,20 @@ class ToolCall:
 
     def __post_init__(self) -> None:
         # Frozen dataclass — assign via object.__setattr__ to bypass the freeze.
-        if not isinstance(self.arguments, MappingProxyType):
-            object.__setattr__(self, "arguments", MappingProxyType(dict(self.arguments)))
-
-    def __deepcopy__(self, memo: dict[int, Any]) -> ToolCall:
-        import copy as _copy
-
-        return ToolCall(id=self.id, name=self.name, arguments=_copy.deepcopy(dict(self.arguments), memo))
-
-    def __copy__(self) -> ToolCall:
-        return ToolCall(id=self.id, name=self.name, arguments=dict(self.arguments))
+        # ``deep_freeze`` short-circuits on an already-frozen payload, so the
+        # re-freeze on every ``dataclasses.replace`` / unpickle costs one
+        # isinstance check rather than a second walk.
+        object.__setattr__(self, "arguments", deep_freeze(self.arguments))
 
     def __hash__(self) -> int:
         """Hash on IDENTITY — ``(id, name)`` — never on ``arguments``.
 
         A frozen dataclass derives ``__hash__`` from every compared field, and
-        ``arguments`` is the ``MappingProxyType`` above, which is unhashable.
-        So the immutability guarantee cost hashability, silently and only at
-        the call site that hashed one. Measured before this fix::
+        ``arguments`` is the immutable mapping above — unhashable then as a
+        ``MappingProxyType``, unhashable now as a ``FrozenDict``, because
+        neither refusing mutation nor being a ``dict`` subclass makes a mapping
+        hashable. So the immutability guarantee cost hashability, silently and
+        only at the call site that hashed one. Measured before this fix::
 
             hash(ToolCall("c1", "search", {"q": "hi"}))    TypeError: unhashable type: 'dict'
             hash(Message("assistant", tool_calls=(tc,)))   TypeError: unhashable type: 'dict'
@@ -157,29 +190,40 @@ class ToolCall:
         return hash((self.id, self.name))
 
     def __reduce__(self) -> tuple[Any, ...]:
-        """Rebuild through the constructor — a mappingproxy cannot be pickled.
+        """Rebuild through the constructor. NO LONGER load-bearing for
+        correctness — kept for the records already on disk.
 
-        ``copy.deepcopy`` has ``__deepcopy__`` above; ``pickle`` had nothing
-        and hit the stdlib limitation head-on::
+        It existed because a mappingproxy cannot be pickled at all::
 
             pickle.dumps(ToolCall("c1", "search", {"q": "hi"}))
             TypeError: cannot pickle 'mappingproxy' object
 
-        Not academic: tool calls reach durable stores through the checkpointer
-        and the replay recorder, and a ``FrozenContext`` is advertised as safe
-        to hand across an agent boundary — which, once that boundary is a
-        process, means pickle. Same hook and same reason as
-        ``Prompt.__reduce__`` and ``SignalEnvelope.__reduce__``. The arguments
-        travel as a plain ``dict`` because the constructor ARGUMENTS have to be
-        picklable too, not just the result; ``__post_init__`` re-freezes on the
-        way back in.
+        A ``FrozenDict`` pickles itself (it carries its own ``__reduce__``), so
+        that reason is gone. Verified by MUTATION rather than by reading:
+        deleting this method leaves ``deepcopy`` / ``copy`` / ``pickle`` all
+        green and all three still return a DEEPLY frozen payload
+        (``FrozenDict`` at the top and at every nested level), at 13.3 µs vs
+        12.4 µs per deepcopy and 12.3 µs vs 12.6 µs per pickle round trip —
+        i.e. noise. The two hooks that sat beside it, ``__deepcopy__`` and
+        ``__copy__``, were pure mappingproxy workarounds under the same
+        mutation and have been deleted.
 
-        ``__deepcopy__`` stays beside this rather than deferring to it (``copy``
-        would happily use ``__reduce__``): the direct hook skips the
-        reduce-and-reconstruct round trip, measured 4.30 µs vs 6.23 µs per copy
-        on a small ToolCall, and ``Checkpointer.snapshot`` deep-copies every
-        ToolCall in state on every snapshot. That is the opposite of the call
-        made in ``Prompt``, where nothing measured the difference.
+        This one stays for a reason the migration does not retire: the
+        ``_rebuild_tool_call`` global below is BAKED INTO every ToolCall
+        already pickled by the checkpointer and the replay recorder, and
+        dropping the method drops the only caller keeping that global honest.
+        Reading a pre-existing record then fails at load, not at write::
+
+            pickle.loads(record)   # written by any earlier version
+            AttributeError: Can't get attribute '_rebuild_tool_call'
+                            on <module 'agentkit.kernel.types'>
+
+        A one-line method against a durable-read outage is a trade worth
+        making. The arguments travel as a plain ``dict`` because the
+        constructor ARGUMENTS have to be picklable too, not just the result;
+        ``__post_init__`` re-freezes on the way back in, which also means the
+        constructor stays the only door into the invariant — the state-restore
+        path pickle would use instead never runs ``__post_init__`` at all.
         """
         return (_rebuild_tool_call, (self.id, self.name, dict(self.arguments)))
 
@@ -193,22 +237,47 @@ def _rebuild_tool_call(id_: str, name: str, arguments: dict[str, Any]) -> ToolCa
 class ToolSchema:
     """JSON-schema advertisement of a tool — what the provider needs to *see* to call it.
 
-    ``parameters`` is a plain ``dict`` on purpose — it is ``json.dumps``'d
-    straight into provider payloads and read back through
-    ``dataclasses.asdict``, neither of which survives a ``MappingProxyType``.
+    ``parameters`` is a ``dict`` SUBCLASS — a ``FrozenDict``, frozen deeply at
+    construction. It is ``json.dumps``'d straight into provider payloads
+    (``openai_compat`` sends ``schema.parameters or {}``, ``anthropic`` sends
+    it as ``input_schema``) and read back through ``dataclasses.asdict``,
+    neither of which survives a ``MappingProxyType`` — which is exactly why the
+    freeze is a subclass and not a view. See ``kernel._frozen``.
+
+    The freeze matters most here because a schema is SHARED, not per-call: a
+    ``ToolRegistry`` hands the same ``ToolSchema`` object to every
+    ``ChatRequest`` for the life of the process, so one adapter doing
+    ``schema.parameters["properties"]["x"]["type"] = "number"`` to fix up one
+    provider's payload would have silently rewritten what every other provider
+    advertises from then on.
+
+    This is the WORST relative cost of the four — 0.74 us before against
+    12.3 us after for an 8-property schema, 16x — and the one that matters
+    least, because a schema is built once and then reused forever. Every
+    construction site is registration-time (``@tool`` decoration, ``as_tool``,
+    ``handoff``, MCP discovery), and ``ToolRegistry.schemas()`` hands back the
+    SAME cached ``ToolSchema`` objects on every turn rather than rebuilding
+    them, so no per-turn path pays this. A 16x on a one-off is the right place
+    to spend it; a 16x per turn would not have been.
+
     That mutable field is also what cost the frozen dataclass its generated
-    ``__hash__``; see ``__hash__`` for how the two are reconciled."""
+    ``__hash__``, and freezing does not give it back — a ``FrozenDict`` is
+    still a mapping, so still unhashable. See ``__hash__``."""
 
     name: str
     description: str = ""
     parameters: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", deep_freeze(self.parameters))
 
     def __hash__(self) -> int:
         """Hash on the ADVERTISEMENT — ``(name, description)`` — never on the
         JSON Schema body.
 
         A frozen dataclass derives ``__hash__`` from every compared field, and
-        ``parameters`` is a ``dict``, so the whole type was unhashable.
+        ``parameters`` is a ``dict`` — a ``FrozenDict`` now, which is still a
+        ``dict`` and so still unhashable — so the whole type was unhashable.
         Measured before this fix::
 
             hash(ToolSchema("search", "", {"type": "object"}))
@@ -406,6 +475,23 @@ class Chunk:
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        # Frozen in name only until this ran: ``chunk.metadata["scope"] = ...``
+        # rewrote a retrieved value through a field advertised as immutable,
+        # and scope tags in that dict are what tenant isolation reads.
+        #
+        # Found LATE, and the way it was found is the point: it was invisible to
+        # ``tests/meta/test_value_type_invariants.py`` because that ratchet swept
+        # ``agentkit.__all__`` and ``Chunk`` is not re-exported at top level. A
+        # ratchet is only as wide as its enumeration — the sweep now walks the
+        # package instead.
+        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
+
+    def __hash__(self) -> int:
+        """A chunk IS its id and text. `metadata` is excluded (see `_frozen.py`): it
+        carries scope tags that vary between retrievals of the same passage."""
+        return hash((self.id, self.text))
+
 
 # ---- the two units of work the Invoker runs through a middleware chain --------------------
 
@@ -416,7 +502,48 @@ class ChatRequest:
     the model, compaction rewrites messages), build a new instance
     via ``dataclasses.replace`` and reassign ``call.request`` — the
     ``Call`` reference is mutable; the ``ChatRequest`` it points at
-    is not."""
+    is not.
+
+    "Frozen" now includes the three CONTAINER fields — ``messages``,
+    ``tools``, ``response_format`` — not just the references to them. Before,
+    ``frozen=True`` stopped at the reference and ``request.messages.append(m)``
+    went straight through, which is a rewrite of the unit of work the chain is
+    mid-way through executing: the retry middleware re-sends the request it
+    kept, the tracing middleware snapshots ``list(call.request.messages)``
+    AFTER the call, and ``memoize`` keys on the transcript — an in-place append
+    desyncs all three against a request that already went out on the wire.
+    Compaction shows the intended shape: it reads ``list(ctx.request.messages)``
+    and REPLACES the request rather than editing the list.
+
+    ``messages`` and ``tools`` are ``FrozenList``, ``response_format`` is a
+    ``FrozenDict``; all three are still ``list``/``dict`` subclasses, so
+    ``request.messages[-1].content``, ``len()``, iteration, slicing and
+    ``json.dumps`` are untouched. ``None`` stays ``None`` — the optional fields
+    are not materialised into empty containers, because ``tools is None``
+    ("advertise nothing") and ``tools == []`` mean different things to the
+    provider adapters.
+
+    The freeze is DEEP, but a ``Message`` and a ``ToolSchema`` are dataclasses,
+    not containers, so ``deep_freeze`` passes each one through as a leaf: the
+    walk is O(number of messages) and flat in transcript BYTES. Measured, min
+    of five::
+
+        1 msg x 5 chars / x 5000 chars      3.24 us / 3.25 us
+        10 msgs, 1 tool, response_format    1.74 us -> 6.67 us
+        100 msgs                            26.4 us
+        messages already frozen             0.12 us  (idempotent short-circuit)
+
+    Once per turn, against an LLM round trip measured in hundreds of ms. The
+    honest caveat: an agent loop rebuilds the request from a transcript that
+    grows every turn, so this is O(turns) per turn and O(turns^2) over a run —
+    ~26 us at turn 100. That is the same shape the transcript COPY the loop
+    already does has, and it is why ``deep_freeze`` short-circuits: a caller
+    that hands the same ``FrozenList`` back pays 0.12 us, not the walk.
+
+    Not frozen: ``cache_hint``, which is annotated ``Any`` and is whatever the
+    provider wanted. Freezing it would mean rewriting a provider object we do
+    not own — the same line ``_frozen.deep_freeze`` draws at non-container
+    leaves. It is passed through, never read by the framework."""
 
     messages: list[Message]
     model: str
@@ -425,6 +552,11 @@ class ChatRequest:
     temperature: float = 0.0
     max_tokens: int | None = None
     cache_hint: Any = None  # provider prompt-cache hint (stable prefix)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "messages", deep_freeze(self.messages))
+        object.__setattr__(self, "tools", deep_freeze(self.tools))
+        object.__setattr__(self, "response_format", deep_freeze(self.response_format))
 
     def __hash__(self) -> int:
         """Hash the CALL SHAPE — model, sampling settings, transcript LENGTH —
@@ -474,35 +606,58 @@ class ChatRequest:
         ``__eq__`` separates them; that is what a bucket is for, and a ``set``
         keeps both.
         """
-        # SHARP EDGE, deliberately accepted: ``messages`` is a mutable list on
-        # a frozen dataclass, so appending to it changes this hash. That does
-        # NOT introduce a new failure mode — ``__eq__`` already compares
-        # ``messages``, so a mutated request is unusable as a stable set member
-        # whatever the hash does: with a payload-free hash it lands in the right
-        # bucket and fails ``__eq__``; with ``len`` it lands in the wrong bucket.
-        # Both are "not found". Nothing in the framework mutates a request's
-        # message list (middleware REPLACES the request via
-        # ``MiddlewareContext.request``; the ``.messages.extend`` call sites all
-        # belong to ``WorkingContext`` and blackboards), so the edge is only
-        # reachable by a caller who mutates a frozen value in place. Pinned by
-        # ``test_mutating_a_requests_messages_invalidates_its_hash``.
+        # ``len(self.messages)`` used to be a SHARP EDGE — a mutable list on a
+        # frozen dataclass meant appending to it moved the request to a
+        # different bucket, silently un-finding it in any set or dict. That
+        # edge is now CLOSED at the source rather than documented: ``messages``
+        # is a ``FrozenList``, so the append raises instead. The hash itself is
+        # byte-for-byte unchanged — this comment is the only thing that moved,
+        # and the ``len`` term stays for the reason it was chosen (O(1), equal
+        # whenever the requests are equal, and precisely what varies between
+        # successive turns of one loop).
         return hash((self.model, self.temperature, self.max_tokens, len(self.messages)))
 
 
 @dataclass(frozen=True)
 class ToolRequest:
+    """The tool half of the unit of work — what the ``Invoker`` runs through
+    the middleware chain before the terminal calls ``tool.run``.
+
+    ``arguments`` is frozen deeply at construction, for the same reason as
+    ``ToolCall.arguments`` one layer up but with a shorter fuse: this dict is
+    read by the chain BEFORE the tool sees it (``egress_audit`` pulls the URL
+    out of ``r.arguments[url_arg]``, ``memoize`` folds the whole dict into the
+    idempotency key) and then handed to the tool impl as ``run(args, ctx)``. A
+    tool that did ``args.pop("token")`` on the way in would have made the
+    arguments that were AUTHORISED and the arguments that were EXECUTED two
+    different things, with the audit trail recording the first.
+
+    ``FrozenDict`` rather than a proxy because the same dict is
+    ``json.dumps``'d into the audit record and hashed through
+    ``stable_hash``. Cost measured at 1.05 us before against 4.31 us after for
+    a realistic 3-key/2-level arguments dict — once per tool call, against the
+    I/O the tool is about to do.
+
+    ``tool`` is deliberately NOT frozen: it is the resolved ``ToolPort``, an
+    object the registry built, and rewriting a caller's object is the line
+    ``deep_freeze`` refuses to cross."""
+
     name: str
     arguments: dict[str, Any]
     tool: Any  # the resolved ToolPort (terminal calls tool.run)
     side_effecting: bool = False
     url_arg: str | None = None  # egress middleware checks this arg if set
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "arguments", deep_freeze(self.arguments))
+
     def __hash__(self) -> int:
         """Hash the ROUTING fields — ``(name, side_effecting, url_arg)`` —
         never ``arguments`` and never the resolved ``tool``.
 
-        ``arguments`` is a ``dict``, so the generated all-fields hash never
-        ran. Measured before this fix::
+        ``arguments`` is a ``dict`` — a ``FrozenDict`` now, which is still a
+        ``dict`` and so still unhashable — so the generated all-fields hash
+        never ran. Measured before this fix::
 
             hash(ToolRequest("search", {"q": "hi"}, tool=None))
             TypeError: unhashable type: 'dict'

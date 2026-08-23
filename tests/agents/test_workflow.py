@@ -3,6 +3,7 @@ conditional loop-back (bounded by max_steps), human-gate suspend/resume, and the
 (cancellation, usage). Offline & deterministic via FakeLLM + asyncio.run."""
 
 import asyncio
+import copy
 import json
 
 import pytest
@@ -319,10 +320,22 @@ def test_workflow_run_does_not_mutate_builder_state() -> None:
 
 
 def test_workflow_resume_deep_copies_done() -> None:
-    """A caller mutating a node output post-resume must NOT corrupt the persisted
-    checkpoint on ``InMemoryStore`` (which stores by reference — a shallow ``dict(...)``
-    would leave the inner mutable values aliased between the store's copy and the
-    live workflow state exposed as ``WorkflowResult.outputs``)."""
+    """A caller must NOT be able to corrupt the persisted checkpoint through the
+    node outputs resume hands back, on ``InMemoryStore`` (which stores by
+    reference — a shallow ``dict(...)`` would leave the inner mutable values
+    aliased between the store's copy and the live workflow state exposed as
+    ``WorkflowResult.outputs``).
+
+    This test used to prove that by MUTATING through the returned outputs
+    (``res1.outputs["step_a"][0]["mutable"].append(999)``) and asserting the
+    store was unharmed. ``WorkflowResult.outputs`` is now frozen at
+    construction, so that mutation raises instead — a strictly stronger
+    guarantee, and the reason the assertion below is a ``pytest.raises``.
+
+    The un-aliasing it was really testing is still pinned, structurally
+    (``is not``) rather than by consequence, and from the other end: the
+    caller's seed value is mutated instead, and the second resume must still
+    read the original shape out of the store."""
     from agentkit.agents.workflow import _ckpt_key
 
     def _wf() -> Workflow:
@@ -353,12 +366,24 @@ def test_workflow_resume_deep_copies_done() -> None:
         )
         assert res1.stop_reason == "suspended"
 
-        # Mutate the inner list returned from the workflow. Under the bug this would
-        # corrupt both ``original_value`` (aliased into the seed dict) AND the just-
-        # re-written store checkpoint (which reused the same references via
-        # ``dict(done)``). The deep-copy at both store boundaries breaks the alias.
-        res1.outputs["step_a"][0]["mutable"].append(999)
-        res1.outputs["step_a"].append({"injected": True})
+        # The mutation this test used to perform is now refused outright — the
+        # returned outputs are a frozen COPY, so the corruption route is closed
+        # at the value rather than defended at the store boundary.
+        with pytest.raises(TypeError, match="frozen value"):
+            res1.outputs["step_a"][0]["mutable"].append(999)
+        with pytest.raises(TypeError, match="frozen value"):
+            res1.outputs["step_a"].append({"injected": True})
+
+        # The un-aliasing itself, stated directly: nothing the caller can reach
+        # through ``outputs`` is the object the seed dict (and therefore the
+        # store) holds.
+        assert res1.outputs["step_a"][0]["mutable"] is not original_value[0]["mutable"]
+        assert res1.outputs["step_a"] is not original_value
+
+        # Now corrupt from the OTHER end — the caller's own seed value, which is
+        # still an ordinary list. The deep-copy at the store boundary means the
+        # persisted record never held this reference either.
+        original_value[0]["mutable"].append(999)
 
         # Second resume — reads the store fresh; step_a must match its original shape.
         res2 = await _wf().resume(
@@ -368,10 +393,6 @@ def test_workflow_resume_deep_copies_done() -> None:
         )
         assert res2.stop_reason == "suspended"
         assert res2.outputs["step_a"] == [{"mutable": [1, 2]}]
-
-        # And the caller's original seed dict is also unharmed — deep-copy on READ
-        # means resume never returned a reference into ``checkpoint``.
-        assert original_value == [{"mutable": [1, 2]}]
 
     _run(go())
 
@@ -1229,3 +1250,35 @@ def test_a_narrow_graph_never_overshoots():
 
     assert res.steps == 2 and res.stop_reason == "max_steps"
     assert ran == ["a", "b"], "the third wave must not start"
+
+
+def test_resume_can_commit_into_a_restored_frozen_checkpoint_state():
+    """A resumed workflow must be able to record new node outputs.
+
+    `Checkpoint.state` is deep-frozen, so the map restored from it is a
+    `FrozenDict`. Both resume paths deep-copy it intending a MUTABLE working
+    copy — but `FrozenDict.__deepcopy__` faithfully returns another FrozenDict,
+    so the copy was frozen too and the `done[node.name] = out` commit raised
+    `TypeError` on every resume, against a real store as well as a fake one.
+
+    That is this fix's own bug class firing in a consumer: workflow resume was
+    rewriting a restored durable record in memory, and freezing the record is
+    what made it visible. Fixed by unwrapping the top level; the node outputs
+    stay frozen, which is correct.
+    """
+    from agentkit.kernel._frozen import FrozenDict, deep_freeze
+
+    frozen_state = deep_freeze({"done": {"a": {"nested": [1]}}, "usage": None, "steps": 1})
+    assert isinstance(frozen_state["done"], FrozenDict), "premise: the state is frozen"
+
+    # The exact expression both resume paths use, then the commit they perform.
+    working = dict(copy.deepcopy(frozen_state["done"]))
+    working["b"] = "new output"  # must NOT raise
+
+    assert working["b"] == "new output"
+    assert working["a"] == {"nested": [1]}, "restored outputs survive unchanged"
+    # The restored VALUES stay frozen — they came from a durable record.
+    with pytest.raises(TypeError):
+        working["a"]["nested"].append(2)
+    # ...and the original checkpoint state was not touched by any of this.
+    assert "b" not in frozen_state["done"]

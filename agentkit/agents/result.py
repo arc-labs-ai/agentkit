@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from agentkit.kernel._frozen import deep_freeze
 from agentkit.kernel.types import Usage
 
 if TYPE_CHECKING:
@@ -138,7 +139,11 @@ class AgentResult:
     output: str  # the raw model text
     usage: Usage
     partial: bool = False
-    evals: dict[str, Any] = field(default_factory=dict)
+    evals: dict[str, Any] = field(default_factory=dict)  # FROZEN at construction — see
+    # ``__post_init__``. Still a ``dict`` (``json.dumps``,
+    # ``asdict``, ``isinstance`` and ``==`` all work), but
+    # writing into it raises. To annotate a result, build a
+    # new one: ``dataclasses.replace(r, evals={**r.evals, ...})``.
     parsed: Any = None  # the validated/typed object when an output parser is set
     # (None if no parser, or if repair was exhausted → partial)
     prompt_version: str = ""  # the RequestBuilder's prompt_version for this run — empty if no
@@ -150,6 +155,52 @@ class AgentResult:
     # TerminationCondition's own reason, for instance) and is
     # kept verbatim for back-compat; THIS field is the one to
     # branch on, because it type-checks.
+
+    def __post_init__(self) -> None:
+        """Freeze ``evals`` — deeply — so the audit record of a run cannot be
+        rewritten after the run ended.
+
+        ``frozen=True`` only ever protected the FIELD REFERENCE. ``r.evals = {}``
+        raised, and ``r.evals["cost"] = 0.0`` quietly rewrote the record a
+        caller was about to bill from. This is the framework's most-returned
+        type; the one thing it has to be is a faithful account of what
+        happened.
+
+        Deep rather than shallow, because ``evals`` is nested by construction —
+        ``evals["cli_init"]["model"]`` and ``evals["errors"][0]["message"]`` are
+        shapes the CLI cognition and ``PlanPolicy`` write today, and a shallow
+        freeze leaves exactly those reachable.
+
+        ``deep_freeze`` COPIES, which fixes a second aliasing hazard in the same
+        move: a producer that builds an ``evals`` dict, hands it to
+        ``AgentResult`` and keeps writing to its local no longer edits the
+        result it already returned.
+
+        Cost, as whole-construction timings before → after, measured on a
+        realistic ``evals`` as ``claude_cli`` writes it (stop_reason,
+        session_id, duration, nested ``cli_init``, ``api_retries`` list,
+        ``thinking`` list — 344 B of JSON)::
+
+            evals={}          (the default)    2.60 us  ->    3.39 us
+            evals=realistic   (344 B)          2.63 us  ->   11.29 us
+            evals=50 errors   (3.2 KB)         2.60 us  ->  154.31 us
+
+        The freeze itself is 0.49 / 7.6 / 147 µs of that, against 4.6 µs to
+        ``json.dumps`` the realistic payload and 13.1 µs to ``deepcopy`` it —
+        so it is cheaper than a serialisation this record already pays for on
+        the way to a checkpoint. It is paid once per ``agent.run()``, which is
+        bounded below by an LLM round trip of order seconds, so it is not
+        material: the realistic case adds ~8.7 µs, or ~6 ppm of a 1.5 s run.
+        The 50-error case is a wide fan-out that just made 50 LLM calls.
+
+        ``parsed`` is deliberately left alone. It is whatever an output parser
+        produced — typically a caller's Pydantic model — and for the JSON
+        adapters it is a plain dict the application then treats as its own
+        domain object. Freezing it would hand a caller back something their own
+        code cannot update, which is a different contract from "the audit
+        record is final". Same line ``__hash__`` already draws between the two.
+        """
+        object.__setattr__(self, "evals", deep_freeze(self.evals))
 
     def __hash__(self) -> int:
         """Hash the RUN's identity — ``(output, usage, partial, prompt_version,
@@ -175,9 +226,9 @@ class AgentResult:
         ``evals`` is excluded because it cannot be hashed at all: it is
         free-form, nested application JSON — the tool loop writes
         ``{"stop_reason": ..., "suspended": ...}``, the coordinator policies
-        write whole per-child result lists — and it is handed to callers to
-        write into as they like. A hash that read it would make hashability
-        depend on what a policy happened to record.
+        write whole per-child result lists — so it holds whatever a producer
+        recorded at construction time. A hash that read it would make
+        hashability depend on what a policy happened to record.
 
         ``parsed`` is excluded for that reason and one more: it is whatever an
         output parser produced — typically a Pydantic model, which is
@@ -259,13 +310,43 @@ class WorkflowResult:
     """Terminal result of a `Workflow` run. Carries every node's latest output, the merged
     usage, the number of node executions (incl. re-runs from loop-back), the stop reason
     (``complete`` | ``suspended`` | ``max_steps`` | ``deadlock``), and a ``Suspended`` when
-    the run paused on a human-gate."""
+    the run paused on a human-gate.
+
+    ``outputs`` is FROZEN at construction (see ``__post_init__``) — still a
+    ``dict`` for every consumer, but writing into it raises. Build a new
+    result instead: ``dataclasses.replace(res, outputs={**res.outputs, ...})``."""
 
     outputs: dict[str, Any]
     usage: Usage
     steps: int
     stop_reason: WorkflowStopReason
     suspended: Suspended | None = None
+
+    def __post_init__(self) -> None:
+        """Freeze ``outputs`` — deeply — so a node's recorded output cannot be
+        rewritten after the workflow finished.
+
+        The engine's live ``done`` map is handed straight to this constructor
+        (``WorkflowResult(done, usage, steps, ...)``, four call sites in
+        ``workflow.py``), and the SAME map is what ``Checkpointer.snapshot``
+        persists. Before this, ``res.outputs["draft"] = ...`` was a write into
+        a value the checkpointer had already recorded — which is precisely the
+        aliasing hazard ``workflow.py`` deep-copies at the store boundary to
+        avoid, defended from the persistence side only.
+
+        ``deep_freeze`` copies, so the frozen ``outputs`` no longer aliases the
+        engine's ``done`` at all and the engine keeps writing to its own map
+        for the rest of the run. Depth matters here more than anywhere: a node
+        output is ``Any`` and is routinely a dict, and ``subworkflow`` returns a
+        whole child ``WorkflowResult.outputs`` as one node's value, so the
+        nesting is unbounded by design.
+
+        Cost is O(payload), paid once per workflow run — measured on the same
+        ``deep_freeze`` as ``AgentResult`` above: 0.49 µs empty, 7.6 µs for a
+        344 B payload, 147 µs for 50 nested entries. A workflow run is at least
+        one LLM call per node.
+        """
+        object.__setattr__(self, "outputs", deep_freeze(self.outputs))
 
     def __hash__(self) -> int:
         """Hash the run's SHAPE — which nodes ran, the spend, the step count and

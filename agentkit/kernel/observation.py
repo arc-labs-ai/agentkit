@@ -18,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from agentkit.kernel._frozen import deep_freeze
+
 # ``kind`` is a closed ``Literal`` so mypy can exhaust the branch table
 # on any consumer of ``obs.kind`` — a typo becomes a type error instead
 # of a silent missed-branch.
@@ -73,6 +75,55 @@ class Observation:
     # ``TracePort.current_span_id``) so a UI-visible observation can deep-link into the span tree
     # that produced it. None when no tracer is configured or no span is open.
     trace_context: TraceContext | None = None
+
+    def __post_init__(self) -> None:
+        """Freeze ``payload`` if it is a container; pass it through if not.
+
+        An Observation is FANNED OUT — one record reaches an audit sink, a
+        WebSocket forwarder and a rollup buffer, all of which retain the ref
+        alongside the run's live emit loop. The class docstring already claims
+        post-emit mutation would corrupt every downstream consumer; before
+        this, ``frozen=True`` only enforced that for ``render``, while
+        ``obs.payload["status"] = "done"`` — on the field that IS the
+        machine-readable record — rewrote what the other two sinks had already
+        queued.
+
+        ``payload`` is annotated ``Any`` and genuinely is: `ctx.emit` is
+        documented as ``emit("summary", "wrote intro", payload={"words": 120})``
+        but callers also pass a bare string, an int, or nothing. ``deep_freeze``
+        returns non-containers untouched, so a ``str``/``int``/``None`` payload
+        is bit-for-bit the object the caller passed and only dict/list payloads
+        are walked. Both directions are asserted in
+        ``tests/kernel/test_frozen_value_payloads.py``.
+
+        COST, stated plainly because this is the one hot path in the set: an
+        Observation is constructed once per emitted event, and freezing is
+        O(payload). Measured on this machine, per construction —
+
+            payload                       before      after
+            None / str / int              1.84 µs     2.30 µs   (+0.46)
+            {"step": 3, "of": 10}         1.87 µs     3.23 µs   (+1.36)
+            4-key summary                 1.84 µs     3.84 µs   (+2.00)
+            nested signal payload         1.84 µs     5.20 µs   (+3.36)
+            full agent result (~40 keys
+            + 10-message transcript)      1.84 µs     37.9 µs    (+36)
+
+        End to end on the emit path — construct, ``contextlib.suppress``, and
+        ``await`` into a ``NoopObserver``, i.e. the cheapest emit that exists —
+        a 4-key summary went from 2.62 µs to 4.60 µs. That is +75%, and it is
+        the honest headline number rather than a footnote. What it buys back:
+        the same 2 µs sits in front of an ``await`` into an adapter that
+        buffers, forwards to a socket or writes an audit row, so it does not
+        show up against a real observer; the +36 µs case is a ``result``,
+        emitted once per run; and scalar payloads — the ones on the tightest
+        progress loops — pay 0.46 µs. Judged worth it, because the alternative
+        is a record three sinks share and any one of them can rewrite. A caller
+        who profiles this as their bottleneck has a legitimate complaint and
+        the fix is a shallower payload, not an unfrozen one.
+
+        Frozen dataclass — assign through ``object.__setattr__``.
+        """
+        object.__setattr__(self, "payload", deep_freeze(self.payload))
 
     def __hash__(self) -> int:
         """Hash on the STREAM key — ``(run_id, agent, seq, ts, kind)`` — never

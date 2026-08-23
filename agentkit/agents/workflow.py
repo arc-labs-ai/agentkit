@@ -356,7 +356,18 @@ class Workflow:
                         return await self._execute(
                             state.get("goal", goal),
                             ctx,
-                            done=copy.deepcopy(state.get("done", {})),
+                            # ``dict(...)`` around the deepcopy, not just the
+                            # deepcopy: the restored map comes off a Checkpoint
+                            # whose payload is now deep-frozen, and
+                            # ``FrozenDict.__deepcopy__`` faithfully returns
+                            # another FrozenDict — so the "mutable working copy"
+                            # this line exists to produce was itself frozen and
+                            # the ``done[node.name] = out`` commit raised.
+                            # Unwrapping the TOP level restores the working
+                            # copy. Node OUTPUTS stay frozen, which is right:
+                            # they came from a durable record, and
+                            # ``WorkflowResult`` re-freezes them on the way out.
+                            done=dict(copy.deepcopy(state.get("done", {}))),
                             decisions=dict(decisions or {}),
                             steps=state.get("steps", 0),
                         )
@@ -387,7 +398,9 @@ class Workflow:
         result = await self._execute(
             saved["goal"],
             ctx,
-            done=copy.deepcopy(saved["done"]),
+            # Same reason as the ``on_existing="resume"`` path above: unwrap
+            # the top level so the wave loop can commit into it.
+            done=dict(copy.deepcopy(saved["done"])),
             decisions=dict(decisions),
             steps=saved["steps"],
         )

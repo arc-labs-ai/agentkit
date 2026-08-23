@@ -28,6 +28,9 @@ import dataclasses
 import json
 import pickle
 
+import pytest
+
+from agentkit.kernel._frozen import FrozenDict
 from agentkit.memory import MemoryItem
 
 
@@ -99,16 +102,105 @@ def test_memory_items_dedupe_through_a_set() -> None:
     assert len({*dup, MemoryItem("passage", "lexical", 0.9)}) == 2
 
 
-def test_memory_item_metadata_stays_a_plain_mutable_dict() -> None:
-    """POSITIVE CONTROL, and the constraint this commit is under: metadata is
-    NOT frozen into a ``MappingProxyType``. It is serialised as JSON and read
-    back through ``dataclasses.asdict``, neither of which a proxy survives.
-    Passes before and after the fix."""
-    item = MemoryItem("c", "vector", 0.9, {"chunk": 1})
+def test_memory_item_metadata_is_a_dict_for_every_consumer() -> None:
+    """POSITIVE CONTROL, and the constraint the freeze is under: ``metadata`` is
+    a ``dict`` SUBCLASS, not a ``MappingProxyType``. It is serialised as JSON
+    and read back through ``dataclasses.asdict``, neither of which a proxy
+    survives. Passes before and after the freeze.
+
+    This test used to end with ``item.metadata["path"] = "docs/a.md"``, commented
+    "backends annotate after construction", asserting that callers COULD write
+    into ``metadata`` after the fact. That was the old contract; the write half
+    now lives in ``test_memory_item_metadata_refuses_post_construction_writes``
+    below, which pins the refusal and shows the migration."""
+    item = MemoryItem("c", "vector", 0.9, {"chunk": 1, "offsets": [0, 12]})
     assert isinstance(item.metadata, dict)
-    item.metadata["path"] = "docs/a.md"  # backends annotate after construction
-    assert json.dumps(item.metadata)
-    assert dataclasses.asdict(item)["metadata"] == {"chunk": 1, "path": "docs/a.md"}
+    assert item.metadata["chunk"] == 1 and item.metadata["offsets"][1] == 12
+    assert len(item.metadata) == 2 and set(item.metadata) == {"chunk", "offsets"}
+    assert dict(item.metadata) == {"chunk": 1, "offsets": [0, 12]}
+    assert item.metadata == {"chunk": 1, "offsets": [0, 12]}  # eq against a PLAIN dict
+    assert json.loads(json.dumps(item.metadata))["offsets"] == [0, 12]
+    assert dataclasses.asdict(item)["metadata"] == {"chunk": 1, "offsets": [0, 12]}
+
+
+def test_memory_item_metadata_refuses_post_construction_writes() -> None:
+    """THE BREAKING CHANGE, stated as a test — and it breaks a habit this file
+    previously ENDORSED (see the test above). ``frozen=True`` protected only the
+    field reference::
+
+        item.metadata = {}                  # FrozenInstanceError, as intended
+        item.metadata["path"] = "docs/a.md" # ...but this rewrote the record
+
+    Migration — a backend that wants to annotate an item builds a new one::
+
+        item = dataclasses.replace(item, metadata={**item.metadata, "path": p})
+
+    That matters here more than it looks: ``decorators.py`` and ``tool.py`` pass
+    ``metadata`` THROUGH into a new ``MemoryItem``, so an in-place annotation
+    could land on an item another source still holds.
+    """
+    item = MemoryItem("c", "vector", 0.9, {"chunk": 1})
+
+    with pytest.raises(TypeError, match="frozen value"):
+        item.metadata["path"] = "docs/a.md"
+    with pytest.raises(TypeError, match="frozen value"):
+        item.metadata.update({"path": "docs/a.md"})
+    with pytest.raises(TypeError, match="frozen value"):
+        del item.metadata["chunk"]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        item.metadata = {}  # type: ignore[misc]  # unchanged — always was frozen
+
+    annotated = dataclasses.replace(item, metadata={**item.metadata, "path": "docs/a.md"})
+    assert annotated.metadata == {"chunk": 1, "path": "docs/a.md"}
+    assert item.metadata == {"chunk": 1}  # the original is untouched
+    assert isinstance(annotated.metadata, FrozenDict)  # ``replace`` re-runs __post_init__
+
+
+def test_memory_item_metadata_is_frozen_all_the_way_down() -> None:
+    """``metadata`` is "whatever the store held" — nested JSON, chunk-offset
+    lists, provider blobs — so a shallow freeze would leave the interesting
+    paths writable."""
+    item = MemoryItem("c", "vector", 0.9, {"src": {"page": {"n": 1}}, "offsets": [0, 12]})
+
+    with pytest.raises(TypeError, match="frozen value"):
+        item.metadata["src"]["page"]["n"] = 2
+    with pytest.raises(TypeError, match="frozen value"):
+        item.metadata["offsets"].append(99)
+    assert item.metadata["src"]["page"]["n"] == 1
+
+
+def test_memory_item_does_not_alias_the_backends_dict() -> None:
+    """``vector.py`` builds a metadata dict per chunk and ``tool.py`` passes one
+    through. If the item aliased it, a backend reusing its local buffer across
+    a result page would rewrite items it had already yielded."""
+    buf = {"chunk": 1}
+    item = MemoryItem("c", "vector", 0.9, buf)
+
+    buf["chunk"] = 2  # the backend keeps using its own dict — legal
+    assert item.metadata == {"chunk": 1}
+
+
+def test_memory_item_tolerates_a_none_metadata_the_way_the_backends_assume() -> None:
+    """``metadata`` is annotated ``dict``, but ``file.py`` and ``vector.py`` both
+    guard ``item.metadata.get(...) if item.metadata else None`` — the backends do
+    not trust the annotation, and neither does the freeze. ``deep_freeze`` passes
+    non-container leaves through, so a ``None`` payload stays ``None`` rather
+    than raising inside ``__post_init__``."""
+    item = MemoryItem("c", "vector", 0.9, None)  # type: ignore[arg-type]
+    assert item.metadata is None
+    assert dataclasses.replace(item, metadata={"path": "a.md"}).metadata == {"path": "a.md"}
+
+
+def test_memory_item_empty_and_default_metadata_are_frozen_too() -> None:
+    """The edge the default hides: ``field(default_factory=dict)`` means most
+    items carry ``{}``, and a freeze that only ran on a non-empty payload would
+    leave the COMMON case writable."""
+    assert isinstance(MemoryItem("c", "s").metadata, FrozenDict)
+    assert isinstance(MemoryItem("c", "s", None, {}).metadata, FrozenDict)
+    assert MemoryItem("c", "s").metadata == {}
+
+    with pytest.raises(TypeError, match="frozen value"):
+        MemoryItem("c", "s").metadata["first"] = 1
 
 
 def test_memory_item_field_access_and_equality_are_unchanged() -> None:
@@ -123,10 +215,16 @@ def test_memory_item_field_access_and_equality_are_unchanged() -> None:
 
 def test_memory_item_still_deepcopies_and_pickles() -> None:
     """POSITIVE CONTROL: both already worked and must keep working — items
-    cross process and storage boundaries through the cache decorator."""
+    cross process and storage boundaries through the cache decorator. They are
+    also the two paths a frozen payload could plausibly break, since both
+    rebuild a dict subclass through ``__setitem__`` unless ``__reduce__``
+    intervenes — and the copy must come back FROZEN, or the freeze leaks."""
     item = MemoryItem("c", "vector", 0.9, {"deep": {"a": [1, {"b": 2}]}})
-    assert copy.deepcopy(item) == item
-    assert pickle.loads(pickle.dumps(item)) == item
+    for clone in (copy.deepcopy(item), pickle.loads(pickle.dumps(item))):
+        assert clone == item
+        assert isinstance(clone.metadata, FrozenDict)
+        with pytest.raises(TypeError, match="frozen value"):
+            clone.metadata["deep"]["a"][1]["b"] = 3
 
 
 def test_memory_item_hash_survives_deepcopy_and_pickle() -> None:

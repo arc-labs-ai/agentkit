@@ -24,6 +24,8 @@ from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
+from agentkit.kernel._frozen import deep_freeze
+
 _MCP_INSTALL_HINT = 'MCP integration requires the `mcp` package. Install with: pip install "arc-agentkit[mcp]"'
 
 try:
@@ -87,6 +89,18 @@ class StdioServer:
     env: dict[str, str] | None = None
     cwd: str | Path | None = None
 
+    def __post_init__(self) -> None:
+        """Frozen in name only until this ran. `env` is handed to a subprocess; a later in-place
+        edit would change what the NEXT spawn inherits while the config object still reads as
+        the one that was reviewed."""
+        object.__setattr__(self, "env", deep_freeze(self.env))
+
+    def __hash__(self) -> int:
+        """Identity is the process this spawns: command, args, cwd. `env` is excluded
+        (see `_frozen.py` for why a frozen payload is still unhashable). `cwd` is
+        normalised through `str` because it may be a `Path`."""
+        return hash((self.command, self.args, str(self.cwd) if self.cwd is not None else None))
+
 
 @dataclass(frozen=True)
 class StreamableHttpServer:
@@ -100,6 +114,17 @@ class StreamableHttpServer:
     url: str
     headers: dict[str, str] | None = None
     timeout_s: float = 30.0
+
+    def __post_init__(self) -> None:
+        """Frozen in name only until this ran. `headers` can carry credentials; a value that can
+        be edited after review is one that can be edited after the review that approved it."""
+        object.__setattr__(self, "headers", deep_freeze(self.headers))
+
+    def __hash__(self) -> int:
+        """Identity is the endpoint: url and timeout. `headers` are excluded twice over —
+        unhashable (see `_frozen.py`), and they can carry credentials, which have no
+        business influencing a bucket."""
+        return hash((self.url, self.timeout_s))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

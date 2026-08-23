@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from agentkit.kernel._frozen import deep_freeze
+
 if TYPE_CHECKING:  # avoid import cycles at runtime
     from agentkit.kernel.types import Chunk, Delta, LLMResult, Message, Scope, ToolSchema
 
@@ -99,6 +101,21 @@ class SearchHit:
     score: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        # A hit is FANNED OUT: the same object is unioned across providers,
+        # re-ranked, cached, and handed to several middlewares, so a reranker
+        # that did ``hit.metadata["score"] = ...`` would rewrite the record
+        # every other consumer holds. Deep, because provider metadata nests
+        # (``{"citations": [{"snippet": ...}]}``) and a shallow freeze just
+        # moves the same bug one level down.
+        #
+        # Frozen dataclass — assign through ``object.__setattr__``.
+        # Measured: 2.78 µs construction for a 3-key metadata dict against
+        # 1.12 µs before, and 1.86 µs vs 1.14 µs for the default-empty case —
+        # on a type produced at most `k` times per query, behind a network
+        # call three orders of magnitude larger.
+        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
+
     def __hash__(self) -> int:
         """Hash on the RESULT's identity — ``(url, title)`` — never on the rest.
 
@@ -152,6 +169,24 @@ class FetchResponse:
     body: str
     content_type: str
     fetched_at: float
+
+    def __post_init__(self) -> None:
+        # ``headers`` only. ``body`` is a ``str`` — already immutable, and
+        # ``deep_freeze`` would pass it straight through anyway — so there is
+        # nothing to freeze there and no cost paid on the field that is
+        # actually large. That asymmetry is the point: a fetched page is
+        # unbounded (see ``__hash__``), and freezing walks the payload, so a
+        # container body would have made every response O(page). It isn't one.
+        #
+        # ``headers`` is worth freezing despite being small because a
+        # FetchResponse is CACHED: the same object is served to later callers,
+        # and a middleware normalising ``resp.headers["etag"]`` in place would
+        # rewrite the cached entry for everyone behind it.
+        #
+        # Measured: 3.47 µs construction for a 5-header response against
+        # 1.23 µs before — paid once per network fetch, i.e. against a
+        # milliseconds-scale operation.
+        object.__setattr__(self, "headers", deep_freeze(self.headers))
 
     def __hash__(self) -> int:
         """Hash on the RESPONSE's identity — ``(url, status, content_type,
@@ -269,6 +304,51 @@ class Checkpoint:
     status: CheckpointStatus
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Freeze the payloads. This is the type the whole exercise is about.
+
+        A Checkpoint is a DURABLE record — it has been written to a JSONB
+        column — and ``frozen=True`` stopped at the field reference, so
+        ``cp.state = {}`` raised while ``cp.state["turn"] = 99`` silently
+        rewrote the run's snapshot in memory after the row was committed. The
+        in-memory record and the durable row then disagree, and nothing says
+        so: the next ``latest()`` on a real backend returns the row, the next
+        ``latest()`` on ``InMemoryCheckpointStore`` returns the mutated object.
+
+        This runs on EVERY construction, which is the half that matters most:
+        ``PostgresCheckpointStore._row_to_checkpoint`` and
+        ``StoreBackedCheckpointStore._from_dict`` both rebuild through this
+        constructor, so a checkpoint comes back frozen on the way OUT of
+        storage as well as on the way in. A record that is frozen on save and
+        mutable on resume is only half fixed — the resume path is precisely
+        where a caller reaches for ``cp.state.pop("pending")``.
+
+        The durable path is unaffected, and that was the constraint this had to
+        clear before it could ship. ``FrozenDict`` is a ``dict`` SUBCLASS
+        (see ``_frozen.py`` for why ``MappingProxyType`` was rejected), so
+        ``json.dumps(cp.state)`` produces BYTE-IDENTICAL output to the plain
+        dict, ``dataclasses.asdict`` still walks it, ``_to_dict`` still passes
+        it through verbatim, and equality against a plain-dict checkpoint still
+        holds. Verified end to end against ``StoreBackedCheckpointStore``,
+        ``InMemoryCheckpointStore`` and the Postgres row decoder in
+        ``tests/kernel/test_frozen_value_payloads.py``.
+
+        Cost is O(state), paid once per snapshot and measured BELOW the
+        ``copy.deepcopy(state)`` that ``Checkpointer.snapshot`` already
+        performs on the very same dict one line earlier. For a realistic
+        20-turn transcript state (20 messages of 400 chars, each with a tool
+        call, plus a 20-key scratchpad): construction goes 1.34 µs → 88.5 µs,
+        against 146 µs for the deepcopy sitting directly above it. So the seam
+        that produces checkpoints gets ~60% more expensive on a path that was
+        already walking the payload twice — and it does that once per durable
+        write, next to a database round trip. The freeze is not a new class of
+        work at this seam, it is a second, cheaper walk.
+
+        Frozen dataclass — assign through ``object.__setattr__``.
+        """
+        object.__setattr__(self, "state", deep_freeze(self.state))
+        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
+
     def __hash__(self) -> int:
         """Hash on the DURABLE key — ``(run_id, version)`` — never on ``state``
         or ``metadata``.
@@ -321,14 +401,16 @@ class Checkpoint:
         for. (If you need a key that changes when the state changes, you want a
         CONTENT hash — `stable_hash` — not ``__hash__``.)
 
-        Deliberately NOT done here: ``state`` is not frozen into a
-        ``MappingProxyType`` the way ``ToolCall.arguments`` is. A checkpoint is
-        serialised to durable storage — `json.dumps(cp.state)` into a JSONB
-        column in the Postgres adapter, and passed through verbatim by
-        `StoreBackedCheckpointStore._to_dict` — and a mappingproxy is neither
-        JSON-serialisable nor picklable, so freezing the payload would trade a
-        missing ``__hash__`` for a broken persistence path. Read-mutability of
-        ``state`` is a separate decision with its own migration.
+        Read-mutability of ``state`` — the other half named above — is now
+        closed by ``__post_init__``, and NOT the way this docstring originally
+        anticipated. It is not a ``MappingProxyType``: a checkpoint is
+        serialised to durable storage (`json.dumps(cp.state)` into a JSONB
+        column in the Postgres adapter, passed through verbatim by
+        `StoreBackedCheckpointStore._to_dict`) and a mappingproxy is neither
+        JSON-serialisable nor picklable, so that mechanism really would have
+        traded a mutability bug for a broken persistence path. ``FrozenDict``
+        is a ``dict`` subclass instead, which is what let the two halves land
+        without a migration. Nothing about this hash changed.
         """
         return hash((self.run_id, self.version))
 

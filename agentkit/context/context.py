@@ -60,6 +60,7 @@ from typing import TYPE_CHECKING, Any, Generic, Literal, Self, TypeVar
 
 from agentkit.context.prefix import PrefixContext
 from agentkit.context.tokens import ApproxTokenCounter, TokenCounter
+from agentkit.kernel._frozen import deep_freeze
 from agentkit.kernel.types import Message
 
 if TYPE_CHECKING:
@@ -181,12 +182,45 @@ class ContextDiff:
     accepted for a debug helper.
 
     ``prefix_changed`` is True when the two prefixes compare unequal.
+
+    ``scratchpad_changes`` is FROZEN at construction (see ``__post_init__``),
+    which is what makes the "a ``ContextDiff`` is itself hashable /
+    pickleable" promise above true of the WHOLE value rather than of its
+    message tuples only. It is still a ``dict`` for every consumer; writing
+    into it raises.
     """
 
     messages_added: tuple[Message, ...]
     messages_removed: tuple[Message, ...]
     scratchpad_changes: dict[str, Any]
     prefix_changed: bool
+
+    def __post_init__(self) -> None:
+        """Freeze ``scratchpad_changes`` — deeply — so the one mutable field on
+        an otherwise-immutable diff stops being a back door.
+
+        The class docstring already promises "``messages_added`` /
+        ``messages_removed`` are tuples (frozen) so a ``ContextDiff`` is itself
+        hashable / pickleable". The intent was a VALUE; the implementation left
+        one plain dict in the middle of it, so ``d.scratchpad_changes["k"] = 2``
+        edited a delta after it had been computed, reported and possibly
+        logged. A diff that can be edited is not a diff.
+
+        Deep, because a scratchpad value is any Python object and is routinely
+        a nested dict — the diff carries "``k``'s new value", so the payload is
+        exactly as nested as whatever the agent stored.
+
+        ``deep_freeze`` copies, which also un-aliases the diff from the
+        contexts it was computed from: ``diff()`` builds ``changes`` by reading
+        live scratchpad values, so before this a nested value in the diff WAS
+        the live object, and a later ``ctx.update_scratchpad`` on a nested key
+        retroactively changed what the diff said.
+
+        Cost is O(#changed keys + payload), paid once in ``diff()``, which is a
+        debug/inspection helper rather than a hot path: 0.49 µs for the empty
+        diff, ~7.6 µs at 344 B of changed values.
+        """
+        object.__setattr__(self, "scratchpad_changes", deep_freeze(self.scratchpad_changes))
 
     def __hash__(self) -> int:
         """Hash the message tuples, the CHANGED KEYS, and ``prefix_changed`` —

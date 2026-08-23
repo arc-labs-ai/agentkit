@@ -27,6 +27,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from agentkit.kernel._frozen import deep_freeze
 from agentkit.kernel.protocols import Ctx
 
 
@@ -41,13 +42,52 @@ class MemoryItem:
     vector search, recency for journal, etc.); ``None`` when the backend
     doesn't rank.
     ``metadata`` carries backend-specific extras (chunk id, file path,
-    timestamp) that the cognition or the rendering layer may consult.
+    timestamp) that the cognition or the rendering layer may consult. It is
+    FROZEN at construction (see ``__post_init__``) — still a ``dict`` for
+    every consumer, but a backend that wants to annotate an item builds a new
+    one: ``dataclasses.replace(item, metadata={**item.metadata, "path": p})``.
     """
 
     content: str
     source: str
     score: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Freeze ``metadata`` — deeply — so an item cannot be re-annotated
+        after the backend produced it.
+
+        ``frozen=True`` stopped at the field reference: ``item.metadata = {}``
+        raised while ``item.metadata["path"] = ...`` went through. The habit
+        that made this worth closing is the one the fan-out invites — a
+        ``CompositeMemory`` merges items from several sources and a reranker
+        stamps its own scores onto them, and because backends pass ``metadata``
+        THROUGH (``decorators.py`` and ``tool.py`` both hand the same object to
+        a new ``MemoryItem``), one stamp could land on an item another source
+        still holds. ``deep_freeze`` copies, so a passed-through payload is
+        un-aliased at each hop, and ``deep_freeze`` is idempotent, so the hop
+        that re-freezes an already-frozen payload costs one isinstance check
+        rather than a second walk.
+
+        Deep rather than shallow because ``metadata`` is documented as
+        "backend-specific extras" and holds whatever the store did — nested
+        JSON, chunk-offset lists, provider blobs.
+
+        Cost is O(payload) and paid once per item. A recall metadata is small
+        (a chunk id, a path, a timestamp): 0.49 µs empty, ~7.6 µs at 344 B of
+        JSON, against a backend call that is a network round trip. A k=20
+        recall therefore pays tens of microseconds against tens of
+        milliseconds.
+
+        This is a BREAKING change for a backend that annotated after
+        construction. The migration is one line::
+
+            item = dataclasses.replace(item, metadata={**item.metadata, "path": p})
+
+        ``dataclasses.replace`` re-runs ``__post_init__``, so the rebuilt item
+        is frozen too.
+        """
+        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
 
     def __hash__(self) -> int:
         """Hash the RECALL identity — ``(content, source, score)`` — never

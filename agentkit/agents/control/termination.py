@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from agentkit.kernel._frozen import deep_freeze
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message
 
@@ -34,14 +35,33 @@ class Stop:
     caller reasons about must not be editable underneath the thing that
     produced it.
 
-    ``detail`` is a plain dict rather than a frozen mapping on purpose: a
-    ``MappingProxyType`` cannot be deep-copied, and conditions ARE deep-copied
-    per drive to keep counters run-local. Its contents stay writable; the
-    ``reason`` every consumer branches on does not.
+    ``detail`` used to be left as a plain writable dict, and this docstring
+    used to defend that: a ``MappingProxyType`` cannot be deep-copied, and
+    conditions ARE deep-copied per drive (``ReActCognition`` at both entry
+    points, ``roundrobin._run_local_termination``) to keep counters
+    run-local. That
+    constraint was real and it is what ``_frozen`` was built to clear.
+    ``__post_init__`` below now deep-freezes ``detail`` into a ``FrozenDict``,
+    which deep-copies, pickles and json-dumps like the plain dict it
+    subclasses — measured on a latched ``Stop`` inside a condition:
+    ``deepcopy`` and a pickle round trip both return it intact, while
+    ``stop.detail["x"] = 1`` and ``stop.detail["nested"]["b"] = 1`` both raise
+    ``TypeError``. So the evidence is now as immutable as the ``reason``, and
+    the whole verdict is a record rather than half of one.
     """
 
     reason: str
     detail: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Frozen in name only until this ran: a termination verdict's detail is a record of WHY a
+        run stopped, and a record that can be rewritten after the fact is not a record."""
+        object.__setattr__(self, "detail", deep_freeze(self.detail))
+
+    def __hash__(self) -> int:
+        """A verdict is identified by WHY it stopped; `detail` is the evidence, and is
+        excluded (see `_frozen.py`)."""
+        return hash((self.reason,))
 
 
 class TerminationCondition:

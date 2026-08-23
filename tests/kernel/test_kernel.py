@@ -1,6 +1,7 @@
 """L0 kernel: middleware composition order, resilience classification/retry, bounded concurrency."""
 
 import asyncio
+import dataclasses
 import datetime as _dt
 import threading
 import uuid as _uuid
@@ -352,6 +353,7 @@ def test_circuit_open_preserves_original_cause():
 from hypothesis import given
 from hypothesis import strategies as st
 
+from agentkit.kernel._frozen import FrozenDict
 from agentkit.kernel.types import (
     ChatRequest,
     Chunk,
@@ -511,15 +513,15 @@ def test_frozen_chatrequest_replace_swaps_model_without_touching_original() -> N
 # A tool implementation that mutated ``tc.arguments`` (say
 # ``args.pop("token")``) would corrupt every downstream reader — the
 # ReAct approval snapshot, the idempotency hash, the audit trail.
-# ``arguments`` is exposed as an immutable ``MappingProxyType`` view
-# over a defensive copy of the caller's dict.
+# ``arguments`` is an immutable ``FrozenDict`` over a deep copy of the
+# caller's dict. It was a ``MappingProxyType`` until the payload freeze;
+# the guarantee is identical and the serialisation behaviour is not —
+# see ``test_frozen_request_payloads.py`` for that half.
 
 
 def test_toolcall_arguments_view_rejects_item_assignment() -> None:
-    from types import MappingProxyType
-
     tc = ToolCall("c1", "search", {"q": "hello"})
-    assert isinstance(tc.arguments, MappingProxyType)
+    assert isinstance(tc.arguments, FrozenDict)
     with pytest.raises(TypeError):
         tc.arguments["q"] = "changed"  # type: ignore[index]
 
@@ -655,19 +657,22 @@ def test_toolcall_survives_pickle_round_trip() -> None:
     ``FrozenContext`` is advertised as shareable across an agent boundary —
     which means pickle once that boundary is a process. ``__reduce__`` rebuilds
     through the constructor, so the round trip comes back FROZEN, not as a
-    plain dict."""
+    plain dict — and now frozen ALL THE WAY DOWN, which the mappingproxy
+    version never was (``clone.arguments["nested"]["k"].append(4)`` used to
+    work)."""
     import pickle
-    from types import MappingProxyType
 
     original = ToolCall("c1", "search", {"q": "hello", "nested": {"k": [1, 2, 3]}})
     clone = pickle.loads(pickle.dumps(original))
 
     assert clone == original
     assert hash(clone) == hash(original)
-    assert isinstance(clone.arguments, MappingProxyType)
+    assert isinstance(clone.arguments, FrozenDict)
     assert clone.arguments["nested"] == {"k": [1, 2, 3]}
     with pytest.raises(TypeError):
         clone.arguments["q"] = "mutated"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        clone.arguments["nested"]["k"].append(4)
 
 
 def test_toolcall_construction_and_access_are_unchanged() -> None:
@@ -797,7 +802,14 @@ def test_chatrequest_construction_and_field_access_are_unchanged() -> None:
     req = ChatRequest([Message("user", "hi")], "gpt-4", tools=tools, temperature=0.5, max_tokens=64)
     assert req.model == "gpt-4"
     assert req.messages[0].content == "hi"
-    assert req.tools is tools  # no defensive copy, no proxy — plumbing unchanged
+    # The payload freeze COPIES, so ``is tools`` no longer holds — that is the
+    # un-aliasing, not a regression. Everything a reader actually does with the
+    # field is unchanged: it is still a ``list``, still ``==`` the input, still
+    # indexable, and its elements are the same objects (a ToolSchema is a leaf
+    # to ``deep_freeze``, so it is passed through, not rebuilt).
+    assert req.tools is not tools
+    assert isinstance(req.tools, list) and req.tools == tools
+    assert req.tools[0] is tools[0]
     assert (req.temperature, req.max_tokens) == (0.5, 64)
     assert ChatRequest([], "m").tools is None and ChatRequest([], "m").response_format is None
 
@@ -870,13 +882,16 @@ def test_toolrequest_hash_separates_the_routing_fields() -> None:
 
 def test_toolrequest_construction_access_and_equality_are_unchanged() -> None:
     """POSITIVE CONTROL: constructor, defaults, read access and equality all
-    behave exactly as before — including that ``arguments`` is still a plain
-    mutable ``dict``, not a proxy, because the terminal hands it to
-    ``tool.run(**arguments)``."""
+    behave exactly as before — including that ``arguments`` is still a ``dict``
+    by ``isinstance``, because the terminal hands it to ``tool.run(args, ctx)``
+    and ``FunctionTool`` gates on ``isinstance(args, Mapping)``. It is a
+    ``FrozenDict`` rather than a plain one since the payload freeze; a subclass
+    is precisely what keeps that gate — and ``json``, and ``asdict`` —
+    working."""
     sentinel = object()
     req = ToolRequest("search", {"q": "hi"}, tool=sentinel)
     assert (req.name, req.tool) == ("search", sentinel)
-    assert req.arguments == {"q": "hi"} and type(req.arguments) is dict
+    assert req.arguments == {"q": "hi"} and isinstance(req.arguments, dict)
     assert (req.side_effecting, req.url_arg) == (False, None)
     assert req == ToolRequest("search", {"q": "hi"}, tool=sentinel)
     assert ToolRequest("s", {"a": 1}, tool=None) != ToolRequest("s", {"a": 2}, tool=None)
@@ -946,17 +961,20 @@ def test_toolschema_set_dedupes_identical_advertisements() -> None:
 
 
 def test_toolschema_parameters_stay_a_plain_serialisable_dict() -> None:
-    """POSITIVE CONTROL, and the constraint this commit deliberately did NOT
-    take: the payload is hashability's problem, not the payload's. Freezing
-    ``parameters`` into a ``MappingProxyType`` would have been the other way to
-    a hash, and it would have broken every existing reader — a mappingproxy is
-    not JSON-serialisable and ``dataclasses.asdict`` does not unwrap it. These
-    two lines are what provider adapters do with a schema on every call."""
+    """POSITIVE CONTROL: ``parameters`` is frozen but still SERIALISABLE.
+
+    Freezing it into a ``MappingProxyType`` was the option that would have
+    broken every existing reader — a mappingproxy is not JSON-serialisable and
+    ``dataclasses.asdict`` does not unwrap it — so the freeze is a ``dict``
+    SUBCLASS instead. These three lines are what provider adapters do with a
+    schema on every call (``openai_compat`` json-dumps ``schema.parameters``,
+    ``anthropic`` sends it as ``input_schema``), and they pass identically
+    before and after."""
     import json
     from dataclasses import asdict
 
     schema = ToolSchema("search", "find things", {"type": "object", "properties": {"q": {"type": "string"}}})
-    assert type(schema.parameters) is dict
+    assert isinstance(schema.parameters, dict)
     assert json.loads(json.dumps(schema.parameters)) == schema.parameters
     assert asdict(schema)["parameters"]["properties"] == {"q": {"type": "string"}}
 
@@ -1588,31 +1606,34 @@ def test_a_permanent_failure_does_not_sleep_before_giving_up() -> None:
     assert slept == []
 
 
-def test_mutating_a_requests_messages_invalidates_its_hash() -> None:
-    """A `ChatRequest` is frozen but its `messages` list is not, and `len` is in
-    the hash — so mutating it in place moves the object to a different bucket.
+def test_mutating_a_requests_messages_is_now_refused_outright() -> None:
+    """`len(messages)` is in `__hash__`, so appending to the list used to move a
+    request to a different bucket and silently un-find it in any set or dict.
 
-    This pins the contract rather than pretending it away. It is NOT a new
-    failure mode: `__eq__` already compares `messages`, so a mutated request is
-    unusable as a stable set member whatever the hash does — a payload-free
-    hash would land it in the right bucket and fail `__eq__` instead. Both
-    outcomes are "not found"; this test exists so the behaviour is discovered
-    here rather than in someone's cache.
+    This test used to PIN that sharp edge — "discovered here rather than in
+    someone's cache". The payload freeze closes it at the source instead:
+    `messages` is a `FrozenList`, so the append raises where it happens rather
+    than corrupting a lookup three layers away. The hash is byte-for-byte
+    unchanged; what changed is that the input it depends on can no longer move.
 
-    Nothing in the framework does this — middleware REPLACES a request rather
-    than mutating it — which is why `len(messages)` is affordable at all.
+    Nothing in the framework did this anyway — middleware REPLACES a request
+    (`ctx.request = replace(...)`) rather than mutating it, which is why
+    `len(messages)` was affordable in the first place and stays so.
     """
     req = ChatRequest(messages=[Message(role="user", content="hi")], model="m")
     seen = {req}
     before = hash(req)
 
-    req.messages.append(Message(role="user", content="more"))
+    with pytest.raises(TypeError, match="frozen value"):
+        req.messages.append(Message(role="user", content="more"))
 
-    assert hash(req) != before, "len(messages) is in the hash, so this must move"
-    assert req not in seen, (
-        "a request mutated after insertion is no longer findable — treat a "
-        "frozen value's list as immutable, or copy before mutating"
-    )
-    # And the same is true of equality alone, which is the point: the hash is
-    # not what made this fragile.
-    assert req != ChatRequest(messages=[Message(role="user", content="hi")], model="m")
+    # The request is exactly as findable as it was a line ago — which is the
+    # whole point of refusing rather than pinning.
+    assert hash(req) == before
+    assert req in seen
+    assert req == ChatRequest(messages=[Message(role="user", content="hi")], model="m")
+
+    # The supported rewrite still works and produces a DIFFERENT value, as it
+    # always did — replacement was never the thing under threat.
+    grown = dataclasses.replace(req, messages=[*req.messages, Message(role="user", content="more")])
+    assert grown != req and len(grown.messages) == 2

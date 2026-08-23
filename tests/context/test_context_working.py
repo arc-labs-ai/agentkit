@@ -41,6 +41,7 @@ from agentkit.context import (
     Tagged,
     WorkingContext,
 )
+from agentkit.kernel._frozen import FrozenDict
 from agentkit.kernel.types import Message, ToolCall
 
 
@@ -522,18 +523,84 @@ def test_context_diff_equality_and_shape_are_unchanged():
     assert d.scratchpad_changes["k"] == 1
     assert d.scratchpad_changes.get("removed") is None
     assert isinstance(d.scratchpad_changes, dict)  # NOT frozen into a proxy
+    assert d.scratchpad_changes == {"k": 1, "removed": None}  # eq against a PLAIN dict
     assert d.messages_added[0].content == "a"
 
 
+def test_context_diff_scratchpad_changes_refuse_post_construction_writes():
+    """THE BREAKING CHANGE. The class docstring promises a ``ContextDiff`` is a
+    value — "hashable / pickleable" — and the message tuples honoured that while
+    ``scratchpad_changes`` did not: ``d.scratchpad_changes["k"] = 2`` edited a
+    delta that had already been computed, reported and possibly logged. A diff
+    that can be edited is not a diff.
+
+    Migration::
+
+        d = dataclasses.replace(d, scratchpad_changes={**d.scratchpad_changes, "k": 2})
+    """
+    import dataclasses
+
+    d = ContextDiff((), (), {"plan": {"v": [1, 2]}}, False)
+
+    with pytest.raises(TypeError, match="frozen value"):
+        d.scratchpad_changes["plan"] = "rewritten"
+    with pytest.raises(TypeError, match="frozen value"):
+        d.scratchpad_changes["plan"]["v"].append(3)  # deep, not just the top level
+    with pytest.raises(TypeError, match="frozen value"):
+        d.scratchpad_changes.update({"extra": 1})
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        d.scratchpad_changes = {}  # unchanged — the reference was always frozen
+
+    amended = dataclasses.replace(d, scratchpad_changes={**d.scratchpad_changes, "extra": 1})
+    assert amended.scratchpad_changes == {"plan": {"v": [1, 2]}, "extra": 1}
+    assert d.scratchpad_changes == {"plan": {"v": [1, 2]}}
+    assert isinstance(amended.scratchpad_changes, FrozenDict)
+
+
+def test_context_diff_empty_scratchpad_changes_are_frozen_too():
+    """The empty diff is the common one — two contexts that only differ in
+    messages — so a freeze that skipped ``{}`` would leave it writable."""
+    d = ContextDiff((), (), {}, False)
+    assert isinstance(d.scratchpad_changes, FrozenDict)
+    assert d.scratchpad_changes == {}
+    with pytest.raises(TypeError, match="frozen value"):
+        d.scratchpad_changes["first"] = 1
+
+
+def test_diff_does_not_alias_the_live_scratchpad_values():
+    """``diff()`` builds ``changes`` by reading LIVE scratchpad values
+    (``changes[k] = v``), so before the freeze a nested value in the diff WAS
+    the context's object — and a later write through the context retroactively
+    changed what the diff said."""
+    a = WorkingContext()
+    b = WorkingContext()
+    plan = {"steps": ["draft"]}
+    a.update_scratchpad({"plan": plan})
+
+    d = a.diff(b)
+    assert d.scratchpad_changes["plan"] == {"steps": ["draft"]}
+
+    plan["steps"].append("review")  # the context's own value moves on
+    a.update_scratchpad({"plan": plan})
+    assert d.scratchpad_changes["plan"] == {"steps": ["draft"]}  # the diff does not
+
+
 def test_context_diff_still_deepcopies_and_pickles():
-    """POSITIVE CONTROL: the payload stays a plain dict, so both paths keep
-    working — the fix adds a hash, it does not freeze anything."""
+    """POSITIVE CONTROL: the payload stays a ``dict`` (a subclass), so both
+    paths keep working. Both are also where a frozen payload could plausibly
+    break — each rebuilds a dict subclass through ``__setitem__`` unless
+    ``__reduce__`` intervenes — and the copy must come back FROZEN, or the
+    freeze leaks through ``copy``."""
     import copy as _copy
     import pickle
 
     d = ContextDiff((_tool_call_turn("c1"),), (), {"plan": {"v": [1, 2]}}, True)
     assert _copy.deepcopy(d) == d
     assert pickle.loads(pickle.dumps(d)) == d
+    for clone in (_copy.deepcopy(d), pickle.loads(pickle.dumps(d))):
+        assert isinstance(clone.scratchpad_changes, FrozenDict)
+        with pytest.raises(TypeError, match="frozen value"):
+            clone.scratchpad_changes["plan"]["v"][0] = 9
 
 
 def test_context_diff_hash_survives_deepcopy_and_pickle():

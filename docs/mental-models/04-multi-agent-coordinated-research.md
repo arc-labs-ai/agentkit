@@ -167,9 +167,11 @@ scans results and appends any failure to
 and group 1 (synthesizer), a `Step.gate("review")` in the plan
 suspends the coordinator via `Suspended`. `PlanPolicy` checkpoints
 the accumulated results + errors + usage to `ctx.store` under a
-`plan_policy:<run_id>` key, then returns
-`AgentResult.evals["suspended"] = Suspended(run_id="run-xyz", pending=("review",))`
-with `stop_reason="awaiting_decision"`. The synthesizer step in
+`plan_policy:<run_id>` key, then returns an `AgentResult` built with
+`evals={"suspended": Suspended(run_id="run-xyz", pending=("review",))}`
+and `stop_reason="awaiting_decision"`. Built, not assigned: `evals` is
+frozen at construction, so the `Suspended` goes in when the result is
+made rather than being written into it afterwards. The synthesizer step in
 group 2 does NOT run.
 
 A gate must be **alone in its group**. `PlanPolicy` refuses a plan that

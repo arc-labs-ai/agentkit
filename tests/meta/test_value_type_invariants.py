@@ -55,8 +55,10 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import importlib
 import inspect
 import pickle
+import pkgutil
 from enum import Enum
 from typing import Any
 
@@ -123,14 +125,39 @@ FACTORIES: dict[str, Any] = {
 
 
 def _public_frozen_dataclasses() -> dict[str, type]:
+    """Every frozen dataclass reachable in the package, not just the top-level
+    re-exports.
+
+    This used to read ``agentkit.__all__`` alone, and that narrowness had a
+    cost: ``Chunk`` — a frozen value whose ``metadata`` dict carries the SCOPE
+    TAGS tenant isolation reads — was mutable through its frozen field and
+    completely invisible here, because it is not re-exported at top level. It
+    was found by hand, which is exactly what this file exists to make
+    unnecessary. Walking the package turned up 13 more frozen types, four of
+    them carrying the same mutable payload.
+
+    A ratchet is only as wide as its enumeration, so the enumeration is now the
+    package. Private modules and private class names are skipped: they are not
+    a contract with anyone outside this repo.
+    """
     out: dict[str, type] = {}
-    for name in agentkit.__all__:
-        obj = getattr(agentkit, name, None)
-        if not inspect.isclass(obj) or not dataclasses.is_dataclass(obj):
+    for mod_info in pkgutil.walk_packages(agentkit.__path__, "agentkit."):
+        if any(part.startswith("_") for part in mod_info.name.split(".")[1:]):
             continue
-        params = getattr(obj, "__dataclass_params__", None)
-        if params is not None and params.frozen:
-            out[name] = obj
+        try:
+            module = importlib.import_module(mod_info.name)
+        except Exception:  # pragma: no cover - an optional extra is absent
+            continue
+        for obj in vars(module).values():
+            if not inspect.isclass(obj) or not dataclasses.is_dataclass(obj):
+                continue
+            if not obj.__module__.startswith("agentkit"):
+                continue  # re-exported from elsewhere; not ours to police
+            if obj.__qualname__.startswith("_"):
+                continue
+            params = getattr(obj, "__dataclass_params__", None)
+            if params is not None and params.frozen:
+                out.setdefault(obj.__qualname__, obj)
     return out
 
 

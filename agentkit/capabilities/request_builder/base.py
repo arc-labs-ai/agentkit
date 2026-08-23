@@ -50,6 +50,7 @@ from agentkit.capabilities.output_schema import SchemaAdapter
 from agentkit.capabilities.request_builder.grounder import _GROUNDING_NAME, Grounder
 from agentkit.context import PrefixContext, WorkingContext
 from agentkit.context.tokens import estimate_message_tokens
+from agentkit.kernel._frozen import deep_freeze
 from agentkit.kernel._json import dumps as _json_dumps
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message
@@ -78,6 +79,19 @@ class BuiltRequest:
     messages: list[Message]
     prompt_version: str
     approx_tokens: int
+
+    def __post_init__(self) -> None:
+        """Frozen in name only until this ran: the assembled transcript could be appended to
+        through a field advertised as immutable, after the token count and budget pre-check had
+        already been computed from it."""
+        object.__setattr__(self, "messages", deep_freeze(self.messages))
+
+    def __hash__(self) -> int:
+        """Identity is the prompt version and size. `messages` is excluded for two
+        reasons: it is unhashable (see `_frozen.py`), and it grows without bound
+        across a run — `len` is the O(1) discriminator that keeps successive turns
+        off a single bucket."""
+        return hash((self.prompt_version, self.approx_tokens, len(self.messages)))
 
 
 @dataclass

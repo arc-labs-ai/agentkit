@@ -301,12 +301,22 @@ def test_the_hashed_subset_still_discriminates(a: Any, b: Any) -> None:
 # nor picklable. This commit is about hashability only.
 
 
-def test_payload_fields_are_still_plain_dicts() -> None:
+def test_payload_fields_are_still_dicts_the_persistence_layer_accepts() -> None:
     """The shape every existing reader depends on. If a future fix reaches for
     `MappingProxyType` to make these hashable, this is the test that says the
-    persistence layer noticed."""
+    persistence layer noticed.
+
+    Loosened from ``type(payload) is dict`` to ``isinstance`` when the payloads
+    became `FrozenDict` (see `test_frozen_value_payloads.py`). The exact-type
+    spelling was over-tight for what this guard is actually protecting: nothing
+    downstream branches on the concrete class, they branch on `isinstance` and
+    then serialise. `FrozenDict` is a `dict` SUBCLASS chosen precisely so both
+    keep working — which is what the added `json.dumps` line asserts directly,
+    rather than by proxy through a type check. `MappingProxyType` still fails
+    both lines, so the guard this test exists for is intact."""
     for payload in (_cp(DEEP).state, _cp(DEEP).metadata, _hit().metadata, _resp().headers):
-        assert type(payload) is dict
+        assert isinstance(payload, dict)
+        assert json.loads(json.dumps(payload)) == payload
     assert _obs(payload=DEEP).payload == DEEP
 
 
@@ -384,7 +394,14 @@ def test_checkpoint_survives_the_store_backed_round_trip_unchanged() -> None:
     _run(port.save(cp))
     back = _run(port.latest("run-1"))
     assert back == cp
-    assert back is not None and back.state == DEEP and type(back.state) is dict
+    # ``isinstance``, not ``type(...) is dict``: the state comes back as a
+    # `FrozenDict` since the payloads were frozen, and a checkpoint that came
+    # back MUTABLE would be the actual bug (see `test_frozen_value_payloads.py`
+    # — a record frozen on the way in and loose on the way out is half fixed).
+    # What this control cares about is that persistence is untouched, so it
+    # asserts that directly: same value out as in, still JSON-serialisable.
+    assert back is not None and back.state == DEEP and isinstance(back.state, dict)
+    assert json.dumps(back.state) == json.dumps(DEEP)
     assert back.metadata == {"who": "writer"} and back.status == CheckpointStatus.RUNNING
     assert _run(port.list_versions("run-1")) == [1]
     assert _run(port.at_version("run-1", 1)) == cp

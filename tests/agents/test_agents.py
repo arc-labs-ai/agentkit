@@ -4,12 +4,16 @@ A leaf `Agent` is the single-call form; a coordinator `Agent` dispatches to
 check."""
 
 import asyncio
+import copy
+import json
+import pickle
 
 import pytest
 
 from agentkit import Agent, RunPolicy
 from agentkit.agents.cognition import CoordinatorCognition
 from agentkit.agents.policies.plan import PlanPolicy, StaticPlanner, Step
+from agentkit.kernel._frozen import FrozenDict
 from agentkit.kernel.types import Scope
 from agentkit.testing import FakeLLM, make_test_ctx
 from agentkit.tools import FunctionTool
@@ -214,19 +218,114 @@ def test_agent_result_works_as_a_memo_cache_key() -> None:
     assert _res(output="unseen") not in cache
 
 
-def test_agent_result_evals_stay_a_plain_mutable_dict() -> None:
-    """POSITIVE CONTROL, and the constraint this commit is under: `evals` is
-    NOT frozen into a `MappingProxyType`. Callers write into it, it is JSON
-    serialised, and `dataclasses.asdict` must keep working — a proxy is neither
-    JSON-serialisable nor an `asdict` leaf. Passes before and after."""
+def test_agent_result_evals_are_a_dict_for_every_consumer() -> None:
+    """POSITIVE CONTROL, and the constraint the freeze is under: `evals` is a
+    `dict` SUBCLASS, not a `MappingProxyType`. It is JSON serialised and read
+    back through `dataclasses.asdict`, neither of which a proxy survives.
+    Passes before and after the freeze.
+
+    This test USED to end with `r.evals["late"] = ...` — commented "the
+    documented habit" — as a positive control that callers could annotate a
+    result after construction. That contract is gone; the write half now lives
+    in `test_agent_result_evals_refuse_post_construction_writes` below, which
+    pins the refusal and shows the migration."""
     import dataclasses
     import json
 
-    r = _res(evals={"stop_reason": "complete"})
+    r = _res(evals={"stop_reason": "complete", "children": [{"n": 1}]})
     assert isinstance(r.evals, dict)
-    r.evals["late"] = {"written": "after construction"}  # the documented habit
-    assert json.dumps(r.evals)
-    assert dataclasses.asdict(r)["evals"]["late"] == {"written": "after construction"}
+    assert r.evals["stop_reason"] == "complete"
+    assert r.evals["children"][0]["n"] == 1
+    assert len(r.evals) == 2 and set(r.evals) == {"stop_reason", "children"}
+    assert dict(r.evals) == {"stop_reason": "complete", "children": [{"n": 1}]}
+    assert r.evals == {"stop_reason": "complete", "children": [{"n": 1}]}  # eq vs a PLAIN dict
+    assert json.loads(json.dumps(r.evals))["children"] == [{"n": 1}]
+    assert dataclasses.asdict(r)["evals"]["stop_reason"] == "complete"
+
+
+def test_agent_result_evals_refuse_post_construction_writes() -> None:
+    """THE BREAKING CHANGE, stated as a test. `evals` is the audit record of a
+    run: what it cost, why it stopped, which children failed. Rewriting it
+    after the fact used to succeed silently, because `frozen=True` protected
+    only the field REFERENCE::
+
+        r.evals = {}            # FrozenInstanceError, as intended
+        r.evals["cost"] = 0.0   # ...but this rewrote the record
+
+    Migration — build a new value instead of editing the old one::
+
+        r = dataclasses.replace(r, evals={**r.evals, "late": "note"})
+    """
+    import dataclasses
+
+    r = _res(evals={"stop_reason": "complete"})
+
+    with pytest.raises(TypeError, match="frozen value"):
+        r.evals["late"] = {"written": "after construction"}
+    with pytest.raises(TypeError, match="frozen value"):
+        r.evals.update({"late": 1})  # the next thing a caller reaches for
+    with pytest.raises(TypeError, match="frozen value"):
+        del r.evals["stop_reason"]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        r.evals = {}  # type: ignore[misc]  # unchanged — the reference was always frozen
+
+    annotated = dataclasses.replace(r, evals={**r.evals, "late": "note"})
+    assert annotated.evals == {"stop_reason": "complete", "late": "note"}
+    assert r.evals == {"stop_reason": "complete"}  # the original is untouched
+    assert isinstance(annotated.evals, FrozenDict)  # ...and the new one is frozen too
+
+
+def test_agent_result_evals_are_frozen_all_the_way_down() -> None:
+    """A shallow freeze is the same bug one level down and harder to see —
+    `evals` is nested by construction (`cli_init`, `errors`, per-child result
+    lists), so those are exactly the paths a caller reaches through."""
+    r = _res(evals={"a": {"b": [{"c": 0}]}, "errors": [{"agent": "x"}]})
+
+    with pytest.raises(TypeError, match="frozen value"):
+        r.evals["a"]["b"][0]["c"] = 1
+    with pytest.raises(TypeError, match="frozen value"):
+        r.evals["errors"].append({"agent": "y"})
+    assert r.evals["a"]["b"][0]["c"] == 0
+
+
+def test_agent_result_does_not_alias_the_producers_dict() -> None:
+    """Every producer builds a local `evals` dict and hands it to the
+    constructor (`_agent_helpers.finish`, `claude_cli`, the four policies). If
+    the result ALIASED that local, a producer writing one more key after
+    returning would edit a result it had already handed out."""
+    mine = {"stop_reason": "complete"}
+    r = _res(evals=mine)
+
+    mine["mutated"] = True  # the producer keeps using its own dict — legal
+    assert r.evals == {"stop_reason": "complete"}
+    assert "mutated" not in r.evals
+
+
+def test_agent_result_tolerates_a_none_evals_the_way_the_serialiser_assumes() -> None:
+    """`evals` is annotated `dict`, but `result_to_dict` guards `dict(r.evals or {})`
+    — the framework does not trust the annotation here, and neither does the
+    freeze. `deep_freeze` passes non-container leaves through, so a `None`
+    payload stays `None` instead of raising inside `__post_init__` at the one
+    seam every `agent.run()` goes through."""
+    r = _res(evals=None)
+    assert r.evals is None
+
+    from agentkit.capabilities.checkpointer.persistence import dict_to_result, result_to_dict
+
+    back = dict_to_result(result_to_dict(r))
+    assert back.evals == {} and isinstance(back.evals, FrozenDict)
+
+
+def test_agent_result_empty_and_default_evals_are_frozen_too() -> None:
+    """The edge the default hides: `field(default_factory=dict)` means most
+    results carry `{}`, and a freeze that only ran on a non-empty payload would
+    leave the COMMON case writable."""
+    assert isinstance(_res().evals, FrozenDict)
+    assert isinstance(_res(evals={}).evals, FrozenDict)
+    assert _res().evals == {}
+
+    with pytest.raises(TypeError, match="frozen value"):
+        _res().evals["first"] = 1
 
 
 def test_agent_result_checkpoint_round_trip_is_unchanged() -> None:
@@ -241,6 +340,43 @@ def test_agent_result_checkpoint_round_trip_is_unchanged() -> None:
     assert back == r
     assert back.evals == r.evals and isinstance(back.evals, dict)
     assert back.is_suspended and back.is_resumable
+
+
+def test_agent_result_comes_back_from_a_checkpoint_frozen() -> None:
+    """A value frozen on the way IN and mutable on the way OUT is only half
+    fixed, and the restored copy is the more dangerous half: it is the one a
+    resume path holds, long after the run that produced it ended.
+
+    `dict_to_result` rebuilds through the CONSTRUCTOR, so `__post_init__` runs
+    and the freeze is re-applied rather than merely inherited — which also
+    means a record written before this change reads back frozen."""
+    from agentkit.capabilities.checkpointer.persistence import dict_to_result, result_to_dict
+
+    raw = result_to_dict(_res(evals={"stop_reason": "awaiting_approval", "n": [{"deep": 1}]}))
+    assert json.dumps(raw)  # the record still crosses a serialising store
+
+    back = dict_to_result(raw)
+    assert isinstance(back.evals, FrozenDict)
+    with pytest.raises(TypeError, match="frozen value"):
+        back.evals["tampered"] = True
+    with pytest.raises(TypeError, match="frozen value"):
+        back.evals["n"][0]["deep"] = 2  # deep, not just at the top level
+
+
+def test_agent_result_frozen_evals_survive_deepcopy_and_pickle() -> None:
+    """POSITIVE CONTROL over the two paths a `FrozenDict` could plausibly break:
+    both rebuild a dict subclass by repopulating it through `__setitem__` — the
+    method the freeze blocks — so both go through `__reduce__` instead. The
+    checkpointer deep-copies on every snapshot, so this is a live path, and the
+    copy must come back FROZEN or the freeze leaks through `copy`."""
+    r = _res(evals={"a": {"b": [1, {"c": 2}]}})
+
+    for clone in (copy.deepcopy(r), pickle.loads(pickle.dumps(r))):
+        assert clone == r and hash(clone) == hash(r)
+        assert clone.evals == r.evals
+        assert isinstance(clone.evals, FrozenDict)
+        with pytest.raises(TypeError, match="frozen value"):
+            clone.evals["a"]["b"][1]["c"] = 3
 
 
 def test_agent_result_still_deepcopies_and_pickles() -> None:
@@ -339,21 +475,65 @@ def test_workflow_result_hash_is_o1_in_the_node_payload() -> None:
     )
 
 
-def test_workflow_result_outputs_stay_a_plain_mutable_dict() -> None:
-    """POSITIVE CONTROL: nothing was frozen. Node outputs are read by index and
-    serialised; the durable-resume contract depends on them staying plain."""
-    import json
-
+def _wf(**kw):
     from agentkit.agents.result import WorkflowResult
     from agentkit.kernel.types import Usage
 
-    r = WorkflowResult(outputs={"draft": {"body": "x"}}, usage=Usage(), steps=1, stop_reason="complete")
+    kw.setdefault("outputs", {"draft": {"body": "x"}})
+    kw.setdefault("usage", Usage())
+    kw.setdefault("steps", 1)
+    kw.setdefault("stop_reason", "complete")
+    return WorkflowResult(**kw)
+
+
+def test_workflow_result_outputs_are_a_dict_for_every_consumer() -> None:
+    """POSITIVE CONTROL: node outputs are read by index and serialised, and the
+    durable-resume contract depends on both. This test used to be titled
+    "...stay a plain MUTABLE dict"; the mutable half is now
+    `test_workflow_result_outputs_refuse_post_construction_writes`."""
+    r = _wf()
     assert isinstance(r.outputs, dict)
     assert r.outputs["draft"]["body"] == "x"
+    assert set(r.outputs) == {"draft"} and len(r.outputs) == 1
     assert json.dumps(r.outputs)
-    assert r == WorkflowResult(
-        outputs={"draft": {"body": "x"}}, usage=Usage(), steps=1, stop_reason="complete"
-    )
-    assert r != WorkflowResult(
-        outputs={"draft": {"body": "y"}}, usage=Usage(), steps=1, stop_reason="complete"
-    )
+    assert r.outputs == {"draft": {"body": "x"}}  # eq against a PLAIN dict
+    assert r == _wf()
+    assert r != _wf(outputs={"draft": {"body": "y"}})
+    assert hash(r) == hash(_wf(outputs={"draft": {"body": "y"}}))  # __hash__ unchanged
+
+
+def test_workflow_result_outputs_refuse_post_construction_writes() -> None:
+    """A node output is a RECORD of what that node produced, and the same map
+    is what `Checkpointer.snapshot` persisted. Writing into it after the run
+    edited a value the checkpointer had already recorded.
+
+    Migration::
+
+        res = dataclasses.replace(res, outputs={**res.outputs, "draft": new})
+    """
+    import dataclasses
+
+    r = _wf()
+
+    with pytest.raises(TypeError, match="frozen value"):
+        r.outputs["draft"] = "rewritten"
+    with pytest.raises(TypeError, match="frozen value"):
+        r.outputs["draft"]["body"] = "rewritten"  # deep, not just the top level
+    with pytest.raises(TypeError, match="frozen value"):
+        r.outputs.setdefault("extra", 1)
+
+    amended = dataclasses.replace(r, outputs={**r.outputs, "review": "ok"})
+    assert amended.outputs == {"draft": {"body": "x"}, "review": "ok"}
+    assert r.outputs == {"draft": {"body": "x"}}
+
+
+def test_workflow_result_does_not_alias_the_engines_done_map() -> None:
+    """The engine hands its LIVE `done` map to the constructor at four call
+    sites in `workflow.py`, and hands the same map to the checkpointer. The
+    result must be a copy, or the engine's own next write would edit a
+    returned result."""
+    done = {"draft": {"body": "x"}}
+    r = _wf(outputs=done)
+
+    done["draft"] = "engine kept going"  # legal: the engine owns `done`
+    assert r.outputs == {"draft": {"body": "x"}}

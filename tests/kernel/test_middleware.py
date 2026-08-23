@@ -6,6 +6,7 @@ The chain is stream-shaped: a handler yields items (Deltas for chat, one item fo
 reduces them. A pass-through BaseMiddleware observes; `buffers=True` lets on_response transform."""
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 
@@ -94,9 +95,19 @@ def test_security_guards_only_model_calls_not_tool_calls():
 
 
 def test_on_request_can_rewrite_and_emit_then_proceed():
+    # REWRITES THE REQUEST, does not edit its list. This used to say
+    # ``ctx.request.messages[-1] = ...``, which worked only because
+    # ``ChatRequest``'s ``frozen=True`` stopped at the field reference — an
+    # in-place edit of the unit of work the chain is mid-way through, invisible
+    # to the retry middleware that kept the original and to ``memoize``, which
+    # keys on the transcript. ``ChatRequest.messages`` is a ``FrozenList`` now,
+    # so that line raises and this is the shape the docs always specified:
+    # ``ctx.request = …`` (``MiddlewareContext.request`` has a setter for
+    # exactly this).
     class Tag(BaseMiddleware):
         async def on_request(self, ctx):
-            ctx.request.messages[-1] = Message("user", ctx.prompt + " [tagged]")
+            tagged = [*ctx.request.messages[:-1], Message("user", ctx.prompt + " [tagged]")]
+            ctx.request = replace(ctx.request, messages=tagged)
             yield Observation(kind="progress", render="tagged the prompt")
 
     obs = CollectingObserver()
