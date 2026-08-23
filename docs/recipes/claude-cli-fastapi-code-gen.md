@@ -225,6 +225,47 @@ finaliser. What differs is what a shared process implies:
   opening the session; asking per turn is refused with that message rather
   than silently returning prose.
 
+### Stopping a turn without ending the session
+
+Cancelling a turn terminates the process — no protocol message retracts a
+half-finished turn, so the conversation ends with it. `interrupt()` is the
+CLI's own verb for the same intent, and it keeps the session:
+
+```python
+async with cognition.session() as chat:
+    stopping = None
+    async for ev in chat.turn("Refactor the whole module"):
+        if user_pressed_stop() and stopping is None:
+            stopping = asyncio.create_task(chat.interrupt())   # a SEPARATE task
+    receipt = await stopping
+
+    # Same process, same conversation.
+    async for ev in chat.turn("Actually, just do the imports"):
+        ...
+```
+
+The interrupted turn still yields exactly one terminal `final`, with
+`stop_reason="interrupted"` (`terminated` in the closed taxonomy — somebody
+stopped it deliberately; nothing failed) and `partial=True`, because whatever
+text arrived is a fragment.
+
+`receipt.still_queued` names messages the CLI had queued and will run anyway —
+the difference between "the agent stopped" and "the agent stopped and has three
+more things to do". `interrupt(cancel_queued=True)` drops those as well, and is
+refused up front if the CLI does not advertise the capability.
+
+!!! warning "Call it from a separate task"
+    The CLI acknowledges on the same stdout your `turn()` loop is draining, so
+    awaiting `interrupt()` *inline* in that loop suspends the only reader and
+    the acknowledgement cannot arrive. That degrades rather than deadlocks: the
+    receipt returns after `ack_timeout_s` with `delivered=True` and an `error`
+    explaining it, and the interrupt still takes effect because the write
+    already happened. A UI's stop button is naturally a separate task anyway.
+
+Feature-detect with `chat.capabilities` / `chat.supports("...")` rather than
+comparing version strings — the CLI advertises an open set on `system/init`
+for exactly this.
+
 ## Streaming tokens
 
 By default the CLI emits one `assistant` message per **completed** content

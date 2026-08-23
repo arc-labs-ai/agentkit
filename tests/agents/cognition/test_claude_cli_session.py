@@ -542,3 +542,392 @@ def test_the_real_cli_session_exits_cleanly_on_close() -> None:
         return proc.returncode
 
     assert asyncio.run(_go()) == 0
+
+
+# ── 6. interrupt: stop the turn, keep the conversation ─────────────────────
+#
+# The piece a chat UI needs and cancellation cannot give it. Cancelling a turn
+# terminates the process — no protocol message retracts a half-finished turn,
+# so the conversation ends with it. An interrupt is the CLI's own verb for the
+# same intent: the in-flight turn stops, the process stays up, and the next
+# turn continues the SAME conversation.
+#
+# The wire format was read off the binary:
+#
+#   ->  {"type":"control_request","request_id":"agentkit-1",
+#        "request":{"subtype":"interrupt"}}
+#   <-  {"type":"control_response","response":{"subtype":"success",
+#        "request_id":"agentkit-1","response":{"still_queued":[]}}}
+
+
+def _control_response(request_id: str, **inner: Any) -> bytes:
+    return _line(
+        {
+            "type": "control_response",
+            "response": {"subtype": "success", "request_id": request_id, "response": inner},
+        }
+    )
+
+
+def _init(*capabilities: str) -> bytes:
+    return _line(
+        {
+            "type": "system",
+            "subtype": "init",
+            "session_id": "sess-1",
+            "capabilities": list(capabilities),
+        }
+    )
+
+
+def test_an_interrupt_stops_the_turn_and_keeps_the_session() -> None:
+    """THE contract. The turn ends ``interrupted``; the next turn runs in the
+    same process and completes normally."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "1 2"}]}}),
+                _control_response("agentkit-1", still_queued=[]),
+                _line(
+                    {
+                        "type": "result",
+                        "subtype": "error_during_execution",
+                        "is_error": True,
+                        "session_id": "sess-1",
+                        "total_cost_usd": 0.01,
+                        "usage": {},
+                    }
+                ),
+            ],
+            _turn_lines("still here"),
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> tuple[Any, Any, Any, bool]:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                stopping = None
+                first = None
+                async for ev in chat.turn("count to 300"):
+                    if ev.type == "message_delta" and stopping is None:
+                        # A separate task, which is the shape a UI's stop button
+                        # has: the loop below keeps draining, so the CLI's
+                        # acknowledgement can actually arrive.
+                        stopping = asyncio.create_task(chat.interrupt())
+                    if ev.type == "final":
+                        first = ev.result
+                receipt = await stopping
+                second = (await _collect(chat, "are you there?"))[-1].result
+                # Sampled INSIDE the session: leaving the context manager
+                # closes the process, so a check afterwards would prove
+                # nothing about whether the interrupt kept it alive.
+                alive = proc.returncode is None and not proc.terminated
+                return first, second, receipt, alive
+
+        first, second, receipt, alive_between_turns = asyncio.run(_go())
+
+    assert first.evals["stop_reason"] == "interrupted"
+    assert first.stop_reason == "terminated"  # somebody stopped it ON PURPOSE
+    assert first.partial, "the turn stopped mid-answer; its text is a fragment"
+    assert receipt.delivered
+    # ...and the conversation continues in the same process.
+    assert second.output == "still here" and second.stop_reason == "complete"
+    assert alive_between_turns, "an interrupt must not kill the process — that is cancel()"
+
+
+def test_the_request_is_the_shape_the_cli_answers() -> None:
+    """Read off the binary. A wrong envelope is not rejected — it is ignored,
+    so the turn runs to completion and the stop button silently does nothing."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}}),
+                _control_response("agentkit-1"),
+                *_turn_lines("done"),
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> None:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                stopping = None
+                async for ev in chat.turn("go"):
+                    if ev.type == "message_delta" and stopping is None:
+                        stopping = asyncio.create_task(chat.interrupt())
+                if stopping is not None:
+                    await stopping
+
+        asyncio.run(_go())
+
+    control = [m for m in proc.stdin.messages if m["type"] == "control_request"]
+    assert control == [
+        {
+            "type": "control_request",
+            "request_id": "agentkit-1",
+            "request": {"subtype": "interrupt"},
+        }
+    ]
+
+
+def test_the_receipt_reports_what_survived() -> None:
+    """"The agent stopped" and "the agent stopped and has three more things to
+    do" are different states, and only the receipt distinguishes them."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}}),
+                _control_response("agentkit-1", still_queued=["uuid-a", "uuid-b"]),
+                *_turn_lines("done"),
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                stopping = None
+                async for ev in chat.turn("go"):
+                    if ev.type == "message_delta" and stopping is None:
+                        stopping = asyncio.create_task(chat.interrupt())
+                return await stopping
+
+        receipt = asyncio.run(_go())
+
+    assert receipt.delivered
+    assert receipt.still_queued == ("uuid-a", "uuid-b")
+
+
+def test_interrupting_an_idle_session_is_a_no_op() -> None:
+    """A control request nobody is reading never gets an answer, so sending one
+    would hang. It is also not an error — "stop" with nothing running is a
+    no-op, and raising would make every UI wrap its stop button in a try."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                return await asyncio.wait_for(chat.interrupt(), timeout=2.0)
+
+        receipt = asyncio.run(_go())
+
+    assert receipt.delivered is False
+    assert not [m for m in proc.stdin.messages if m["type"] == "control_request"]
+
+
+def test_a_turn_that_ends_first_does_not_strand_the_waiter() -> None:
+    """The reader is what resolves a control response, so a turn that finishes
+    before the CLI answers leaves nobody to deliver it. Failing the waiter beats
+    hanging it forever."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}}),
+                *_turn_lines("done"),  # a result, and NO control_response
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                pending = None
+                async for ev in chat.turn("go"):
+                    if ev.type == "message_delta" and pending is None:
+                        pending = asyncio.create_task(chat.interrupt())
+                        await asyncio.sleep(0)
+                return pending
+
+        pending = asyncio.run(_go())
+
+    assert pending.done()
+    with pytest.raises(RuntimeError, match="before the CLI answered"):
+        pending.result()
+
+
+def test_a_control_response_is_not_folded_into_the_turn() -> None:
+    """It arrives on the SAME stdout the turn reader consumes. Treating it as
+    turn content would put protocol JSON into the answer."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),
+                _control_response("nobody-is-waiting"),
+                *_turn_lines("clean answer"),
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                return (await _collect(chat, "go"))[-1].result
+
+        result = asyncio.run(_go())
+
+    assert result.output == "clean answer"
+    assert result.stop_reason == "complete"
+
+
+def test_capabilities_are_feature_detected_not_version_sniffed() -> None:
+    """The CLI advertises an OPEN set on ``system/init``; that is what it is
+    for, and an unrecognised value is not an error."""
+    proc = _FakeSessionProcess(
+        [[_init("interrupt_receipt_v1", "something_new_v9"), *_turn_lines("hi")]]
+    )
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                assert chat.capabilities == frozenset()  # nothing seen yet
+                await _collect(chat, "hello")
+                return chat
+
+        chat = asyncio.run(_go())
+
+    assert chat.supports("interrupt_receipt_v1")
+    assert chat.supports("something_new_v9")
+    assert not chat.supports("interrupt_cancel_queued_v1")
+
+
+def test_cancel_queued_is_refused_when_unsupported() -> None:
+    """Checked BEFORE the request is sent, rather than after the CLI ignores
+    it: a stop button that silently does half of what it says is worse than one
+    that reports it cannot."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),  # no cancel_queued
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}}),
+                *_turn_lines("done"),
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> None:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                async for ev in chat.turn("go"):
+                    if ev.type == "message_delta":
+                        with pytest.raises(ValueError, match="interrupt_cancel_queued_v1"):
+                            await chat.interrupt(cancel_queued=True)
+
+        asyncio.run(_go())
+
+    assert not [m for m in proc.stdin.messages if m["type"] == "control_request"]
+
+
+def test_cancel_queued_uses_its_own_subtype() -> None:
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1", "interrupt_cancel_queued_v1"),
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}}),
+                _control_response("agentkit-1", cancelled=["uuid-a"]),
+                *_turn_lines("done"),
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                stopping = None
+                async for ev in chat.turn("go"):
+                    if ev.type == "message_delta" and stopping is None:
+                        stopping = asyncio.create_task(chat.interrupt(cancel_queued=True))
+                return await stopping
+
+        receipt = asyncio.run(_go())
+
+    assert receipt.cancelled == ("uuid-a",)
+    control = [m for m in proc.stdin.messages if m["type"] == "control_request"]
+    assert control[0]["request"]["subtype"] == "interrupt_cancel_queued"
+
+
+def test_an_inline_interrupt_degrades_to_a_bounded_wait() -> None:
+    """Calling ``interrupt()`` from inside the loop consuming ``turn()``
+    suspends the only reader, so the acknowledgement cannot arrive. That has to
+    cost a field on a receipt, not a hung application — the WRITE already
+    happened, so the interrupt still takes effect."""
+    proc = _FakeSessionProcess(
+        [
+            [
+                _init("interrupt_receipt_v1"),
+                _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}}),
+                _control_response("agentkit-1"),
+                *_turn_lines("done"),
+            ]
+        ]
+    )
+    with _patched(proc):
+
+        async def _go() -> Any:
+            async with ClaudeCliCognition().session() as chat:
+                chat._proc.stdout.feed_next_turn()
+                receipt = None
+                async for ev in chat.turn("go"):
+                    if ev.type == "message_delta" and receipt is None:
+                        receipt = await chat.interrupt(ack_timeout_s=0.05)
+                return receipt
+
+        receipt = asyncio.run(_go())
+
+    assert receipt.delivered, "the request was written even though nothing read the reply"
+    assert receipt.error is not None and "separate task" in receipt.error
+    # And the request really did go out.
+    assert [m["request"]["subtype"] for m in proc.stdin.messages if m["type"] == "control_request"] == [
+        "interrupt"
+    ]
+
+
+@real_cli
+def test_the_real_cli_honours_an_interrupt_and_stays_alive() -> None:
+    """The whole contract against the binary: a long turn is stopped mid-answer
+    and the NEXT turn runs in the same process.
+
+    A mock cannot tell us the envelope is right — a wrong one is ignored rather
+    than rejected, so the stop button would silently do nothing and the test
+    would still pass.
+    """
+    cog = ClaudeCliCognition(
+        model="claude-haiku-4-5-20251001", tools=("",), permission_mode="dontAsk"
+    )
+
+    async def _go() -> tuple[Any, Any, Any]:
+        async with cog.session() as chat:
+            stopping = None
+            first = None
+            async for ev in chat.turn(
+                "Count slowly from 1 to 300, one per line, commenting on each."
+            ):
+                if ev.type == "message_delta" and stopping is None:
+                    stopping = asyncio.create_task(chat.interrupt())
+                if ev.type == "final":
+                    first = ev.result
+            receipt = await stopping
+            second = None
+            async for ev in chat.turn("Reply with only: still here"):
+                if ev.type == "final":
+                    second = ev.result
+            return first, second, receipt
+
+    first, second, receipt = asyncio.run(asyncio.wait_for(_go(), timeout=180))
+
+    assert receipt.delivered, "the CLI did not acknowledge the interrupt"
+    assert first.evals["stop_reason"] == "interrupted"
+    assert first.stop_reason == "terminated"
+    assert "300" not in first.output, "the turn was not actually stopped early"
+    # The session survived: the same process answered a second turn.
+    assert second.stop_reason == "complete"
+    assert "still here" in second.output.lower()

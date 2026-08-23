@@ -111,6 +111,10 @@ _REASON_TO_STOP: dict[str, AgentStopReason] = {
     # because ``cli_exit_<n>`` is dynamic and cannot be enumerated here.
     "success": "complete",
     "cancelled": "terminated",
+    # A person pressed stop. Deliberate, so ``terminated`` — and distinct from
+    # ``cancelled``, which in that cognition means the process was killed and
+    # the conversation is gone.
+    "interrupted": "terminated",
 }
 
 

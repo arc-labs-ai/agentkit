@@ -150,6 +150,87 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── interrupt: stop the turn, keep the conversation ─────────────────────
+    Mutant(
+        tag="cliinterrupt",
+        why="a control_response is folded into the turn, putting protocol JSON in the answer",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='                    if payload.get("type") == "control_response":',
+        after="                    if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="an interrupted turn reports the CLI's ambiguous error subtype instead",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='                state.stop_reason = "interrupted"',
+        after="                pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="an interrupt is categorised as a failure rather than a deliberate stop",
+        path="agentkit/agents/result.py",
+        before='    "interrupted": "terminated",',
+        after='    "interrupted": "failed",',
+        tests=("tests/agents/test_stop_reason_taxonomy.py",),
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="interrupting an idle session sends a request nobody will ever answer",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        if proc is None or proc.returncode is not None or not self._turn_active:",
+        after="        if proc is None or proc.returncode is not None:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="a turn that ends first strands the interrupt waiter forever",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='                self._fail_pending("the turn ended before the CLI answered")',
+        after="                pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="cancel_queued is sent to a CLI that does not support it, and silently ignored",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='            if not self.supports("interrupt_cancel_queued_v1"):',
+        after="            if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="cancel_queued uses the plain interrupt subtype, so queued work still runs",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before='            subtype = "interrupt_cancel_queued"',
+        after='            subtype = "interrupt"',
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="capabilities land only at the terminal event, too late to feature-detect against",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                        if delta.init:\n                            self._absorb_init(delta.init)",
+        after="                        pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="an inline interrupt hangs the application instead of degrading",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="                payload = await asyncio.wait_for(future, timeout=ack_timeout_s)",
+        after="                payload = await future",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="the interrupt flag is set only after the ack, which the turn may end before",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="        self._interrupted = True\n        try:",
+        after="        try:",
+        tests=CLI_SESSION_TESTS,
+    ),
     # ── the CLI's permission prompts reach a person ─────────────────────────
     Mutant(
         tag="approvals",

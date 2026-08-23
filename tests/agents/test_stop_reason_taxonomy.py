@@ -88,6 +88,7 @@ def test_the_mapping_is_total_and_never_guesses() -> None:
         ("stalled", "terminated"),
         ("no_children", "terminated"),
         ("cancelled", "terminated"),
+        ("interrupted", "terminated"),
         ("max_turns", "max_iterations"),
         ("max_rounds", "max_iterations"),
         ("max_messages", "max_iterations"),
@@ -227,6 +228,16 @@ def test_cli_failures_map_to_failed(reason: str) -> None:
     """A subprocess that never started is not a deliberate stop. ``cli_exit_<n>``
     is dynamic, which is why this mapping is local to the cognition."""
     assert _cli_stop_reason(reason) == "failed"
+
+
+def test_an_interrupt_is_terminated_not_failed() -> None:
+    """Somebody pressed stop. Not ``failed`` — nothing broke — and distinct
+    from ``cancelled``, which in the CLI cognition means the process was killed
+    and the conversation is gone. It lives in the SHARED table rather than a
+    CLI-local one: the fallback would land on ``terminated`` anyway, and a
+    second table that only restates the default is one more place to drift."""
+    assert _cli_stop_reason("interrupted") == "terminated"
+    assert stop_reason_for("interrupted") == "terminated"
 
 
 @pytest.mark.parametrize("reason", sorted(_CLI_INVALID_OUTPUT_REASONS))

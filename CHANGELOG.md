@@ -11,6 +11,41 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Added — `ClaudeCliSession.interrupt()`: stop a turn, keep the conversation
+
+The session could send turns but not stop one mid-flight, which left a chat UI
+with only cancellation — and cancelling terminates the process, because no
+protocol message retracts a half-finished turn, so the conversation ends with
+it. The CLI has its own verb for the intent, over the control protocol on
+stdin, and it keeps the session alive: verified against the binary, an
+interrupted turn is followed by a normal one in the same process, which then
+exits 0.
+
+The interrupted turn still yields exactly one terminal `final`, with
+`stop_reason="interrupted"` — `terminated` in the closed taxonomy, since
+somebody stopped it deliberately — and `partial=True`, because whatever text
+arrived is a fragment. The CLI ends an interrupted turn with
+`error_during_execution`, the same subtype it uses for a genuine execution
+failure, so the payload alone cannot tell them apart; the session stamps the
+reason from state it holds rather than inferring it from an ambiguous field.
+
+`InterruptReceipt.still_queued` names messages the CLI will run anyway — the
+difference between "the agent stopped" and "the agent stopped and has three
+more things to do". `interrupt(cancel_queued=True)` drops those too, and is
+refused up front when the CLI does not advertise `interrupt_cancel_queued_v1`
+rather than being silently ignored.
+
+Also added `session.capabilities` / `session.supports(...)`, folded live from
+`system/init` — `interrupt()` feature-detects against them mid-turn, so
+capabilities that only landed at the terminal event were too late to act on.
+
+**Call it from a separate task.** The CLI acknowledges on the same stdout the
+`turn()` loop is draining, so awaiting `interrupt()` inline in that loop
+suspends the only reader. That degrades rather than deadlocks: after
+`ack_timeout_s` the receipt returns `delivered=True` with an `error` explaining
+it, and the interrupt still takes effect because the write already happened.
+Getting it wrong costs a field on a receipt, not a hung application.
+
 ### Added — `ApprovalServer`: the CLI's permission prompts reach an `Asker`
 
 `ClaudeCliCognition` delegates the whole loop to the CLI, which owns its own

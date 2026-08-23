@@ -1052,6 +1052,17 @@ class ClaudeCliSession:
         self._closed = False
         self._sem_holder: Any = None
         self.session_id: str | None = None  # populated from the first turn's init payload
+        # Control requests are answered on the SAME stdout the turn reader is
+        # consuming, so the reader routes each ``control_response`` to the
+        # future waiting on it. Keyed by request id.
+        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._control_seq = 0
+        # Set while a turn is streaming. ``interrupt()`` needs to know whether
+        # anyone is reading — a control request with no reader never gets an
+        # answer, so it would hang instead of failing.
+        self._turn_active = False
+        self._interrupted = False
+        self._capabilities: frozenset[str] = frozenset()
 
     # ---- lifecycle -------------------------------------------------------------------------
 
@@ -1112,6 +1123,163 @@ class ClaudeCliSession:
         if self._sem_holder is not None:
             self._sem_holder.release()
             self._sem_holder = None
+
+    # ---- control protocol ------------------------------------------------------------------
+
+    async def interrupt(
+        self, *, cancel_queued: bool = False, ack_timeout_s: float = 5.0
+    ) -> InterruptReceipt:
+        """Stop the turn that is currently streaming, keeping the session alive.
+
+        This is the piece a chat UI needs and cancellation cannot give you.
+        Cancelling a turn terminates the process — no protocol message retracts
+        a half-finished turn, so the conversation ends with it. An interrupt is
+        the CLI's own verb for the same intent: the in-flight turn stops, the
+        process stays up, and the next ``turn()`` continues the SAME
+        conversation. Verified against the binary — an interrupted turn is
+        followed by a normal one in the same process, which then exits 0.
+
+        The interrupted turn still yields exactly one terminal ``final`` event,
+        with ``stop_reason="interrupted"`` (``terminated`` in the closed
+        taxonomy — somebody stopped this deliberately; nothing failed).
+
+        ``cancel_queued`` also drops messages the CLI has queued but not yet
+        dispatched. Requires the ``interrupt_cancel_queued_v1`` capability,
+        which is checked before the request is sent rather than after it is
+        ignored.
+
+        Returns an :class:`InterruptReceipt`. ``still_queued`` names the queued
+        messages that will run anyway, which is the difference between "the
+        agent stopped" and "the agent stopped and has three more things to do".
+
+        Safe to call when no turn is running: there is nothing to interrupt, so
+        it returns an empty receipt rather than sending a request nobody would
+        answer — the reader that resolves it only exists during a turn.
+
+        **The interrupt is delivered synchronously; the RECEIPT is best-effort.**
+        The CLI answers on the same stdout the turn reader consumes, so the
+        acknowledgement only arrives while somebody is draining the stream. Call
+        this from a separate task — a UI's stop button, which is the natural
+        shape — and it returns promptly with the full receipt::
+
+            stop = asyncio.create_task(chat.interrupt())
+
+        Call it inline from the loop consuming ``turn()`` and that loop is
+        suspended at a yield, so nothing is reading and the acknowledgement
+        cannot arrive. ``ack_timeout_s`` bounds that into a wait rather than a
+        deadlock: the receipt comes back ``delivered=True`` with an ``error``
+        noting the missing acknowledgement, and the interrupt still takes effect
+        because the WRITE already happened. Getting this wrong should cost a
+        field on a receipt, not a hung application.
+        """
+        proc = self._proc
+        if proc is None or proc.returncode is not None or not self._turn_active:
+            return InterruptReceipt(delivered=False)
+
+        subtype = "interrupt"
+        if cancel_queued:
+            if not self.supports("interrupt_cancel_queued_v1"):
+                raise ValueError(
+                    "this claude CLI does not advertise 'interrupt_cancel_queued_v1'; "
+                    f"it reports {sorted(self.capabilities) or '<none>'}. Call interrupt() "
+                    "without cancel_queued, or upgrade the CLI."
+                )
+            subtype = "interrupt_cancel_queued"
+
+        self._control_seq += 1
+        request_id = f"agentkit-{self._control_seq}"
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        self._pending[request_id] = future
+
+        # Set BEFORE the write. The turn's terminal event is assembled by
+        # whichever coroutine is reading, and it may reach that point before
+        # this one resumes from the await below.
+        self._interrupted = True
+        try:
+            assert proc.stdin is not None  # PIPE
+            proc.stdin.write(
+                (
+                    json.dumps(
+                        {
+                            "type": "control_request",
+                            "request_id": request_id,
+                            "request": {"subtype": subtype},
+                        }
+                    )
+                    + "\n"
+                ).encode()
+            )
+            await proc.stdin.drain()
+            try:
+                payload = await asyncio.wait_for(future, timeout=ack_timeout_s)
+            except TimeoutError:
+                return InterruptReceipt(
+                    delivered=True,  # the request was written; the answer was not read
+                    error=(
+                        f"no acknowledgement within {ack_timeout_s}s — nothing was draining "
+                        "the CLI's output. Call interrupt() from a separate task "
+                        "(asyncio.create_task) rather than from inside the loop consuming "
+                        "turn()."
+                    ),
+                )
+        finally:
+            self._pending.pop(request_id, None)
+
+        response = payload.get("response") or {}
+        inner = response.get("response") or {}
+        return InterruptReceipt(
+            delivered=response.get("subtype") == "success",
+            still_queued=tuple(inner.get("still_queued") or ()),
+            cancelled=tuple(inner.get("cancelled") or ()),
+            error=str(response.get("error") or "") or None,
+        )
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        """Protocol behaviours this CLI advertises on ``system/init``.
+
+        Feature-detect against this instead of comparing version strings — it
+        is what the field exists for, and the set is open, so an unrecognised
+        value is not an error.
+
+        Empty until the first turn has produced its init payload.
+        """
+        return frozenset(self._capabilities)
+
+    def supports(self, capability: str) -> bool:
+        """Whether the CLI advertised ``capability``."""
+        return capability in self._capabilities
+
+    def _absorb_init(self, init: dict[str, Any]) -> None:
+        """Record what the ``system/init`` payload said about this CLI."""
+        advertised = init.get("capabilities")
+        if advertised:
+            self._capabilities = frozenset(advertised)
+
+    def _resolve_control(self, payload: dict[str, Any]) -> None:
+        """Hand a ``control_response`` to whoever is awaiting it.
+
+        An unmatched id is dropped rather than raised: the CLI may answer
+        something a previous turn abandoned, and a stray reply must not take
+        down the turn currently streaming.
+        """
+        response = payload.get("response") or {}
+        request_id = str(response.get("request_id") or payload.get("request_id") or "")
+        future = self._pending.get(request_id)
+        if future is not None and not future.done():
+            future.set_result(payload)
+
+    def _fail_pending(self, reason: str) -> None:
+        """Fail every outstanding control request.
+
+        Called when a turn ends: the reader is gone, so nothing will ever
+        resolve these, and an awaiting caller would hang forever otherwise.
+        """
+        for future in list(self._pending.values()):
+            if not future.done():
+                future.set_exception(_SessionClosed(reason))
+        self._pending.clear()
 
     # ---- turns -----------------------------------------------------------------------------
 
@@ -1183,6 +1351,8 @@ class ClaudeCliSession:
                             "opening the session."
                         )
                 assert proc.stdin is not None  # PIPE
+                self._interrupted = False
+                self._turn_active = True
                 proc.stdin.write(_user_turn(task).encode())
                 await proc.stdin.drain()
 
@@ -1197,12 +1367,25 @@ class ClaudeCliSession:
                     payload = _parse_line(line)
                     if payload is None:
                         continue
+                    if payload.get("type") == "control_response":
+                        # Not turn content: the CLI's answer to something we
+                        # asked out-of-band. Routing it here is what makes
+                        # ``interrupt()`` awaitable at all — nothing else reads
+                        # this stream while a turn is in flight.
+                        self._resolve_control(payload)
+                        continue
                     async for ev, delta in _events_from_payload(
                         payload, partial=self._cog.partial_messages
                     ):
                         if ev is not None:
                             yield ev
                         state.fold(delta)
+                        # Capabilities are folded LIVE, not after the turn:
+                        # ``interrupt()`` is called mid-turn and feature-detects
+                        # against them, so a capability that only lands at the
+                        # terminal event is one nobody can act on.
+                        if delta.init:
+                            self._absorb_init(delta.init)
                     # A turn ends at its ``result`` payload — NOT at EOF, which
                     # is what a one-shot drive waits for. The process stays
                     # alive for the next turn.
@@ -1219,6 +1402,8 @@ class ClaudeCliSession:
             except BaseException as exc:  # noqa: BLE001 — terminal-event guarantee
                 fatal_exc = exc
             finally:
+                self._turn_active = False
+                self._fail_pending("the turn ended before the CLI answered")
                 if cancelled and proc is not None and proc.returncode is None:
                     # No protocol message retracts a half-finished turn, so the
                     # session ends with it.
@@ -1231,6 +1416,19 @@ class ClaudeCliSession:
 
             if state.session_id:
                 self.session_id = state.session_id
+
+            if self._interrupted:
+                # The CLI ends an interrupted turn as ``error_during_execution``
+                # — the same subtype it uses for a genuine execution failure, so
+                # the payload alone cannot tell them apart. WE know: we sent the
+                # interrupt. Stamping it here beats inferring it from an
+                # ambiguous field.
+                #
+                # ``is_error`` stays TRUE so the terminal event is marked
+                # ``partial``: the turn stopped mid-answer and whatever text
+                # arrived is a fragment. Only the reason changes, from "the CLI
+                # hit a problem" to "we stopped it".
+                state.stop_reason = "interrupted"
 
             result = await self._cog._finalise(
                 agent=agent,
@@ -1248,6 +1446,27 @@ class ClaudeCliSession:
             yield StreamEvent("final", usage=state.usage, result=result)
             if should_reraise_cancel:
                 raise asyncio.CancelledError()
+
+
+@dataclass(frozen=True, slots=True)
+class InterruptReceipt:
+    """What an interrupt actually achieved.
+
+    ``delivered`` is False when there was nothing to interrupt — no live turn,
+    or a process that has already exited. It is not an error: "stop" with
+    nothing running is a no-op, and raising would make every UI wrap its stop
+    button in a try block.
+
+    ``still_queued`` names messages the CLI had queued and will still run, which
+    is the difference between "the agent stopped" and "the agent stopped and
+    has three more things to do". ``cancelled`` is populated only by an
+    interrupt that asked to drop them.
+    """
+
+    delivered: bool
+    still_queued: tuple[str, ...] = ()
+    cancelled: tuple[str, ...] = ()
+    error: str | None = None
 
 
 class _SessionClosed(RuntimeError):
@@ -1443,6 +1662,7 @@ async def _events_from_payload(
                     k: payload[k]
                     for k in (
                         "model",
+                        "capabilities",
                         "mcp_servers",
                         "mcp_server_errors",
                         "plugin_errors",
@@ -1618,4 +1838,9 @@ async def _terminate(proc: asyncio.subprocess.Process, grace_s: float) -> None:
             await proc.wait()
 
 
-__all__ = ["ClaudeCliCognition", "ClaudeCliSession", "PermissionMode"]
+__all__ = [
+    "ClaudeCliCognition",
+    "ClaudeCliSession",
+    "InterruptReceipt",
+    "PermissionMode",
+]
