@@ -198,7 +198,8 @@ async with claude(api_key=..., model="claude-sonnet-4-6") as chat:
 from agentkit.agents.cognition import ClaudeCliCognition
 agent = Agent(name="a", prompt="...", cognition=ClaudeCliCognition(...))
 
-# Or wire your own LLMPort — four async methods; extend as needed.
+# Or wire your own LLMPort — three methods: stream (an async iterator),
+# async def chat, async def complete. Extend as needed.
 class MyProviderLLM:
     async def chat(self, req: ChatRequest, ctx: Ctx) -> LLMResult: ...
     async def stream(self, req: ChatRequest, ctx: Ctx) -> AsyncIterator[StreamEvent]: ...

@@ -89,7 +89,8 @@ from agentkit.runtime import Invoker
 # Your LLMPort of choice. Batteries-included:
 # from agentkit.adapters.llm import providers
 # llm = providers.openai(api_key=os.environ["OPENAI_API_KEY"], model="gpt-4o-mini")
-# Or roll your own — LLMPort is four async methods.
+# Or roll your own — LLMPort is three methods: stream (returns an
+# async iterator), plus async def chat and async def complete.
 llm = ...  # LLMPort
 
 

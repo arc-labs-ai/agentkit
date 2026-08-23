@@ -13,7 +13,7 @@ the same slot in your composition.
 
 | LangChain                              | agentkit                                                                            | Notes                                                                                          |
 |----------------------------------------|-------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| `LLM` / `ChatModel` (base class)       | `LLMPort` (Protocol)                                                                | Structural — implement four methods, no inheritance.                                           |
+| `LLM` / `ChatModel` (base class)       | `LLMPort` (Protocol)                                                                | Structural — implement three methods, no inheritance.                                           |
 | `LLMChain` / `RunnableSequence`        | `SingleCallCognition` (or your own)                                                 | The single-call regime lives in a Cognition, not a class hierarchy.                            |
 | `AgentExecutor(agent, tools, ...)`     | `Agent(cognition=ReActCognition(tools=...))`                                        | Loop control moves onto `Cognition`; `Agent` holds identity + chat config.                     |
 | `AgentExecutor.invoke(input)`          | `await agent.run(task, ctx)`                                                        | `task` first, `ctx` second — argument order bites everyone once.                               |

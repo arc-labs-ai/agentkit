@@ -131,8 +131,17 @@ into a deployment-time stop:
 
 ```python
 from agentkit import Agent
+from agentkit.adapters.llm import CapabilityMismatch
 
-Agent("ocr", "our-finetune-v2", requires=("vision",), on_unknown_capability="refuse")
+try:
+    Agent("ocr", "our-finetune-v2", requires=("vision",), on_unknown_capability="refuse")
+except CapabilityMismatch as e:
+    print(f"refused at construction: {str(e).splitlines()[0]}")
+```
+
+```text
+refused at construction: 'ocr' requires vision but model 'our-finetune-v2' is not in
+the model registry, so its capabilities are UNKNOWN — not assumed present.
 ```
 
 Declarable capabilities: `tools`, `structured_output`,
