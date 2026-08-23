@@ -11,6 +11,36 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — the deferred design items
+
+The four "not fixed, deliberate" entries, revisited. Two were real bugs behind a
+reasonable-sounding rationale; two were genuinely deliberate and are now
+documented and pinned rather than merely asserted.
+
+- **`RollupObserver` still broke the run it observed.** Detaching the buffer
+  fixed the framework's own re-entrancy bug but not the other half: a
+  summariser supplied by the caller, or an inner sink that is down, raised
+  straight into `emit()`. The module's own comment says "an observer is
+  contractually forbidden from breaking the run it observes". Both are now
+  contained, counted on `.dropped`, and warned once — with `except Exception`
+  deliberately, so `CancelledError` still tears a run down.
+
+- **`CircuitBreaker` carried a "serialize externally" caveat**, pushing
+  thread-safety onto every caller who shares one breaker across a thread pool —
+  the obvious way to deploy it. It now holds a `threading.Lock` (not asyncio:
+  no method awaits, so there is nothing to yield to and all four would have had
+  to become coroutines).
+
+- **`max_steps` overshoot is documented, not changed.** A wave runs whole once
+  started, so three independent roots with `max_steps=2` run all three and
+  report `steps=3`. That is deliberate — stopping mid-wave drops siblings
+  already running — and bounded by the widest wave, since the check happens
+  between waves. Both properties now have tests, so the bound stays known.
+
+- **`merge`'s first-error-wins is unchanged**, and stays a deliberate choice:
+  aggregating into an `ExceptionGroup` would change the public exception type
+  for every caller.
+
 ### Fixed — the leftovers
 
 Items deliberately deferred during the audit, now closed.

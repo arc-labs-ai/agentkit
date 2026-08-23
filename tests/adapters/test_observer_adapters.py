@@ -6,6 +6,7 @@ observer is specifically forbidden to have — losing observations, and raising 
 Offline and deterministic (handshake events, never wall-clock sleeps)."""
 
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -336,3 +337,94 @@ def test_hooks_close_does_not_swallow_an_inner_flush_failure():
 
     with pytest.raises(RuntimeError, match="flush failed"):
         _run(Hooks(_BadClose()).close())
+
+
+# ── an observer must never break the run it observes ───────────────────────
+#
+# `RollupObserver._flush` already detached its buffer before awaiting, which
+# fixed the framework's OWN re-entrancy bug. It did not fix the other half: a
+# summariser supplied by the caller, or an inner sink that is down, still raised
+# straight into `emit()`. Measured: `RuntimeError('summariser blew up')` reached
+# the caller verbatim, as did a failing sink. An agent must not die because its
+# telemetry did.
+
+
+@pytest.mark.asyncio
+async def test_a_raising_summariser_does_not_break_the_run() -> None:
+    """THE regression, half one."""
+
+    def boom(buf: Any) -> str:
+        raise RuntimeError("summariser blew up")
+
+    rollup = RollupObserver(QueueObserver(), summarize=boom, every=2)
+    for i in range(2):
+        await rollup.emit(Observation(kind="progress", render=f"p{i}"))  # must not raise
+
+    assert rollup.dropped == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failing_sink_does_not_break_the_run() -> None:
+    """Half two: the summariser is fine, the thing downstream is not."""
+
+    class _Down:
+        async def emit(self, obs: Observation) -> None:
+            raise RuntimeError("sink down")
+
+    rollup = RollupObserver(_Down(), summarize=lambda b: "ok", every=2)
+    for i in range(2):
+        await rollup.emit(Observation(kind="progress", render=f"p{i}"))
+
+    assert rollup.dropped == 2
+
+
+@pytest.mark.asyncio
+async def test_the_observer_keeps_working_after_a_failure() -> None:
+    """A transient summariser failure must not poison the observer for the rest
+    of the run — and the failed batch must not be retried forever, which is
+    what retaining it would cause."""
+    sink = QueueObserver()
+    calls = {"n": 0}
+
+    def flaky(buf: Any) -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient")
+        return "summary"
+
+    rollup = RollupObserver(sink, summarize=flaky, every=2)
+    for i in range(4):
+        await rollup.emit(Observation(kind="progress", render=f"p{i}"))
+
+    assert calls["n"] == 2, "the second batch must still be attempted"
+    assert rollup.dropped == 2, "only the first batch is lost"
+    assert not sink._items or sink._items[0].render == "summary"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_still_propagates_through_a_flush() -> None:
+    """POSITIVE CONTROL for the containment: `except Exception`, deliberately
+    not `BaseException`. `CancelledError` is how a run is torn down and must
+    keep propagating — a fix that swallowed everything would make a summariser
+    able to ignore cancellation."""
+
+    def cancel(buf: Any) -> str:
+        raise asyncio.CancelledError()
+
+    rollup = RollupObserver(QueueObserver(), summarize=cancel, every=2)
+    with pytest.raises(asyncio.CancelledError):
+        for i in range(2):
+            await rollup.emit(Observation(kind="progress", render=f"p{i}"))
+
+
+@pytest.mark.asyncio
+async def test_a_healthy_rollup_drops_nothing() -> None:
+    """POSITIVE CONTROL: a fix that just dropped every batch would satisfy the
+    tests above."""
+    sink = QueueObserver()
+    rollup = RollupObserver(sink, summarize=lambda b: f"rolled {len(b)}", every=2)
+    for i in range(4):
+        await rollup.emit(Observation(kind="progress", render=f"p{i}"))
+
+    assert rollup.dropped == 0
+    assert len(sink._items) == 2

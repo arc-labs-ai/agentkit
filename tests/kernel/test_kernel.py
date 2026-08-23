@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime as _dt
+import threading
 import uuid as _uuid
 from dataclasses import dataclass
 
@@ -959,3 +960,92 @@ def test_backoff_delay_still_grows_then_saturates_at_cap():
     # truncated exponent that drifted below it.
     assert backoff_delay(1024, base=0.5, cap=30.0, rng=_Max) == 30.0
     assert backoff_delay(10**9, base=0.5, cap=30.0, rng=_Max) == 30.0
+
+
+def test_every_state_transition_takes_the_lock() -> None:
+    """The class used to say "for cross-thread sharing, serialize the breaker
+    externally", pushing that onto every caller who shares one breaker across a
+    thread pool — the obvious way to deploy it.
+
+    This asserts the lock is TAKEN, rather than trying to demonstrate a torn
+    counter. I tried the latter first and it does not work: on a GIL build
+    `self._fails += 1` loses nothing even with 8 threads, 160,000 increments and
+    `setswitchinterval(1e-6)` — measured `lost=0`. So a "lost updates" test
+    passes against deliberately unlocked code and proves nothing.
+
+    The lock still matters, for two reasons the GIL does not cover: a
+    free-threaded build (3.13+) tears these genuinely, and `allow()`'s
+    open→half_open transition spans several statements, so two threads can both
+    decide they are "the one probe" and hit a dependency the gate exists to
+    protect from exactly that.
+    """
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=0.0)
+
+    class _CountingLock:
+        def __init__(self) -> None:
+            self.acquisitions = 0
+            self._inner = threading.Lock()
+
+        def __enter__(self) -> None:
+            self.acquisitions += 1
+            self._inner.acquire()
+
+        def __exit__(self, *exc: object) -> None:
+            self._inner.release()
+
+    counting = _CountingLock()
+    br._lock = counting  # type: ignore[assignment]
+
+    br.allow()
+    br.record_failure()
+    br.allow()
+    br.record_success()
+    br.release_probe()
+
+    assert counting.acquisitions == 5, (
+        f"every entry point must take the lock; saw {counting.acquisitions}"
+    )
+
+
+def test_the_half_open_gate_survives_concurrent_threads() -> None:
+    """The gate must stay a gate under contention: admit, release, admit — and
+    never end in a torn state. A crash or an impossible state here is the
+    failure; the exact admit count is timing-dependent and not asserted."""
+    br = CircuitBreaker("upstream", fail_threshold=1, cooldown=0.0)
+    br.record_failure()
+    admitted: list[int] = []
+    guard = threading.Lock()
+
+    def race() -> None:
+        for _ in range(500):
+            if br.allow():
+                with guard:
+                    admitted.append(1)
+                br.release_probe()
+
+    threads = [threading.Thread(target=race) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert admitted, "nothing was ever admitted — the gate is stuck"
+    assert br.state in ("open", "half_open", "closed")
+
+
+def test_the_lock_does_not_break_equality_or_repr() -> None:
+    """A dataclass field holding a lock would otherwise leak into `==` and
+    `repr` — hence `compare=False, repr=False`. Pinned because dropping either
+    flag is an easy tidy-up that breaks value semantics."""
+    import dataclasses
+
+    a = CircuitBreaker("x", fail_threshold=1, cooldown=1.0)
+    b = CircuitBreaker("x", fail_threshold=1, cooldown=1.0)
+    assert a == b, "two identically-configured breakers must compare equal"
+
+    # Assert the FLAGS, not the repr string: `clock=<built-in function
+    # monotonic>` contains the substring "lock", so a naive
+    # `"lock" not in repr(a)` fails against correct code. (It did.)
+    (lock_field,) = [f for f in dataclasses.fields(a) if f.name == "_lock"]
+    assert lock_field.compare is False, "a lock in `==` breaks value semantics"
+    assert lock_field.repr is False, "a lock in `repr` is noise"

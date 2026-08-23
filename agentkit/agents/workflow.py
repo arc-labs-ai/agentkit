@@ -126,6 +126,20 @@ class Workflow:
     """A typed node/edge graph with a deterministic, concurrent, bounded engine."""
 
     def __init__(self, name: str = "workflow", *, max_steps: int = 100) -> None:
+        """``max_steps`` is a never-hang backstop, checked BETWEEN waves.
+
+        A wave runs whole once it starts, so the count can overshoot by up to
+        (widest wave − 1): three independent root nodes with ``max_steps=2``
+        run all three and report ``steps=3``. That surprises people, so it is
+        worth stating rather than discovering.
+
+        It is deliberate and it is BOUNDED. Stopping mid-wave would drop
+        siblings that are already running — a partial, confusing state — and
+        the overshoot cannot run away, because the graph's width is static and
+        the check happens before every wave. The guarantee is "a cycle cannot
+        spin forever", not "the node count never exceeds N"; if you need the
+        latter, keep your waves narrow.
+        """
         self.name = name
         self.max_steps = max_steps
         self._nodes: dict[str, _Node] = {}

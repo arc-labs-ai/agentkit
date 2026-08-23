@@ -1114,3 +1114,42 @@ def test_workflow_tool_node_read_only_tool_is_not_deduped():
     wf.tool("r2", read, args=lambda inp: {"id": 1}, after="r1")
     res = _run(wf.run("g", ctx))
     assert res.stop_reason == "complete" and calls["n"] == 2
+
+
+def test_max_steps_overshoot_is_bounded_by_the_widest_wave():
+    """`max_steps` is checked BETWEEN waves, so a wave runs whole once started
+    and the count can overshoot by up to (widest wave - 1). Measured:
+    `max_steps=2` with three independent roots runs all three and reports
+    `steps=3`.
+
+    Deliberate — stopping mid-wave drops siblings that are already running —
+    and bounded, because the graph's width is static. This test exists so the
+    overshoot stays a known property with a known limit, rather than something
+    a future change quietly widens.
+    """
+    ran = []
+    wf = Workflow(max_steps=2)
+    for name in "abc":
+        wf.fn(name, (lambda n: lambda goal, ctx=None, **kw: (ran.append(n), n)[1])(name))
+
+    res = _run(wf.run("g", make_test_ctx(llm=FakeLLM("ok"))))
+
+    assert sorted(ran) == ["a", "b", "c"], "a started wave must not drop siblings"
+    assert res.steps == 3
+    assert res.steps - 2 <= 3 - 1, "the overshoot must not exceed (widest wave - 1)"
+    assert res.stop_reason == "complete"
+
+
+def test_a_narrow_graph_never_overshoots():
+    """POSITIVE CONTROL: with one node per wave the ceiling is exact, which is
+    what makes the overshoot above attributable to WIDTH and nothing else."""
+    ran = []
+    wf = Workflow(max_steps=2)
+    wf.fn("a", lambda goal, ctx=None, **kw: (ran.append("a"), "a")[1])
+    wf.fn("b", lambda goal, ctx=None, **kw: (ran.append("b"), "b")[1], after="a")
+    wf.fn("c", lambda goal, ctx=None, **kw: (ran.append("c"), "c")[1], after="b")
+
+    res = _run(wf.run("g", make_test_ctx(llm=FakeLLM("ok"))))
+
+    assert res.steps == 2 and res.stop_reason == "max_steps"
+    assert ran == ["a", "b"], "the third wave must not start"

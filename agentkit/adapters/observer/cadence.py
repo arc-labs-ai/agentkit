@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from agentkit.kernel.observation import CRITICAL_KINDS, Observation, ObservationKind
 
 _ALWAYS_FORWARD = frozenset(CRITICAL_KINDS) | {"interrupt"}  # result/error + the human-gate signal
+
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyObserver:
@@ -91,6 +95,8 @@ class RollupObserver:
         # ``_flush`` awaits a caller-supplied ``summarize`` (the async hook is
         # an LLM/Compactor call), so concurrent ``emit``s re-enter it. Serialise
         # the whole flush so exactly one task owns a buffer generation.
+        self._dropped = 0
+        self._warned = False
         self._flush_lock = asyncio.Lock()
 
     async def emit(self, obs: Observation) -> None:
@@ -117,19 +123,55 @@ class RollupObserver:
             buf, self._buf = self._buf, []
             if not buf:
                 return
-            text = self._summarize(buf)
-            if inspect.isawaitable(text):
-                text = await text
-            src = buf[-1]  # carry correlation from the last buffered item
-            rolled = Observation(
-                kind=self._kind,
-                render=text,
-                payload={"rolled": len(buf)},
-                run_id=src.run_id,
-                agent=src.agent,
-                parent_id=src.parent_id,
-            )
-            await self._inner.emit(rolled)
+            # The invariant above is the WHOLE contract, and detaching the
+            # buffer only honoured half of it: a summariser supplied by the
+            # caller, or an inner sink that is down, still raised straight into
+            # the run. Measured: ``summarize`` raising ``RuntimeError`` reached
+            # the caller's ``emit`` verbatim, as did a failing sink. An agent
+            # must not die because its telemetry did.
+            #
+            # ``except Exception`` deliberately, not ``BaseException``:
+            # ``CancelledError`` is how a run is torn down and must keep
+            # propagating.
+            try:
+                text = self._summarize(buf)
+                if inspect.isawaitable(text):
+                    text = await text
+                src = buf[-1]  # carry correlation from the last buffered item
+                rolled = Observation(
+                    kind=self._kind,
+                    render=text,
+                    payload={"rolled": len(buf)},
+                    run_id=src.run_id,
+                    agent=src.agent,
+                    parent_id=src.parent_id,
+                )
+                await self._inner.emit(rolled)
+            except Exception as exc:  # noqa: BLE001 — see above
+                # The batch is gone: a summariser that cannot summarise has
+                # nothing to emit, and retaining it would re-run the same
+                # failure on every subsequent flush. Counted rather than
+                # silent, so "no summaries appeared" is distinguishable from
+                # "nothing happened" — the same reasoning as
+                # ``QueueObserver.dropped``.
+                self._dropped += len(buf)
+                if not self._warned:
+                    self._warned = True
+                    logger.warning(
+                        "RollupObserver: summarising %d observation(s) failed (%s: %s); "
+                        "the batch was dropped and the run continued. Further failures "
+                        "are counted on `.dropped` and not logged again.",
+                        len(buf),
+                        type(exc).__name__,
+                        exc,
+                    )
+
+    @property
+    def dropped(self) -> int:
+        """Observations discarded because summarising them failed. ``0`` means
+        the rollup is complete; anything else means a consumer is reading a
+        partial view."""
+        return self._dropped
 
     async def close(self) -> None:
         """Flush any buffered tail (and close the inner observer if it supports it)."""

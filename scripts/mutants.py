@@ -184,6 +184,55 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the deferred design items ───────────────────────────────────────────
+    Mutant(
+        tag="deferred",
+        why="a caller's summariser raising takes down the run it was observing",
+        path="agentkit/adapters/observer/cadence.py",
+        before="            except Exception as exc:  # noqa: BLE001 — see above",
+        after="            except _NeverRaisedByAnything as exc:",
+        tests=OBS_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="the containment widens to BaseException, so a summariser can ignore cancellation",
+        path="agentkit/adapters/observer/cadence.py",
+        before="            except Exception as exc:  # noqa: BLE001 — see above",
+        after="            except BaseException as exc:",
+        tests=OBS_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="dropped batches are not counted, so a partial rollup looks complete",
+        path="agentkit/adapters/observer/cadence.py",
+        before="                self._dropped += len(buf)",
+        after="                pass",
+        tests=OBS_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="a state transition stops taking the lock, so two threads can both be the probe",
+        path="agentkit/kernel/resilience.py",
+        before="    def record_failure(self) -> None:\n        with self._lock:",
+        after="    def record_failure(self) -> None:\n        if True:",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="the lock leaks into equality, so two identical breakers compare unequal",
+        path="agentkit/kernel/resilience.py",
+        before="default_factory=threading.Lock, repr=False, compare=False",
+        after="default_factory=threading.Lock, repr=False, compare=True",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="a started wave is abandoned mid-flight, dropping siblings",
+        path="agentkit/agents/workflow.py",
+        before="                if steps >= self.max_steps:",
+        after="                if steps >= self.max_steps or len(ready) > 1:",
+        tests=WF_TESTS,
+    ),
     # ── the leftovers ───────────────────────────────────────────────────────
     Mutant(
         tag="leftover",
@@ -421,8 +470,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="breaker",
         why="the neutral release grants health credit, treating a 401 as a recovery",
         path="agentkit/kernel/resilience.py",
-        before='            return  # nothing in flight — CLOSED / OPEN are unaffected\n        self.state = "open"',
-        after='            return  # nothing in flight — CLOSED / OPEN are unaffected\n        self.state = "open"\n        self._fails = 0',
+        before='                return  # nothing in flight — CLOSED / OPEN are unaffected\n            self.state = "open"',
+        after='                return  # nothing in flight — CLOSED / OPEN are unaffected\n            self.state = "open"\n            self._fails = 0',
         tests=BREAKER_TESTS,
     ),
     Mutant(
@@ -1735,7 +1784,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="resilience",
         why="a late success closes an OPEN breaker, bypassing the cooldown",
         path="agentkit/kernel/resilience.py",
-        before='        if self.state == "open":\n            return',
+        before='            if self.state == "open":\n                return',
         after='        if False:\n            return',
         tests=RESILIENCE_TESTS,
     ),

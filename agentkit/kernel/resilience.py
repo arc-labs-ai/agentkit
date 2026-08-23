@@ -16,12 +16,13 @@ import hashlib
 import json
 import pathlib as _pl
 import random
+import threading
 import time
 import types as _types
 import uuid as _uuid
 from collections.abc import Callable
 from collections.abc import Mapping as _Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 # The breaker's state machine has three states; typing as ``Literal``
@@ -145,12 +146,29 @@ class CircuitBreaker:
     _fails: int = 0
     _opened_at: float = 0.0
     _probe_started_at: float = 0.0
+    # A real lock, not a documented caveat. Every transition below is a
+    # read-modify-write on shared fields, and the old note ("for cross-thread
+    # sharing, serialize the breaker externally") pushed that onto every caller
+    # who shares one breaker across a thread pool — the obvious way to deploy
+    # it. Two threads could both flip open→half_open and send two probes at the
+    # dependency this gate exists to protect from exactly that.
+    #
+    # ``threading.Lock``, not ``asyncio.Lock``: none of these methods await, so
+    # there is nothing to yield to and no deadlock to create, and an asyncio
+    # lock would force all four to become coroutines. The cost is one
+    # uncontended acquire against an outbound network call.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def allow(self) -> bool:
-        # No await inside → atomic within one event loop. The `half_open` state is itself the single-probe
-        # gate: the caller that flips open→half_open is the one probe; every other caller sees `half_open`
-        # and is refused until that probe resolves (success→closed / failure→open). (For cross-thread
-        # sharing, serialize the breaker externally.)
+        """Admit this caller, or refuse. The `half_open` state is itself the
+        single-probe gate: the caller that flips open→half_open IS the probe;
+        every other caller sees `half_open` and is refused until that probe
+        resolves. The lock is what makes "the caller that flips it" exactly one
+        caller, across threads as well as within an event loop."""
+        with self._lock:
+            return self._allow_locked()
+
+    def _allow_locked(self) -> bool:
         if self.state == "closed":
             return True
         now = self.clock()
@@ -201,16 +219,18 @@ class CircuitBreaker:
         not about whether the dependency has recovered. Only the single probe
         admitted after the cooldown speaks to that.
         """
-        if self.state == "open":
-            return
-        self._fails = 0
-        self.state = "closed"
+        with self._lock:
+            if self.state == "open":
+                return
+            self._fails = 0
+            self.state = "closed"
 
     def record_failure(self) -> None:
-        self._fails += 1
-        if self.state == "half_open" or self._fails >= self.fail_threshold:
-            self.state = "open"
-            self._opened_at = self.clock()
+        with self._lock:
+            self._fails += 1
+            if self.state == "half_open" or self._fails >= self.fail_threshold:
+                self.state = "open"
+                self._opened_at = self.clock()
 
     def release_probe(self) -> None:
         """Hand the HALF_OPEN probe slot back after an outcome that says NOTHING
@@ -232,9 +252,10 @@ class CircuitBreaker:
         the caller) instead of being hidden behind a ``CircuitOpen`` that
         classifies as TRANSIENT and invites a retry that can never succeed.
         """
-        if self.state != "half_open":
-            return  # nothing in flight — CLOSED / OPEN are unaffected
-        self.state = "open"
+        with self._lock:
+            if self.state != "half_open":
+                return  # nothing in flight — CLOSED / OPEN are unaffected
+            self.state = "open"
 
 
 def _stable_default(o: Any) -> Any:
