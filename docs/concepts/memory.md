@@ -121,9 +121,24 @@ task, and any non-empty text becomes a pinned system message
 `"Relevant context:\n…"` in `WorkingContext.prefix` — the **cache-stable
 head**, not the message tail. That placement is deliberate: the prefix is
 frozen after the first turn, so the provider's KV cache stays valid for
-the rest of the loop. Set `reground_every_turn=True` on your own
-`RequestBuilder` to refresh grounding per turn, and understand you are
-choosing a cache invalidation to get it.
+the rest of the loop.
+
+The half of that nobody enjoys: if you reuse one `WorkingContext` across
+several `agent.run(...)` calls, turn 5 is answered with the evidence
+retrieved for **turn 1's** question. Measured on a five-turn
+conversation over a five-fact handbook at `k=1`, the answering fact was
+in front of the model on 1 of 5 turns. Set `reground_every_turn=True` on
+your own `RequestBuilder` to retrieve afresh each turn — 4 of 5 in the
+same probe — and understand you are buying it with a cache invalidation
+every turn: `$0.2280` against `$0.0228` for a 4,000-token prefix over 20
+`claude-sonnet-4-6` turns.
+
+Two things that catch people out. A "turn" is one `build()` call, so the
+flag changes nothing inside a single ReAct tool loop — `drive()` grounds
+once and then appends tool traffic to the tail (measured: 4 LLM calls, 1
+grounder call). And the `memory=` shortcut on this page builds the
+`RequestBuilder` for you and cannot pass the flag; to set it, build the
+`RequestBuilder` yourself as below and pass `request_builder=`.
 
 The default rendering is one `[source] content` line per item, `k=5`, no
 `where` filter. To change any of that, build the grounder yourself:

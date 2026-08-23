@@ -104,7 +104,10 @@ Two consequences worth holding on to.
 **The prefix is not rewritten mid-run.** That is the KV-cache
 discipline: mutating a token in the prefix invalidates the provider's
 cache from that point onwards. Grounding is fetched once by default, and
-compaction only ever touches the tail.
+compaction only ever touches the tail. The cost of that default shows up
+in a multi-turn conversation — turn 5 gets turn 1's evidence — and
+[`reground_every_turn`](../concepts/capabilities.md#the-cache-stable-prefix)
+is the knob that trades it back for a 10x prefix bill.
 
 **The query is the task, verbatim.** `as_grounder` passes the user's
 string straight to `memory.query(...)`. If you want query rewriting —
@@ -137,7 +140,11 @@ agent = Agent(
                 f"{i}. {it.content}  ({it.source})" for i, it in enumerate(items, 1)
             ),
         ),
-        reground_every_turn=True,   # re-retrieve as the conversation moves
+        # Re-retrieve on every `build()` — i.e. every user turn of a
+        # conversation that reuses one WorkingContext, NOT every step of a
+        # tool loop. Costs a prefix cache miss per turn; worth it when each
+        # question needs different evidence.
+        reground_every_turn=True,
     ),
 )
 ```

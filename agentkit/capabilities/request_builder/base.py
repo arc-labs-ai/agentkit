@@ -110,17 +110,56 @@ class RequestBuilder:
             Empty string means "no grounding for this task" and
             produces no grounding message. The caller owns the policy
             (k, where, query derivation) — RequestBuilder just calls.
+            "Turn" throughout means *one call to `build()`*, which is
+            one user turn of a conversation — NOT one step of a tool
+            loop. A `ReActCognition.drive()` calls `build()` exactly
+            once and then appends tool traffic to the tail directly,
+            so a 4-step ReAct run invokes the grounder once whatever
+            `reground_every_turn` says (measured: 4 LLM calls, 1
+            grounder call). The flag only bites when a caller reuses
+            one `WorkingContext` across successive `agent.run(...)`
+            calls.
         compactor: a `Compactor` to fold the transcript when it grows.
             Applied AFTER the new turn is appended, to the
             ``WorkingContext.messages`` tail. The cache-stable prefix
             is never touched — compactors must not pretend to. Kept-
             recent tail always includes the message the LLM is about
             to answer.
-        reground_every_turn: when True, the grounder is invoked on
-            every turn, and the previous grounding message is dropped
-            before the new one is appended. The default (False)
-            preserves the legacy first-turn-only behaviour, which
-            keeps the prefix cacheable.
+        reground_every_turn: whether grounding is retrieved once or
+            refreshed on every turn. This is a genuine trade, not a
+            compatibility shim — both settings are wrong for some
+            workload, so the knob stays and the caller picks.
+
+            False (the default) retrieves once, on the first turn, and
+            pins that block for the life of the context. Turn 5 is
+            answered with the evidence retrieved for turn 1's
+            question. Measured on a 5-turn conversation over a
+            5-fact handbook at k=1: 1 of 5 turns saw the fact that
+            actually answered it, and the prefix was bit-identical on
+            5 of 5 turns.
+
+            True re-invokes the grounder each turn and rebuilds
+            ``PrefixContext.grounding`` with the result, so the block
+            tracks the current question — 4 of 5 turns saw their
+            answering fact in the same probe (the fifth was a
+            retrieval miss, not a staleness one). The price is that
+            rewriting the prefix invalidates the provider's KV cache
+            every turn: 1 of 5 prefixes matched turn 1. On a
+            4,000-token grounded prefix over a 20-turn conversation
+            with claude-sonnet-4-6, that is $0.2280 of fresh prefix
+            reads against $0.0228 of cache reads — 10x on the prefix
+            term, every turn, forever.
+
+            Rule of thumb: leave it False when the grounding is a
+            corpus the whole conversation shares (a handbook, a spec,
+            a codebase digest) and True when each turn asks about
+            something different and the retrieved evidence is the
+            answer. The default is False because the auto-wired
+            ``Agent(memory=...)`` path constructs this builder with no
+            way to set the flag, so the default is what every
+            auto-wired agent gets — and silently paying 10x on the
+            prefix is a worse failure to hand someone by default than
+            grounding they can see is stale in the transcript.
         budget_check: optional `(approx_tokens) -> None` callable
             invoked at the end of `build()`. Raise to abort — the
             RequestBuilder surfaces no judgement of its own about what's
@@ -197,11 +236,22 @@ class RequestBuilder:
             else:
                 if self.reground_every_turn and self.grounder is not None:
                     # Re-render the prefix in place: same system
-                    # prompt, fresh grounding block (or none). This
-                    # IS a cache invalidation by design — the caller
-                    # asked for live-refresh grounding. Per-turn
-                    # callers that care about cache stability use the
-                    # default ``reground_every_turn=False``.
+                    # prompt, fresh grounding block (or none). The
+                    # stale block is dropped because the whole
+                    # ``grounding`` tuple is rebuilt from this turn's
+                    # retrieval — there is no find-and-replace, and
+                    # ``_GROUNDING_NAME`` is a label for the reader,
+                    # not a matching key. Rebuilding rather than
+                    # appending is what stops N turns accumulating N
+                    # grounding blocks.
+                    #
+                    # This IS a cache invalidation by design — the
+                    # caller asked for live-refresh grounding, and it
+                    # costs 10x on the prefix term (measured: $0.2280
+                    # vs $0.0228 for a 4,000-token prefix over 20
+                    # turns of claude-sonnet-4-6). Callers who want
+                    # the cache keep the default False and accept
+                    # turn-1 evidence for the whole conversation.
                     block = await self.grounder(ctx, task)
                     grounding_msgs = (
                         (

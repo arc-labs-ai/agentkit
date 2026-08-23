@@ -9,8 +9,12 @@ meet. These tests pin the contract:
     4. The compactor is invoked after the new turn is appended (not before — the kept
        tail must include the message the LLM is about to answer).
     5. BuiltRequest.prompt_version comes from the seed Prompt, for attribution.
-    6. `reground_every_turn=True` re-invokes the grounder each turn and replaces the
-       previous grounding system message in place (matched by `name="grounding"`).
+    6. `reground_every_turn` is a two-sided trade and both sides are pinned: True
+       re-invokes the grounder each turn and rebuilds `PrefixContext.grounding` so
+       the stale block cannot accumulate; the default False retrieves once and every
+       later turn is answered with turn-1 evidence. Neither is "legacy" — the default
+       is False because it keeps the prefix bit-identical, and the auto-wired
+       `Agent(memory=...)` path cannot override it.
     7. `budget_check(approx_tokens)` is invoked at the end and can raise to abort.
 
 The tests use small async stubs rather than the real Retriever/Compactor so a failure
@@ -45,8 +49,9 @@ SEED = Prompt(id="test.seed", version="seed-test-1", template="You are a test ag
 def test_first_turn_appends_system_then_user_without_grounder():
     """Minimum config: prompt only. First turn lays down the system
     prompt in ``wc.prefix`` (the cache-stable head) and the user task
-    in ``wc.messages`` (the per-turn tail). The assembled view is the
-    legacy ``[system, user]`` shape."""
+    in ``wc.messages`` (the per-turn tail). The split is internal: the
+    assembled view a provider sees is the ordinary ``[system, user]``
+    shape either way."""
 
     async def go() -> None:
         wc = WorkingContext()
@@ -306,20 +311,53 @@ def test_reground_every_turn_replaces_previous_grounding_message():
     _run(go())
 
 
-def test_reground_every_turn_false_keeps_legacy_first_turn_only_behavior():
-    """The default `reground_every_turn=False` matches the legacy semantics:
-    grounder is called only on the first turn, and the grounding message persists
-    untouched on continuation turns (keeping the prompt prefix cacheable)."""
+def test_default_grounds_once_and_answers_later_turns_with_turn_one_evidence():
+    """The DEFAULT (`reground_every_turn=False`) retrieves exactly once and pins
+    that block for the life of the context. This is a deliberate trade, not a
+    compatibility default: the prefix stays bit-identical so the provider's KV
+    cache keeps hitting, and the price is that turn 5 is answered with the
+    evidence retrieved for turn 1's question.
+
+    Both halves are asserted, because only asserting the call count would let a
+    change that re-retrieves but discards the result pass. Flipping the field's
+    default to True fails this test on the first assertion."""
 
     async def go() -> None:
         wc = WorkingContext()
-        grounder = FakeGrounder(block="ground:initial")
+
+        @dataclass
+        class _PerTurn:
+            calls: int = 0
+
+            async def __call__(self, ctx: Any, task: str) -> str:
+                self.calls += 1
+                return f"evidence for {task}"
+
+        grounder = _PerTurn()
         builder = RequestBuilder(prompt=SEED, grounder=grounder)  # default: False
         await builder.build("first", wc, FakeCtx())
-        await builder.build("second", wc, FakeCtx())
-        assert len(grounder.calls) == 1  # only called once
+        for later in ("second", "third", "fourth", "fifth"):
+            await builder.build(later, wc, FakeCtx())
+
+        # One retrieval across five turns — the cache-stable half of the trade.
+        assert grounder.calls == 1
+        # …and the staleness that buys it: turn 5's prefix still carries turn 1's
+        # evidence, and the block is byte-identical to what turn 1 was sent.
+        assert len(wc.prefix.grounding) == 1
+        assert wc.prefix.grounding[0].content == "Relevant context:\nevidence for first"
+        assert all("evidence for fifth" not in m.content for m in wc.assembled())
 
     _run(go())
+
+
+def test_reground_every_turn_defaults_to_false():
+    """Pinned as its own assertion because the default is load-bearing: the
+    auto-wired ``Agent(memory=...)`` path builds a RequestBuilder without passing
+    this flag, so whatever the default is IS the behaviour for every agent that
+    wires memory the easy way. Measured cost of flipping it: 10x on the prefix
+    term ($0.2280 vs $0.0228 for a 4,000-token prefix over 20 claude-sonnet-4-6
+    turns), silently, for every such agent."""
+    assert RequestBuilder(prompt=SEED).reground_every_turn is False
 
 
 # ── budget_check: pre-call abort hook ─────────────────────────────────────

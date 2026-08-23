@@ -138,9 +138,40 @@ Compaction touches **only the tail**. That is the KV-cache discipline:
 any token mutated in the prefix invalidates the provider's cache from
 that point onward, and the prefix is exactly the expensive, stable part.
 
-`reground_every_turn=True` opts out — it re-renders the prefix with fresh
-grounding on every turn, which *is* a cache invalidation, deliberately.
-The default (`False`) keeps the prefix bit-identical.
+`reground_every_turn` is where you choose which half of that to give up,
+and there is no free answer:
+
+| | `False` (default) | `True` |
+| --- | --- | --- |
+| Grounder invoked | once, on turn 1 | every turn |
+| Turn 5 is answered with | evidence retrieved for **turn 1's** question | evidence for turn 5's question |
+| Prefix bit-identical to turn 1 | 5 of 5 turns | 1 of 5 turns |
+| Prefix cost, 4k tokens × 20 turns | `$0.0228` (cache reads) | `$0.2280` (fresh reads) |
+
+Measured on a five-turn conversation against a five-fact handbook at
+`k=1`: the default put the answering fact in front of the model on **1
+of 5 turns**, `reground_every_turn=True` on 4 of 5 (the fifth was a
+retrieval miss, not a staleness one). So it costs 10x on the prefix term
+to stop answering turn 5 with turn 1's evidence.
+
+Leave it `False` when the grounding is a corpus the whole conversation
+shares — a handbook, a spec, a codebase digest. Set it `True` when each
+turn asks about something different and the retrieved evidence *is* the
+answer.
+
+!!! warning "A \"turn\" here is a `build()` call, not a tool-loop step"
+
+    `reground_every_turn=True` does **not** re-retrieve as a ReAct agent
+    works through its tools. `ReActCognition.drive()` calls `build()`
+    exactly once and appends tool traffic straight to the tail, so a
+    four-step ReAct run invokes the grounder once either way (measured:
+    4 LLM calls, 1 grounder call). The flag only does anything when you
+    reuse one `WorkingContext` across successive `agent.run(...)` calls
+    — a multi-turn conversation.
+
+    Note also that the auto-wired `Agent(memory=...)` path builds its
+    `RequestBuilder` for you and cannot pass this flag. To set it, build
+    the `RequestBuilder` yourself and pass `request_builder=`.
 
 `budget_check` is a `(approx_tokens) -> None` hook you can raise from to
 abort `build()` before the messages are returned. The builder offers no
@@ -194,7 +225,9 @@ asyncio.run(main())
 ```
 
 By default the grounding block is written into the prefix on the **first
-turn only**, which is what keeps the prefix cacheable.
+turn only**, which is what keeps the prefix cacheable — and what makes
+turn 5 answer with turn 1's evidence. `reground_every_turn=True` buys
+freshness back at 10x on the prefix term; see the table above.
 
 ## `Compactor`
 

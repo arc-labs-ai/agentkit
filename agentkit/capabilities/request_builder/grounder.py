@@ -31,10 +31,12 @@ For role-specific tuning, the wrapper stays adjacent to the agent
 definition without leaking into RequestBuilder's signature."""
 
 
-# The `name=` value on a grounding system message — used to find and
-# replace the previous turn's grounding when `reground_every_turn=True`.
-# Keeping this a module constant lets a downstream caller match the same
-# label if they introspect the transcript for grounding messages.
+# The `name=` value stamped on a grounding system message. It is a
+# LABEL, not a matching key: `reground_every_turn=True` drops the stale
+# block by rebuilding `PrefixContext.grounding` wholesale, so nothing in
+# the framework ever looks this string up. It is a module constant so a
+# downstream caller introspecting an assembled transcript can pick the
+# grounding message out by the same name the builder wrote.
 _GROUNDING_NAME = "grounding"
 
 
