@@ -186,6 +186,22 @@ REGISTRY_TESTS = (
 
 MUTANTS: tuple[Mutant, ...] = (
     Mutant(
+        tag="schema",
+        why="tuple containers fall through unremapped, so nested models keep the wrong alias",
+        path="agentkit/capabilities/output_schema/pydantic_adapter.py",
+        before="        dumped, (list, tuple)",
+        after="        dumped, (list,)",
+        tests=SCHEMA2_TESTS,
+    ),
+    Mutant(
+        tag="schema",
+        why="the walk stops recursing, fixing only the top level of a nested model",
+        path="agentkit/capabilities/output_schema/pydantic_adapter.py",
+        before="            rename.get(k, k): _to_validation_keys(children.get(k), v) for k, v in dumped.items()",
+        after="            rename.get(k, k): v for k, v in dumped.items()",
+        tests=SCHEMA2_TESTS,
+    ),
+    Mutant(
         tag="mcphttp",
         why="the client falls back to the deprecated transport even where the new one exists",
         path="agentkit/integrations/mcp/client.py",

@@ -428,3 +428,90 @@ def test_an_opaque_dict_field_is_not_rewritten() -> None:
     dumped = PydanticAdapter(M).serialize(M(payload={"user_name": 1, "odd": 2}, user_name="b"))
     assert dumped["payload"] == {"user_name": 1, "odd": 2}
     assert dumped["user_name"] == "b"
+
+
+# ── every container the walk can meet ──────────────────────────────────────
+#
+# Written after being asked "is nesting properly fixed" and checking instead of
+# answering. It was not: `model_dump` PRESERVES the container, so a
+# `tuple[Leaf, Leaf]` field comes back as a tuple while `list[Leaf]` comes back
+# as a list. The walk guarded on `isinstance(dumped, list)` alone, so every
+# tuple fell through unremapped and serialized to the SERIALIZATION alias:
+#
+#     tuple[Model, Model]  {"pair": [{"userName": "a"}, ...]}  -> OutputCoercionError
+#
+# while the list version sitting beside it round-tripped fine.
+
+
+class _Leaf(pydantic.BaseModel):
+    """The hard shape: validation and serialization aliases that differ."""
+
+    user_name: str = pydantic.Field(validation_alias="uname", serialization_alias="userName")
+
+
+def _rt(model_cls: type, instance: Any) -> Any:
+    adapter = PydanticAdapter(model_cls)
+    return adapter.parse(json.dumps(adapter.serialize(instance)))
+
+
+def test_a_tuple_of_models_round_trips() -> None:
+    """THE gap. `model_dump` keeps the tuple, so the walk has to match on it."""
+
+    class M(pydantic.BaseModel):
+        pair: tuple[_Leaf, _Leaf]
+
+    value = M(pair=(_Leaf(uname="a"), _Leaf(uname="b")))
+    assert PydanticAdapter(M).serialize(value) == {"pair": ({"uname": "a"}, {"uname": "b"})}
+    assert _rt(M, value) == value
+
+
+def test_three_levels_of_nesting_round_trip() -> None:
+    """The walk has to recurse, not just look one level down."""
+
+    class Mid(pydantic.BaseModel):
+        leaf: _Leaf
+        mid_id: str = pydantic.Field(serialization_alias="midId")
+
+    class Top(pydantic.BaseModel):
+        mid: Mid
+
+    value = Top(mid=Mid(leaf=_Leaf(uname="a"), mid_id="m"))
+    assert PydanticAdapter(Top).serialize(value) == {
+        "mid": {"leaf": {"uname": "a"}, "mid_id": "m"}
+    }
+    assert _rt(Top, value) == value
+
+
+def test_a_dict_whose_values_are_models_round_trips() -> None:
+    """Distinct from the opaque-dict case: here the VALUES are models and must
+    be remapped, while the KEYS are the caller's data and must not be."""
+
+    class M(pydantic.BaseModel):
+        items: dict[str, _Leaf]
+
+    value = M(items={"user_name": _Leaf(uname="a")})  # a key that looks like a field
+    dumped = PydanticAdapter(M).serialize(value)
+    assert dumped == {"items": {"user_name": {"uname": "a"}}}
+    assert _rt(M, value) == value
+
+
+def test_a_list_of_dicts_of_models_round_trips() -> None:
+    """Containers nest arbitrarily; the walk must not care in which order."""
+
+    class M(pydantic.BaseModel):
+        rows: list[dict[str, _Leaf]]
+
+    value = M(rows=[{"r": _Leaf(uname="a")}])
+    assert _rt(M, value) == value
+
+
+@pytest.mark.parametrize("present", [True, False], ids=["present", "none"])
+def test_an_optional_nested_model_round_trips(present: bool) -> None:
+    """`None` must survive the walk untouched rather than being treated as a
+    container to descend into."""
+
+    class M(pydantic.BaseModel):
+        leaf: _Leaf | None = None
+
+    value = M(leaf=_Leaf(uname="a")) if present else M()
+    assert _rt(M, value) == value

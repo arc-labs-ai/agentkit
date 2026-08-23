@@ -302,8 +302,19 @@ def _to_validation_keys(value: Any, dumped: Any) -> Any:
         return {
             rename.get(k, k): _to_validation_keys(children.get(k), v) for k, v in dumped.items()
         }
-    if isinstance(value, (list, tuple)) and isinstance(dumped, list):
-        return [_to_validation_keys(v, d) for v, d in zip(value, dumped, strict=False)]
+    if isinstance(value, (list, tuple, set, frozenset)) and isinstance(
+        dumped, (list, tuple)
+    ):
+        # ``dumped`` must be matched on BOTH shapes: ``model_dump`` preserves the
+        # container, so a ``tuple[Leaf, Leaf]`` field comes back as a TUPLE while
+        # a ``list[Leaf]`` comes back as a list. Guarding on ``list`` alone let
+        # every tuple fall through unremapped — measured, a
+        # ``tuple[Model, Model]`` serialized to ``[{"userName": ...}]`` (the
+        # serialization alias) and failed to round-trip, while the list version
+        # beside it worked. The container type is preserved on the way out so a
+        # caller comparing against ``model_dump`` sees the same shape.
+        rebuilt = [_to_validation_keys(v, d) for v, d in zip(value, dumped, strict=False)]
+        return tuple(rebuilt) if isinstance(dumped, tuple) else rebuilt
     if isinstance(value, dict) and isinstance(dumped, dict):
         return {k: _to_validation_keys(value.get(k), d) for k, d in dumped.items()}
     return dumped
