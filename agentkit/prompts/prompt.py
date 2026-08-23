@@ -11,10 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Any
 
-_EMPTY: Mapping[str, Any] = MappingProxyType({})
+from agentkit.kernel._frozen import FrozenDict, deep_freeze
 
 
 @dataclass(frozen=True)
@@ -33,7 +32,7 @@ class Prompt:
     so a caller can validate a prompt against its call site before a run, and so
     a stored prompt carries its own contract."""
 
-    bound: Mapping[str, Any] = _EMPTY
+    bound: Mapping[str, Any] = field(default_factory=FrozenDict)
     """Values already bound to the declared ``inputs``. Normally set via
     :meth:`bind` rather than passed to the constructor. Because the values live
     on the *value*, a bound ``Prompt`` renders with no arguments — which is what
@@ -44,7 +43,15 @@ class Prompt:
     def __post_init__(self) -> None:
         # Copy-then-freeze: a Prompt is a value, so it must not alias a dict the
         # caller can mutate afterwards.
-        frozen = MappingProxyType(dict(self.bound))
+        # ``FrozenDict``, not ``MappingProxyType``. Both refuse mutation; only
+        # one of them is still a ``dict``. The proxy made a bound Prompt
+        # unpicklable — and therefore un-deep-copyable, which mattered because
+        # the checkpointer deep-copies state — and cost a ``__reduce__`` below
+        # to work around. It also made ``bound`` invisible to ``json.dumps``
+        # and ``dataclasses.asdict``. ``deep_freeze`` copies as it goes, so the
+        # caller cannot keep editing a dict they already bound, and it reaches
+        # nested containers a single ``dict()`` copy would leave mutable.
+        frozen = deep_freeze(dict(self.bound))
         self._reject_undeclared(frozen, verb="bound")
         object.__setattr__(self, "bound", frozen)
 
@@ -66,31 +73,6 @@ class Prompt:
         behaviour for a cache keyed on prompt identity.
         """
         return hash((self.id, self.version, self.template, self.inputs))
-
-    def __reduce__(self) -> tuple[Any, ...]:
-        """Rebuild through the constructor instead of restoring ``__dict__``.
-
-        ``bound`` is a ``MappingProxyType`` so it cannot be mutated through the
-        field — but a proxy cannot be PICKLED, and ``copy.deepcopy`` falls back
-        to the pickle protocol for objects that do not override it. So BOTH
-        ``pickle.dumps(prompt)`` and a plain ``deepcopy(prompt)`` raised
-        ``TypeError: cannot pickle 'mappingproxy' object`` the moment anything
-        was bound. deepcopy is the one that mattered: ``Checkpointer.snapshot``
-        deep-copies state at the durable seam and the ReAct cognition
-        deep-copies per drive, so a ``Prompt`` reachable from either would have
-        taken the whole run down rather than just failing to copy.
-
-        One hook covers both, which is why there is no ``__deepcopy__`` beside
-        it: ``copy.deepcopy`` deep-copies the constructor ARGUMENTS it finds
-        here, so a caller's mutable bound value is still copied rather than
-        aliased, and ``__post_init__`` re-freezes on the way back in. A
-        ``__deepcopy__`` was written first and deleted — a mutation proving it
-        redundant survived, which is exactly what a redundant code path looks
-        like."""
-        return (
-            _rebuild_prompt,
-            (self.id, self.version, self.template, self.inputs, dict(self.bound)),
-        )
 
     def _reject_undeclared(self, values: Mapping[str, Any], *, verb: str) -> None:
         """Undeclared names are a call-site mistake, not a no-op — almost always
@@ -191,6 +173,15 @@ class Prompt:
         return text.strip()
 
 
+# Kept for BACKWARD COMPATIBILITY only, and nothing calls it in this process.
+# ``Prompt.__reduce__`` used to name this factory, so every Prompt already
+# pickled by a checkpointer or replay recorder carries a reference to it by
+# dotted path. The method is gone — ``FrozenDict`` carries its own
+# ``__reduce__``, so deepcopy and pickle work without it, verified including
+# that the clone comes back frozen — but deleting this function would turn
+# every one of those existing streams into an unreadable
+# ``AttributeError: Can't get attribute '_rebuild_prompt'``. A dead function is
+# cheaper than a durable-read outage.
 def _rebuild_prompt(
     id_: str, version: str, template: str, inputs: tuple[str, ...], bound: dict[str, Any]
 ) -> Prompt:

@@ -43,6 +43,8 @@ from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any, Final, Generic, TypeVar
 
+from agentkit.kernel._frozen import deep_freeze
+
 # ── Type variables ──────────────────────────────────────────────────
 
 StateT = TypeVar("StateT")
@@ -61,6 +63,11 @@ attribution that survives merges)."""
 
 _PAYLOAD_KEY: Final = "agentkit.frozen_payload"
 
+# Deliberately still a ``MappingProxyType`` while the PAYLOADS moved to
+# ``FrozenDict``: this is dataclass field METADATA, not a value. It never
+# reaches ``json.dumps`` or ``dataclasses.asdict``, so none of the reasons that
+# ruled the proxy out for payloads apply — and ``dataclasses`` wraps field
+# metadata in a proxy of its own regardless.
 FROZEN_PAYLOAD: Final[Mapping[str, bool]] = MappingProxyType({_PAYLOAD_KEY: True})
 """Field metadata marking a field as a COLLECTION payload that the
 envelope copies and freezes at construction. Subclasses opt their own
@@ -112,7 +119,14 @@ def _freeze_payload(owner: str, name: str, value: Any) -> Any:
     policy can actually be enforced (frozen mutation dataclasses).
     """
     if isinstance(value, Mapping):
-        return MappingProxyType(dict(value))
+        # ``FrozenDict``, not ``MappingProxyType``. Both refuse mutation; only
+        # one is still a ``dict``. This module's whole justification is that a
+        # signal stream can be "replayed or audited as a cascade graph", and a
+        # proxy is invisible to ``json.dumps`` and ``dataclasses.asdict`` — the
+        # two things an audit trail is most likely to be run through. It also
+        # cost a ``__reduce__`` on the envelope purely to make deepcopy and
+        # pickle work at all.
+        return deep_freeze(dict(value))
     if isinstance(value, (str, bytes)):
         # Under the old ``options: list[str]`` annotation, ``options="retry"``
         # was a type error the checker caught. ``Sequence[str]`` accepts a bare
@@ -123,9 +137,22 @@ def _freeze_payload(owner: str, name: str, value: Any) -> Any:
             f"{owner}.{name} takes a sequence of items, not a bare "
             f"{type(value).__name__} ({value!r:.40}) — wrap it: [{value!r:.30}]"
         )
-    return tuple(value)
+    # A tuple is already immutable at the container level AND serialises to a
+    # JSON array, so it needs no replacement — but its ELEMENTS may be dicts or
+    # lists, and those were left mutable. ``deep_freeze`` reaches them without
+    # touching the project's own ``MutationT`` objects, which is exactly the
+    # line this module already drew.
+    return tuple(deep_freeze(v) for v in value)
 
 
+# Kept for BACKWARD COMPATIBILITY only; nothing in this process calls it.
+# ``SignalEnvelope.__reduce__`` used to name this factory, so any signal already
+# pickled by a checkpointer or replay recorder references it by dotted path.
+# The method is gone — mapping payloads are ``FrozenDict`` now, which carries
+# its own ``__reduce__``, so deepcopy and pickle work without it (verified
+# including that a user SUBCLASS with extra fields round-trips and that the
+# clone comes back frozen). Deleting this function would turn those existing
+# streams into ``AttributeError: Can't get attribute '_rebuild_signal'``.
 def _rebuild_signal(cls: type[Any], values: dict[str, Any]) -> Any:
     """Module-level factory for ``SignalEnvelope.__reduce__`` — pickle
     needs a global to name, and it must work for user subclasses too,
@@ -203,42 +230,6 @@ class SignalEnvelope:
             object.__setattr__(
                 self, name, _freeze_payload(own.__name__, name, getattr(self, name))
             )
-
-    def __reduce__(self) -> tuple[Any, ...]:
-        """Rebuild through the constructor instead of restoring state.
-
-        ``MappingProxyType`` is what makes a mapping payload genuinely
-        read-only, and it is also unpicklable — with the default
-        protocol, a signal carrying a frozen mapping measured::
-
-            deepcopy  TypeError: cannot pickle 'mappingproxy' object
-            pickle    TypeError: cannot pickle 'mappingproxy' object
-
-        deepcopy is the one that would bite: ``Checkpointer.snapshot``
-        deep-copies state at the durable seam, so a signal reachable
-        from a checkpoint would take the run down rather than merely
-        failing to copy. This is the same hook, and the same reason, as
-        ``Prompt.__reduce__``.
-
-        One hook covers both paths — ``copy.deepcopy`` deep-copies the
-        constructor ARGUMENTS it finds here, so a round-tripped signal
-        gets its own payload contents rather than aliasing the
-        original's, and ``__post_init__`` re-freezes on the way back
-        in. Built from ``fields()`` rather than a hand-written argument
-        list so user subclasses with extra fields round-trip too;
-        ``mappingproxy`` values are handed back as plain dicts because
-        the ARGUMENTS have to be picklable, not just the result.
-        """
-        values: dict[str, Any] = {}
-        for f in fields(self):
-            if not f.init:
-                continue
-            value = getattr(self, f.name)
-            values[f.name] = dict(value) if isinstance(value, MappingProxyType) else value
-        return (_rebuild_signal, (type(self), values))
-
-
-# ── Direction-typed bases ───────────────────────────────────────────
 
 
 @dataclass(slots=True, frozen=True)

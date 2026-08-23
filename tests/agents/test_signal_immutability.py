@@ -127,9 +127,22 @@ def test_every_payload_field_is_read_only(
     name: str, signal: SignalEnvelope, attr: str
 ) -> None:
     """All six payloads, not just the one that motivated the fix — a
-    per-field fix would leave the others as the same latent bug."""
+    per-field fix would leave the others as the same latent bug.
+
+    This asserts the GUARANTEE (mutation is refused), not the mechanism. It
+    used to assert `not isinstance(payload, (list, dict))`, which was really a
+    test that the payload was a `MappingProxyType`/`tuple`. When mapping
+    payloads moved to `FrozenDict` — a `dict` SUBCLASS, so that `json.dumps`
+    and `dataclasses.asdict` keep working on an audit record — that assertion
+    failed while the actual behaviour was strictly better. A test pinned to a
+    mechanism blocks improving the mechanism.
+    """
     payload = getattr(signal, attr)
-    assert not isinstance(payload, (list, dict)), f"{name}.{attr} is still mutable"
+    with pytest.raises(TypeError):
+        if isinstance(payload, dict):
+            payload["injected"] = "forged"
+        else:
+            payload[0] = "forged"  # type: ignore[index]
     if isinstance(payload, Mapping):
         with pytest.raises(TypeError):
             payload["forged"] = 1.0
@@ -482,25 +495,47 @@ def test_reassignment_is_still_refused() -> None:
 # ── Documented edges ───────────────────────────────────────────────
 
 
-def test_freezing_is_shallow_by_design() -> None:
-    """Deliberate, and worth pinning so nobody "fixes" it by accident:
-    the freeze covers the CONTAINER the protocol owns. A ``list[dict]``
-    payload still hands out mutable dicts, because going deeper means
-    recursively rewriting ``MutationT`` objects the framework cannot
-    reconstruct. Deep immutability is the project's call, made by
-    giving ``MutationT`` frozen dataclasses."""
-    payload = [{"kind": "note"}]
-    signal = ContextUpdateSignal[dict[str, str]](mutations=payload)
+def test_freezing_reaches_nested_containers_but_not_user_objects() -> None:
+    """The freeze now reaches CONTAINERS all the way down, and still stops at
+    the project's own objects.
 
-    with pytest.raises(AttributeError):
-        signal.mutations.append({"kind": "forged"})
+    This test previously pinned the opposite — `..._is_shallow_by_design` —
+    and asserted that a `list[dict]` payload still handed out mutable dicts.
+    That was the right call for its stated reason: going deeper must not mean
+    recursively rewriting `MutationT` objects the framework cannot
+    reconstruct. But it over-corrected. `deep_freeze` only ever replaces dicts
+    and lists; a `MutationT` instance is returned untouched, by identity. So
+    the rationale is preserved while the hole it left — a signal's nested
+    `{"used_cost": ...}` still being rewritable after the fact, on a record
+    whose whole purpose is audit — is closed.
+    """
 
-    # The container is un-aliased, so the caller cannot add or remove
-    # entries — but the dict it handed over is the same object.
+    class Mutation:
+        """A project's own mutation type. Must survive by IDENTITY."""
+
+        def __init__(self) -> None:
+            self.editable = True
+
+    mine = Mutation()
+    payload: list = [{"kind": "note"}, mine]
+    signal = ContextUpdateSignal(mutations=payload)
+
+    # The container is frozen...
+    with pytest.raises((AttributeError, TypeError)):
+        signal.mutations.append({"kind": "forged"})  # type: ignore[attr-defined]
+    # ...and so is the nested dict, which is the part that used to be open.
+    with pytest.raises(TypeError):
+        signal.mutations[0]["kind"] = "edited"
+
+    # The caller's list is un-aliased.
     payload.append({"kind": "not in the signal"})
-    assert len(signal.mutations) == 1
-    signal.mutations[0]["kind"] = "edited"
-    assert payload[0]["kind"] == "edited"
+    assert len(signal.mutations) == 2
+
+    # But the project's own object is the SAME object, untouched — the line
+    # this module deliberately refuses to cross.
+    assert signal.mutations[1] is mine
+    signal.mutations[1].editable = False  # its own semantics, not ours to police
+    assert mine.editable is False
 
 
 def test_a_bare_string_payload_is_refused() -> None:

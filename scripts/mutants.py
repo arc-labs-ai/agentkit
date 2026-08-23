@@ -197,6 +197,9 @@ PARSED_TESTS = (
 )
 MAPPING_TESTS = ("tests/adapters/test_callable_llm_mapping.py",)
 PORTS_TESTS = ("tests/kernel/test_value_type_hashability.py",)
+FROZEN_TESTS = ("tests/kernel/test_frozen_payloads.py",)
+FROZENVAL_TESTS = ("tests/kernel/test_frozen_value_payloads.py",)
+FROZENREQ_TESTS = ("tests/kernel/test_frozen_request_payloads.py",)
 KERNELTYPE_TESTS = ("tests/kernel/test_kernel.py",)
 RESULT_TESTS = ("tests/agents/test_agents.py",)
 MEMITEM_TESTS = ("tests/memory/test_memory_item.py",)
@@ -210,6 +213,38 @@ VALUETYPE_TESTS = (
 REPLAY_TESTS = ("tests/adapters/test_replay_file.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="frozen",
+        why="deep_freeze goes shallow, so cp.state['a']['b'] = 1 rewrites a durable record again",
+        path="agentkit/kernel/_frozen.py",
+        before="    if isinstance(value, dict):\n        return FrozenDict({k: deep_freeze(v) for k, v in value.items()})",
+        after="    if isinstance(value, dict):\n        return FrozenDict(value)",
+        tests=FROZEN_TESTS,
+    ),
+    Mutant(
+        tag="frozen",
+        why="FrozenDict loses __reduce__, so deepcopy and pickle break at the checkpoint seam",
+        path="agentkit/kernel/_frozen.py",
+        before="        return (FrozenDict, (dict(self),))",
+        after="        return (dict, (dict(self),))",
+        tests=FROZEN_TESTS,
+    ),
+    Mutant(
+        tag="frozen",
+        why="deep_freeze stops copying, so the caller keeps a live handle on what they handed over",
+        path="agentkit/kernel/_frozen.py",
+        before="    if isinstance(value, list):\n        return FrozenList([deep_freeze(v) for v in value])",
+        after="    if isinstance(value, list):\n        return FrozenList(value)",
+        tests=FROZEN_TESTS,
+    ),
+    Mutant(
+        tag="frozen",
+        why="Checkpoint.state stops being frozen, so a persisted record is rewritable in memory",
+        path="agentkit/kernel/ports.py",
+        before='        object.__setattr__(self, "state", deep_freeze(self.state))',
+        after="        pass",
+        tests=FROZENVAL_TESTS,
+    ),
     Mutant(
         tag="hashable",
         why="AgentResult hashes free-form evals, so the framework's most-returned type breaks again",
@@ -390,7 +425,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="signals",
         why="a signal payload stops being copied, so the sender keeps editing what it already emitted",
         path="agentkit/agents/control/signals.py",
-        before="        return MappingProxyType(dict(value))",
+        before="        return deep_freeze(dict(value))",
         after="        return value",
         tests=SIGNAL_TESTS,
     ),
@@ -412,10 +447,10 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="signals",
-        why="__reduce__ goes away, so deepcopy and pickle hit the mappingproxy at the replay boundary",
+        why="a signal mapping payload stops being frozen, so an audited used_cost is rewritable",
         path="agentkit/agents/control/signals.py",
-        before="    def __reduce__(self) -> tuple[Any, ...]:",
-        after="    def __reduce_unused__(self) -> tuple[Any, ...]:",
+        before="        return deep_freeze(dict(value))",
+        after="        return dict(value)",
         tests=SIGNAL_TESTS,
     ),
     Mutant(
@@ -508,19 +543,19 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="regress",
-        why="__reduce__ goes away, so deepcopy AND pickle hit the mappingproxy again",
+        why="Prompt.bound stops being frozen, so a caller edits a bound prompt after the fact",
         path="agentkit/prompts/prompt.py",
-        before="    def __reduce__(self) -> tuple[Any, ...]:",
-        after="    def __reduce_unused__(self) -> tuple[Any, ...]:",
+        before="        frozen = deep_freeze(dict(self.bound))",
+        after="        frozen = dict(self.bound)",
         tests=PROMPT_TESTS,
     ),
     Mutant(
-        tag="regress",
-        why="__reduce__ leaks the proxy itself, so deepcopy/pickle break exactly as before",
-        path="agentkit/prompts/prompt.py",
-        before="            (self.id, self.version, self.template, self.inputs, dict(self.bound)),",
-        after="            (self.id, self.version, self.template, self.inputs, self.bound),",
-        tests=PROMPT_TESTS,
+        tag="signals",
+        why="a signal SEQUENCE payload stops freezing its elements, so nested dicts stay editable",
+        path="agentkit/agents/control/signals.py",
+        before="    return tuple(deep_freeze(v) for v in value)",
+        after="    return tuple(value)",
+        tests=SIGNAL_TESTS,
     ),
     Mutant(
         tag="regress",
