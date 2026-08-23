@@ -184,7 +184,43 @@ REGISTRY_TESTS = (
     "tests/agents/test_agent_capability_binding.py",
 )
 
+MEMOIZE_TESTS = (
+    "tests/middlewares/test_memoize_side_effects.py",
+    "tests/middlewares/test_memoize_chat_key_tool_fields.py",
+)
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="regress",
+        why="memoize() caches a SIDE-EFFECTING tool again — the second send_email is faked",
+        path="agentkit/middlewares/memoize.py",
+        before="        return allow_side_effects or not _side_effecting(call)",
+        after="        return True",
+        tests=MEMOIZE_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="_side_effecting reads only the REQUEST flag, missing every positionally-built ToolRequest",
+        path="agentkit/middlewares/memoize.py",
+        before='    return bool(getattr(getattr(r, "tool", None), "side_effecting", False))',
+        after="    return False",
+        tests=MEMOIZE_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="idempotent() loses its opt-in, so an at-least-once retry re-fires the mutation",
+        path="agentkit/middlewares/memoize.py",
+        before="    return memoize(key=key, store=store, when=_side_effecting, allow_side_effects=True)",
+        after="    return memoize(key=key, store=store, when=_side_effecting)",
+        tests=MEMOIZE_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="the chat key drops tool_calls, so two ReAct branches are served each other's answer",
+        path="agentkit/middlewares/memoize.py",
+        before="def _message_identity(m: Any) -> dict[str, Any]:",
+        after='def _message_identity(m: Any) -> dict[str, Any]:\n    return {"role": m.role, "content": m.content}',
+        tests=MEMOIZE_TESTS,
+    ),
     Mutant(
         tag="regress",
         why="the retry backoff becomes dead code again, turning retries into a hot loop",
@@ -584,7 +620,7 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="workflow",
-        why="a node can downgrade a side-effecting tool, opting it out of idempotent()",
+        why="a node can downgrade a side-effecting tool, so a mutation skips the approval gate",
         path="agentkit/agents/workflow.py",
         before='        side_effecting = side_effecting or bool(getattr(tool, "side_effecting", False))',
         after=(

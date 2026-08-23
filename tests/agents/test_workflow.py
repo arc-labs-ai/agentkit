@@ -1043,6 +1043,82 @@ def test_workflow_tool_node_cannot_downgrade_a_side_effecting_tool():
     assert hits["n"] == 1
 
 
+def test_workflow_tool_node_stamps_the_escalated_flag_onto_the_request():
+    """The SAME escalate-only rule, asserted on the propagated flag itself
+    rather than through ``idempotent()``'s behaviour.
+
+    The test above reads the rule through a dedupe count, and that stopped
+    being a faithful probe: ``memoize``/``idempotent`` now consult the TOOL as
+    well as the request (a ``ToolRequest`` built positionally never carries the
+    flag), so they dedupe correctly even when the node's downgrade DOES reach
+    the request. The mutant that reintroduces the downgrade therefore survived
+    that test — masked by defence-in-depth downstream.
+
+    The workflow-level invariant is still real, because other consumers read
+    ``request.side_effecting`` and have no tool object to fall back on — most
+    importantly the approval gate, where a downgrade means a mutation executing
+    without ever being offered for approval. So assert the flag where it is
+    actually set.
+    """
+    from agentkit.tools.function import FunctionTool
+
+    seen: list[bool] = []
+
+    async def _spy(call, nxt):
+        seen.append(bool(getattr(call.request, "side_effecting", False)))
+        async for x in nxt(call):
+            yield x
+
+    async def _charge(args, ctx):
+        return "charged"
+
+    tool = FunctionTool(
+        name="charge",
+        fn=_charge,
+        description="Charge a card. Side-effecting, and says so on the tool itself.",
+        side_effecting=True,
+    )
+    wf = Workflow(max_steps=5)
+    wf.tool("a", tool, args=lambda inp: {"id": "x"}, side_effecting=False)
+
+    _run(wf.run("g", make_test_ctx(llm=FakeLLM("ok"), tool_middleware=[_spy])))
+
+    assert seen == [True], (
+        "the node's side_effecting=False must not reach the request — a consumer "
+        "with no tool object to fall back on would treat a mutation as read-only"
+    )
+
+
+def test_a_read_only_tool_is_not_escalated_by_the_node_default():
+    """POSITIVE CONTROL for the test above. If the propagation were 'always
+    True' rather than 'escalate-only', the assertion above would pass for the
+    wrong reason and every read-only tool would start demanding approval."""
+    from agentkit.tools.function import FunctionTool
+
+    seen: list[bool] = []
+
+    async def _spy(call, nxt):
+        seen.append(bool(getattr(call.request, "side_effecting", False)))
+        async for x in nxt(call):
+            yield x
+
+    async def _read(args, ctx):
+        return "value"
+
+    tool = FunctionTool(
+        name="lookup",
+        fn=_read,
+        description="Read-only lookup that declares itself free of side effects.",
+        side_effecting=False,
+    )
+    wf = Workflow(max_steps=5)
+    wf.tool("a", tool, args=lambda inp: {"id": "x"})
+
+    _run(wf.run("g", make_test_ctx(llm=FakeLLM("ok"), tool_middleware=[_spy])))
+
+    assert seen == [False]
+
+
 def test_workflow_tool_node_cannot_suppress_an_egress_check():
     """Same rule for ``url_arg``: passing ``None`` inherits the tool's, it does
     not disable the check."""
