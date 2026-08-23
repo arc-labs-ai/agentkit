@@ -1545,6 +1545,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.middlewares.Audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;Audit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.middlewares.Egress" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1563,6 +1574,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.middlewares.MeterMiddleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;MeterMiddleware
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" MeterMiddleware">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.middlewares.MeterMiddleware.as_middleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;as_middleware
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1897,6 +1936,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.middlewares.Audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;Audit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.middlewares.Egress" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1915,6 +1965,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.middlewares.MeterMiddleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;MeterMiddleware
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" MeterMiddleware">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.middlewares.MeterMiddleware.as_middleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;as_middleware
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2021,6 +2099,14 @@ them to the <code>Invoker</code>. There are two kinds:</p>
 <p>Typical chat chain:  [tracing(), compaction(…), meter(), fallback([...]), retry(breaker=…)]
 Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit(), retry(breaker=…)]</p>
 <p>(<code>compaction</code> sits ahead of <code>meter</code> so the meter estimates tokens on the already-compacted transcript.)</p>
+<p><code>audit()</code> vs <code>retry()</code> — pick the trail you want. In the tool chain above <code>retry()</code> is INSIDE <code>audit()</code>,
+so <code>Audit</code> sees one outcome per logical tool call: three retried executions of a side-effecting tool fold
+into ONE record. That is the right shape when the question is "what did this run ask the tool to do", and
+it is the only ordering in which an <code>idempotent()</code> replay can be recorded as <code>"deduped"</code> (a hit
+short-circuits everything inner). Swap to <code>[… idempotent(), retry(breaker=…), audit()]</code> when the question
+is "how many times did the side effect actually fire" — then every attempt gets its own record, and a
+deduped replay produces none at all because <code>audit()</code> is never reached. <code>Audit</code> records failures either
+way (<code>decision: "failed"</code>); it cannot see retry attempts it sits outside of.</p>
 <p>.. note::
    <code>Egress</code> / <code>Audit</code> live in <code>egress_audit.py</code>, not <code>security.py</code>. A
    submodule named <code>security</code> shadowed the <code>security()</code> factory re-exported
@@ -2050,6 +2136,75 @@ Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit
 
 
 
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.middlewares.Audit" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">Audit</span>
+
+
+<a href="#agentkit.middlewares.Audit" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">Audit</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">store</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n"><span title="str">str</span></span> <span class="o">=</span> <span class="n"><span title="agentkit.middlewares.egress_audit._AUDIT_LOG">_AUDIT_LOG</span></span><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            BaseMiddleware (agentkit.kernel.middleware.BaseMiddleware)" href="../kernel/#agentkit.kernel.BaseMiddleware">BaseMiddleware</a></code></p>
+
+
+
+        <p>One record per tool call — including the calls that FAILED.</p>
+<p><code>Audit</code> used to write only in <code>on_response</code>, i.e. only after a
+success. That is exactly backwards for a side-effecting tool: the
+dangerous case is the one that fired the side effect and <em>then</em>
+failed — the payment gateway that charged the card and timed out on
+the response. Measured with the documented tool chain
+(<code>[… idempotent(), audit(), retry(breaker=…)]</code>): a charging tool
+that raised after every attempt executed 3 times and left
+<code>audit records: []</code>. The money moved and the audit trail was
+empty, which is the one thing an audit trail may never be.</p>
+<p><code>on_error</code> now writes a <code>"failed"</code> record carrying the error
+type and message, then re-raises so the failure still propagates —
+the middleware records, it never recovers.</p>
+<p><strong>One record = one invocation of THIS middleware.</strong> <code>retry()</code> sits
+INSIDE <code>audit()</code> in the documented chain, so its attempts are
+invisible from here and three executions fold into one record. That
+is an ordering choice, not something <code>Audit</code> can detect: placing
+<code>audit()</code> inside <code>retry()</code> yields one record per attempt, at the
+cost of the <code>"deduped"</code> record (<code>idempotent()</code> short-circuits
+before <code>audit()</code> is ever reached). Both orderings are supported
+and pinned by tests; see the chain note in <code>middlewares/__init__</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-class">
 
@@ -2143,6 +2298,99 @@ the chat chain ahead of the model: <code>Invoker(llm=…, chat_middleware=[Secur
 
 
 
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.middlewares.MeterMiddleware" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">MeterMiddleware</span>
+
+
+<a href="#agentkit.middlewares.MeterMiddleware" class="headerlink" title="Anchor link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            BaseMiddleware (agentkit.kernel.middleware.BaseMiddleware)" href="../kernel/#agentkit.kernel.BaseMiddleware">BaseMiddleware</a></code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.middlewares.MeterMiddleware.as_middleware" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">as_middleware</span>
+
+
+<a href="#agentkit.middlewares.MeterMiddleware.as_middleware" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">as_middleware</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><span title="agentkit.kernel.middleware.Middleware">Middleware</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Compile to the <code>(call, next)</code> primitive — with a settle path that
+also runs when the stream is ABANDONED.</p>
+<p><code>BaseMiddleware.as_middleware</code> wraps the inner stream in
+<code>except Exception</code>, so <code>on_response</code> is reached only on normal
+exhaustion. <code>GeneratorExit</code> (a consumer that <code>break</code>s out of the
+<code>async for</code>, or any early <code>aclose()</code>) and <code>CancelledError</code> are
+<code>BaseException</code>s: they fly straight past that handler and the charge
+never happens. Measured: a consumer breaking after one delta produced
+<code>provider stream calls: 2</code> while the budget still read
+<code>spent=0.25 calls=1</code> from the one fully-consumed call. The provider
+billed those tokens; the budget never saw them, so every ceiling in the
+run was quietly wrong — and an abandon-happy caller could spend without
+limit.</p>
+<p>Design of the settle path:</p>
+<ul>
+<li>Normal exhaustion charges exactly as before, <code>MeterExceeded</code>
+  included — that is the ceiling doing its job.</li>
+<li>An abandoned / cancelled / failed stream charges only what actually
+  ARRIVED (<code>if items</code>), because that is the only spend we can honestly
+  attest to. A pre-stream failure yielded nothing, so it is not charged
+  and does not inflate <code>budget.calls</code> — which preserves today's
+  behaviour for the retry-inside-meter chain.</li>
+<li>That path also swallows <code>MeterExceeded</code>. <code>Budget.charge</code> updates
+  the ledger BEFORE it evaluates the ceiling, so the money is recorded
+  either way; raising out of a <code>GeneratorExit</code> unwind would replace
+  the close signal with an unrelated error in a consumer that has
+  already walked away. The next <code>on_request</code> guard raises instead.</li>
+</ul>
+
+
+    </div>
+
+</div>
 
 
 

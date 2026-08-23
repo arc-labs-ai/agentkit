@@ -1923,8 +1923,56 @@ can be wired with — a <code>RequestBuilder</code> that assembles a prompt from
 sources, a <code>Compactor</code> that shrinks a growing context window, a
 <code>Guardrail</code> that vetoes a response, an <code>Evaluator</code> that scores it, a
 <code>Checkpointer</code> that snapshots the run so a crash can be resumed.
-Each capability is a small, typed Protocol; each has one or more
-implementations shipped in <code>agentkit.capabilities</code>.</p>
+Each is a small, typed seam with one or more implementations shipped
+in <code>agentkit.capabilities</code>. Two of them — <code>Compactor</code> and
+<code>SchemaAdapter</code> — are literal <code>Protocol</code>s, so any object with the right
+shape satisfies them. The rest are concrete base classes you subclass
+or configure:</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Kind</th>
+<th>Substituted by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Compactor</code></td>
+<td><code>Protocol</code></td>
+<td>structural typing — any matching object</td>
+</tr>
+<tr>
+<td><code>SchemaAdapter</code></td>
+<td><code>Protocol</code></td>
+<td>structural typing</td>
+</tr>
+<tr>
+<td><code>RequestBuilder</code></td>
+<td>class</td>
+<td>subclass, or configure the shipped one</td>
+</tr>
+<tr>
+<td><code>Guardrail</code></td>
+<td>class</td>
+<td>subclass</td>
+</tr>
+<tr>
+<td><code>Evaluator</code></td>
+<td>class</td>
+<td>subclass (<code>code_evals</code> / <code>judge</code>)</td>
+</tr>
+<tr>
+<td><code>Checkpointer</code></td>
+<td>class over <code>CheckpointPort</code></td>
+<td>swap the <strong>port</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>Checkpointer</code> is the one worth understanding: it is a thin facade, and
+the substitutable seam beneath it is <code>CheckpointPort</code> — in-memory
+today, Postgres or Redis tomorrow — so you swap the port, not the
+capability.</p>
 <p><strong>Why it exists.</strong> Compaction, grounding, guardrails, and durability
 are <em>pathologically</em> the wrong things to bake into a base class. They
 have context-specific tradeoffs (which model? which safety policy?
@@ -1986,9 +2034,9 @@ handed to the cognition or policy that suspends/resumes.</p>
 <p>The shipped compactor strategies are
 <code>ImportanceFilteringCompactor</code>, <code>SlidingWindowCompactor</code>,
 <code>SummarizationCompactor</code>, and <code>TruncationCompactor</code> — all in
-<code>agentkit</code>. <code>Guardrail</code>, <code>Evaluator</code>, and <code>Checkpointer</code> ship as
-Protocols in <code>agentkit.capabilities</code>; implementations are yours to
-plug in.</p>
+<code>agentkit</code>. <code>Guardrail</code> and <code>Evaluator</code> ship as base classes to subclass;
+<code>Checkpointer</code> is a concrete facade whose <code>CheckpointPort</code> is the part
+you swap.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">SlidingWindowCompactor</span><span class="p">,</span> <span class="n">TruncationCompactor</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Dep-free strategies — take a budget directly.</span>
@@ -2037,7 +2085,7 @@ valid agent.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 6, 2026 05:26:44 UTC">August 6, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 12:01:19 UTC">August 23, 2026</span>
   </span>
 
     

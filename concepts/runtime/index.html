@@ -2146,7 +2146,7 @@ can call the middleware chain without wiring a full services bundle.</p>
 <li><strong>One context per request.</strong> Never fabricate a fresh <code>RunContext</code>
    inside a middleware or tool; forward the one you were given.</li>
 <li><strong>Cancellation is cooperative.</strong> Every <code>await</code> point in an agent
-   loop must be reachable to <code>cancel.raise_if_set()</code>; blocking
+   loop must be reachable to <code>cancel.raise_if_cancelled()</code>; blocking
    primitives are banned on the hot path.</li>
 <li><strong>Budgets are enforced, not advisory.</strong> <code>Budget</code> overspend raises
    <code>MeterExceeded</code> (from <code>agentkit.runtime.meter</code>) and unwinds the
@@ -2182,7 +2182,7 @@ can call the middleware chain without wiring a full services bundle.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 22, 2026 20:02:33 UTC">August 22, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 12:01:19 UTC">August 23, 2026</span>
   </span>
 
     

@@ -2635,6 +2635,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.adapters.store.InMemoryStore.purge_expired" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;purge_expired
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.adapters.store.InMemoryStore.get_or_set" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2688,6 +2699,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;InMemoryVector
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.adapters.vector.PgVectorStore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;PgVectorStore
       
     </span>
   </a>
@@ -2768,6 +2790,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.adapters.observer.PolicyObserver.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;close
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.adapters.observer.PolicyObserver.everything" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2841,6 +2874,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label=" Hooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.adapters.observer.Hooks.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -4012,6 +4062,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.adapters.store.InMemoryStore.purge_expired" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;purge_expired
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.adapters.store.InMemoryStore.get_or_set" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4065,6 +4126,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;InMemoryVector
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.adapters.vector.PgVectorStore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;PgVectorStore
       
     </span>
   </a>
@@ -4145,6 +4217,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.adapters.observer.PolicyObserver.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;close
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.adapters.observer.PolicyObserver.everything" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4218,6 +4301,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label=" Hooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.adapters.observer.Hooks.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -5046,10 +5146,9 @@ calls :meth:<code>check</code>).</p>
     <div class="doc doc-contents ">
 
         <p>Add a name→provider rule, consulted when no <code>ModelEntry</code> matches.</p>
-<p>Rules run in registration order, most-recently-added LAST, so the
-built-in rules act as the fallback and an application's rule can be
-made to win by registering a more specific one. A rule returns
-<code>None</code> to abstain.</p>
+<p>The most-recently-added rule wins: the built-in rules act as the
+fallback, and an application's rule (registered after them) takes
+precedence. A rule returns <code>None</code> to abstain.</p>
 <div class="language-text highlight"><pre><span></span><code>reg.register_rule(lambda n: &quot;openai&quot; if n.startswith(&quot;acme-&quot;) else None)
 </code></pre></div>
 
@@ -5099,6 +5198,18 @@ made to win by registering a more specific one. A rule returns
         <p>Which provider serves this model, or <code>None</code> if nothing claims it.</p>
 <p>A registered <code>ModelEntry</code> wins over any rule — an explicit row is
 always more authoritative than a pattern.</p>
+<p>Rules are the OUTER loop, most-recently-registered first: each rule
+sees EVERY normalised candidate before the next rule is consulted.
+Iterating candidates outermost meant the first candidate decided the
+answer, so the coarsest rule that matched the raw name won and the
+later, more specific rules never saw the bare name at all — measured:
+<code>provider_for('anthropic/claude-sonnet-9')</code> returned <code>openrouter</code>
+because <code>by_openrouter_prefix</code> matched the slash before
+<code>by_family</code> was offered <code>claude-sonnet-9</code>, contradicting both
+<code>register_rule</code>'s promise and <code>_builtin_rules</code>' own comment.
+Reversing the rule order is the short-circuiting form of "run every
+rule, last non-<code>None</code> wins", which is what :meth:<code>register_rule</code>
+documents.</p>
 
 
     </div>
@@ -6491,10 +6602,9 @@ calls :meth:<code>check</code>).</p>
     <div class="doc doc-contents ">
 
         <p>Add a name→provider rule, consulted when no <code>ModelEntry</code> matches.</p>
-<p>Rules run in registration order, most-recently-added LAST, so the
-built-in rules act as the fallback and an application's rule can be
-made to win by registering a more specific one. A rule returns
-<code>None</code> to abstain.</p>
+<p>The most-recently-added rule wins: the built-in rules act as the
+fallback, and an application's rule (registered after them) takes
+precedence. A rule returns <code>None</code> to abstain.</p>
 <div class="language-text highlight"><pre><span></span><code>reg.register_rule(lambda n: &quot;openai&quot; if n.startswith(&quot;acme-&quot;) else None)
 </code></pre></div>
 
@@ -6544,6 +6654,18 @@ made to win by registering a more specific one. A rule returns
         <p>Which provider serves this model, or <code>None</code> if nothing claims it.</p>
 <p>A registered <code>ModelEntry</code> wins over any rule — an explicit row is
 always more authoritative than a pattern.</p>
+<p>Rules are the OUTER loop, most-recently-registered first: each rule
+sees EVERY normalised candidate before the next rule is consulted.
+Iterating candidates outermost meant the first candidate decided the
+answer, so the coarsest rule that matched the raw name won and the
+later, more specific rules never saw the bare name at all — measured:
+<code>provider_for('anthropic/claude-sonnet-9')</code> returned <code>openrouter</code>
+because <code>by_openrouter_prefix</code> matched the slash before
+<code>by_family</code> was offered <code>claude-sonnet-9</code>, contradicting both
+<code>register_rule</code>'s promise and <code>_builtin_rules</code>' own comment.
+Reversing the rule order is the short-circuiting form of "run every
+rule, last non-<code>None</code> wins", which is what :meth:<code>register_rule</code>
+documents.</p>
 
 
     </div>
@@ -7128,6 +7250,32 @@ the two backends disagreed on the same input: 1 call versus 3.
 <div class="doc doc-object doc-function">
 
 
+<h3 id="agentkit.adapters.store.InMemoryStore.purge_expired" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">purge_expired</span>
+
+
+<a href="#agentkit.adapters.store.InMemoryStore.purge_expired" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">purge_expired</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><span title="int">int</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Drop every key whose deadline has passed; returns how many went.</p>
+<p>Purge-on-read reclaimed a key only if something read it again, so
+TTL'd keys nobody revisits were retained forever — a store used purely
+for idempotency grew without bound while reporting the right answers.
+Public because a long-lived process may want to sweep on its own
+cadence; <code>set</code> also calls it every <code>_SWEEP_EVERY</code> writes, which keeps
+the table bounded by live data rather than lifetime traffic.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="agentkit.adapters.store.InMemoryStore.get_or_set" class="doc doc-heading">
 <code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">get_or_set</span>
 
@@ -7322,6 +7470,56 @@ natively (SETEX). Inject a <code>client</code> (e.g. a fake) for tests; else bui
 
 
         <p>VectorPort — scope-isolated, cosine over TF vectors, metadata-filtered, scored (tests/lean).</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.adapters.vector.PgVectorStore" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">PgVectorStore</span>
+
+
+<a href="#agentkit.adapters.vector.PgVectorStore" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">PgVectorStore</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">dsn</span><span class="p">:</span> <span class="n"><span title="str">str</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="o">*</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">pool</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">dim</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="n"><span title="agentkit.adapters.vector.pgvector._DIM">_DIM</span></span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
 
 
 
@@ -7608,6 +7806,35 @@ an <code>ObserverPort</code> needs only <code>emit</code>.</p>
 <div class="doc doc-object doc-function">
 
 
+<h3 id="agentkit.adapters.observer.PolicyObserver.close" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#agentkit.adapters.observer.PolicyObserver.close" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">close</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Forward shutdown to <code>inner</code>. <code>ObserverPort</code> declares <code>close()</code>,
+so without it <code>isinstance(PolicyObserver(...), ObserverPort)</code> was
+<code>False</code> (measured) — a cadence wrapper did not satisfy the very
+Protocol it exists to compose. Worse, a wrapper that swallows
+<code>close</code> strands a buffering inner: wrapping a <code>RollupObserver</code>
+dropped its trailing summary entirely.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="agentkit.adapters.observer.PolicyObserver.everything" class="doc doc-heading">
 <code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">everything</span>
 
@@ -7818,6 +8045,39 @@ Optionally forwards to an <code>inner</code> observer, so <code>Hooks</code> cha
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.adapters.observer.Hooks.close" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#agentkit.adapters.observer.Hooks.close" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">close</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Forward shutdown to <code>inner</code> (no-op when unwired).</p>
+<p><code>ObserverPort</code> declares <code>close()</code>; without it
+<code>isinstance(Hooks(), ObserverPort)</code> was <code>False</code> (measured) and,
+because <code>Hooks</code> chains in FRONT of another observer, the whole chain
+below it lost its shutdown hook — a <code>Hooks -&gt; PolicyObserver -&gt;
+RollupObserver</code> stack silently dropped the rollup's trailing summary
+at process exit. Like <code>emit</code>, a handler must never destabilise the
+run, so a failing inner <code>close</code> is not swallowed here: <code>close</code> is
+an explicit shutdown call, and hiding a flush failure would lose the
+buffered tail without a trace.</p>
+
+
+    </div>
+
+</div>
 
 
 

@@ -1782,6 +1782,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.release_probe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;release_probe
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2754,6 +2765,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_success
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.release_probe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;release_probe
       
     </span>
   </a>
@@ -4390,7 +4412,8 @@ zero-config path.</p>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">state</span><span class="p">:</span> <span class="n"><span title="agentkit.kernel.resilience.BreakerState">BreakerState</span></span> <span class="o">=</span> <span class="s2">&quot;closed&quot;</span><span class="p">,</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">_fails</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">_opened_at</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">_probe_started_at</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4451,6 +4474,41 @@ skipped entirely by one late success.</p>
 was admitted under the old state, so it is evidence about the past,
 not about whether the dependency has recovered. Only the single probe
 admitted after the cooldown speaks to that.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.kernel.CircuitBreaker.release_probe" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">release_probe</span>
+
+
+<a href="#agentkit.kernel.CircuitBreaker.release_probe" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">release_probe</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Hand the HALF_OPEN probe slot back after an outcome that says NOTHING
+about dependency health — a PERMANENT contract failure (401 / 403 /
+content filter) or a <code>BaseException</code> such as cancellation.</p>
+<p>Neither <code>record_success</code> nor <code>record_failure</code> fits. <code>record_failure</code>
+would fold the outcome into <code>_fails</code>, breaking the deliberate rule that
+a contract failure is not an upstream health signal; <code>record_success</code>
+would grant health credit for a call that never proved the dependency
+recovered. Doing NEITHER — which is what happened — wedged the breaker in
+<code>half_open</code> forever, because the only exits were those two methods.</p>
+<p>So this is the third, neutral edge: consume nothing, grant nothing. The
+state returns to OPEN and the cooldown clock is <strong>not</strong> restarted, so the
+already-elapsed cooldown still holds and the very next caller is admitted
+as a fresh probe. A dependency that only ever answers with PERMANENT
+errors therefore keeps failing fast (the correct, un-masked error reaches
+the caller) instead of being hidden behind a <code>CircuitOpen</code> that
+classifies as TRANSIENT and invites a retry that can never succeed.</p>
 
 
     </div>

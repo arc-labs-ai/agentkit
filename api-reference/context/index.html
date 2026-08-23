@@ -4412,12 +4412,17 @@ for per-agent slicing in a team.</p>
 
 
 
-        <p>Default — chars/4 approximation.</p>
+        <p>Default — chars/4 approximation over the whole wire payload.</p>
 <p>Free, no deps, ~ok within 30% of actual for English. Use
 <code>TiktokenCounter</code> when accuracy matters (right before a borderline
-context-limit decision). Matches the heuristic <code>RequestBuilder</code>
-uses for its <code>approx_tokens</code> field, so a RequestBuilder-side
-pre-check stays consistent with the WorkingContext-side view.</p>
+context-limit decision).</p>
+<p>Shares :func:<code>estimate_message_tokens</code> with
+<code>capabilities.compaction.base._approx_tokens</code> — the two were
+separate copies of chars/4 and both silently ignored <code>tool_calls</code>,
+which is how a pre-check here could pass while the compactor over
+there refused to fire on the same transcript. Note that
+<code>RequestBuilder.approx_tokens</code> still carries its own content-only
+copy; it reports a LOWER number on a tool-heavy transcript.</p>
 
 
 
