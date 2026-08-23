@@ -85,6 +85,10 @@
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/adapters/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/agents/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
@@ -93,11 +97,27 @@
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/context/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/integrations/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/kernel/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/memory/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/middlewares/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/observability/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
@@ -106,6 +126,18 @@
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/runtime/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/skills/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/testing/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/concepts/tools/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
@@ -149,11 +181,23 @@
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/compact-a-long-conversation/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/define-a-tool/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/elicit-a-value-from-a-human/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/ground-with-memory/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
@@ -162,6 +206,10 @@
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/mcp-tools/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/multi-agent-coordination/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
     <url>
@@ -186,6 +234,14 @@
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/stream-typed-output/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/test-an-agentkit-app/</loc>
+         <lastmod>2026-08-23</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/recipes/workflow-graph/</loc>
          <lastmod>2026-08-23</lastmod>
     </url>
 </urlset>
