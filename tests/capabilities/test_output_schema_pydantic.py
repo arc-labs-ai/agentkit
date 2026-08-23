@@ -15,6 +15,7 @@ dep)."""
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -255,3 +256,175 @@ def test_unaliased_model_round_trips_unchanged():
         "confidence": 0.5,
     }
     assert adapter.parse(json.dumps(adapter.serialize(value))) == value
+
+
+# ── serialize speaks the language parse reads, for EVERY alias shape ───────
+#
+# Pydantic has two aliases, and `model_dump(by_alias=True)` picks the
+# SERIALIZATION one — while `json_schema()` and `parse()` both speak the
+# VALIDATION one. When they differ, the documented round trip
+# `parse(dumps(serialize(v))) == v` breaks, and durable rehydrate with it:
+#
+#     Field(alias="userName")                    schema userName   dump userName   OK
+#     Field(serialization_alias="userName")      schema user_name  dump userName   FAILS
+#     Field(validation_alias="uname",
+#           serialization_alias="userName")      schema uname      dump userName   FAILS
+#
+# This was previously written off as "a modelling choice" whose fix was
+# `populate_by_name=True`. That is true of a single dump mode; the adapter knows
+# both names and can just use the right one.
+
+
+def _round_trips(model_cls: type, instance: Any) -> Any:
+    adapter = PydanticAdapter(model_cls)
+    return adapter.parse(json.dumps(adapter.serialize(instance)))
+
+
+def test_a_serialization_only_alias_round_trips() -> None:
+    """THE regression. `serialize` used to emit `userName` while the schema and
+    `parse` both said `user_name`."""
+
+    class M(pydantic.BaseModel):
+        user_name: str = pydantic.Field(serialization_alias="userName")
+
+    assert _round_trips(M, M(user_name="bob")).user_name == "bob"
+
+
+def test_differing_validation_and_serialization_aliases_round_trip() -> None:
+    """The worst shape: three different spellings in play at once."""
+
+    class M(pydantic.BaseModel):
+        user_name: str = pydantic.Field(
+            validation_alias="uname", serialization_alias="userName"
+        )
+
+    assert _round_trips(M, M(uname="bob")).user_name == "bob"
+
+
+def test_a_plain_alias_still_round_trips() -> None:
+    """POSITIVE CONTROL — the shape that already worked must not regress."""
+
+    class M(pydantic.BaseModel):
+        user_name: str = pydantic.Field(alias="userName")
+
+    assert _round_trips(M, M(userName="bob")).user_name == "bob"
+
+
+def test_an_unaliased_model_is_untouched() -> None:
+    """POSITIVE CONTROL — the overwhelmingly common case."""
+
+    class M(pydantic.BaseModel):
+        user_name: str
+        count: int = 3
+
+    dumped = PydanticAdapter(M).serialize(M(user_name="bob"))
+    assert dumped == {"user_name": "bob", "count": 3}
+    assert _round_trips(M, M(user_name="bob")).user_name == "bob"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        pydantic.Field(alias="userName"),
+        pydantic.Field(serialization_alias="userName"),
+        pydantic.Field(validation_alias="uname", serialization_alias="userName"),
+    ],
+    ids=["alias", "serialization_alias", "differing"],
+)
+def test_serialize_emits_exactly_the_keys_the_schema_advertises(field: Any) -> None:
+    """The invariant underneath all of the above, stated directly: whatever the
+    model is SHOWN is what a dumped value must be KEYED BY. Asserting the two
+    agree catches a future change to either side, where the round-trip tests
+    only catch a change that breaks both consistently."""
+
+    class M(pydantic.BaseModel):
+        user_name: str = field
+
+    adapter = PydanticAdapter(M)
+    schema_keys = set(adapter.json_schema()["properties"])
+    dumped_keys = set(adapter.serialize(M.model_construct(user_name="bob")))
+
+    assert dumped_keys == schema_keys
+
+
+def test_extra_keys_are_not_dropped() -> None:
+    """A model with `extra="allow"` keeps values the map has never heard of.
+    Remapping must pass them through, not silently discard them."""
+
+    class M(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(extra="allow")
+        user_name: str = pydantic.Field(alias="userName")
+
+    dumped = PydanticAdapter(M).serialize(M(userName="bob", spare=7))
+    assert dumped["userName"] == "bob"
+    assert dumped["spare"] == 7
+
+
+def test_an_alias_choice_falls_back_to_the_field_name() -> None:
+    """`AliasChoices` states several acceptable spellings, so there is no single
+    "the" validation key. Guessing one branch would invent a contract the model
+    never stated; the field name is what `populate_by_name` models accept."""
+
+    class M(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(populate_by_name=True)
+        user_name: str = pydantic.Field(
+            validation_alias=pydantic.AliasChoices("uname", "userName")
+        )
+
+    assert PydanticAdapter(M).serialize(M(uname="bob")) == {"user_name": "bob"}
+    assert _round_trips(M, M(uname="bob")).user_name == "bob"
+
+
+def test_a_nested_model_with_its_own_differing_aliases_round_trips() -> None:
+    """The regression my first attempt at this fix introduced, and which an
+    existing nesting test caught: `model_dump()` emits FIELD names for nested
+    models too, so remapping only the top level left the inner object keyed
+    wrongly. The walk now follows the value tree, because only the value knows
+    which model class produced each nested dict."""
+
+    class Inner(pydantic.BaseModel):
+        user_name: str = pydantic.Field(
+            validation_alias="uname", serialization_alias="userName"
+        )
+
+    class Outer(pydantic.BaseModel):
+        inner: Inner
+        count: int = pydantic.Field(serialization_alias="theCount")
+
+    adapter = PydanticAdapter(Outer)
+    value = Outer(inner=Inner(uname="bob"), count=2)
+
+    dumped = adapter.serialize(value)
+    assert dumped == {"inner": {"uname": "bob"}, "count": 2}
+    assert adapter.parse(json.dumps(dumped)) == value
+
+
+def test_a_list_of_nested_models_round_trips() -> None:
+    """Same walk, through a sequence — a shape `model_dump` flattens and a
+    top-level-only remap would miss entirely."""
+
+    class Item(pydantic.BaseModel):
+        item_id: str = pydantic.Field(serialization_alias="itemId")
+
+    class Bag(pydantic.BaseModel):
+        items: list[Item]
+
+    adapter = PydanticAdapter(Bag)
+    value = Bag(items=[Item(item_id="a"), Item(item_id="b")])
+
+    dumped = adapter.serialize(value)
+    assert dumped == {"items": [{"item_id": "a"}, {"item_id": "b"}]}
+    assert adapter.parse(json.dumps(dumped)) == value
+
+
+def test_an_opaque_dict_field_is_not_rewritten() -> None:
+    """A plain `dict` a model happens to hold is data, not a model. Remapping
+    keys we do not own would corrupt it — so the walk passes it through."""
+
+    class M(pydantic.BaseModel):
+        payload: dict[str, Any]
+        user_name: str = pydantic.Field(serialization_alias="userName")
+
+    dumped = PydanticAdapter(M).serialize(M(payload={"user_name": 1, "odd": 2}, user_name="b"))
+    assert dumped["payload"] == {"user_name": 1, "odd": 2}
+    assert dumped["user_name"] == "b"

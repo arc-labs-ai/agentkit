@@ -131,6 +131,7 @@ TOK_TESTS = (
     "tests/context/test_context_tokens.py",
     "tests/capabilities/test_compaction_strategies.py",
 )
+MCPHTTP_TESTS = ("tests/integrations/mcp/test_http_transport.py",)
 SCHEMA2_TESTS = (
     "tests/capabilities/test_output_schema_dataclass.py",
     "tests/capabilities/test_output_schema_attrs.py",
@@ -184,6 +185,22 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="mcphttp",
+        why="the client falls back to the deprecated transport even where the new one exists",
+        path="agentkit/integrations/mcp/client.py",
+        before="    _OWNS_HTTP_CLIENT = True",
+        after="    raise ImportError('forced fallback')",
+        tests=MCPHTTP_TESTS,
+    ),
+    Mutant(
+        tag="mcphttp",
+        why="headers are dropped when they move onto the client we now own",
+        path="agentkit/integrations/mcp/client.py",
+        before="                            headers=self.server.headers or {},",
+        after="                            headers={},",
+        tests=MCPHTTP_TESTS,
+    ),
     # ── the deferred design items ───────────────────────────────────────────
     Mutant(
         tag="deferred",
@@ -370,10 +387,10 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="schema",
-        why="pydantic serialize emits field names while parse expects aliases",
+        why="serialize emits the SERIALIZATION alias, which parse cannot read",
         path="agentkit/capabilities/output_schema/pydantic_adapter.py",
-        before="model_dump(by_alias=True)",
-        after="model_dump()",
+        before="        return cast(dict[str, Any], _to_validation_keys(value, dumped))",
+        after="        return dumped",
         tests=SCHEMA2_TESTS,
     ),
     # ── middlewares: bill it, key it, and report the failure ────────────────
@@ -470,8 +487,15 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="breaker",
         why="the neutral release grants health credit, treating a 401 as a recovery",
         path="agentkit/kernel/resilience.py",
-        before='                return  # nothing in flight — CLOSED / OPEN are unaffected\n            self.state = "open"',
-        after='                return  # nothing in flight — CLOSED / OPEN are unaffected\n            self.state = "open"\n            self._fails = 0',
+        before=(
+            '                return  # nothing in flight'
+            ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
+        ),
+        after=(
+            '                return  # nothing in flight'
+            ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
+            "\n            self._fails = 0"
+        ),
         tests=BREAKER_TESTS,
     ),
     Mutant(
@@ -486,7 +510,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="conc",
         why="an abort leaves its siblings running detached, still spending",
         path="agentkit/kernel/concurrency.py",
-        before="        for t in tasks:\n            t.cancel()\n        await asyncio.gather(*tasks, return_exceptions=True)",
+        before=(
+            "        for t in tasks:\n            t.cancel()\n"
+            "        await asyncio.gather(*tasks, return_exceptions=True)"
+        ),
         after="        pass",
         tests=CONC_TESTS,
     ),
@@ -520,7 +547,10 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a node can downgrade a side-effecting tool, opting it out of idempotent()",
         path="agentkit/agents/workflow.py",
         before='        side_effecting = side_effecting or bool(getattr(tool, "side_effecting", False))',
-        after='        side_effecting = side_effecting if side_effecting else bool(getattr(tool, "side_effecting", False)) and side_effecting is not False',
+        after=(
+            "        side_effecting = side_effecting if side_effecting else "
+            'bool(getattr(tool, "side_effecting", False)) and side_effecting is not False'
+        ),
         tests=WF_TESTS,
     ),
     Mutant(
@@ -557,7 +587,10 @@ MUTANTS: tuple[Mutant, ...] = (
         # SOURCE instead: bind an exported name to a module, exactly as the
         # ``security.py`` submodule import did, and check the ratchet fails.
         before="from agentkit.middlewares.tracing import tracing",
-        after="from agentkit.middlewares import egress_audit as security\nfrom agentkit.middlewares.tracing import tracing",
+        after=(
+            "from agentkit.middlewares import egress_audit as security\n"
+            "from agentkit.middlewares.tracing import tracing"
+        ),
         tests=SURFACE_TESTS,
     ),
     Mutant(
@@ -581,7 +614,11 @@ MUTANTS: tuple[Mutant, ...] = (
         why="str.format is used, so a JSON Schema in a template raises or is eaten",
         path="agentkit/prompts/prompt.py",
         before="        text = self.template\n        for name in self.inputs:",
-        after="        return self.template.format(**values).strip()\n        text = self.template\n        for name in self.inputs:",
+        after=(
+            "        return self.template.format(**values).strip()\n"
+            "        text = self.template\n"
+            "        for name in self.inputs:"
+        ),
         tests=PROMPT_TESTS,
     ),
     Mutant(
@@ -823,7 +860,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clisession",
         why="closing the session kills the CLI instead of ending the conversation",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="                if proc.stdin is not None and not proc.stdin.is_closing():\n                    proc.stdin.close()",
+        before=(
+            "                if proc.stdin is not None and not proc.stdin.is_closing():\n"
+            "                    proc.stdin.close()"
+        ),
         after="                pass",
         tests=CLI_SESSION_TESTS,
     ),
@@ -840,8 +880,14 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clistream",
         why="token deltas also accumulate, doubling AgentResult.output",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta()\n        elif dtype == \"thinking_delta\":",
-        after="                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta(text=chunk)\n        elif dtype == \"thinking_delta\":",
+        before=(
+            "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta()\n"
+            "        elif dtype == \"thinking_delta\":"
+        ),
+        after=(
+            "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta(text=chunk)\n"
+            "        elif dtype == \"thinking_delta\":"
+        ),
         tests=CLI_STREAM_TESTS,
     ),
     # NOTE: "non-text deltas are ignored" has no mutant. Each branch reads its
@@ -928,7 +974,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="cliops",
         why="the bare-mode warning fires even when settings may carry an apiKeyHelper",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="        if self.settings is not None:\n            return\n        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):",
+        before=(
+            "        if self.settings is not None:\n"
+            "            return\n"
+            "        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):"
+        ),
         after="        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):",
         tests=CLI_FLAG_TESTS,
     ),
@@ -985,7 +1035,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clibudget",
         why="a ceiling crossed by this very run raises, losing a result already paid for",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="            except Exception as exc:  # noqa: BLE001 — see docstring\n                note = f\"{type(exc).__name__}: {exc}\"",
+        before=(
+            "            except Exception as exc:  # noqa: BLE001 — see docstring\n"
+            "                note = f\"{type(exc).__name__}: {exc}\""
+        ),
         after="            except Exception:\n                raise",
         tests=CLI_BUDGET_TESTS,
     ),
@@ -993,7 +1046,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clibudget",
         why="meter_spend=False still charges the shared envelope",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="        if not self.meter_spend or ctx is None:\n            return None\n        call = _CliCall(ctx=ctx)",
+        before=(
+            "        if not self.meter_spend or ctx is None:\n"
+            "            return None\n"
+            "        call = _CliCall(ctx=ctx)"
+        ),
         after="        if ctx is None:\n            return None\n        call = _CliCall(ctx=ctx)",
         tests=CLI_BUDGET_TESTS,
     ),
@@ -1002,8 +1059,16 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clischema",
         why="agent.output is ignored again, so the CLI never validates its answer",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="        adapter = getattr(agent, \"_output_adapter\", None)\n        if adapter is None:\n            return None",
-        after="        return None\n        adapter = getattr(agent, \"_output_adapter\", None)\n        if adapter is None:",
+        before=(
+            "        adapter = getattr(agent, \"_output_adapter\", None)\n"
+            "        if adapter is None:\n"
+            "            return None"
+        ),
+        after=(
+            "        return None\n"
+            "        adapter = getattr(agent, \"_output_adapter\", None)\n"
+            "        if adapter is None:"
+        ),
         tests=CLI_SCHEMA_TESTS,
     ),
     Mutant(
@@ -1018,8 +1083,16 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clischema",
         why="a success with no structured_output reads as a clean run",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="            else:\n                final_partial = True\n                if final_stop_reason in (None, \"success\"):",
-        after="            elif False:\n                final_partial = True\n                if final_stop_reason in (None, \"success\"):",
+        before=(
+            "            else:\n"
+            "                final_partial = True\n"
+            "                if final_stop_reason in (None, \"success\"):"
+        ),
+        after=(
+            "            elif False:\n"
+            "                final_partial = True\n"
+            "                if final_stop_reason in (None, \"success\"):"
+        ),
         tests=CLI_SCHEMA_TESTS,
     ),
     Mutant(
@@ -1067,7 +1140,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="cliflags",
         why="a non-UUID session_id burns a subprocess spawn to learn it is invalid",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="        if self.session_id is not None:\n            try:\n                uuid.UUID(str(self.session_id))",
+        before=(
+            "        if self.session_id is not None:\n"
+            "            try:\n"
+            "                uuid.UUID(str(self.session_id))"
+        ),
         after="        if False:\n            try:\n                uuid.UUID(str(self.session_id))",
         tests=CLI_FLAG_TESTS,
     ),
@@ -1189,7 +1266,12 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="toolargs",
         why="a heterogeneous enum gets a guessed type instead of none",
         path="agentkit/tools/schema.py",
-        before="    kinds = {_JSON_PRIMITIVES.get(type(v)) for v in vals}\n    if len(kinds) == 1 and (t := kinds.pop()) is not None:\n        frag[\"type\"] = t\n    return frag",
+        before=(
+            "    kinds = {_JSON_PRIMITIVES.get(type(v)) for v in vals}\n"
+            "    if len(kinds) == 1 and (t := kinds.pop()) is not None:\n"
+            "        frag[\"type\"] = t\n"
+            "    return frag"
+        ),
         after="    frag[\"type\"] = \"string\"\n    return frag",
         tests=TOOLARG_TESTS,
     ),
@@ -1206,7 +1288,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="channel",
         why="a full tap drops the NEWEST, going blind exactly when the run gets busy",
         path="agentkit/agents/control/channel.py",
-        before="        with contextlib.suppress(asyncio.QueueEmpty):\n            self.outbox.get_nowait()  # evict the oldest",
+        before=(
+            "        with contextlib.suppress(asyncio.QueueEmpty):\n"
+            "            self.outbox.get_nowait()  # evict the oldest"
+        ),
         after="        if True:\n            return",
         tests=CHANNEL_TESTS,
     ),
@@ -1239,15 +1324,26 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="termination",
         why="the selector policy keeps its own uncloned resolution",
         path="agentkit/agents/policies/selector_policy.py",
-        before="        termination: TerminationCondition = _run_local_termination(\n            cognition, MaxTurns(self.max_turns)\n        )",
-        after="        termination: TerminationCondition = getattr(cognition, \"termination\", None) or MaxTurns(self.max_turns)",
+        before=(
+            "        termination: TerminationCondition = _run_local_termination(\n"
+            "            cognition, MaxTurns(self.max_turns)\n"
+            "        )"
+        ),
+        after=(
+            "        termination: TerminationCondition = getattr(cognition, \"termination\", None) or MaxTurns(self.max_turns)"
+        ),
         tests=TERM_TESTS,
     ),
     Mutant(
         tag="termination",
         why="cloning the external switch, so set() cannot reach a running loop",
         path="agentkit/agents/control/termination.py",
-        before="    def __deepcopy__(self, memo: dict[int, Any]) -> ExternalTermination:\n        memo[id(self)] = self\n        return self\n",
+        before=(
+            "    def __deepcopy__(self, memo: dict[int, Any]) -> ExternalTermination:\n"
+            "        memo[id(self)] = self\n"
+            "        return self\n"
+            ""
+        ),
         after="",
         tests=TERM_TESTS,
     ),
@@ -1434,7 +1530,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="plan",
         why="an unknown child is only discovered mid-dispatch, after earlier groups spent",
         path="agentkit/agents/policies/plan.py",
-        before="        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n\n        total = len(steps)",
+        before=(
+            "        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n"
+            "\n"
+            "        total = len(steps)"
+        ),
         after="        dropped: list[tuple[str | None, Failure]] = []\n\n        total = len(steps)",
         tests=PLAN_TESTS,
     ),
@@ -1458,7 +1558,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="plan",
         why="resume trusts the pre-suspend roster, so a shrunken one KeyErrors mid-flight",
         path="agentkit/agents/policies/plan.py",
-        before="        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n        errors.extend(dropped)",
+        before=(
+            "        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n"
+            "        errors.extend(dropped)"
+        ),
         after="        dropped = []",
         tests=PLAN_TESTS,
     ),
@@ -1705,7 +1808,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="concurrency",
         why="reservations leak when a fan-out fails (the finally settlement)",
         path="agentkit/kernel/concurrency.py",
-        before="        if parent_actor_budget is not None:\n            for idx, slice_ in enumerate(reserved_slices):",
+        before=(
+            "        if parent_actor_budget is not None:\n"
+            "            for idx, slice_ in enumerate(reserved_slices):"
+        ),
         after="        if False:\n            for idx, slice_ in enumerate(reserved_slices):",
         tests=("tests/kernel/test_run_agents_actor_slicing.py",),
     ),

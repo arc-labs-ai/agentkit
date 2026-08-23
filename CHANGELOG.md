@@ -11,6 +11,40 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — the MCP HTTP transport migration, and Pydantic serialization aliases
+
+The last two known items.
+
+- **The `mcp` streamable-HTTP transport was renamed AND resignatured**:
+  `streamablehttp_client(url, headers=..., timeout=...)` became
+  `streamable_http_client(url, http_client=...)`, moving ownership of the
+  `httpx.AsyncClient` to the caller. The old spelling still works but emits a
+  `DeprecationWarning`, which under warnings-as-errors is raised from inside
+  the transport and reads as a connection failure.
+
+  This migration was attempted once during the audit and **reverted**, because
+  the only test that would have covered it had been dropped for unrelated
+  reasons. It now ships with that coverage — including an end-to-end round trip
+  against a real MCP server asserting a custom header still reaches the wire,
+  which is the exact thing the resignature could have silently dropped.
+
+- **`PydanticAdapter.serialize` used the wrong one of Pydantic's two aliases.**
+  `model_dump(by_alias=True)` emits the SERIALIZATION alias while
+  `json_schema()` and `parse()` both speak the VALIDATION alias, so any model
+  where they differ could not round-trip — breaking the documented
+  `parse(dumps(serialize(v))) == v` that durable rehydrate depends on:
+
+  | Field spec | schema | dump | round-trips |
+  |---|---|---|---|
+  | `alias=` | `userName` | `userName` | yes |
+  | `serialization_alias=` only | `user_name` | `userName` | **no** |
+  | differing aliases | `uname` | `userName` | **no** |
+
+  Previously written off as "a modelling choice" fixed by
+  `populate_by_name=True`. That is true of a single dump mode; the adapter
+  knows both names and now emits the one the schema advertises, walking nested
+  models and lists so an inner model with its own aliases is fixed too.
+
 ### Fixed — the deferred design items
 
 The four "not fixed, deliberate" entries, revisited. Two were real bugs behind a

@@ -30,9 +30,38 @@ try:
     from mcp import ClientSession
     from mcp import types as mcp_types
     from mcp.client.stdio import StdioServerParameters, stdio_client
-    from mcp.client.streamable_http import streamablehttp_client
 except ImportError as exc:  # pragma: no cover — fires only when extra is missing
     raise ImportError(_MCP_INSTALL_HINT) from exc
+
+# The streamable-HTTP transport was renamed AND RESIGNATURED upstream:
+# ``streamablehttp_client(url, headers=..., timeout=...)`` became
+# ``streamable_http_client(url, http_client=...)``, moving ownership of the
+# ``httpx.AsyncClient`` — and everything configured on it — to the caller.
+#
+# The old spelling still works but emits a ``DeprecationWarning``, which any
+# caller running with ``-W error`` (this project's own suite included) turns
+# into a hard failure raised from inside the transport, where it reads as a
+# connection problem rather than a deprecation. Prefer the new one; keep the
+# old as the floor of the supported ``mcp>=1.28`` range.
+#
+# ``_OWNS_HTTP_CLIENT`` records which we got, so the single call site builds the
+# right arguments instead of a second import guard living down there.
+# Typed ``Any`` deliberately: the two spellings have INCOMPATIBLE signatures
+# (that is the whole point of the migration), so mypy cannot unify them under
+# one name and would reject the fallback branch's keyword arguments against the
+# new signature. The branch below is guarded by ``_OWNS_HTTP_CLIENT`` at
+# runtime, which is where the distinction actually lives.
+_http_transport: Any
+try:
+    from mcp.client.streamable_http import (  # type: ignore[attr-defined]
+        streamable_http_client as _http_transport,
+    )
+
+    _OWNS_HTTP_CLIENT = True
+except ImportError:  # pragma: no cover — older ``mcp`` within the pinned range
+    from mcp.client.streamable_http import streamablehttp_client as _http_transport
+
+    _OWNS_HTTP_CLIENT = False
 
 if TYPE_CHECKING:
     from agentkit.kernel.protocols import Ctx
@@ -129,13 +158,28 @@ class MCPClient:
                 transport = await self._exit_stack.enter_async_context(stdio_client(params))
                 read_stream, write_stream = transport
             elif isinstance(self.server, StreamableHttpServer):
-                transport = await self._exit_stack.enter_async_context(
-                    streamablehttp_client(
+                if _OWNS_HTTP_CLIENT:
+                    import httpx
+
+                    # The transport no longer takes headers or a timeout, so
+                    # they move onto a client we own. It is entered on the exit
+                    # stack ABOVE the transport, so unwinding tears the
+                    # transport down FIRST and it never writes into a closed
+                    # client.
+                    http_client = await self._exit_stack.enter_async_context(
+                        httpx.AsyncClient(
+                            headers=self.server.headers or {},
+                            timeout=self.server.timeout_s,
+                        )
+                    )
+                    opened = _http_transport(self.server.url, http_client=http_client)
+                else:  # pragma: no cover — older ``mcp`` within the pinned range
+                    opened = _http_transport(
                         url=self.server.url,
                         headers=self.server.headers,
                         timeout=self.server.timeout_s,
                     )
-                )
+                transport = await self._exit_stack.enter_async_context(opened)
                 # streamablehttp yields a 3-tuple (read, write, get_session_id);
                 # only the first two feed ClientSession.
                 read_stream, write_stream, *_ = transport

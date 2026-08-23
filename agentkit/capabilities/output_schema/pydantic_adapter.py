@@ -68,6 +68,9 @@ class PydanticAdapter(Generic[T]):
         if not (isinstance(model, type) and issubclass(model, BaseModel)):
             raise TypeError(f"PydanticAdapter expects a pydantic.BaseModel subclass, got {model!r}")
         self._model = model
+        # Built lazily and cached: reading ``model_fields`` per serialize call
+        # would put reflection on the durable-write path.
+        self._val_keys: dict[str, str] | None = None
         self.python_type: type[T] = model
         """The BaseModel subclass itself — used for ``AgentResult[T]`` stamping and
         ``isinstance(result.output, Model)`` checks at the boundary."""
@@ -188,12 +191,34 @@ class PydanticAdapter(Generic[T]):
         aliases, and ``populate_by_name`` models (which accept both spellings)
         round-trip either way.
 
-        Known edge, deliberately not papered over: a model that sets ONLY
-        ``serialization_alias`` (a different string from its validation alias)
-        cannot round-trip through any single dump mode — that is a modelling
-        choice, and ``populate_by_name=True`` is its fix."""
+        ``by_alias=True`` is NOT enough on its own, because Pydantic has two
+        aliases and that flag picks the wrong one when they differ. It emits the
+        SERIALIZATION alias, while the schema and ``parse`` both speak the
+        VALIDATION alias. Measured across the three shapes:
+
+            Field(alias="userName")                       schema userName   dump userName   OK
+            Field(serialization_alias="userName")         schema user_name  dump userName   FAILS
+            Field(validation_alias="uname",
+                  serialization_alias="userName")         schema uname      dump userName   FAILS
+
+        So the keys are remapped to the validation-facing name — exactly what
+        ``json_schema()`` advertises and ``parse`` accepts — rather than trusting
+        a dump mode to pick it. The previous docstring called the mismatch "a
+        modelling choice" whose fix was ``populate_by_name=True``; that is true
+        of a single dump mode and not of the adapter, which knows both names and
+        can simply use the right one.
+
+        Keys the map does not know (a model with ``extra="allow"``) pass through
+        untouched — dropping them would lose data the model deliberately kept."""
+        # ``by_alias=True`` is the right BASE: it handles nesting and Pydantic's
+        # own type conversion (datetime → str, and so on). It is only wrong
+        # about WHICH alias, and only for fields whose two aliases differ — so
+        # the walk below fixes exactly those keys and leaves everything else as
+        # Pydantic produced it.
         dumped: dict[str, Any] = value.model_dump(by_alias=True)  # type: ignore[attr-defined]
-        return dumped
+        return cast(dict[str, Any], _to_validation_keys(value, dumped))
+
+
 
     def validate(self, value: Any) -> T:
         """Validate an arbitrary Python value against the model.
@@ -226,3 +251,59 @@ class PydanticAdapter(Generic[T]):
                 raw=raw_for_error,
                 errors=[f"top-level: {type(value).__name__} not coercible into {self.name}"],
             ) from e
+
+
+def _validation_key(field_info: Any, name: str) -> str:
+    """The key ``parse`` and the JSON Schema use for this field.
+
+    Mirrors Pydantic's own validation precedence: a plain-string
+    ``validation_alias`` wins, then ``alias``, then the field name. The richer
+    ``AliasChoices`` / ``AliasPath`` forms fall through to the field name, which
+    ``populate_by_name`` models accept — guessing one branch of an alias CHOICE
+    would invent a contract the model never stated.
+    """
+    alias = getattr(field_info, "validation_alias", None)
+    if not isinstance(alias, str):
+        alias = getattr(field_info, "alias", None)
+    return alias if isinstance(alias, str) else name
+
+
+def _serialization_key(field_info: Any, name: str) -> str:
+    """The key ``model_dump(by_alias=True)`` produced for this field."""
+    alias = getattr(field_info, "serialization_alias", None)
+    if not isinstance(alias, str):
+        alias = getattr(field_info, "alias", None)
+    return alias if isinstance(alias, str) else name
+
+
+def _to_validation_keys(value: Any, dumped: Any) -> Any:
+    """Rewrite ``dumped``'s keys from serialization aliases to validation ones.
+
+    Walks the VALUE tree alongside the dumped tree, because only the value knows
+    which model class produced each dict — a nested model with its own differing
+    aliases has to be fixed too. Measured when this only handled the top level:
+    ``Outer(inner=Aliased(...))`` dumped its inner model under FIELD names while
+    the schema advertised aliases, so the round trip failed one level down. An
+    existing nesting test caught it.
+
+    Anything that is not a model (a plain dict a model happens to hold, a
+    scalar) is returned untouched — remapping keys we do not own would corrupt
+    data the model deliberately kept opaque.
+    """
+    from pydantic import BaseModel
+
+    if isinstance(value, BaseModel) and isinstance(dumped, dict):
+        fields = type(value).model_fields
+        rename = {}
+        children = {}
+        for name, info in fields.items():
+            rename[_serialization_key(info, name)] = _validation_key(info, name)
+            children[_serialization_key(info, name)] = getattr(value, name, None)
+        return {
+            rename.get(k, k): _to_validation_keys(children.get(k), v) for k, v in dumped.items()
+        }
+    if isinstance(value, (list, tuple)) and isinstance(dumped, list):
+        return [_to_validation_keys(v, d) for v, d in zip(value, dumped, strict=False)]
+    if isinstance(value, dict) and isinstance(dumped, dict):
+        return {k: _to_validation_keys(value.get(k), d) for k, d in dumped.items()}
+    return dumped
