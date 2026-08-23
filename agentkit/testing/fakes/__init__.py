@@ -15,7 +15,7 @@ from agentkit.testing.fakes.compactor import FakeCompactor
 from agentkit.testing.fakes.ctx import FakeCtx
 from agentkit.testing.fakes.fetch import FakeFetch
 from agentkit.testing.fakes.grounder import FakeGrounder
-from agentkit.testing.fakes.llm import FakeLLM, Turn
+from agentkit.testing.fakes.llm import FakeLLM, ScriptExhausted, Turn
 from agentkit.testing.fakes.memory import FakeMemory
 from agentkit.testing.fakes.search import FakeSearch
 from agentkit.testing.fakes.tool import FakeTool
@@ -33,5 +33,6 @@ __all__ = [
     "FakeTool",
     "RecordingSpan",
     "RecordingTracer",
+    "ScriptExhausted",
     "Turn",
 ]

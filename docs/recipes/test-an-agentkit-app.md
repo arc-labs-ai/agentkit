@@ -135,8 +135,11 @@ It streams in 8-character chunks, so partial-output and
 delta-assembly paths are genuinely exercised rather than
 short-circuited — `chat()` is `assemble_deltas(...)` over its own
 `stream()`. `llm.calls` counts invocations. A script that runs out
-repeats its last `Turn`, so a loop that goes one iteration further than
-you expected does not raise `IndexError` from inside the framework.
+raises `ScriptExhausted`, naming how many turns it had and which turn
+was asked for: a loop that goes one iteration further than you expected
+is the finding, and it used to be swallowed by replaying the last
+`Turn`. Pass `FakeLLM.script([...], repeat_last=True)` when the
+unbounded loop is deliberate and a ceiling is what ends the run.
 
 **`make_test_ctx(...)`** builds a real `RunContext`, not a stub. Every
 knob is a keyword:

@@ -235,7 +235,11 @@ def test_tool_raising_regular_exception_is_reflected_to_model():
 
 
 def test_max_iterations_returns_partial():
-    llm = FakeLLM.script([Turn(tool_calls=(ToolCall("c1", "fetch", {}),))])  # never stops
+    # `repeat_last=True` is the "never stops" script: one tool-call turn replayed
+    # forever so the ceiling, not the script, is what ends the run. Without it a
+    # 1-turn script now raises ScriptExhausted on call 2 — which is the point of
+    # the flag, since a script running dry is otherwise the bug being hidden.
+    llm = FakeLLM.script([Turn(tool_calls=(ToolCall("c1", "fetch", {}),))], repeat_last=True)
     loop = Agent(name="a", model="m", cognition=ReActCognition(tools=_registry(), max_iterations=3))
     res = _run(
         loop.run(
@@ -256,7 +260,10 @@ def test_max_iterations_returns_partial():
 
 def test_max_iterations_partial_returns_last_assistant_text_not_tool_result():
     # ceiling hit right after a tool round — output must be the last assistant text, not the tool result
-    llm = FakeLLM.script([Turn(content="working on it", tool_calls=(ToolCall("c1", "fetch", {}),))])
+    llm = FakeLLM.script(
+        [Turn(content="working on it", tool_calls=(ToolCall("c1", "fetch", {}),))],
+        repeat_last=True,  # deliberate never-terminating script; max_iterations ends it
+    )
     loop = Agent(name="a", model="m", cognition=ReActCognition(tools=_registry(), max_iterations=2))
     res = _run(
         loop.run(
@@ -353,7 +360,10 @@ def test_spans_nest_invoke_agent_chat_tool():
 def test_budget_exhaustion_mid_loop():
     from agentkit.kernel.types import Usage
 
-    llm = FakeLLM.script([Turn(tool_calls=(ToolCall("c1", "fetch", {}),), usage=Usage(0, 0, 0.01))])
+    llm = FakeLLM.script(
+        [Turn(tool_calls=(ToolCall("c1", "fetch", {}),), usage=Usage(0, 0, 0.01))],
+        repeat_last=True,  # loops until the budget trips, not until the script ends
+    )
     loop = Agent(name="a", model="m", cognition=ReActCognition(tools=_registry()))
     with pytest.raises(MeterExceeded):
         _run(

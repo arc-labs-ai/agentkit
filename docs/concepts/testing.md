@@ -14,9 +14,11 @@ staging.
 The trap is that a test which *looks* like it covers the wiring often
 covers nothing at all. A caching test with no cache, a budget assertion
 with no meter, a scripted tool loop that ran out of script and quietly
-repeated its last turn — all three pass. This page shows the doubles and
-then the traps, because the traps are the part that has actually cost
-this repo time.
+repeated its last turn — all three used to pass. The third one is now an
+error rather than a trap (see *A script that runs out raises*), because
+it was the harness hiding the very thing it was built to catch. This page
+shows the doubles and then the traps, because the traps are the part that
+has actually cost this repo time.
 
 ## The smallest thing that works
 
@@ -208,6 +210,11 @@ A `Turn` is `content`, `tool_calls` and an optional `usage`. A turn
 carrying tool calls sets `finish_reason="tool_calls"`; a turn with only
 content sets `"stop"`. That is what drives a `ReActCognition` through a
 real loop iteration.
+
+A script is a finite claim about how many turns the run takes. Asking for
+one more raises `ScriptExhausted`; pass `repeat_last=True` when a test
+deliberately drives an unbounded loop. See *A script that runs out
+raises* below.
 
 `FakeLLM.calls` counts invocations, and every double in this package
 records something — that is the assertion surface.
@@ -470,34 +477,62 @@ recording.
     A test asserting "the budget stopped the run" without `meter()` in
     the chain is asserting that nothing happened.
 
-!!! warning "A script that runs out repeats its last turn forever"
+!!! warning "A script that runs out raises"
 
-    `FakeLLM.script` clamps its index, so once the turns are exhausted
-    every subsequent call replays the final turn:
+    `FakeLLM.script` used to clamp its index, so once the turns were
+    exhausted every subsequent call replayed the final turn — a 2-turn
+    script asked for 4 turns answered `['one', 'two', 'two', 'two']`. A
+    loop that should have terminated therefore did not fail; it settled
+    into a stable, plausible, wrong answer and the test went green. The
+    double built to catch non-termination was the thing hiding it.
+
+    It now raises `ScriptExhausted`, naming how many turns the script had
+    and which turn was asked for:
 
     ```python
     import asyncio
 
     from agentkit import Agent
-    from agentkit.testing import FakeLLM, Turn, make_test_ctx
+    from agentkit.testing import FakeLLM, ScriptExhausted, Turn, make_test_ctx
 
 
     async def main() -> None:
         llm = FakeLLM.script([Turn(content="one"), Turn(content="two")])
         ctx = make_test_ctx(llm=llm)
         agent = Agent("a", model="fake-model")
-        print([(await agent.run("go", ctx)).output for _ in range(4)])
-        # ['one', 'two', 'two', 'two']
+        try:
+            for _ in range(3):
+                print((await agent.run("go", ctx)).output)
+        except ScriptExhausted as exc:
+            print(exc)  # ... has 2 turn(s), but the agent asked for turn 3 ...
 
 
     asyncio.run(main())
     ```
 
-    A loop that should have terminated therefore does not fail — it
-    settles into a stable, wrong answer. Assert on `llm.calls` to pin
-    how many turns you expected, and end a tool-loop script with a
-    content-only `Turn` so the last repeated turn is a terminal one
-    rather than another tool request.
+    `ScriptExhausted` is a `BaseException`, not an `Exception`, for the
+    same reason `asyncio.CancelledError` is: the handlers between the
+    fake and your test body — react reflecting bad output back to the
+    model, tool failures becoming tool messages, `resilience` classifying
+    a pre-stream fault as retryable — are all correct for a real provider
+    fault, and all of them would swallow this one.
+
+    When the unbounded loop is the point of the test, say so:
+
+    ```python
+    from agentkit.kernel.types import ToolCall
+    from agentkit.testing import FakeLLM, Turn
+
+    # one tool-call turn, replayed forever; max_iterations ends the run
+    llm = FakeLLM.script(
+        [Turn(tool_calls=(ToolCall("c1", "fetch", {}),))],
+        repeat_last=True,
+    )
+    ```
+
+    Only the script form has anything to exhaust. `FakeLLM("x")` and the
+    dict/callable forms are rules for answering, not finite scripts, so
+    they answer every call and always will.
 
 !!! warning "One `FakeLLM` shared across runs keeps counting"
 

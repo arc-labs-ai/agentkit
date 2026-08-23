@@ -30,6 +30,7 @@ from agentkit.testing.fakes import (
     FakeTool,
     RecordingSpan,
     RecordingTracer,
+    ScriptExhausted,
     Turn,
 )
 from agentkit.testing.make_ctx import make_test_ctx
@@ -46,6 +47,7 @@ __all__ = [
     "FakeTool",
     "RecordingSpan",
     "RecordingTracer",
+    "ScriptExhausted",
     "Turn",
     "make_test_ctx",
 ]
