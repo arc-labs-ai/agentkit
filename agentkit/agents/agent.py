@@ -186,6 +186,14 @@ class Agent:
         # their provider better than the heuristic does.
         if self._output_adapter is not None and self.response_format is None:
             self.response_format = _infer_response_format(self.model, self._output_adapter)
+        # Prompt contract. A `Prompt` declaring `inputs=` renders only once its
+        # values are bound, and NOTHING in the framework passes them — the
+        # RequestBuilder and both CLI cognitions call `render()` with no
+        # arguments. So an unbound prompt is not a maybe-problem: it is a
+        # guaranteed `ValueError` on the first drive, discovered after the run
+        # has started. Refuse at construction for the same reason as the
+        # capability check below — the value is catching it before spend.
+        self.check_prompt()
         # Capability contract. Runs LAST in __post_init__ so the cognition and
         # output adapter are already settled and the derived requirements
         # (``tools`` from a tool-holding cognition) are accurate. Refusing here
@@ -194,6 +202,30 @@ class Agent:
         self.check_capabilities()
 
     # ---- public surfaces -------------------------------------------------------------------
+
+    def check_prompt(self) -> None:
+        """Refuse a ``Prompt`` whose declared ``inputs`` are not all bound.
+
+        Called automatically at the end of ``__post_init__``. Separate and
+        public for the same reason as :meth:`check_capabilities`: ``Agent`` is a
+        mutable dataclass, so assigning ``agent.prompt`` afterwards bypasses
+        ``__post_init__`` — re-assert with ``agent.check_prompt()``.
+
+        A plain ``str`` prompt, a ``None`` prompt, and a ``Prompt`` declaring no
+        ``inputs`` are all unaffected.
+        """
+        p = self.prompt
+        if not isinstance(p, Prompt) or not p.inputs:
+            return
+        missing = sorted(set(p.inputs) - set(p.bound))
+        if missing:
+            raise ValueError(
+                f"agent {self.name!r} was given prompt {p.id!r} v{p.version}, which "
+                f"declares inputs {list(p.inputs)} but has {missing} unbound. Nothing "
+                f"in the framework passes prompt values at call time, so this would "
+                f"raise on the first drive — bind them on the value: "
+                f"prompt={p.id}.bind(" + ", ".join(f"{n}=..." for n in missing) + ")"
+            )
 
     def check_capabilities(self) -> None:
         """Refuse this agent's model if it lacks a capability the agent needs.

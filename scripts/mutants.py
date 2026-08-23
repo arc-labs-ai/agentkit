@@ -150,6 +150,7 @@ WF_TESTS = ("tests/agents/test_workflow.py",)
 CEILING_TESTS = ("tests/agents/test_ceiling_propagation.py",)
 SURFACE_TESTS = ("tests/meta/test_public_surface.py",)
 PROMPT_TESTS = ("tests/test_prompt_render.py",)
+AGENT_PROMPT_TESTS = ("tests/agents/test_agent_prompt_binding.py",)
 APPROVAL_TESTS = ("tests/integrations/mcp/test_approvals.py",)
 CLI_SESSION_TESTS = ("tests/agents/cognition/test_claude_cli_session.py",)
 CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
@@ -188,7 +189,24 @@ MEMOIZE_TESTS = (
     "tests/middlewares/test_memoize_side_effects.py",
     "tests/middlewares/test_memoize_chat_key_tool_fields.py",
 )
+
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="regress",
+        why="an unbound prompt stops being refused at construction and dies mid-run instead",
+        path="agentkit/agents/agent.py",
+        before="        self.check_prompt()",
+        after="        pass",
+        tests=AGENT_PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="check_prompt reports every declared input instead of only the unbound ones",
+        path="agentkit/agents/agent.py",
+        before="        missing = sorted(set(p.inputs) - set(p.bound))",
+        after="        missing = sorted(p.inputs)",
+        tests=AGENT_PROMPT_TESTS,
+    ),
     Mutant(
         tag="regress",
         why="memoize() caches a SIDE-EFFECTING tool again — the second send_email is faked",
@@ -220,6 +238,30 @@ MUTANTS: tuple[Mutant, ...] = (
         before="def _message_identity(m: Any) -> dict[str, Any]:",
         after='def _message_identity(m: Any) -> dict[str, Any]:\n    return {"role": m.role, "content": m.content}',
         tests=MEMOIZE_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="Prompt stops being hashable, breaking every dict/set/lru_cache holding one",
+        path="agentkit/prompts/prompt.py",
+        before="        return hash((self.id, self.version, self.template, self.inputs))",
+        after="        return hash(self.bound)",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="__reduce__ goes away, so deepcopy AND pickle hit the mappingproxy again",
+        path="agentkit/prompts/prompt.py",
+        before="    def __reduce__(self) -> tuple[Any, ...]:",
+        after="    def __reduce_unused__(self) -> tuple[Any, ...]:",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="__reduce__ leaks the proxy itself, so deepcopy/pickle break exactly as before",
+        path="agentkit/prompts/prompt.py",
+        before="            (self.id, self.version, self.template, self.inputs, dict(self.bound)),",
+        after="            (self.id, self.version, self.template, self.inputs, self.bound),",
+        tests=PROMPT_TESTS,
     ),
     Mutant(
         tag="regress",
@@ -674,7 +716,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="prompt",
         why="declared inputs are ignored, so placeholders ship to the model verbatim",
         path="agentkit/prompts/prompt.py",
-        before='            text = text.replace("{" + name + "}", str(values[name]))',
+        before='            text = text.replace("{" + name + "}", str(resolved[name]))',
         after="            pass",
         tests=PROMPT_TESTS,
     ),
@@ -702,8 +744,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="prompt",
         why="values passed to an input-less prompt are silently ignored",
         path="agentkit/prompts/prompt.py",
-        before="            if values:",
-        after="            if False:",
+        before='            self._reject_undeclared(values, verb="passed to render()")',
+        after="            pass",
         tests=PROMPT_TESTS,
     ),
     # ── interrupt: stop the turn, keep the conversation ─────────────────────

@@ -6,7 +6,7 @@ choose to add — those don't belong in the framework's public surface
 unless the framework actually dispatches them.
 
 The skeleton:
-- `Prompt` (data type) — id + version + template + render()
+- `Prompt` (data type) — id + version + template + bind() + render()
 - `builtin` — the framework's own seed prompts (Compactor)
 
 Why no validator/evaluator skeleton: exporting ``Validator`` /
