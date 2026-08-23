@@ -9,7 +9,7 @@ import asyncio
 
 import pytest
 
-from agentkit.adapters.llm._mapping import _duck_to_result
+from agentkit.adapters.llm._mapping import _duck_to_result, result_to_delta
 from agentkit.adapters.llm.callable import CallableLLM
 from agentkit.kernel.types import LLMResult, Message, Usage
 
@@ -151,3 +151,86 @@ def test_an_injected_to_result_still_overrides_the_default_coercion() -> None:
     duck-typing can't read. A fix that hard-wired the default coercion would break it."""
     llm = CallableLLM(lambda **_kw: _DICT_RESPONSE, to_result=lambda raw: LLMResult(content="mine"))
     assert _run(llm.complete(system="s", user="u", model="m")).content == "mine"
+
+
+# ── one seam, one answer ────────────────────────────────────────────────────
+#
+# `result_to_delta` carried six of `LLMResult`'s seven fields, dropping
+# `parsed` — the identical drop that `kernel.middleware._result_to_stream` had.
+# It is easy to assume it cannot matter, because providers build their result
+# from wire data where `parsed` has no source. But `CallableLLM` passes a
+# user-supplied callable's return value through `coerce` verbatim, so a
+# callable returning `LLMResult(parsed=X)` reaches the mapping with a real
+# object. Measured before the fix:
+#
+#     deltas: 1  parsed on terminal delta: None
+#     chat() parsed: <Plan>
+#
+# The same LLM, the same call, two different answers depending on whether the
+# caller used `chat()` or `stream()`.
+
+
+class _Plan:
+    """Stand-in for a typed output object. Deliberately not comparable by
+    value, so the tests below assert on IDENTITY — a fresh equal object would
+    let a re-parsing implementation pass without carrying anything through."""
+
+    def __repr__(self) -> str:
+        return "<Plan>"
+
+
+def _typed_result(obj: object) -> LLMResult:
+    return LLMResult(
+        content='{"v": 1}',
+        model="m",
+        provider="p",
+        finish_reason="stop",
+        usage=None,
+        tool_calls=(),
+        parsed=obj,
+    )
+
+
+def test_result_to_delta_carries_parsed() -> None:
+    plan = _Plan()
+    assert result_to_delta(_typed_result(plan)).parsed is plan
+
+
+def test_chat_and_stream_agree_on_parsed() -> None:
+    """The property that actually matters to a caller: which method you reach
+    for must not change the answer."""
+    plan = _Plan()
+
+    def chat_fn(**_kw: object) -> LLMResult:
+        return _typed_result(plan)
+
+    llm = CallableLLM(chat_fn)
+    msgs = [Message(role="user", content="hi")]
+
+    async def _go() -> tuple[object, object]:
+        deltas = [d async for d in llm.stream(messages=msgs, model="m")]
+        streamed = deltas[-1].parsed
+        completed = (await llm.chat(messages=msgs, model="m")).parsed
+        return streamed, completed
+
+    streamed, completed = asyncio.run(_go())
+    assert streamed is plan
+    assert completed is plan
+    assert streamed is completed, "one seam must not give two answers"
+
+
+def test_the_replayed_delta_is_not_marked_partial() -> None:
+    """POSITIVE CONTROL for the deliberate non-fix. `partial` means 'this is an
+    in-progress partial parse'. A terminal delta rebuilt from a COMPLETE result
+    is not one, so carrying `parsed` must not drag `partial` along with it."""
+    assert result_to_delta(_typed_result(_Plan())).partial is None
+
+
+def test_a_result_without_parsed_is_unaffected() -> None:
+    """POSITIVE CONTROL: the overwhelmingly common case — every provider —
+    must round-trip exactly as before."""
+    d = result_to_delta(
+        LLMResult(content="hello", model="m", provider="p", finish_reason="stop", usage=None)
+    )
+    assert d.parsed is None
+    assert d.text == "hello" and d.model == "m" and d.provider == "p"

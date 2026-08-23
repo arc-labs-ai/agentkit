@@ -26,7 +26,22 @@ def coerce_tool_args(raw: Any) -> dict[str, Any]:
 
 def result_to_delta(res: LLMResult) -> Delta:
     """Wrap a complete `LLMResult` as a single terminal `Delta` — the one-item stream a non-incremental
-    adapter yields so it satisfies the streaming primitive; `collect` reproduces the result."""
+    adapter yields so it satisfies the streaming primitive; `collect` reproduces the result.
+
+    ``parsed`` is carried like every other field. It is easy to assume it need
+    not be: the providers build their ``LLMResult`` from wire data, where
+    ``parsed`` has no source and is always ``None``. But ``CallableLLM`` hands
+    a user-supplied callable's return value through ``coerce`` verbatim, so a
+    callable returning ``LLMResult(parsed=X)`` reaches here with a real object.
+    Measured before this line existed: the SAME ``CallableLLM`` returned
+    ``parsed=<Plan>`` from ``chat()`` and ``None`` from ``stream()`` — one
+    seam, two answers, decided by which method the caller happened to use.
+
+    ``Delta.partial`` is deliberately NOT set: it means "this is an in-progress
+    partial parse", which a terminal delta reconstructed from a COMPLETE result
+    is not. Same reasoning as ``kernel.middleware._result_to_stream``, which had
+    the identical six-of-seven drop.
+    """
     return Delta(
         text=res.content or "",
         tool_calls=res.tool_calls,
@@ -34,6 +49,7 @@ def result_to_delta(res: LLMResult) -> Delta:
         finish_reason=res.finish_reason,
         model=res.model,
         provider=res.provider,
+        parsed=res.parsed,
     )
 
 

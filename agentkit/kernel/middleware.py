@@ -61,7 +61,38 @@ def _assemble(call: Call, items: list[Any]) -> Any:
 
 def _result_to_stream(call: Call, result: Any) -> list[Any]:
     """Re-express an already-assembled result as stream items (for cache hits / error recovery), so a
-    one-shot value re-enters the single streaming contract. A chat result → one terminal `Delta`."""
+    one-shot value re-enters the single streaming contract. A chat result → one terminal `Delta`.
+
+    This is a hand-written field-by-field copy across a type boundary, and it must carry EVERY
+    `LLMResult` field that `Delta` can hold — the round-trip
+    `LLMResult → _result_to_stream → assemble_deltas → LLMResult` is expected to be lossless.
+
+    It was not: `parsed` was dropped. Six of `LLMResult`'s seven fields were copied
+    (`content`/`model`/`provider`/`finish_reason`/`usage`/`tool_calls`) and the seventh — the typed
+    object `output_coerce()` exists to produce — silently became `None`. Measured, a `memoize()`
+    over an `output_coerce()`ed chat with `output=Plan` declared::
+
+        original LLMResult.parsed    : Plan(subject='ship', steps=['a', 'b'])
+        Delta rebuilt for the stream : parsed=None
+        reassembled LLMResult.parsed : None
+
+    Every path back into the stream is affected, not just cache HITS: `memoize()` re-streams the
+    assembled result on a MISS too (it collects `next` to store it), and a `BaseMiddleware` with
+    `buffers=True` re-streams whatever `on_response` returned. So with `memoize()` outermost both
+    calls returned `parsed=None`, and with a buffering middleware the value flipped on whether that
+    middleware happened to buffer — a typed result that depends on cache state or chain wiring,
+    surfacing only at the one call site that reads `.parsed`.
+
+    `Delta.partial` is deliberately NOT set here, and that is correct — do not "fix" it. `partial`
+    means "this is an in-progress, tolerantly-parsed object with possibly-unset required fields",
+    which a replayed TERMINAL delta is not: the result is already complete, and `parsed` is its
+    strict-validated answer. Stamping `partial` would also be unreachable-by-construction anyway,
+    since `assemble_deltas` never lifts `partial` onto `LLMResult` — there is nothing to read it
+    back off of. See `Delta.partial` / `assemble_deltas` in `kernel/types.py`.
+
+    `tests/kernel/test_result_to_stream_parity.py` ratchets this: it drives every `LLMResult` field
+    through the round-trip, so an eighth field added upstream fails here rather than going quietly
+    missing at a cache hit."""
     if call.kind != "chat" or result is None:
         return [result]
     return [
@@ -72,6 +103,7 @@ def _result_to_stream(call: Call, result: Any) -> list[Any]:
             finish_reason=getattr(result, "finish_reason", None),
             model=getattr(result, "model", None),
             provider=getattr(result, "provider", None),
+            parsed=getattr(result, "parsed", None),
         )
     ]
 
