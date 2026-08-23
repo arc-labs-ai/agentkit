@@ -1224,6 +1224,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#human-approval-without-bypassing-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Human approval, without bypassing permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-it-as-a-service" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2018,6 +2029,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#human-approval-without-bypassing-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Human approval, without bypassing permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-it-as-a-service" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2356,18 +2378,80 @@ the CLI docs recommend:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">evals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cli_init&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;mcp_server_errors&quot;</span><span class="p">):</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">(</span><span class="s2">&quot;an MCP server did not load&quot;</span><span class="p">)</span>
 </span></code></pre></div>
+<h2 id="human-approval-without-bypassing-permissions">Human approval, without bypassing permissions<a class="headerlink" href="#human-approval-without-bypassing-permissions" title="Anchor link">&para;</a></h2>
+<p>The CLI owns its own permissions, which left a service two options: 
+<code>bypassPermissions</code> (the agent may do anything, unattended) or <code>dontAsk</code>
+(anything not pre-approved is denied outright and the run fails). agentkit
+already had the missing middle — <code>Asker</code>, the injected human transport behind
+its own HITL path — but nothing connected the two.</p>
+<p>The CLI's seam is <code>--permission-prompt-tool</code>, which names an MCP tool it calls
+instead of prompting a terminal. <code>ApprovalServer</code> is that tool:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">ApprovalServer</span>   <span class="c1"># needs the `mcp` extra</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">async</span> <span class="k">with</span> <span class="n">ApprovalServer</span><span class="p">(</span><span class="n">asker</span><span class="o">=</span><span class="n">my_asker</span><span class="p">,</span> <span class="n">auto_allow</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Glob&quot;</span><span class="p">),</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>                          <span class="n">timeout_s</span><span class="o">=</span><span class="mi">300</span><span class="p">)</span> <span class="k">as</span> <span class="n">approvals</span><span class="p">:</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">cognition</span> <span class="o">=</span> <span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>        <span class="o">**</span><span class="n">approvals</span><span class="o">.</span><span class="n">cli_kwargs</span><span class="p">(),</span>      <span class="c1"># mcp_config + strict + permission_prompt_tool</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="p">)</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;dev&quot;</span><span class="p">,</span> <span class="n">cognition</span><span class="o">=</span><span class="n">cognition</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Each prompt becomes an <code>Elicitation</code> carrying the tool name and its
+<strong>arguments</strong> — the path, the shell command — so your UI can show what is
+actually being approved. The <code>Decision</code> maps back:</p>
+<table>
+<thead>
+<tr>
+<th><code>Decision.kind</code></th>
+<th>CLI behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>approve</code> / <code>value</code></td>
+<td>runs with the arguments Claude requested</td>
+</tr>
+<tr>
+<td><code>modify</code></td>
+<td>runs with <strong>your</strong> arguments (<code>updatedInput</code>) — redirect a write into a sandbox without derailing the run</td>
+</tr>
+<tr>
+<td><code>deny</code></td>
+<td>blocked; <code>note</code> reaches the model, which may adapt</td>
+</tr>
+<tr>
+<td><code>expired</code></td>
+<td>blocked, with the deadline named</td>
+</tr>
+</tbody>
+</table>
+<p>Because an <code>Asker</code> may await a person indefinitely, the CLI turn parks in
+place — same behaviour agentkit's own tool loop gets from the same protocol.</p>
+<ul>
+<li><strong><code>auto_allow</code> exists to prevent habituation.</strong> The CLI prompts for reads
+  too, and a person clicking yes on forty <code>Read</code> calls gives the fortieth
+  prompt — the one that mattered — the same reflexive yes.</li>
+<li><strong><code>timeout_s</code> is enforced by the server</strong>, not trusted to the <code>Asker</code>: the
+  protocol lets an implementation wait forever, and a queue worker holding a
+  CLI subprocess open indefinitely is a resource leak with a model attached.</li>
+<li><strong>It fails closed.</strong> A broken transport, a timeout, an unexpected decision —
+  all deny, with the reason attached. An approval gate that fails open is not
+  a gate.</li>
+<li><strong>The server binds loopback on an ephemeral port with no authentication.</strong>
+  Loopback-only is the containment; do not bind it to a routable address.</li>
+</ul>
 <h2 id="running-it-as-a-service">Running it as a service<a class="headerlink" href="#running-it-as-a-service" title="Anchor link">&para;</a></h2>
 <p>Four flags matter once this is behind an API rather than on your laptop.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">ClaudeCliCognition</span><span class="p">(</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                    <span class="c1"># --bare</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">stable_prompt_prefix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>    <span class="c1"># --exclude-dynamic-system-prompt-sections</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">mcp_config</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;/etc/mysvc/mcp.json&quot;</span><span class="p">,),</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">strict_mcp_config</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>       <span class="c1"># only the servers YOU declared</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">no_session_persistence</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># nothing written to disk</span>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">fallback_model</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,),</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">add_dirs</span><span class="o">=</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/srv/shared-templates&quot;</span><span class="p">),),</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">settings</span><span class="o">=</span><span class="s1">&#39;{&quot;apiKeyHelper&quot;: &quot;/usr/local/bin/fetch-key&quot;}&#39;</span><span class="p">,</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">bare</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                    <span class="c1"># --bare</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">stable_prompt_prefix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>    <span class="c1"># --exclude-dynamic-system-prompt-sections</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">mcp_config</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;/etc/mysvc/mcp.json&quot;</span><span class="p">,),</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">strict_mcp_config</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>       <span class="c1"># only the servers YOU declared</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">no_session_persistence</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># nothing written to disk</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">fallback_model</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,),</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">add_dirs</span><span class="o">=</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/srv/shared-templates&quot;</span><span class="p">),),</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">settings</span><span class="o">=</span><span class="s1">&#39;{&quot;apiKeyHelper&quot;: &quot;/usr/local/bin/fetch-key&quot;}&#39;</span><span class="p">,</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">)</span>
 </span></code></pre></div>
 <ul>
 <li><strong><code>bare=True</code></strong> skips auto-discovery of hooks, skills, commands, subagents,
@@ -2392,22 +2476,22 @@ the CLI docs recommend:</p>
   control in a multi-tenant service, not an optimisation.</li>
 </ul>
 <h2 id="configuration-walkthrough">Configuration walkthrough<a class="headerlink" href="#configuration-walkthrough" title="Anchor link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">ClaudeCliCognition</span><span class="p">(</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">claude_bin</span><span class="o">=</span><span class="s2">&quot;claude&quot;</span><span class="p">,</span>              <span class="c1"># override for a specific install path</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-opus-4-5&quot;</span><span class="p">,</span>           <span class="c1"># -&gt; --model</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">working_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/sandbox&quot;</span><span class="p">),</span>  <span class="c1"># subprocess cwd; --add-dir surface</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">config_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/var/claude&quot;</span><span class="p">),</span>    <span class="c1"># CLAUDE_CONFIG_DIR — isolated auth</span>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">system_prompt_mode</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>       <span class="c1"># agent.prompt -&gt; --append-system-prompt</span>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Grep&quot;</span><span class="p">),</span>            <span class="c1"># -&gt; --tools Read Grep   (what EXISTS)</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">allowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Grep&quot;</span><span class="p">),</span>    <span class="c1"># -&gt; --allowed-tools     (what runs unprompted)</span>
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">disallowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Bash&quot;</span><span class="p">,),</span>        <span class="c1"># -&gt; --disallowed-tools Bash</span>
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">permission_mode</span><span class="o">=</span><span class="s2">&quot;acceptEdits&quot;</span><span class="p">,</span>     <span class="c1"># -&gt; --permission-mode acceptEdits</span>
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">max_turns</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>                       <span class="c1"># -&gt; --max-turns 6</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">resume_session_id</span><span class="o">=</span><span class="n">prior_evals</span><span class="p">[</span><span class="s2">&quot;session_id&quot;</span><span class="p">],</span>  <span class="c1"># -&gt; --resume  (continue that run)</span>
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">extra_args</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;--fallback-model&quot;</span><span class="p">,</span> <span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">),</span>
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="n">terminate_grace_s</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>             <span class="c1"># SIGTERM grace before SIGKILL</span>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="n">max_concurrent</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>                  <span class="c1"># class-level BoundedSemaphore</span>
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="n">claude_bin</span><span class="o">=</span><span class="s2">&quot;claude&quot;</span><span class="p">,</span>              <span class="c1"># override for a specific install path</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-opus-4-5&quot;</span><span class="p">,</span>           <span class="c1"># -&gt; --model</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">working_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/sandbox&quot;</span><span class="p">),</span>  <span class="c1"># subprocess cwd; --add-dir surface</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">config_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/var/claude&quot;</span><span class="p">),</span>    <span class="c1"># CLAUDE_CONFIG_DIR — isolated auth</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">system_prompt_mode</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>       <span class="c1"># agent.prompt -&gt; --append-system-prompt</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Grep&quot;</span><span class="p">),</span>            <span class="c1"># -&gt; --tools Read Grep   (what EXISTS)</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">allowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;Grep&quot;</span><span class="p">),</span>    <span class="c1"># -&gt; --allowed-tools     (what runs unprompted)</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">disallowed_tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Bash&quot;</span><span class="p">,),</span>        <span class="c1"># -&gt; --disallowed-tools Bash</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="n">permission_mode</span><span class="o">=</span><span class="s2">&quot;acceptEdits&quot;</span><span class="p">,</span>     <span class="c1"># -&gt; --permission-mode acceptEdits</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">max_turns</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>                       <span class="c1"># -&gt; --max-turns 6</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="n">resume_session_id</span><span class="o">=</span><span class="n">prior_evals</span><span class="p">[</span><span class="s2">&quot;session_id&quot;</span><span class="p">],</span>  <span class="c1"># -&gt; --resume  (continue that run)</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    <span class="n">extra_args</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;--fallback-model&quot;</span><span class="p">,</span> <span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">),</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    <span class="n">terminate_grace_s</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>             <span class="c1"># SIGTERM grace before SIGKILL</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>    <span class="n">max_concurrent</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>                  <span class="c1"># class-level BoundedSemaphore</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="gotchas">Gotchas<a class="headerlink" href="#gotchas" title="Anchor link">&para;</a></h2>
 <ul>
@@ -2475,7 +2559,7 @@ the CLI docs recommend:</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 07:22:31 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 09:58:22 UTC">August 23, 2026</span>
   </span>
 
     
