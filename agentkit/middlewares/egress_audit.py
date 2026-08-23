@@ -66,6 +66,11 @@ class Audit(BaseMiddleware):
     INSIDE ``audit()`` in the documented chain, so its attempts are
     invisible from here and three executions fold into one record. That
     is an ordering choice, not something ``Audit`` can detect: placing
+    Since neither ordering gives both, the record now carries an
+    ``attempts`` count that ``retry()`` publishes on ``call.meta`` — so one
+    record covering three charges says three, instead of reading exactly like
+    a record covering one.
+
     ``audit()`` inside ``retry()`` yields one record per attempt, at the
     cost of the ``"deduped"`` record (``idempotent()`` short-circuits
     before ``audit()`` is ever reached). Both orderings are supported
@@ -91,12 +96,19 @@ class Audit(BaseMiddleware):
             # distinguish a real side effect from an idempotent replay (the inner memoize signals a hit),
             # so the audit trail can't be misread as N executions when only one ran.
             deduped = bool(ctx.call.meta.get("cache_hit"))
+            # How many times the inner chain actually ran. ``retry()`` stamps
+            # this; absent it (no retry wired) the call ran once. One record
+            # covering three executions used to read exactly like a record
+            # covering one, which is the difference between "we charged the
+            # card" and "we charged the card three times".
+            attempts = int(ctx.call.meta.get("attempts", 1))
             await s.append(
                 self._key,
                 self._record(
                     ctx,
                     result_hash=_hash(result),
                     decision="deduped" if deduped else "executed",
+                    attempts=attempts,
                 ),
             )
         return result
@@ -114,6 +126,7 @@ class Audit(BaseMiddleware):
                         ctx,
                         result_hash=None,  # there is no result — do not hash the exception
                         decision="failed",
+                        attempts=int(ctx.call.meta.get("attempts", 1)),
                         error_type=type(exc).__name__,
                         error=str(exc)[:500],
                     ),

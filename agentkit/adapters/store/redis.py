@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
+
+from agentkit.adapters.store._keylock import KeyLock, key_lock
 
 # Sentinel for "key absent", distinct from a stored ``None``. A module-level
 # object() is unforgeable — no JSON value can ever compare identical to it.
@@ -22,7 +23,7 @@ class RedisStore:
         self, url: str | None = None, *, client: Any = None, namespace: str = "agentkit"
     ) -> None:
         self._ns = namespace
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, KeyLock] = {}
         if client is not None:
             self._redis = client
         else:
@@ -71,8 +72,11 @@ class RedisStore:
         existing = await self._lookup(key)
         if existing is not _MISS:
             return existing
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
+        # Reference-counted so the table is not write-only: the in-memory
+        # backend leaked one permanent ``asyncio.Lock`` per key ever touched
+        # (5,000 get_or_set + delete pairs left kv=0 but locks=5000), and
+        # these two had the identical shape.
+        async with key_lock(self._locks, key):
             existing = await self._lookup(key)
             if existing is not _MISS:
                 return existing

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
+
+from agentkit.adapters.store._keylock import KeyLock, key_lock
 
 # Sentinel for "row absent", distinct from a stored ``None``. ``value`` is
 # ``TEXT NOT NULL``, so a ``None`` from ``fetchval`` can only mean "no row".
@@ -30,7 +31,7 @@ class PostgresStore:
     def __init__(self, dsn: str | None = None, *, pool: Any = None) -> None:
         self._dsn = dsn
         self._pool = pool
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, KeyLock] = {}
 
     async def _get_pool(self) -> Any:
         if self._pool is None:
@@ -107,8 +108,11 @@ class PostgresStore:
         existing = await self._lookup(key)
         if existing is not _MISS:
             return existing
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
+        # Reference-counted so the table is not write-only: the in-memory
+        # backend leaked one permanent ``asyncio.Lock`` per key ever touched
+        # (5,000 get_or_set + delete pairs left kv=0 but locks=5000), and
+        # these two had the identical shape.
+        async with key_lock(self._locks, key):
             existing = await self._lookup(key)
             if existing is not _MISS:
                 return existing

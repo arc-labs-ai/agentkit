@@ -12,12 +12,12 @@ reads never materialize log buckets.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 from typing import Any
+
+from agentkit.adapters.store._keylock import KeyLock, key_lock
 
 # Writes between amortized expiry sweeps. Purge-on-read alone never reclaims
 # a TTL'd key that is never read again — the common shape for idempotency
@@ -25,27 +25,12 @@ from typing import Any
 _SWEEP_EVERY = 256
 
 
-@dataclass
-class _KeyLock:
-    """A per-key lock plus a live-user count.
-
-    Reference counting, not eviction-on-delete: ``asyncio.Lock.release()``
-    clears ``locked()`` *before* the woken waiter resumes, so ``locked()`` is
-    not a safe "nobody needs this" test — dropping the lock in that window
-    lets a queued contender build a second lock for the same key and run the
-    producer twice, breaking single-flight. ``users`` is incremented and
-    decremented with no ``await`` in between, so it is exact under asyncio."""
-
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    users: int = 0
-
-
 class InMemoryStore:
     def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
         self._kv: dict[str, Any] = {}
         self._expiry: dict[str, float] = {}  # key → monotonic deadline (set only when ttl given)
         self._logs: dict[str, list[Any]] = defaultdict(list)
-        self._locks: dict[str, _KeyLock] = {}
+        self._locks: dict[str, KeyLock] = {}
         self._clock = clock
         self._writes_since_sweep = 0
 
@@ -107,25 +92,12 @@ class InMemoryStore:
         ``ttl`` is applied on the stored result, matching the other backends."""
         if key in self._kv and not self._is_expired(key):
             return self._kv[key]
-        entry = self._locks.get(key)
-        if entry is None:
-            entry = self._locks[key] = _KeyLock()
-        entry.users += 1  # no ``await`` between the lookup and this — atomic
-        try:
-            async with entry.lock:
-                if key in self._kv and not self._is_expired(key):
-                    return self._kv[key]
-                result = await fn()  # a raised fn propagates here, unstored
-                await self.set(key, result, ttl=ttl)
-                return result
-        finally:
-            # Reclaim on the way out (including on a raised ``fn``). The lock
-            # table used to be write-only: 5,000 ``get_or_set`` + ``delete``
-            # pairs left ``kv=0`` but ``locks=5000`` — one permanent
-            # ``asyncio.Lock`` per key ever touched.
-            entry.users -= 1
-            if entry.users == 0 and self._locks.get(key) is entry:
-                del self._locks[key]
+        async with key_lock(self._locks, key):
+            if key in self._kv and not self._is_expired(key):
+                return self._kv[key]
+            result = await fn()  # a raised fn propagates here, unstored
+            await self.set(key, result, ttl=ttl)
+            return result
 
     async def delete(self, key: str) -> None:
         self._kv.pop(key, None)  # idempotent: missing key is a no-op

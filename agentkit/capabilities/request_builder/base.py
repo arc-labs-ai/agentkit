@@ -49,6 +49,7 @@ from agentkit.capabilities.compaction import Compactor
 from agentkit.capabilities.output_schema import SchemaAdapter
 from agentkit.capabilities.request_builder.grounder import _GROUNDING_NAME, Grounder
 from agentkit.context import PrefixContext, WorkingContext
+from agentkit.context.tokens import estimate_message_tokens
 from agentkit.kernel._json import dumps as _json_dumps
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message
@@ -229,10 +230,19 @@ class RequestBuilder:
 
 
 def _approx_tokens(messages: list[Message]) -> int:
-    """Crude pre-call estimate: 1 token ≈ 4 chars. Matches the
-    heuristic the compaction strategies use, so a RequestBuilder-side
-    pre-check stays consistent with the post-compaction view."""
-    return sum(len(m.content or "") for m in messages) // 4
+    """Crude pre-call estimate, delegating to the ONE shared implementation.
+
+    This used to be its own ``sum(len(m.content)) // 4``, with a docstring
+    claiming it "matches the heuristic the compaction strategies use". It did,
+    until that heuristic learned to count tool calls — and then it silently did
+    not, which is the precise divergence a budget pre-check must never have: a
+    caller pre-checks with this number and the compactor decides with another.
+    Measured on the shared version before consolidation: a transcript of 80
+    tool-call messages estimated at 20 tokens against a real ~81,000.
+
+    One implementation, so the two cannot drift again.
+    """
+    return estimate_message_tokens(messages)
 
 
 def _render_schema_block(adapter: SchemaAdapter[Any]) -> str:

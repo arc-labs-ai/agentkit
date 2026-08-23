@@ -4,6 +4,7 @@ live Postgres (CI's `test` job has the service); it's skipped locally."""
 
 import asyncio
 import os
+from typing import Any
 
 import pytest
 
@@ -846,3 +847,193 @@ def test_inmemory_list_of_a_missing_key_does_not_create_a_bucket():
 
     _run(go())
     assert list(s._logs) == ["real"]
+
+
+def _producer(i: int):
+    async def _fn():
+        return {"i": i}
+
+    return _fn
+
+
+def _fake_redis_store():
+    """A ``RedisStore`` over an in-process fake — the lock table is pure Python,
+    so the reclamation contract is testable without a server."""
+    try:
+        from agentkit.adapters.store.redis import RedisStore
+    except ImportError:  # pragma: no cover — optional extra
+        return None
+
+    class _FakeRedis:
+        def __init__(self) -> None:
+            self._d: dict[str, str] = {}
+
+        async def get(self, k: str):
+            return self._d.get(k)
+
+        async def set(self, k: str, v: str, ex: int | None = None):
+            self._d[k] = v
+
+        async def delete(self, *ks: str):
+            for k in ks:
+                self._d.pop(k, None)
+
+    return RedisStore(client=_FakeRedis())
+
+
+def _fake_postgres_store():
+    """Same idea for ``PostgresStore``; only ``get_or_set``'s lock handling is
+    under test, so the pool just has to answer."""
+    try:
+        from agentkit.adapters.store.postgres import PostgresStore
+    except ImportError:  # pragma: no cover — optional extra
+        return None
+
+    class _Conn:
+        def __init__(self, d: dict) -> None:
+            self._d = d
+
+        async def fetchval(self, q: str, *a):
+            return self._d.get(a[0]) if a else None
+
+        async def execute(self, q: str, *a):
+            if a and "delete" in q.lower():
+                self._d.pop(a[0], None)
+            elif len(a) >= 2:
+                self._d[a[0]] = a[1]
+
+        async def fetch(self, q: str, *a):
+            return []
+
+    class _Acquire:
+        def __init__(self, d: dict) -> None:
+            self._d = d
+
+        async def __aenter__(self):
+            return _Conn(self._d)
+
+        async def __aexit__(self, *exc):
+            return None
+
+    class _FakePool:
+        def __init__(self) -> None:
+            self._d: dict[str, str] = {}
+
+        def acquire(self):
+            return _Acquire(self._d)
+
+    return PostgresStore(pool=_FakePool())
+
+# ── the lock table reclaims itself on EVERY backend ────────────────────────
+#
+# The in-memory backend's table was write-only — 5,000 `get_or_set` + `delete`
+# pairs left `kv=0` but `locks=5000`, one permanent `asyncio.Lock` per key ever
+# touched. Redis and Postgres had the identical shape and were left out of that
+# fix, so all three now share one reference-counted helper rather than carrying
+# three copies of the same subtle release rule.
+
+
+def _fake_backed_stores() -> list[Any]:
+    """One instance of each backend, with the network faked out."""
+    from agentkit.adapters.store.memory import InMemoryStore
+
+    stores: list[Any] = [InMemoryStore()]
+    for factory in (_fake_redis_store, _fake_postgres_store):
+        made = factory()
+        if made is not None:
+            stores.append(made)
+    return stores
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", _fake_backed_stores(), ids=lambda s: type(s).__name__)
+async def test_the_lock_table_is_empty_after_a_burst(store: Any) -> None:
+    """THE regression, applied to every backend. A store that has served a
+    thousand keys must not be holding a thousand locks."""
+    for i in range(200):
+        await store.get_or_set(f"k{i}", _producer(i))
+        await store.delete(f"k{i}")
+
+    assert store._locks == {}, f"{type(store).__name__} leaked {len(store._locks)} locks"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", _fake_backed_stores(), ids=lambda s: type(s).__name__)
+async def test_the_lock_is_reclaimed_when_the_producer_raises(store: Any) -> None:
+    """A backend that mostly FAILS would otherwise leak faster than one that
+    mostly works — the reclaim has to live in a `finally`."""
+
+    async def boom() -> Any:
+        raise RuntimeError("upstream down")
+
+    for i in range(20):
+        with pytest.raises(RuntimeError):
+            await store.get_or_set(f"bad{i}", boom)
+
+    assert store._locks == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", _fake_backed_stores(), ids=lambda s: type(s).__name__)
+async def test_reclamation_does_not_break_single_flight(store: Any) -> None:
+    """POSITIVE CONTROL, and the reason the helper reference-counts rather than
+    dropping the lock on release.
+
+    `asyncio.Lock.release()` clears `locked()` BEFORE the woken waiter resumes,
+    so a "nobody holds it, delete it" test lets a queued contender build a
+    second lock for the same key and run the producer twice. A fix that
+    reclaimed eagerly would pass the two tests above and fail this one.
+    """
+    runs = {"n": 0}
+
+    async def slow() -> str:
+        runs["n"] += 1
+        await asyncio.sleep(0.01)
+        return "value"
+
+    results = await asyncio.gather(*(store.get_or_set("hot", slow) for _ in range(25)))
+
+    assert runs["n"] == 1, f"single-flight broken: producer ran {runs['n']} times"
+    assert results == ["value"] * 25
+    assert store._locks == {}
+
+
+@pytest.mark.asyncio
+async def test_the_lock_entry_is_shared_while_callers_are_in_flight() -> None:
+    """The refcount is the contract, so test the refcount — not just its
+    visible effect.
+
+    A mutation that sets `users = 0` on the way out (instead of decrementing)
+    still passes a single-flight test: every caller already queued captured the
+    same entry object before the delete, so they share the lock regardless. The
+    hazard is a caller arriving AFTER the premature delete and building a
+    second lock while the producer is still running.
+
+    Rather than orchestrate that race, assert the invariant it violates: while
+    N callers are in flight there is exactly ONE entry and its count is N.
+    """
+    from agentkit.adapters.store.memory import InMemoryStore
+
+    store = InMemoryStore()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    seen: dict[str, int] = {}
+
+    async def blocking() -> str:
+        entered.set()
+        await release.wait()
+        return "v"
+
+    tasks = [asyncio.create_task(store.get_or_set("hot", blocking)) for _ in range(5)]
+    await entered.wait()
+    await asyncio.sleep(0)  # let the other four queue on the lock
+
+    seen["entries"] = len(store._locks)
+    seen["users"] = store._locks["hot"].users
+
+    release.set()
+    assert await asyncio.gather(*tasks) == ["v"] * 5
+
+    assert seen["entries"] == 1, "five callers on one key must share one entry"
+    assert seen["users"] == 5, f"the refcount must reach 5, saw {seen['users']}"
+    assert store._locks == {}, "and the entry must be gone once they all leave"

@@ -11,6 +11,32 @@ Two batches of work in this cycle: five gaps reported from production use, and
 a follow-up sweep for other major issues. Everything is additive except the
 concurrency-bound change called out below.
 
+### Fixed — the leftovers
+
+Items deliberately deferred during the audit, now closed.
+
+- **Two more copies of the token estimator.** The shared one learned to count
+  tool calls; `request_builder/base.py` and `middlewares/compaction.py` kept
+  their own content-only versions, each with a docstring claiming it "matches
+  the heuristic the compaction strategies use". Both were then wrong exactly
+  where it mattered — the middleware one decides *whether* to compact at all,
+  so under-counting there means the compactor is never even asked. All four
+  now delegate to one implementation, and a test asserts they agree on four
+  transcript shapes so a fifth copy cannot appear quietly.
+
+- **`RedisStore` and `PostgresStore` leaked a lock per key.** Same write-only
+  table the in-memory store had (5,000 `get_or_set` + `delete` pairs left
+  `kv=0` but `locks=5000`). Rather than copy the reference-counting a third
+  time, it moved to a shared `_keylock` helper — the duplication lesson this
+  release has already paid for twice.
+
+- **An audit record covering three charges read exactly like one covering
+  one.** `Audit` is a `BaseMiddleware` and gets one phase pair per chain
+  invocation, so it cannot write per-attempt records with `retry()` inside it —
+  and no ordering yields both those and the `"deduped"` record. It can stop
+  implying a single execution: `retry()` now publishes the attempt count on
+  `call.meta` and the record carries it, on both the success and failure paths.
+
 ### Fixed — documentation that promised behaviour the code did not have
 
 An audit of every concrete, checkable claim in `docs/` against the code. This

@@ -37,16 +37,22 @@ from dataclasses import replace
 from typing import Any
 
 from agentkit.capabilities.compaction import Compactor
+from agentkit.context.tokens import estimate_message_tokens
 from agentkit.kernel.middleware import BaseMiddleware, MiddlewareContext
-from agentkit.kernel.types import Operation
+from agentkit.kernel.types import Message, Operation
 from agentkit.middlewares.tracing import _safe_trace_span
 
 
 def _approx_tokens(messages: list[Any]) -> int:
-    """Same heuristic as ``capabilities.compaction._approx_tokens`` — duplicated here
-    so the middleware can compute before/after counts for the observability event
-    without reaching into the capability's private helper."""
-    return sum(len(getattr(m, "content", "") or "") for m in messages) // 4
+    """Delegates to the ONE shared estimator in ``context.tokens``.
+
+    This was a third copy of ``sum(len(content)) // 4``, with a comment saying
+    it was "duplicated to avoid the import". The duplication is what let it
+    fall out of step once the shared version learned to count tool calls: this
+    middleware decides WHETHER to compact, so under-counting here means the
+    compactor is never even asked.
+    """
+    return estimate_message_tokens([m for m in messages if isinstance(m, Message)])
 
 
 class Compaction(BaseMiddleware):

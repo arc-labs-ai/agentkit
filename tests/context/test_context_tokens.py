@@ -184,3 +184,54 @@ def test_chars_per_token_ratio_is_honoured_for_tool_calls():
     coarse = _run(ApproxTokenCounter(chars_per_token=8.0).estimate(msgs))
     fine = _run(ApproxTokenCounter(chars_per_token=4.0).estimate(msgs))
     assert coarse < fine
+
+
+# ── every estimator in the framework must be the SAME estimator ────────────
+
+
+def test_all_four_token_estimators_agree() -> None:
+    """There were FOUR copies of `sum(len(content)) // 4`, and two of them
+    carried docstrings claiming they matched the others. They did, until the
+    shared one learned to count tool calls — and then they silently did not.
+
+    That divergence is the whole bug: a caller pre-checks a budget with the
+    request-builder's number, the compaction middleware decides whether to
+    compact with a second, and the compactor picks messages with a third. One
+    transcript, three answers, and the one that decides is the one that was
+    wrong (measured: ~81,000 real tokens estimated at 20).
+
+    This test is the reason a fifth copy cannot appear quietly.
+    """
+    from agentkit.capabilities.compaction.base import _approx_tokens as compactor
+    from agentkit.capabilities.request_builder.base import _approx_tokens as builder
+    from agentkit.context.tokens import estimate_message_tokens as shared
+    from agentkit.middlewares.compaction import _approx_tokens as middleware
+
+    transcripts = {
+        "tool-heavy": [
+            Message("assistant", "", tool_calls=(ToolCall("i1", "write", {"body": "x" * 4000}),)),
+            Message("tool", "ok", tool_call_id="i1", name="write"),
+        ],
+        "plain chat": [Message("user", "hello there"), Message("assistant", "hi")],
+        "empty": [],
+        "many empties": [Message("user", "") for _ in range(50)],
+    }
+
+    for label, messages in transcripts.items():
+        answers = {
+            "shared": shared(messages),
+            "compactor": compactor(messages),
+            "builder": builder(messages),
+            "middleware": middleware(messages),
+        }
+        assert len(set(answers.values())) == 1, f"{label}: estimators disagree — {answers}"
+
+
+def test_the_shared_estimator_actually_counts_tool_calls() -> None:
+    """POSITIVE CONTROL for the test above: four estimators agreeing on ZERO
+    would satisfy it. This pins that the agreed number is the right one."""
+    from agentkit.capabilities.request_builder.base import _approx_tokens as builder
+
+    heavy = [Message("assistant", "", tool_calls=(ToolCall("i", "w", {"c": "x" * 4000}),))]
+    assert builder(heavy) > 900, "a 4000-char tool argument must not estimate as ~0"
+    assert builder([Message("user", "hi")]) < 20, "...and a two-word chat must stay small"

@@ -115,6 +115,12 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+AUDIT2_TESTS = ("tests/middlewares/test_audit_records_failures.py",)
+STORELOCK_TESTS = ("tests/adapters/test_stores.py",)
+EST_TESTS = (
+    "tests/context/test_context_tokens.py",
+    "tests/capabilities/test_compaction_strategies.py",
+)
 OBS_TESTS = ("tests/adapters/test_observer_adapters.py",)
 STORE2_TESTS = ("tests/adapters/test_stores.py",)
 VEC_TESTS = ("tests/adapters/test_vector_adapters.py",)
@@ -178,6 +184,45 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── the leftovers ───────────────────────────────────────────────────────
+    Mutant(
+        tag="leftover",
+        why="the lock table stops reclaiming, leaking one lock per key ever touched",
+        path="agentkit/adapters/store/_keylock.py",
+        before="        if entry.users == 0 and table.get(key) is entry:",
+        after="        if False:",
+        tests=STORELOCK_TESTS,
+    ),
+    # NOTE: "the refcount is zeroed instead of decremented" has no mutant. It
+    # is EQUIVALENT, and working out why is worth recording. The decrement runs
+    # in the ``finally``, so while callers are in flight nothing has reached it
+    # and the count is right either way; on the way out the table ends empty
+    # under both spellings. The one scenario that could differ — a caller
+    # arriving after a premature delete and building a second lock — cannot
+    # happen, because ``get_or_set`` stores the value INSIDE the lock, so that
+    # caller hits the cached fast path and never asks for a lock at all.
+    #
+    # The reference count is still the right design (it is what makes the
+    # release rule correct rather than accidentally correct, and it is asserted
+    # directly by ``test_the_lock_entry_is_shared_while_callers_are_in_flight``),
+    # but forcing a kill here would mean inventing a scenario the code cannot
+    # reach.
+    Mutant(
+        tag="leftover",
+        why="an audit record covering three charges reads exactly like one covering one",
+        path="agentkit/middlewares/resilience.py",
+        before='            call.meta["attempts"] = attempt',
+        after="            pass",
+        tests=AUDIT2_TESTS,
+    ),
+    Mutant(
+        tag="leftover",
+        why="the request-builder pre-check drifts from the compactor again",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="    return estimate_message_tokens(messages)",
+        after='    return sum(len(m.content or "") for m in messages) // 4',
+        tests=EST_TESTS,
+    ),
     # ── observers / stores / vectors ────────────────────────────────────────
     Mutant(
         tag="obs",

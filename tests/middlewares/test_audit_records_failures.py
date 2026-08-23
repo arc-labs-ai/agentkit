@@ -181,3 +181,70 @@ def test_a_failure_is_not_cached_by_idempotent_and_is_audited_each_time() -> Non
 
     assert tool.executions == 2
     assert [r["decision"] for r in _log(store)] == ["failed", "failed"]
+
+
+# ── the record must not imply ONE execution when N happened ────────────────
+#
+# `Audit` is a `BaseMiddleware`: one phase pair per chain invocation. With
+# `retry()` inside it — the documented tool-chain order — three executions
+# folded into a single `executed` record indistinguishable from a clean single
+# call. That is the difference between "we charged the card" and "we charged
+# the card three times".
+#
+# It still cannot write three records from one invocation. It can stop lying
+# about the count: `retry()` publishes the attempt number on `call.meta` and
+# the record carries it.
+
+
+def test_a_retried_call_records_how_many_times_it_ran() -> None:
+    """THE regression. One record, but an honest one."""
+    store, tool = InMemoryStore(), _ChargingTool(fail_times=2)
+    inv, ctx = _wire(store, audit(store=store), retry(max_attempts=3))
+
+    asyncio.run(inv.invoke_tool(_req(tool), ctx))
+
+    (record,) = _log(store)
+    assert tool.executions == 3
+    assert record["decision"] == "executed"
+    assert record["attempts"] == 3, "one record covering three charges must say so"
+
+
+def test_a_call_that_fails_every_attempt_records_the_count() -> None:
+    """The worst case for an audit trail: N side effects and no success."""
+    store, tool = InMemoryStore(), _ChargingTool(fail_times=99)
+    inv, ctx = _wire(store, audit(store=store), retry(max_attempts=3))
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(inv.invoke_tool(_req(tool), ctx))
+
+    (record,) = _log(store)
+    assert tool.executions == 3
+    assert record["decision"] == "failed"
+    assert record["attempts"] == 3
+
+
+def test_a_call_with_no_retry_wired_reports_one_attempt() -> None:
+    """POSITIVE CONTROL. Without `retry()` nothing stamps the count, and the
+    default must be the truth (one run) rather than a missing key a reader has
+    to interpret."""
+    store, tool = InMemoryStore(), _ChargingTool(fail_times=0)
+    inv, ctx = _wire(store, audit(store=store))
+
+    asyncio.run(inv.invoke_tool(_req(tool), ctx))
+
+    (record,) = _log(store)
+    assert tool.executions == 1
+    assert record["attempts"] == 1
+
+
+def test_a_first_attempt_success_is_not_inflated() -> None:
+    """POSITIVE CONTROL for the counter itself: `retry()` stamps on every pass
+    through the loop, so a call that succeeds immediately must still say 1 —
+    a stamp placed after the attempt would read 2."""
+    store, tool = InMemoryStore(), _ChargingTool(fail_times=0)
+    inv, ctx = _wire(store, audit(store=store), retry(max_attempts=5))
+
+    asyncio.run(inv.invoke_tool(_req(tool), ctx))
+
+    (record,) = _log(store)
+    assert record["attempts"] == 1

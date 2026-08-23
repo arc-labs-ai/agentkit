@@ -75,6 +75,15 @@ def retry(
     async def mw(call: Call, nxt: Handler) -> AsyncIterator[Any]:
         last: BaseException | None = None
         for attempt in range(1, max_attempts + 1):
+            # Publish the attempt count so an OUTER middleware can report it.
+            # ``Audit`` sits outside ``retry()`` in the documented tool chain
+            # and gets ONE phase pair per chain invocation, so three executions
+            # folded into a single record that read as one execution —
+            # measured: a side-effecting tool ran 3x and the trail said
+            # ``executed`` once, with nothing to distinguish it from a clean
+            # single call. It still cannot write three records from one
+            # invocation, but it can stop implying one.
+            call.meta["attempts"] = attempt
             if breaker is not None and not breaker.allow():
                 raise CircuitOpen(f"circuit open: {getattr(breaker, 'name', '?')}")
             gen = nxt(call)
