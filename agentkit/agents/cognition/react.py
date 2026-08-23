@@ -776,6 +776,19 @@ class ReActCognition:
         ``run_id`` a caller passes back to ``Agent.resume``, and ``resume``
         re-derives the same slot because it has the agent in hand.
 
+        The bare ``run_id`` is not free real estate once this loop has moved
+        off it — it stays OWNED by the coordinator policies
+        (``RoundRobinPolicy`` / ``SelectorPolicy``), which snapshot
+        ``{turn, transcript, results, ...}`` there through
+        ``coord_state_to_dict``. Nothing in this cognition touches that key in
+        either direction, and the asymmetry is the whole point: a reader here
+        that fell back to the bare id would recreate the collision from the
+        other side. Measured: hand a child loop its coordinator's state and it
+        dies inside ``rehydrate`` on the first leaf-shaped key it reaches —
+        ``KeyError: 'prefix'`` today, ``KeyError: 'messages'`` before
+        ``prefix`` joined the blob. So whatever a future slot scheme looks
+        like, it has to stay disjoint from the bare ``run_id``.
+
         Remaining limit, stated rather than hidden: two children sharing one
         agent NAME in a single run still share a slot. That is ambiguous by
         identity, and the fix is to name them distinctly.
@@ -783,29 +796,19 @@ class ReActCognition:
         return f"{run_id}:agent:{agent_name}"
 
     async def _load(self, ctx: Any, run_id: str, agent: Agent) -> Any:
+        """Read this agent's checkpoint from the one slot ``_save`` writes it to.
+
+        One slot, no fallbacks. ``_save`` snapshots only
+        ``checkpoint_slot(run_id, agent.name)`` and ``_clear`` deletes only that
+        same slot, so a record under any other key was written by somebody else
+        and is not ours to rehydrate. See ``checkpoint_slot`` for who owns the
+        bare ``run_id`` and why reading it from here is a collision rather than
+        a courtesy.
+        """
         cp = self._resolve_checkpointer(ctx)
         if cp is None:
             return None
-        found = await cp.resume(self.checkpoint_slot(run_id, agent.name))
-        if found is not None:
-            return found
-        # Legacy slot: a run suspended by a version that keyed on the bare
-        # correlation_id. A suspended run is waiting on a person and cannot be
-        # reconstructed, so orphaning one across an upgrade is not acceptable.
-        # Safe to drop once no old suspends can remain.
-        #
-        # The shape check is load-bearing, not defensive padding. The bare
-        # correlation_id is exactly the slot OTHER producers still use — a
-        # coordinator policy writes ``{turn, transcript, results, ...}`` there —
-        # so reading it unconditionally re-introduces the collision this
-        # namespacing exists to remove, from the other direction. Measured
-        # while building it: a child loop picked up its coordinator's state and
-        # died in ``rehydrate`` with ``KeyError: 'messages'``.
-        legacy = await cp.resume(run_id)
-        if legacy is None:
-            return None
-        state = legacy.state if isinstance(legacy.state, dict) else {}
-        return legacy if "messages" in state else None
+        return await cp.resume(self.checkpoint_slot(run_id, agent.name))
 
     async def _clear(self, ctx: Any, run_id: str, agent: Agent) -> None:
         cp = self._resolve_checkpointer(ctx)

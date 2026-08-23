@@ -2354,14 +2354,6 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="checkpoint",
-        why="the legacy read accepts another producer's payload",
-        path="agentkit/agents/cognition/react.py",
-        before='        return legacy if "messages" in state else None',
-        after="        return legacy",
-        tests=SLOT_TESTS,
-    ),
-    Mutant(
-        tag="checkpoint",
         why="coordinator policies drop back to a third resolution order (no store bridge)",
         path="agentkit/agents/policies/roundrobin.py",
         before='    return resolve_checkpointer(ctx, getattr(coordinator.cognition, "checkpointer", None))',

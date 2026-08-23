@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from agentkit import Agent
 from agentkit.adapters.checkpoint import InMemoryCheckpointStore
 from agentkit.agents.cognition import ReActCognition
@@ -110,15 +112,46 @@ def test_the_slot_derivation_is_public_and_stable() -> None:
     assert ReActCognition.checkpoint_slot("r", "a") != ReActCognition.checkpoint_slot("r", "b")
 
 
-def test_a_suspend_written_by_the_legacy_slot_still_resumes() -> None:
-    """Switching slots must not orphan an IN-FLIGHT suspend across an upgrade —
-    a suspended run is waiting on a person and cannot be reconstructed."""
+def test_the_tool_loop_never_reads_the_bare_run_id() -> None:
+    """The bare correlation_id is the slot the COORDINATOR policies own, so the
+    child loop must not read it — not as a fallback, not ever.
+
+    `_load` used to try the bare id when its own slot came up empty, to rescue
+    suspends written before the namespacing landed. The rescue and the hazard
+    were the same line of code: a child handed its coordinator's
+    `{turn, transcript, results, ...}` dies inside `rehydrate` on the first
+    leaf-shaped key it reaches (`KeyError: 'prefix'` today, `KeyError:
+    'messages'` before `prefix` joined the blob). A shape check kept the two
+    apart; deleting the read deletes the hazard outright, and this pins that
+    the fallback stays gone.
+    """
+    cp = _cp()
+    # A coordinator-shaped payload sitting at the bare run id.
+    asyncio.run(
+        cp.snapshot(RUN, {"turn": 3, "transcript": [], "results": {}},
+                    status=CheckpointStatus.RUNNING)
+    )
+
+    agent = Agent("worker", "m", cognition=ReActCognition(tools=[probe], checkpointer=cp))
+    ctx = make_test_ctx(llm=_ToolThenAnswer(), checkpointer=cp, correlation_id=RUN)
+    # A fresh drive starts fresh rather than rehydrating someone else's state.
+    result = asyncio.run(agent.run("go", ctx))
+    assert result.stop_reason == "complete"
+    # And the coordinator's payload is untouched — not read, not overwritten,
+    # and not deleted by the child's terminal `_clear`.
+    still = asyncio.run(cp.resume(RUN))
+    assert still is not None and still.state["turn"] == 3
+
+
+def test_resume_does_not_fall_back_to_the_bare_run_id_either() -> None:
+    """The other door into `_load`. Even a genuinely SUSPENDED record at the
+    bare id must not satisfy `Agent.resume` for a child agent — its own slot is
+    the only slot, so an empty one is "nothing to resume" and says so."""
     cp = _cp()
     llm = _ToolThenAnswer()
     agent = Agent("worker", "m", cognition=ReActCognition(tools=[probe], checkpointer=cp))
 
-    # Produce a real suspend, then MOVE it to the legacy slot to stand in for a
-    # checkpoint written by an older build.
+    # Produce a real leaf-shaped suspend, then MOVE it to the bare id.
     ctx = make_test_ctx(llm=llm, checkpointer=cp, correlation_id=RUN, autonomy="manual")
     assert asyncio.run(agent.run("go", ctx)).stop_reason == "suspended"
     slot = ReActCognition.checkpoint_slot(RUN, "worker")
@@ -127,35 +160,21 @@ def test_a_suspend_written_by_the_legacy_slot_still_resumes() -> None:
     asyncio.run(cp.delete(slot))
     asyncio.run(cp.snapshot(RUN, saved.state, status=CheckpointStatus.SUSPENDED))
 
+    with pytest.raises(ValueError, match="no suspended run"):
+        asyncio.run(
+            agent.resume(RUN, {"t1": "approve"},
+                         make_test_ctx(llm=llm, checkpointer=cp, correlation_id=RUN))
+        )
+
+    # ...while the same suspend in its OWN slot resumes, which is the path that
+    # actually has to work.
+    asyncio.run(cp.delete(RUN))
+    asyncio.run(cp.snapshot(slot, saved.state, status=CheckpointStatus.SUSPENDED))
     resumed = asyncio.run(
         agent.resume(RUN, {"t1": "approve"},
                      make_test_ctx(llm=llm, checkpointer=cp, correlation_id=RUN))
     )
     assert resumed.stop_reason == "complete"
-
-
-def test_the_legacy_read_refuses_another_producers_state() -> None:
-    """The fallback reads the bare correlation_id — which is exactly the slot
-    OTHER producers still use. Reading it unconditionally re-introduced the
-    collision from the other direction: a child loop picked up its
-    coordinator's `{turn, transcript, ...}` and died in `rehydrate` with
-    `KeyError: 'messages'`. The shape check is load-bearing.
-    """
-    cp = _cp()
-    # A coordinator-shaped payload sitting in the legacy slot.
-    asyncio.run(
-        cp.snapshot(RUN, {"turn": 3, "transcript": [], "results": {}},
-                    status=CheckpointStatus.RUNNING)
-    )
-
-    agent = Agent("worker", "m", cognition=ReActCognition(tools=[probe], checkpointer=cp))
-    ctx = make_test_ctx(llm=_ToolThenAnswer(), checkpointer=cp, correlation_id=RUN)
-    # Must start fresh rather than trying to rehydrate someone else's state.
-    result = asyncio.run(agent.run("go", ctx))
-    assert result.stop_reason == "complete"
-    # And the coordinator's payload is untouched.
-    still = asyncio.run(cp.resume(RUN))
-    assert still is not None and still.state["turn"] == 3
 
 
 # ── one resolution order, shared by every producer ──────────────────────────
