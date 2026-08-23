@@ -91,7 +91,11 @@ from agentkit.runtime import Invoker
 # llm = providers.openai(api_key=os.environ["OPENAI_API_KEY"], model="gpt-4o-mini")
 # Or roll your own — LLMPort is three methods: stream (returns an
 # async iterator), plus async def chat and async def complete.
-llm = ...  # LLMPort
+# Any LLMPort works here — a real provider, the claude CLI cognition, or
+# the shipped fake so this page runs as written.
+from agentkit.testing import FakeLLM
+
+llm = FakeLLM("Paris is the capital of France.")
 
 
 @tool(side_effecting=False)

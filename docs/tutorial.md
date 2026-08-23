@@ -232,7 +232,6 @@ anything. It hands you events; where they go is your decision.
 **The problem this leaves.** You can now watch the run — including
 watching it spend your money. Nothing here stops it.
 
-<a id="step-4-cap-the-run-with-a-budget"></a>
 
 ## Step 4 — stop it before it costs too much
 
@@ -342,7 +341,6 @@ provider counts retries and your budget had better too.
 you give it a tool that changes something — publishes, deploys, emails,
 deletes — a capped budget is no comfort at all.
 
-<a id="step-5-pause-for-human-approval-before-publishing"></a>
 
 ## Step 5 — make it ask before it acts
 

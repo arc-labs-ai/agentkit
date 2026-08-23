@@ -152,7 +152,7 @@ entirely fresh process — that's the point of the checkpointer.
 
 ## Related
 
-- [Tutorial · Step 5](../tutorial.md#step-5-pause-for-human-approval-before-publishing)
+- [Tutorial · Step 5](../tutorial.md#step-5-make-it-ask-before-it-acts)
   — the same primitive introduced inside a full walkthrough.
 - [Resume after a crash](resume-after-crash.md) — the checkpointer's
   other job.

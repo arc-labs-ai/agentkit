@@ -280,7 +280,7 @@ child is granted exactly what was reserved for it and no more.
 
 ## Related
 
-- [Tutorial · Step 4](../tutorial.md#step-4-cap-the-run-with-a-budget)
+- [Tutorial · Step 4](../tutorial.md#step-4-stop-it-before-it-costs-too-much)
   — the same primitive introduced inside the walkthrough.
 - [Concepts · Runtime](../concepts/runtime.md) — where `Budget` /
   `Quota` / `Meter` sit alongside `RunContext` and `Invoker`.
