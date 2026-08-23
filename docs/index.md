@@ -1,3 +1,13 @@
+**agentkit is a low-level framework for building AI agents in Python.**
+It gives you the parts an agent loop is made of — the decision step, the
+spend ceiling, the approval gate, the crash-recovery snapshot, the
+middleware chain — as typed, swappable pieces, and then gets out of the
+way. It does not ship personas, a graph DSL, or a hosted runtime.
+
+It is for people whose agent has to keep running when nobody is
+watching. If you are sketching in a notebook, most of what is below is
+ceremony you do not need yet.
+
 ## The pain
 
 You've written an agent. It ran. Then one of these happened.
@@ -11,18 +21,81 @@ worker died with the transcript in memory. You restarted from zero.
 Your tool called `git push --force` on `main` because there was no
 approval gate. Nobody was watching. Your teammate lost a day.
 
-**agentkit is a low-level framework that makes each of these a
-one-line fix.** `Budget(max_cost_usd=5.0)` halts the run before it
-overspends. `Checkpointer(port=...)` snapshots after every tool
-iteration so a fresh worker picks up where the last one died.
-`autonomy="gated"` on the run suspends before every side-effecting
-tool and hands control to a human. Nothing is hidden. Every seam is
-a typed Protocol you can swap.
+Each of these is a line of wiring in agentkit:
+
+| What went wrong | The line |
+|---|---|
+| No spend ceiling | `Budget(max_cost_usd=5.0)` on the `RunContext` — plus `meter()` in the chat chain, which is what charges it |
+| Worker died mid-run | `Checkpointer(port=...)` — `ReActCognition` snapshots after each successful tool iteration; a fresh process resumes the same `run_id` |
+| Tool mutated the world unattended | `autonomy="gated"` on the run + `@tool(side_effecting=True)` — the loop suspends and hands control to a human |
+
+None of the three is hidden. Each is a value you pass, on an object you
+constructed, that you can read the source of.
+
+## What it looks like
+
+An agent with a tool, a spend ceiling, and no API key. This runs on a
+bare `pip install arc-agentkit`.
+
+```python
+import asyncio
+
+from agentkit import Agent, Budget, ToolCall, tool
+from agentkit.agents.cognition import ReActCognition
+from agentkit.middlewares import meter
+from agentkit.testing import FakeLLM, Turn, make_test_ctx
+
+
+@tool(side_effecting=False)
+async def search(query: str) -> str:
+    """Search the literature for `query`. Returns bulleted hits with source and year."""
+    return "- 'Distributed cognition in cephalopods' (science.org, 2023)"
+
+
+async def main() -> None:
+    # A scripted stand-in for the model: turn 1 asks for the tool, turn 2 answers.
+    llm = FakeLLM.script([
+        Turn(tool_calls=(ToolCall("c1", "search", {"query": "octopus cognition"}),)),
+        Turn(content="Octopuses distribute cognition across their arms."),
+    ])
+    ctx = make_test_ctx(
+        llm=llm,
+        budget=Budget(max_cost_usd=5.0),
+        chat_middleware=[meter()],
+    )
+
+    agent = Agent(
+        name="briefer",
+        model="claude-sonnet-4-6",
+        prompt="Research the question with `search`, then answer in one sentence.",
+        cognition=ReActCognition(tools=[search]),
+    )
+    result = await agent.run("What do we know about octopus cognition?", ctx)
+
+    print(result.output)
+    print(f"spent ${ctx.budget.spent_usd:.4f} of ${ctx.budget.max_cost_usd} "
+          f"over {ctx.budget.calls} calls")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+Octopuses distribute cognition across their arms.
+spent $0.0002 of $5.0 over 2 calls
+```
+
+Swap `FakeLLM` for `providers.claude(api_key=...)` and nothing else in
+the script changes — the `Agent`, the cognition, the tool and the
+middleware chain are all unaware of which provider is underneath.
+[Getting started](getting-started.md) shows that wiring.
 
 ## What you'll actually use
 
-Ontology before tutorial. When you sit down to write, this is the
-map from "what I want to do" to "which primitive fills that slot."
+The map from "what I want to do" to "which primitive fills that slot".
+Every row is a slot in the same composition — the right-hand column is
+how you fill it, not what agentkit forces on you.
 
 | You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
 |---------------------------------------------------------------|-------------------------------------------------------------|
@@ -37,201 +110,6 @@ map from "what I want to do" to "which primitive fills that slot."
 | Cap what the run can spend                                    | `Budget(max_cost_usd=...)` / `Quota(max_rpm=..., max_usd=...)` |
 | Survive a worker crash                                        | `Checkpointer(port=...)`                                    |
 | Add a cross-cutting concern (tracing, retry, guardrail)       | Middleware in the `chain([...])` on the `Invoker`           |
-
-Every row is a slot in the same composition — the primitives on
-the right are how you fill it, not what agentkit forces you into.
-
-## What changes with agentkit
-
-- **Budget halts the run cleanly** on overrun — `MeterExceeded`
-  propagates, the loop unwinds, no over-spend.
-- **Checkpointer survives worker crashes** — a fresh process resumes
-  from the last snapshot on the same `run_id`.
-- **Autonomy tier gates every side-effecting tool** — a human
-  approves before mutation happens.
-- **Cancel propagates through the subtree** — cancel the parent,
-  every child stops at its next `check_cancelled`.
-- **The middleware chain intercepts every LLM and tool call in one
-  line** — `tracing`, `retry`, `meter`, `memoize`, `compaction`,
-  `security` — swap or reorder by editing a list.
-- **Every seam is a typed Protocol** — swap the LLM, the store, the
-  checkpoint backend, the tracer without editing the loop.
-
-## The four themes
-
-Every concept in agentkit falls into one of four orthogonal buckets.
-Learn these four; the rest is which class fills which slot.
-
-<div class="grid cards" markdown>
-
--   __Cognition__
-
-    ---
-
-    How the agent decides the next step. `SingleCallCognition`,
-    `ReActCognition`, `CoordinatorCognition`, `ClaudeCliCognition`,
-    or your own `Cognition` Protocol impl.
-
-    [:octicons-arrow-right-24: Concepts › Agents](concepts/agents.md)
-
--   __Control__
-
-    ---
-
-    What limits the agent's authority. `Autonomy`, `Budget`, `Quota`,
-    `CancellationToken`, `RunPolicy`, `Suspended` + `resume()` for
-    HITL.
-
-    [:octicons-arrow-right-24: Concepts › Runtime](concepts/runtime.md)
-
--   __State__
-
-    ---
-
-    What the agent knows. `WorkingContext`, `MemorySource`
-    (`VectorMemory` / `JournalMemory` / `FileMemory` /
-    `ScratchpadMemory`), `Prompt`, `Checkpointer`.
-
-    [:octicons-arrow-right-24: Concepts › Capabilities](concepts/capabilities.md)
-
--   __Behaviour__
-
-    ---
-
-    How every call is intercepted. The middleware chain (`tracing`,
-    `retry`, `meter`, `compaction`, `security`, `output_coerce`, …)
-    and capabilities (`RequestBuilder`, `Compactor`, `Guardrail`).
-
-    [:octicons-arrow-right-24: Concepts › Middlewares](concepts/middlewares.md)
-
-</div>
-
-**Adapters** — `claude()` / `openai()` / `deepseek()` /
-`openrouter()` presets, `ClaudeCliCognition`, `MCPClient`, and any
-`LLMPort` you write — are **plug-ins**, not the point. They fill the
-LLM slot in a composition; the composition is what agentkit is
-about.
-
-## First runnable example
-
-An `Agent` with a `ReActCognition`, one tool, and a `RunContext`.
-The LLM plug-in is swappable — pick whichever tab fits how you'll
-actually deploy.
-
-=== "Local CLI (no API key)"
-
-    ```python
-    """Requires the `claude` CLI on PATH and one prior `claude login`.
-    Zero API keys; the CLI's own auth is used.
-
-    Install: https://docs.claude.com/en/docs/claude-code
-    """
-
-    import asyncio
-
-    from agentkit import Agent, Scope
-    from agentkit.agents.cognition import ClaudeCliCognition
-    from agentkit.runtime import RunContext, Services
-
-
-    async def main() -> None:
-        agent = Agent(
-            name="briefer",
-            prompt="Answer in one short sentence.",
-            cognition=ClaudeCliCognition(model="claude-sonnet-4-6"),
-        )
-        ctx = RunContext(correlation_id="run-1", scope=Scope(), services=Services())
-
-        result = await agent.run("What do we know about octopus cognition?", ctx)
-        print(result.output)
-        print(f"cost estimate: ${result.usage.cost_usd:.4f}")
-
-        # Expected (real answer varies):
-        #   Octopuses appear to plan, use tools, and solve mazes.
-        #   cost estimate: $0.0031
-
-
-    if __name__ == "__main__":
-        asyncio.run(main())
-    ```
-
-=== "Anthropic API key"
-
-    ```python
-    """Requires `pip install "arc-agentkit[http]"` and ANTHROPIC_API_KEY.
-    Same shape; the LLM plug-in is a different one."""
-
-    import asyncio
-    import os
-
-    from agentkit import Agent, Scope, Services, RunContext
-    from agentkit.adapters.llm import providers
-    from agentkit.runtime import Invoker
-    from agentkit.middlewares import meter, retry, tracing
-
-
-    async def main() -> None:
-        llm = providers.claude(api_key=os.environ["ANTHROPIC_API_KEY"],
-                               model="claude-sonnet-4-6")
-        services = Services(
-            invoker=Invoker(llm=llm, chat_middleware=[tracing(), meter(), retry()]),
-        )
-        ctx = RunContext(correlation_id="run-1", scope=Scope(), services=services)
-
-        agent = Agent(
-            name="briefer",
-            model="claude-sonnet-4-6",
-            prompt="Answer in one short sentence.",
-        )
-        result = await agent.run("What do we know about octopus cognition?", ctx)
-        print(result.output)
-        print(f"cost: ${result.usage.cost_usd:.4f}")
-
-
-    if __name__ == "__main__":
-        asyncio.run(main())
-    ```
-
-=== "OpenAI API key"
-
-    ```python
-    """Requires `pip install "arc-agentkit[http]"` and OPENAI_API_KEY.
-    Same shape; the LLM plug-in is a different one."""
-
-    import asyncio
-    import os
-
-    from agentkit import Agent, Scope, Services, RunContext
-    from agentkit.adapters.llm import providers
-    from agentkit.runtime import Invoker
-    from agentkit.middlewares import meter, retry, tracing
-
-
-    async def main() -> None:
-        llm = providers.openai(api_key=os.environ["OPENAI_API_KEY"],
-                               model="gpt-4o-mini")
-        services = Services(
-            invoker=Invoker(llm=llm, chat_middleware=[tracing(), meter(), retry()]),
-        )
-        ctx = RunContext(correlation_id="run-1", scope=Scope(), services=services)
-
-        agent = Agent(
-            name="briefer",
-            model="gpt-4o-mini",
-            prompt="Answer in one short sentence.",
-        )
-        result = await agent.run("What do we know about octopus cognition?", ctx)
-        print(result.output)
-        print(f"cost: ${result.usage.cost_usd:.4f}")
-
-
-    if __name__ == "__main__":
-        asyncio.run(main())
-    ```
-
-Swap the LLM plug-in without touching the `Agent`, the cognition, or
-the middleware chain. That's the framework's central bet: composition
-over the loop.
 
 ## The run in one picture
 
@@ -250,19 +128,50 @@ flowchart TB
     F -.->|budget · cancel · autonomy| D
 ```
 
-Nothing in the picture is optional. Nothing in the picture is a
-class you can't rewrite.
+Nothing in the picture is optional. Nothing in the picture is a class
+you can't rewrite.
+
+## What agentkit deliberately does not do
+
+Frameworks make different bets, and the honest way to pick one is to
+know what it refuses.
+
+- **No visual graph.** The loop is Python, not a DAG you draw. If a
+  diagram your ops team can review is the requirement, LangGraph is the
+  better fit.
+- **No hosted runtime, no built-in personas, no one-click deploy.**
+  agentkit runs where your Python runs and ships no "researcher" agent
+  with a prompt in it. It is the runtime, not the product.
+- **No large integration catalog.** LangChain has far more pre-glued
+  connectors today. agentkit ships fewer, on purpose, and gives you the
+  `Protocol` to write yours.
+- **Nothing that pays off in a notebook.** Typed seams, cancellation,
+  budgets and checkpointing cost you ceremony up front and only repay
+  it when the code has to keep running under real load.
+
+[Why agentkit](why.md) makes the positive case in full: twelve concrete
+guarantees and a side-by-side against the alternatives.
 
 ## Where to go next
 
 <div class="grid cards" markdown>
 
+-   __Getting started__
+
+    ---
+
+    Install, extras, and a first agent that runs offline in five
+    minutes — then the same agent against a real provider.
+
+    [:octicons-arrow-right-24: Install and run something](getting-started.md)
+
 -   __Tutorial__
 
     ---
 
-    Fifteen minutes, five steps, one runnable script per step — from
-    a single chat call to a gated tool the human has to approve.
+    Six steps, one script each. Builds one research-briefing agent
+    from a single call to a gated tool a human has to approve. Steps
+    1–5 need no API key.
 
     [:octicons-arrow-right-24: Start the tutorial](tutorial.md)
 
@@ -270,8 +179,8 @@ class you can't rewrite.
 
     ---
 
-    Every primitive, tight code, skimmable in 90 seconds. Reach for
-    it when you know what you want and just need the invocation.
+    Every primitive, tight code, skimmable in 90 seconds. Reach for it
+    when you know what you want and just need the invocation.
 
     [:octicons-arrow-right-24: Open the cheatsheet](cheatsheet.md)
 
@@ -286,22 +195,3 @@ class you can't rewrite.
     [:octicons-arrow-right-24: Browse the recipes](recipes/index.md)
 
 </div>
-
-## When agentkit is (probably) not the fit
-
-Frameworks make different bets. Pick the one whose bet matches
-yours.
-
-- **You want a visual graph you can draw** — reach for LangGraph
-  instead. agentkit's loop is Python, not a DAG.
-- **You want a batteries-included agent product** — hosted memory,
-  built-in personas, one-click deploy — reach for a hosted framework
-  like OpenAI Assistants or a managed offering. agentkit is the
-  runtime, not the product.
-- **You want to prototype in a notebook and never leave** —
-  anything works, and agentkit's benefits (typed seams, cancel,
-  budget, checkpointing) only start paying off when the code has to
-  keep running under real load.
-
-See [Why agentkit](why.md) for the twelve concrete guarantees and a
-side-by-side comparison with the alternatives.

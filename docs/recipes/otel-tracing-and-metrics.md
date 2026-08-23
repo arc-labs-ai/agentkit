@@ -1,5 +1,8 @@
 # How do I wire OpenTelemetry?
 
+You want to see what a run actually did — and what all your runs are
+doing in aggregate — in the monitoring tool your team already uses.
+
 ## When you'd want this
 
 You want traces (per-request narrative) and metrics (rolled-up
@@ -17,6 +20,11 @@ p99 first-token latency doing?". You almost always want both.
     for `providers.openai` (and set `OPENAI_API_KEY`) — the tracer
     wiring is provider-neutral. Install the extra first:
     `pip install "arc-agentkit[observability]"`.
+
+    To run it with **no key at all**, replace the `providers.claude(...)`
+    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    other line is identical — that substitution is how this snippet is
+    verified.
 
 ## Working code
 
@@ -83,10 +91,11 @@ At process startup:
 ```python
 from agentkit.adapters.observability import (
     otel_exporter_otlp_http,
+    otel_meter,
     otel_metrics_exporter_otlp_http,
     otel_tracer,
-    otel_meter,
 )
+from agentkit.runtime import Services
 
 # One-call SDK setup. Reads OTEL_EXPORTER_OTLP_ENDPOINT etc. from env.
 otel_exporter_otlp_http()

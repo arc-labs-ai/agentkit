@@ -1,39 +1,34 @@
 # Examples
 
-End-to-end demos live in the
+Six self-contained scripts live in the
 [`examples/`](https://github.com/arc-labs-ai/agentkit/tree/main/examples)
-folder in the repo. Six shipped scripts, each self-contained:
+folder of the repo. Unlike the [Tutorial](tutorial.md), which builds one
+agent across six steps, each of these is a standalone demonstration of
+one thing you can read top to bottom.
 
-- **`01_single_agent.py`** — the shortest useful program. One
-  `Agent`, one prompt, one call. Prints the typed `AgentResult`.
-- **`02_streaming_and_tools.py`** — a `ReActCognition` agent with
-  two `@tool`-decorated functions, driven token-by-token through
-  `Agent.stream(...)`.
-- **`03_composed_middlewares.py`** — a custom middleware chain
-  (`tracing → meter → retry`) wired into an `Invoker`, showing the
-  seams the `Agent` normally composes for you.
-- **`04_claude_cli.py`** — delegates the whole agent loop to a
-  locally-installed `claude` CLI via `ClaudeCliCognition`. Uses
-  whatever auth the CLI already resolved (`~/.claude/` login,
-  `CLAUDE_CODE_OAUTH_TOKEN`, or `ANTHROPIC_API_KEY`) — no key on
-  agentkit's side. Skips cleanly if `claude` isn't on PATH.
-- **`05_streaming_typed_output.py`** — renders a typed object *while
-  the model is writing it*, via `StreamEvent.partial_output` off the
-  public `Agent.stream`. Shows the consumer contract (required fields
-  may be unset) and the negative case: an agent with no output schema
-  is completely unaffected.
-- **`06_hitl_budget_and_capabilities.py`** — three things that
-  compose: a capability mismatch refused at construction before any
-  spend; a gated tool call that **parks in place** on an injected
-  `Asker` instead of unwinding; and a budget that stops on a verdict
-  and writes a current checkpoint, so the spend is recoverable.
+Five of the six run offline against `FakeLLM` — no API key, no network.
 
-Examples 01-03, 05, and 06 run against `FakeLLM` — no API keys or
-external binaries required (05 needs `pydantic`, so `uv sync
---all-extras`). Example 04 requires the `claude` CLI installed (from
-Anthropic) and an already-authenticated Claude Code session.
+| Script | Shows | Needs |
+|---|---|---|
+| `01_single_agent.py` | The shortest useful program: one `Agent`, one prompt, one call, a typed `AgentResult`. | nothing |
+| `02_streaming_and_tools.py` | A `ReActCognition` agent with two `@tool` functions, driven token-by-token through `Agent.stream(...)`. | nothing |
+| `03_composed_middlewares.py` | A hand-built `tracing → meter → retry` chain on an `Invoker` — the seams the `Agent` normally composes for you. | nothing |
+| `04_claude_cli.py` | Delegating the whole loop to a locally-installed `claude` CLI via `ClaudeCliCognition`. | the `claude` CLI |
+| `05_streaming_typed_output.py` | Rendering a typed object *while the model is writing it*, via `StreamEvent.partial_output`. | `pydantic` |
+| `06_hitl_budget_and_capabilities.py` | Three things composing: a capability mismatch refused at construction before any spend, a gated tool that **parks in place** on an injected `Asker`, and a budget that stops on a verdict and writes a recoverable checkpoint. | nothing |
 
-## Running an example
+Two of them are worth calling out because they demonstrate behaviour
+the docs otherwise only assert:
+
+- **05** shows the negative case as well as the positive one: an agent
+  with no output schema is completely unaffected by `output_coerce()`,
+  and partials only flow when that middleware is in the chain.
+- **06**'s gated tool *parks* rather than suspending. With an `Asker`
+  wired into `Services`, the cognition awaits the human in place instead
+  of checkpointing and unwinding — the other half of the HITL story from
+  [tutorial step 5](tutorial.md#step-5-make-it-ask-before-it-acts).
+
+## Running them
 
 ```bash
 git clone https://github.com/arc-labs-ai/agentkit
@@ -42,17 +37,27 @@ uv sync
 uv run python examples/01_single_agent.py
 ```
 
-For 01-03, 05 and 06, `uv sync --all-extras` is the only
-prerequisite. To point them at a
-real provider, swap `FakeLLM(...)` for one of the batteries-included
-preset clients (`claude(api_key=...)`, `openai(api_key=...)`, etc.)
-and provide the corresponding API key. Example 04 works out of the
-box once you have `claude` installed and logged in.
+`uv sync` is enough for every example except `04`. It installs the dev
+group, which pulls in `pydantic` (transitively, via the `mcp` extra) —
+that is what `05` needs.
 
-## Related deep dives
+`04_claude_cli.py` additionally needs the `claude` CLI on your `PATH`
+and an authenticated Claude Code session; it uses whatever auth the CLI
+already resolved (`~/.claude/` login, `CLAUDE_CODE_OAUTH_TOKEN`, or
+`ANTHROPIC_API_KEY`) rather than a key held by agentkit. If `claude`
+isn't installed it prints a note and exits cleanly, so it is safe in CI.
 
-The
-[mental models](https://github.com/arc-labs-ai/agentkit/tree/main/docs/mental-models)
-walk through four longer scenarios that stress different framework
-invariants — read them alongside the examples for the *why* behind
-the composition each demo picks.
+To point any of the others at a real provider, replace the `FakeLLM(...)`
+construction with a preset — `claude(api_key=...)`, `openai(api_key=...)`
+— and supply the matching key. Nothing else in the script changes;
+[Getting started](getting-started.md#the-same-agent-against-a-real-provider)
+shows that wiring in full.
+
+## Going deeper
+
+The [mental models](mental-models/README.md) are the next level up: four
+worked product scenarios — multi-tenant RAG, an autonomous DevOps
+investigator, a 10,000-row batch job, and a coordinated research team —
+that put these primitives under real load and name what breaks when each
+guarantee slips. Read them alongside the examples for the *why* behind
+the composition each script picks.

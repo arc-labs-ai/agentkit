@@ -1,5 +1,9 @@
 # How do I cap a run's spend?
 
+You want a number you can set that the run genuinely cannot go past —
+not a dashboard you read afterwards, and not an alert that arrives
+once the money is gone.
+
 ## When you'd want this
 
 Any run that talks to a real LLM can, in principle, overspend. The
@@ -32,6 +36,11 @@ summing.
     Wired via `providers.claude(...)` on the `Invoker`. Swap for
     `providers.openai` (and set `OPENAI_API_KEY`) if that's what you
     have — the rest of the wiring is unchanged.
+
+    To run it with **no key at all**, replace the `providers.claude(...)`
+    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    other line is identical — that substitution is how this snippet is
+    verified.
 
 ## Working code
 

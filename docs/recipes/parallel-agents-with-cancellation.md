@@ -1,5 +1,8 @@
 # How do I run agents in parallel and cancel all of them if one fails?
 
+You want to do several things at once and stop paying for the rest the
+moment one of them goes wrong.
+
 ## When you'd want this
 
 Fan out a Planner's sub-questions across N Researchers. Race two
@@ -26,6 +29,11 @@ and calls `gather_bounded(...)` under the parent's semaphore.
     ~5-line one is a legitimate way to script a failure inside a real
     wire-up. Swap `providers.claude` for `providers.openai` (and set
     `OPENAI_API_KEY`) if that's what you have.
+
+    To run it with **no key at all**, replace the `providers.claude(...)`
+    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    other line is identical — that substitution is how this snippet is
+    verified.
 
 ## Working code
 

@@ -125,24 +125,49 @@ nav:
   - Concepts:
       - Kernel: concepts/kernel.md
       - Runtime: concepts/runtime.md
+      - Context: concepts/context.md
       - Capabilities: concepts/capabilities.md
       - Agents: concepts/agents.md
+      - Tools: concepts/tools.md
+      - Memory: concepts/memory.md
+      - Skills: concepts/skills.md
       - Prompts: concepts/prompts.md
       - Middlewares: concepts/middlewares.md
+      - Adapters: concepts/adapters.md
+      - Integrations (MCP): concepts/integrations.md
+      - Observability: concepts/observability.md
+      - Testing: concepts/testing.md
+  - Mental models:
+      - Overview: mental-models/README.md
+      - Multi-tenant chat with docs: mental-models/01-multi-tenant-chat-with-docs.md
+      - Autonomous devops investigator: mental-models/02-autonomous-devops-investigator.md
+      - Long-running data enrichment: mental-models/03-long-running-data-enrichment.md
+      - Multi-agent coordinated research: mental-models/04-multi-agent-coordinated-research.md
   - Anti-patterns: anti-patterns.md
   - Recipes:
       - Overview: recipes/index.md
-      - Pick a provider from config: recipes/provider-from-env.md
-      - Stream a typed object: recipes/stream-typed-output.md
-      - Human-in-the-loop tool approval: recipes/hitl-tool-approval.md
-      - Elicit a value from a human: recipes/elicit-a-value-from-a-human.md
-      - Resume from a checkpoint after a crash: recipes/resume-after-crash.md
-      - Cap spend with Budget and Quota: recipes/spend-budget-and-quota.md
-      - Parallel agents with cooperative cancellation: recipes/parallel-agents-with-cancellation.md
-      - Write a custom middleware: recipes/custom-middleware.md
-      - Wire OpenTelemetry: recipes/otel-tracing-and-metrics.md
-      - Plug the claude CLI into FastAPI code-gen: recipes/claude-cli-fastapi-code-gen.md
-      - Consume MCP tools from an agent: recipes/mcp-tools.md
+      - Making the agent act:
+          - Define and register a tool: recipes/define-a-tool.md
+          - Ground an agent in memory: recipes/ground-with-memory.md
+          - Consume MCP tools from an agent: recipes/mcp-tools.md
+          - Stream a typed object: recipes/stream-typed-output.md
+      - Structuring the work:
+          - Author a workflow graph: recipes/workflow-graph.md
+          - Coordinate multiple agents: recipes/multi-agent-coordination.md
+          - Parallel agents with cooperative cancellation: recipes/parallel-agents-with-cancellation.md
+          - Compact a long conversation: recipes/compact-a-long-conversation.md
+      - Keeping a person in the loop:
+          - Human-in-the-loop tool approval: recipes/hitl-tool-approval.md
+          - Elicit a value from a human: recipes/elicit-a-value-from-a-human.md
+      - Cost and behaviour:
+          - Pick a provider from config: recipes/provider-from-env.md
+          - Cap spend with Budget and Quota: recipes/spend-budget-and-quota.md
+          - Write a custom middleware: recipes/custom-middleware.md
+      - Running in production:
+          - Resume from a checkpoint after a crash: recipes/resume-after-crash.md
+          - Wire OpenTelemetry: recipes/otel-tracing-and-metrics.md
+          - Test an agentkit app: recipes/test-an-agentkit-app.md
+          - Plug the claude CLI into FastAPI code-gen: recipes/claude-cli-fastapi-code-gen.md
   - Migrating:
       - Overview: migrating/index.md
       - From LangChain: migrating/from-langchain.md

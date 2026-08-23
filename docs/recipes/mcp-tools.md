@@ -1,5 +1,9 @@
 # How do I consume an MCP server from an agentkit agent?
 
+Somebody has already written the integration you need — for GitHub, for
+your database, for a filesystem — and published it as an MCP server.
+This is how you point an agent at it instead of writing your own.
+
 ## When you'd want this
 
 The [Model Context Protocol](https://modelcontextprotocol.io) ecosystem
@@ -28,7 +32,12 @@ Reach for this when:
 ## Working code
 
 ```python
-"""Connect to an MCP server and hand its tools + resources to an agent."""
+"""Connect to an MCP server and hand its tools to an agent.
+
+Needs the `mcp` extra and `uvx` on PATH. The model is a `FakeLLM` scripted
+to call the server's tool once, so this runs with no API key — swap `llm=`
+for `resolve_llm("claude-sonnet-4-6")` and nothing else changes.
+"""
 
 from __future__ import annotations
 
@@ -43,7 +52,9 @@ from agentkit.integrations.mcp import (
     mcp_resources,
     mcp_tools,
 )
-from agentkit.runtime import RunContext, Services
+from agentkit.kernel.types import ToolCall
+from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.testing import FakeLLM, Turn
 
 
 async def main() -> None:
@@ -56,22 +67,44 @@ async def main() -> None:
     )
 
     async with MCPClient(server) as mcp:
-        # Adapt everything the server exposes.
         tools = await mcp_tools(mcp, prefix="time_")
+        print("adapted:", [t.name for t in tools])
+
+        # Resources and prompts are SEPARATE, OPTIONAL MCP capabilities. A
+        # tools-only server (this one) answers "Method not found" for both,
+        # so ask for them defensively rather than assuming.
         memory = mcp_resources(mcp, name="time_docs")
-        prompts = await mcp_prompts(mcp)
+        try:
+            prompts = await mcp_prompts(mcp)
+        except Exception:  # McpError: this server publishes no prompts
+            prompts = {}
 
         agent = Agent(
             name="clock",
-            model="gpt-4o-mini",
+            model="claude-sonnet-4-6",
             prompt=prompts.get("system") or "Answer with the current time when asked.",
             cognition=ReActCognition(tools=tools),
-            memory=memory,
+            memory=memory if prompts else None,
         )
 
-        ctx = RunContext(correlation_id="mcp-1", scope=Scope(), services=Services())
-        result = await agent.run("What time is it in Tokyo?", ctx)
-        print(result.output)
+        llm = FakeLLM.script([
+            Turn(tool_calls=(ToolCall(
+                id="c1",
+                name="time_get_current_time",
+                arguments={"timezone": "Asia/Tokyo"},
+            ),)),
+            Turn(content="It is just past noon in Tokyo."),
+        ])
+        # The Invoker is not optional: the tool loop calls
+        # `ctx.invoker.stream(...)` on every iteration, and a bare
+        # `Services()` leaves it `None`.
+        ctx = RunContext(
+            correlation_id="mcp-1",
+            scope=Scope(),
+            services=Services(invoker=Invoker(llm=llm)),
+            autonomy="auto",
+        )
+        print((await agent.run("What time is it in Tokyo?", ctx)).output)
 
 
 asyncio.run(main())
@@ -79,12 +112,17 @@ asyncio.run(main())
 
 `mcp_tools()` returns a list satisfying agentkit's `Tool` Protocol —
 drop it straight into `ReActCognition(tools=...)`. `mcp_resources()`
-returns a `MemorySource`; assign it to `Agent.memory` and any
-default grounder will fold results into the prompt.  `mcp_prompts()`
-returns `{name: Prompt}` for any server-authored prompts that don't
-require arguments.
+returns a `MemorySource`; assign it to `Agent.memory` and the default
+grounder will fold results into the prompt. `mcp_prompts()` returns
+`{name: Prompt}` for any server-authored prompts that don't require
+arguments.
 
 ## The three seams
+
+Tools, resources, and prompts are three **independent, optional** MCP
+capabilities. Most community servers implement only tools — the time
+server above is one of them, which is why the snippet guards the other
+two. Each adapter is a one-liner against whichever ones your server has:
 
 ```python
 # tools ────────────────────────────────────────────────────────────
@@ -125,6 +163,17 @@ prompts = await mcp_prompts(client)
 - **Argumented prompts are dropped in v1.** `mcp_prompts()` can only
   materialize static prompts. Use `MCPClient.get_prompt(name, args)`
   directly for prompts that require args.
+- **A capability the server doesn't implement raises, it doesn't return
+  empty.** `mcp_prompts()` and `MCPClient.list_resources()` on a
+  tools-only server raise `mcp.shared.exceptions.McpError: Method not
+  found`, from inside the `async with` block, which surfaces to you
+  wrapped in an `ExceptionGroup` from the transport's task group. Ask
+  for a surface only when you know the server has it, or guard the call.
+- **`mcp_resources()` is lazy; `mcp_tools()` and `mcp_prompts()` are
+  not.** The first returns a `MemorySource` and touches the server only
+  on `query(...)`, so a missing resources capability surfaces later,
+  from wherever the grounder runs. The other two hit the server
+  immediately.
 - **The `mcp` extra pulls in `pydantic`.** If your existing setup was
   pydantic-free by design, the extra will end that. It comes in via
   the upstream `mcp` package's wire schema.

@@ -1,5 +1,9 @@
 # How do I pause a run to ask a person for a value?
 
+Sometimes the agent is not asking for permission — it is asking for
+information only a person has, like the code that was just texted to
+them. This is how a run stops, asks, and carries on with the answer.
+
 ## When you'd want this
 
 Approve/deny answers one question: *may this tool run?* It cannot
@@ -20,6 +24,25 @@ That second shape needs four things the approval gate doesn't have:
 If you only need approve/deny with a serialisable run, the
 [tool-approval recipe](hitl-tool-approval.md) is simpler and still
 correct. This page is the superset.
+
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    To run it with **no key at all**, replace
+    `resolve_llm("claude-sonnet-4-6")` with a scripted `FakeLLM` from
+    `agentkit.testing`:
+
+    ```python
+    from agentkit.kernel.types import ToolCall
+    from agentkit.testing import FakeLLM, Turn
+
+    llm = FakeLLM.script([
+        Turn(tool_calls=(ToolCall(id="c1", name="ask_human",
+                                  arguments={"prompt": "one-time code?"}),)),
+        Turn(content="Verified."),
+    ])
+    ```
+
+    Either way the script pauses for you to type at the terminal — that
+    is the whole point of the page.
 
 ## Working code
 

@@ -1,5 +1,9 @@
 # How do I stream a typed object as it's being generated?
 
+You want to show the answer taking shape — a heading, then a
+paragraph, then the next field — instead of a spinner that sits there
+until the whole thing lands.
+
 ## When you'd want this
 
 You declared `output=MyModel` on an agent and you want to render it
@@ -20,6 +24,15 @@ recipe is how you receive it: `StreamEvent.partial_output`, off
     `partial_output` is silently `None` forever. Nothing looks broken.
     The Agent emits a one-shot `UserWarning` when it spots that
     wiring; don't filter it.
+
+!!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
+    The snippet resolves a real provider so you see the shape you'll
+    ship. To run it with **no key at all**, replace
+    `resolve_llm("claude-sonnet-4-6")` with
+    `FakeLLM('{"title": "Octopus cognition", "body": "Distributed neurons."}')`
+    from `agentkit.testing` — it streams in 8-character chunks, so the
+    partials are genuinely incremental. That substitution is how this
+    snippet is verified.
 
 ## Working code
 

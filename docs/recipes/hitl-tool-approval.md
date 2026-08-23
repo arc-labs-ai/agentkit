@@ -1,5 +1,9 @@
 # How do I pause a tool for human approval?
 
+Some actions should not happen because a language model decided they
+should. This is how you make an agent stop and wait for a person to say
+yes — including across a process restart.
+
 !!! tip "Need a *value*, not a yes/no?"
     This page is approve/deny with a serialisable run — the simplest
     correct thing, and unchanged. If you need a person to **supply a
@@ -23,6 +27,22 @@ driver code, which decides whether to resume with `"approve"`,
     the reader sees the real shape they'll ship. Swap
     `providers.claude` for `providers.openai` (and set
     `OPENAI_API_KEY`) if that's what you have — nothing else changes.
+
+    To run it with **no key at all**, replace the `providers.claude(...)`
+    call with a scripted `FakeLLM` from `agentkit.testing`:
+
+    ```python
+    from agentkit.kernel.types import ToolCall
+    from agentkit.testing import FakeLLM, Turn
+
+    llm = FakeLLM.script([
+        Turn(tool_calls=(ToolCall(id="c1", name="send_email", arguments={"to": "team@example.com", "subject": "Octopus brief"}),)),
+        Turn(content="Sent."),
+    ])
+    ```
+
+    Every other line is identical — that substitution is how this snippet
+    is verified.
 
 ## Working code
 

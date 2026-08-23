@@ -1,5 +1,9 @@
 # How do I pick a provider from configuration, and catch a bad model before I pay for it?
 
+You want to name a model in a config file and have the right client,
+the right credential, and the right "can this model actually do the
+job?" check all follow from that one string.
+
 ## When you'd want this
 
 Two problems that turn out to be one problem.
@@ -32,6 +36,7 @@ import asyncio
 from agentkit import Agent, Scope
 from agentkit.adapters.llm import (
     Capability,
+    CapabilityMismatch,
     ModelCapabilities,
     ModelEntry,
     register_model,
@@ -74,7 +79,10 @@ async def main() -> None:
             ),
         )
     )
-    Agent("ocr2", "acme-internal-v3", requires=("vision",))  # CapabilityMismatch
+    try:
+        Agent("ocr2", "acme-internal-v3", requires=("vision",))
+    except CapabilityMismatch as exc:
+        print(f"refused at construction: {exc}")
 
 
 asyncio.run(main())
@@ -122,6 +130,8 @@ production service that pins its models — it turns "we don't know"
 into a deployment-time stop:
 
 ```python
+from agentkit import Agent
+
 Agent("ocr", "our-finetune-v2", requires=("vision",), on_unknown_capability="refuse")
 ```
 

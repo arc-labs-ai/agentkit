@@ -5,10 +5,69 @@ lists the twelve concrete guarantees you get if you take it, and compares
 the bet against the alternatives so you can pick the tool whose bet
 matches the code you're actually about to write.
 
+It is the long version, for a reader who is already interested. If you
+are still deciding whether this framework is for you at all, the
+[landing page](index.md) is the 30-second version; if you just want
+something running, go to [Getting started](getting-started.md).
+
 The bet: **an agent is composed, not scripted.** Four orthogonal concerns —
 **cognition**, **control**, **state**, **behaviour** — plug together
 through typed Protocols. Every seam is a swap. Nothing is hidden inside a
 loop you can't rewrite.
+
+## The four themes
+
+Every concept in agentkit falls into one of those four buckets. Learn the
+four and the rest is which class fills which slot.
+
+<div class="grid cards" markdown>
+
+-   __Cognition__
+
+    ---
+
+    How the agent decides the next step. `SingleCallCognition`,
+    `ReActCognition`, `CoordinatorCognition`, `ClaudeCliCognition`,
+    or your own `Cognition` Protocol impl.
+
+    [:octicons-arrow-right-24: Concepts › Agents](concepts/agents.md)
+
+-   __Control__
+
+    ---
+
+    What limits the agent's authority. `Autonomy`, `Budget`, `Quota`,
+    `CancellationToken`, `RunPolicy`, `Suspended` + `resume()` for
+    HITL.
+
+    [:octicons-arrow-right-24: Concepts › Runtime](concepts/runtime.md)
+
+-   __State__
+
+    ---
+
+    What the agent knows. `WorkingContext`, `MemorySource`
+    (`VectorMemory` / `JournalMemory` / `FileMemory` /
+    `ScratchpadMemory`), `Prompt`, `Checkpointer`.
+
+    [:octicons-arrow-right-24: Concepts › Capabilities](concepts/capabilities.md)
+
+-   __Behaviour__
+
+    ---
+
+    How every call is intercepted. The middleware chain (`tracing`,
+    `retry`, `meter`, `compaction`, `security`, `output_coerce`, …)
+    and capabilities (`RequestBuilder`, `Compactor`, `Guardrail`).
+
+    [:octicons-arrow-right-24: Concepts › Middlewares](concepts/middlewares.md)
+
+</div>
+
+**Adapters** — the `claude()` / `openai()` / `deepseek()` /
+`openrouter()` presets, `ClaudeCliCognition`, `MCPClient`, and any
+`LLMPort` you write — are **plug-ins**, not the point. They fill the LLM
+slot in a composition; the composition is what agentkit is about.
 
 ## What you get
 
@@ -75,8 +134,9 @@ about. Ordering is deterministic because a list is deterministic.
 `ClockPort`, `CheckpointPort`, `TracePort`, `ObserverPort`,
 `MetricsPort`, `SamplerPort`, `ToolPort` — every I/O seam is a
 `typing.Protocol`. Swap OpenAI for DeepSeek by rewriting one line of
-wire-up. Swap the checkpoint store for your own by implementing four
-async methods. `py.typed` ships in the wheel.
+wire-up. Swap the checkpoint store for your own by implementing
+`CheckpointPort`'s five methods (`save`, `latest`, `at_version`,
+`list_versions`, `delete`). `py.typed` ships in the wheel.
 
 ### 7. Zero runtime dependencies in the core
 
@@ -84,9 +144,10 @@ async methods. `py.typed` ships in the wheel.
 `pydantic`, no `httpx`, no vendor SDK, no `openai`, no `anthropic`.
 The batteries-included providers (`arc-agentkit[http]`), Postgres
 adapters (`arc-agentkit[postgres]`), Redis store (`arc-agentkit[redis]`),
-OpenTelemetry bridge (`arc-agentkit[observability]`), and MCP client
-(`arc-agentkit[mcp]`) are opt-in extras. Nothing you don't use is
-imported.
+OpenTelemetry bridge (`arc-agentkit[observability]`), MCP client
+(`arc-agentkit[mcp]`) and the faster JSON codec (`arc-agentkit[fast]`)
+are opt-in extras. Nothing you don't use is imported — and nothing you
+do use changes behaviour based on which extras happen to be present.
 
 ### 8. Structured output that survives model drift
 
@@ -192,7 +253,8 @@ Each cell states the tool's actual bet, not marketing.
 - **Not opinionated about LLMs.** The core doesn't import a provider.
   The `claude()`, `openai()`, `deepseek()`, `openrouter()` presets are
   convenience wrappers over `LLMPort` and are opt-in. Bring your own
-  by implementing `LLMPort` — it's four methods.
+  by implementing `LLMPort` — three methods (`stream`, `chat`,
+  `complete`), and `chat` can just collect `stream`.
 - **Not a hosted service.** Runs where your Python runs. State lives
   where you point the `CheckpointPort`.
 
@@ -204,44 +266,101 @@ in practice unless you can point at code. Here's what the
 
 ### Swap OpenAI for DeepSeek for OpenRouter without touching the agent
 
+Constructing a provider does no network I/O, so the whole block below
+runs offline on `arc-agentkit[http]`; only an actual call needs the
+matching key.
+
 ```python
-# Wire once — swap the provider by changing the preset call.
-from agentkit import claude, openai, deepseek, openrouter
-# One line different across all four:
-async with openai(api_key=..., model="gpt-4o-mini") as chat: ...
-async with deepseek(api_key=..., model="deepseek-chat") as chat: ...
-async with openrouter(api_key=..., model="anthropic/claude-3.5-sonnet") as chat: ...
+from agentkit.adapters.llm import providers
+from agentkit.runtime import Invoker, Services
+
+# Pick one. The only line that differs is the preset and the model name.
+llm = providers.claude(api_key="sk-placeholder", model="claude-sonnet-4-6")
+llm = providers.openai(api_key="sk-placeholder", model="gpt-4o-mini")
+llm = providers.deepseek(api_key="sk-placeholder", model="deepseek-chat")
+llm = providers.openrouter(api_key="sk-placeholder", model="anthropic/claude-sonnet-4-6")
+
+# Whichever you picked lands in the same slot. Nothing downstream moves.
+services = Services(invoker=Invoker(llm=llm))
+print(type(llm).__name__)
 ```
 
+```text
+OpenAICompatibleLLM
+```
+
+`providers.*` return an `LLMPort` for you to wire. If you want the
+batteries-included version instead, `agentkit.client`'s `claude()` /
+`openai()` / `deepseek()` / `openrouter()` return a `Chat` that has
+already wrapped the same port in an `Invoker` with
+`tracing → meter → retry`, and is an async context manager so the HTTP
+pool closes on exit.
+
 Or drop to `LLMPort` and write your own vLLM / Ollama / in-house
-wrapper. Four async methods. The `Agent` doesn't care.
+wrapper. The `Agent` doesn't care.
 
 ### Swap the checkpoint store from in-memory to Postgres
 
 ```python
-# Test:
+from agentkit import Checkpointer
 from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+
 port = InMemoryCheckpointStore()
 
-# Production (arc-agentkit[postgres]):
-from agentkit.adapters.checkpoint import PostgresCheckpointStore
-port = PostgresCheckpointStore(pool="postgres://...")
+# Production (arc-agentkit[postgres]) — same object, different backing:
+#
+#   import asyncpg
+#   from agentkit.adapters.checkpoint import PostgresCheckpointStore
+#
+#   pool = await asyncpg.create_pool("postgresql://…")
+#   port = PostgresCheckpointStore(pool)
 
-checkpointer = Checkpointer(port=port)   # same object, different backing
+checkpointer = Checkpointer(port=port)
+print(type(checkpointer.port).__name__)
 ```
 
-`ReActCognition`'s durable-resume path doesn't move.
+```text
+InMemoryCheckpointStore
+```
+
+!!! warning "`PostgresCheckpointStore` takes a live pool, not a DSN"
+    Its one argument is an `asyncpg.Pool` — you create the pool
+    yourself with `await asyncpg.create_pool(dsn)` and hand it over.
+    That is deliberate: the pool's lifecycle, sizing and shutdown belong
+    to your application, not to a checkpoint store.
+
+`ReActCognition`'s durable-resume path doesn't move either way.
 
 ### Point tracing at any OTLP backend
 
-```python
-# Test:
-services = Services(trace=NoopTrace())
+`Services()` installs a `NoopTrace` and a `NoopObserver` by default, so
+tests and local runs need no wiring at all:
 
-# Production:
-from agentkit.adapters.observability import otel_tracer, otel_exporter_otlp_http
+```python
+from agentkit.runtime import Services
+
+services = Services()
+print(type(services.trace).__name__)
+```
+
+```text
+NoopTrace
+```
+
+In production, hand it a real tracer (needs
+`arc-agentkit[observability]`):
+
+```python
+from agentkit.adapters.observability import otel_exporter_otlp_http, otel_tracer
+from agentkit.runtime import Services
+
 otel_exporter_otlp_http()   # reads OTEL_EXPORTER_OTLP_ENDPOINT etc.
 services = Services(trace=otel_tracer())
+print(type(services.trace).__name__)
+```
+
+```text
+OtelTracePort
 ```
 
 Same `tracing()` middleware in the chain. Same spans. Different
@@ -276,14 +395,20 @@ read.
 
 ## Next
 
+- **[Getting started](getting-started.md)** — install, extras, and a
+  first agent that runs offline.
+- **[Tutorial](tutorial.md)** — an end-to-end walk from one chat call
+  to a gated tool a human has to approve. Only the last step needs an
+  API key.
 - **[Cheatsheet](cheatsheet.md)** — every primitive, tight code,
   skimmable in 90 seconds.
-- **[Tutorial](tutorial.md)** — a 15-minute end-to-end walk from one
-  chat call to a gated tool the human has to approve.
 - **[Recipes](recipes/index.md)** — problem-first answers to "how do
   I X?".
 - **[Anti-patterns](anti-patterns.md)** — the fifteen traps every
   first-time user falls into.
+- **[Mental models](mental-models/README.md)** — four worked product
+  scenarios that show these guarantees composing under load, and what
+  breaks when one of them slips.
 - **[Migrating › From LangChain](migrating/from-langchain.md)** —
   concept-by-concept mapping with a full before/after.
 - **[Migrating › From vanilla asyncio](migrating/from-vanilla-asyncio.md)** —

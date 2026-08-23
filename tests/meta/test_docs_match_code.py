@@ -162,18 +162,33 @@ def test_every_symbol_the_docs_import_actually_exists(
 #
 # Do not add to this list to make a build green. Write the doc.
 KNOWN_UNDOCUMENTED: frozenset[str] = frozenset({
-    "AgentkitError", "AllOf", "AlwaysOnSampler", "AnyOf", "ApproxTokenCounter",
-    "CheckpointerError", "ContextDiff", "ContextScope", "ControlSignal",
-    "DataSignal", "ErrorClass", "FetchResponse", "FrozenContext", "LastNTurns",
-    "MutationJournal", "NoopMetrics", "NoopObserver", "NoopReplayStore",
-    "OutputCoercionError", "PrefixContext", "ProviderAuthError", "ReplayRecord",
+    "AgentkitError",
+    "ControlSignal",
+    "DataSignal", "ErrorClass",
+    # "PrefixContext" / "FrozenContext" / "ContextDiff" / "ContextScope" /
+    # "LastNTurns" / "RoleFilter" / "Tagged" / "Since" / "AllOf" / "AnyOf" /
+    # "ApproxTokenCounter" / "TiktokenCounter" ratcheted off:
+    # docs/concepts/context.md documents the four axes, the cache-stable
+    # prefix, the slice predicates and the token-counter seam.
+    # "SearchHit" / "FetchResponse" / "ProviderAuthError" ratcheted off:
+    # docs/concepts/adapters.md documents the port table, the normalised
+    # search/fetch result shapes and the provider error taxonomy.
+    # "NoopObserver" / "NoopMetrics" / "NoopReplayStore" / "ReplayRecord" /
+    # "AlwaysOnSampler" / "TraceIdRatioSampler" ratcheted off:
+    # docs/concepts/observability.md documents the no-op defaults on
+    # ``Services``, the replay side channel, and the sampler seam.
     # "ReplayStore" ratcheted off: the replay-store section in
     # docs/api-reference/adapters.md now names the protocol and its put()
     # contract while documenting AGENTKIT_REPLAY_DIR.
-    "Reranker", "RoleFilter", "SearchHit", "Since",
-    "StoreUnavailable", "Tagged", "TiktokenCounter", "ToolShapeError",
-    "TraceIdRatioSampler", "VersionedEvent", "collect_one", "compose_failures",
-    "render_result", "score_sort_rerank",
+    # "MutationJournal" ratcheted off: docs/concepts/memory.md names it as
+    # JournalMemory's backing store.
+    # "OutputCoercionError" / "ToolShapeError" / "render_result" ratcheted
+    # off: docs/concepts/tools.md documents the tool error taxonomy and the
+    # as_tool result renderer.
+    # "Reranker" / "score_sort_rerank" ratcheted off: docs/concepts/memory.md
+    # documents the CompositeMemory rerank seam and its default.
+    "StoreUnavailable",
+    "VersionedEvent", "collect_one", "compose_failures",
 })
 
 

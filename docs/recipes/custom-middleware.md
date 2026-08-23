@@ -1,5 +1,9 @@
 # How do I write my own middleware?
 
+You want something to happen around every call an agent makes — strip a
+secret, time it, log it, cache it — without editing the loop or
+repeating yourself at every call site.
+
 ## When you'd want this
 
 Every cross-cutting concern in agentkit is a middleware — tracing,
@@ -16,6 +20,11 @@ straight.
     are LLM-agnostic — swap `providers.claude` for `providers.openai`
     (and set `OPENAI_API_KEY`) or any other `LLMPort` without
     touching the middleware code.
+
+    To run it with **no key at all**, replace the `providers.claude(...)`
+    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    other line is identical — that substitution is how this snippet is
+    verified.
 
 ## Working code
 

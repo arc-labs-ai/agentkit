@@ -1,5 +1,9 @@
 # How do I plug the `claude` CLI into a FastAPI code-generation endpoint?
 
+You already have Claude Code working on your machine. This is how you
+put it behind an HTTP endpoint and drive it from your own code, without
+issuing anybody an API key.
+
 ## When you'd want this
 
 You have the [`claude` CLI](https://docs.claude.com/en/docs/claude-code)
@@ -425,6 +429,13 @@ ClaudeCliCognition(
   `--session-id` assigns a UUID to a *new* conversation. To pick up a
   previous run, pass its `evals["session_id"]` as `resume_session_id=`.
   A non-UUID `session_id` is refused at construction.
+- **Several config mistakes are refused at construction, not at spawn.**
+  `add_dirs` entries that are not existing directories, `tools=()` (say
+  `tools=None` to leave the CLI's set alone, or `tools=('',)` to disable
+  every tool), `strict_mcp_config=True` with no `mcp_config=`,
+  `stable_prompt_prefix=True` with `system_prompt_mode="replace"`, and a
+  non-UUID `session_id` all raise `ValueError` from `__init__`. Better
+  there than three seconds into a subprocess.
 - **Cold start is real.** First subprocess per config_dir is 2–5s of
   CLI warmup even before the model call. Second-and-later calls are
   faster if you keep the same `config_dir`.

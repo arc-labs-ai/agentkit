@@ -1,5 +1,9 @@
 # How do I resume an agent from a checkpoint after a process crash?
 
+A long job should survive the machine it started on. When the worker
+dies halfway through, the next one should carry on from where it got
+to rather than starting the whole thing again.
+
 ## When you'd want this
 
 The worker running a long tool loop dies mid-flight — OOM, deploy,
@@ -18,6 +22,22 @@ snapshot and continues from the next iteration.
     Wired via `providers.claude(...)` on the `Invoker`. Swap for
     `providers.openai` (and set `OPENAI_API_KEY`) if that's what you
     have — the checkpoint plumbing is LLM-agnostic.
+
+    To run it with **no key at all**, replace the `providers.claude(...)`
+    call with a scripted `FakeLLM` from `agentkit.testing`:
+
+    ```python
+    from agentkit.kernel.types import ToolCall
+    from agentkit.testing import FakeLLM, Turn
+
+    llm = FakeLLM.script([
+        Turn(tool_calls=(ToolCall(id="c1", name="search", arguments={"query": "octopus cognition"}),)),
+        Turn(content="Octopuses distribute cognition across their arms."),
+    ])
+    ```
+
+    Every other line is identical — that substitution is how this snippet
+    is verified.
 
 ## Working code
 

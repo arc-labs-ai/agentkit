@@ -1,99 +1,212 @@
 # Recipes
 
-Grouped by the problem you're trying to solve, not by the primitive
-you're trying to use. Each recipe is a self-contained page: the
-question, one runnable script, an explanation, gotchas.
+One page per wall you can hit. Each is the same shape: the question in
+the title, why you'd be here, one runnable script, what's actually
+happening, and the things that bite people.
 
-If you want a linear walkthrough, use the [Tutorial](../tutorial.md);
-if you want the mental model of a primitive, use the
-[Concepts](../concepts/kernel.md); if you're about to *write* code and
-want the tightest possible menu, use the
-[Cheatsheet](../cheatsheet.md). This page is what you reach for after
-you've hit one specific wall.
+Every snippet on these pages runs. Where a specific provider isn't the
+point of the page, the model is a `FakeLLM` from `agentkit.testing`, so
+you can paste and run with no API key. Where a key really is required,
+the page says so on its first line.
 
-## I need to wire a provider from configuration
+If you want a linear walkthrough instead, use the
+[Tutorial](../tutorial.md); for the mental model of a primitive, the
+[Concepts](../concepts/kernel.md); for the tightest possible menu while
+you're already writing code, the [Cheatsheet](../cheatsheet.md).
 
-Read the key from the environment, pick the provider from the model
-name, and refuse a model that can't do the job — before any spend.
-One registry: `resolve_llm`, `from_env`, `Capability`, `requires=`.
+## Making the agent do something
 
-[Pick a provider from config, catch a bad model :octicons-arrow-right-24:](provider-from-env.md)
+<div class="grid cards" markdown>
 
-## I need to render a typed object while it's still being written
+-   __Give an agent a tool__
 
-`output=MyModel` gives you `AgentResult.parsed` at the end.
-`StreamEvent.partial_output` gives you the in-progress object on every
-delta, through `Agent.stream` alone.
+    ---
 
-[Stream a typed object as it generates :octicons-arrow-right-24:](stream-typed-output.md)
+    Turn a Python function into something the model can call, and
+    declare up front which calls mutate the world. Schemas, `ctx`
+    injection, result validation, an agent as a tool.
 
-## I need to control cost
+    [:octicons-arrow-right-24: Define and register a tool](define-a-tool.md)
 
-Hard ceiling on a single run and a rolling window per tenant.
-`Budget`, `Quota`, `MeterExceeded`, `meter()` middleware.
+-   __Answer from my documents__
 
-[Cap spend with Budget and Quota :octicons-arrow-right-24:](spend-budget-and-quota.md)
+    ---
 
-## I need to pause for a human
+    Retrieval and grounding, so the answer comes from your handbook
+    rather than from training data that resembles it. One
+    `MemorySource` Protocol, ten backends that nest.
 
-Any tool that mutates the world — publishing, spending, sending —
-should not run without a human saying yes. Real pause, snapshot,
-resume from a fresh process.
+    [:octicons-arrow-right-24: Ground an agent in memory](ground-with-memory.md)
 
-[Human-in-the-loop tool approval :octicons-arrow-right-24:](hitl-tool-approval.md)
+-   __Stream a typed object__
 
-## I need a person to supply a *value*, not just say yes
+    ---
 
-A one-time code mid-journey, nowhere near a tool call. Parkable in
-place (your live state survives), deadlined (no abandoned-tab hang),
-typed (who answered, and when), and secret-safe.
+    `output=MyModel` gives you `AgentResult.parsed` at the end;
+    `StreamEvent.partial_output` gives you the object filling in field
+    by field, on every delta.
 
-[Elicit a value from a human :octicons-arrow-right-24:](elicit-a-value-from-a-human.md)
+    [:octicons-arrow-right-24: Stream typed output](stream-typed-output.md)
 
-## I need to survive a crash
+-   __Consume an MCP server__
 
-The worker died mid-flight. A fresh worker picks up where the last
-one left off — same `run_id`, same `CheckpointPort`, hydrated
-transcript.
+    ---
 
-[Resume from a checkpoint after a crash :octicons-arrow-right-24:](resume-after-crash.md)
+    Point at any published MCP server and get its tools, resources, and
+    prompts through agentkit's canonical `Tool`, `MemorySource`, and
+    `Prompt` Protocols.
 
-## I need parallel agents that fail-fast together
+    [:octicons-arrow-right-24: Use MCP tools](mcp-tools.md)
 
-Fan out N children under a shared budget + cancel. One failure
-cancels the siblings; `best_effort=True` isolates failures instead.
+</div>
 
-[Parallel agents with cooperative cancellation :octicons-arrow-right-24:](parallel-agents-with-cancellation.md)
+## Structuring the work
 
-## I need to plug in a custom concern
+<div class="grid cards" markdown>
 
-Redact a secret before it goes on the wire. Time every call. Cache
-on a custom key. Two shapes: `BaseMiddleware` for
-transform/guard/observe; raw `(call, next)` for
-resilience/caching/instrumentation.
+-   __Run a fixed multi-step pipeline__
 
-[Write a custom middleware :octicons-arrow-right-24:](custom-middleware.md)
+    ---
 
-## I need OpenTelemetry
+    A `Workflow` graph: declared dependencies, concurrent waves,
+    branching, bounded loop-back, human gates with durable resume.
+    Explicit control, when the order is yours to decide.
 
-Real traces and metrics in Tempo / Jaeger / Datadog / Honeycomb —
-any OTLP backend. `TracePort` + `MetricsPort`, one adapter each in
-`arc-agentkit[observability]`.
+    [:octicons-arrow-right-24: Author a workflow](workflow-graph.md)
 
-[Wire OpenTelemetry :octicons-arrow-right-24:](otel-tracing-and-metrics.md)
+-   __Split work across several agents__
 
-## I need to use my local Claude Code (no API key)
+    ---
 
-`ClaudeCliCognition` subprocesses your locally-installed `claude`
-CLI per run. Auth is the CLI's problem; you get its full tool surface
-and permission modes.
+    Coordinators, the four policies, `Handoff` routing, composable
+    termination conditions. Emergent control, when who-goes-next
+    depends on what was said.
 
-[Plug the claude CLI into FastAPI code-gen :octicons-arrow-right-24:](claude-cli-fastapi-code-gen.md)
+    [:octicons-arrow-right-24: Coordinate a team](multi-agent-coordination.md)
 
-## I need to consume any MCP server
+-   __Run agents in parallel, cancel on failure__
 
-`MCPClient(StdioServer(...))` plus three adapters that surface an
-MCP server's tools, resources, and prompts through agentkit's
-canonical `Tool`, `MemorySource`, and `Prompt` Protocols.
+    ---
 
-[Consume MCP tools from an agent :octicons-arrow-right-24:](mcp-tools.md)
+    `run_agents` under a shared budget and cancel token. One failure
+    stops the siblings; `best_effort=True` isolates failures into
+    `Failure` objects instead.
+
+    [:octicons-arrow-right-24: Fan out with cancellation](parallel-agents-with-cancellation.md)
+
+</div>
+
+## Keeping a person in the loop
+
+<div class="grid cards" markdown>
+
+-   __Pause a tool for approval__
+
+    ---
+
+    Approve, reject, or rewrite the arguments — with the run suspended
+    to a checkpoint so an entirely fresh process can pick it up.
+
+    [:octicons-arrow-right-24: Gate a tool on a human](hitl-tool-approval.md)
+
+-   __Ask a person for a value__
+
+    ---
+
+    Not yes/no: a one-time code, mid-run, nowhere near a tool call.
+    Parkable in place, deadlined, typed, and secret-safe.
+
+    [:octicons-arrow-right-24: Elicit a value](elicit-a-value-from-a-human.md)
+
+</div>
+
+## Controlling cost and behaviour
+
+<div class="grid cards" markdown>
+
+-   __Cap spend__
+
+    ---
+
+    `Budget` for a hard per-run ceiling, `Quota` for a rolling
+    per-tenant window, and `on_exceeded="stop"` to make exhaustion
+    recoverable rather than fatal.
+
+    [:octicons-arrow-right-24: Budget and Quota](spend-budget-and-quota.md)
+
+-   __Keep a long conversation in budget__
+
+    ---
+
+    Four compactors and two places to put them, so turn 40 doesn't cost
+    forty times turn 1 and then stop fitting at all.
+
+    [:octicons-arrow-right-24: Compact a transcript](compact-a-long-conversation.md)
+
+-   __Pick a provider from config__
+
+    ---
+
+    One model string decides the client, the credential, and whether
+    that model can do the job at all — refused at construction, before
+    any spend.
+
+    [:octicons-arrow-right-24: Resolve a provider](provider-from-env.md)
+
+-   __Write a custom middleware__
+
+    ---
+
+    Redact a secret, time a call, cache on your own key. Two shapes:
+    `BaseMiddleware` to transform/guard/observe, raw `(call, next)` to
+    retry, skip, or wrap.
+
+    [:octicons-arrow-right-24: Write a middleware](custom-middleware.md)
+
+</div>
+
+## Running it in production
+
+<div class="grid cards" markdown>
+
+-   __Survive a crash__
+
+    ---
+
+    Same `run_id`, same `CheckpointPort`, hydrated transcript — the next
+    worker continues from the last completed iteration rather than
+    starting over.
+
+    [:octicons-arrow-right-24: Resume after a crash](resume-after-crash.md)
+
+-   __Wire OpenTelemetry__
+
+    ---
+
+    `TracePort` and `MetricsPort` into Tempo, Jaeger, Datadog,
+    Honeycomb — anything that speaks OTLP. One adapter each in
+    `arc-agentkit[observability]`.
+
+    [:octicons-arrow-right-24: Wire OTel](otel-tracing-and-metrics.md)
+
+-   __Test an agentkit app__
+
+    ---
+
+    `FakeLLM` and `make_test_ctx`: offline, deterministic, and able to
+    produce on cue the failures a real provider never will when you
+    want them.
+
+    [:octicons-arrow-right-24: Test without a model](test-an-agentkit-app.md)
+
+-   __Use the local `claude` CLI__
+
+    ---
+
+    `ClaudeCliCognition` subprocesses your installed CLI — its auth, its
+    tools, its permission modes — behind a FastAPI endpoint, with the
+    spend still on your `Budget`.
+
+    [:octicons-arrow-right-24: Drive the claude CLI](claude-cli-fastapi-code-gen.md)
+
+</div>
