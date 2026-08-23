@@ -46,8 +46,16 @@ class Prompt:
         # ``FrozenDict``, not ``MappingProxyType``. Both refuse mutation; only
         # one of them is still a ``dict``. The proxy made a bound Prompt
         # unpicklable — and therefore un-deep-copyable, which mattered because
-        # the checkpointer deep-copies state — and cost a ``__reduce__`` below
-        # to work around. It also made ``bound`` invisible to ``json.dumps``
+        # the checkpointer deep-copies state — and cost a ``__reduce__`` on
+        # this class, plus the module-level rebuild factory it had to name, to
+        # work around; both are gone, because a ``FrozenDict`` carries its own
+        # ``__reduce__`` and so pickles and deep-copies without help. Note that
+        # ``__post_init__`` does NOT re-run on unpickle (the default protocol
+        # restores state directly), so the freeze survives the round trip on
+        # the payload's own account, not on this method's — measured: a
+        # pickled and a deep-copied Prompt both come back with ``bound`` a
+        # ``FrozenDict`` and nested values ``FrozenDict``/``FrozenList``.
+        # It also made ``bound`` invisible to ``json.dumps``
         # and ``dataclasses.asdict``. ``deep_freeze`` copies as it goes, so the
         # caller cannot keep editing a dict they already bound, and it reaches
         # nested containers a single ``dict()`` copy would leave mutable.
@@ -171,22 +179,6 @@ class Prompt:
         for name in self.inputs:
             text = text.replace("{" + name + "}", str(resolved[name]))
         return text.strip()
-
-
-# Kept for BACKWARD COMPATIBILITY only, and nothing calls it in this process.
-# ``Prompt.__reduce__`` used to name this factory, so every Prompt already
-# pickled by a checkpointer or replay recorder carries a reference to it by
-# dotted path. The method is gone — ``FrozenDict`` carries its own
-# ``__reduce__``, so deepcopy and pickle work without it, verified including
-# that the clone comes back frozen — but deleting this function would turn
-# every one of those existing streams into an unreadable
-# ``AttributeError: Can't get attribute '_rebuild_prompt'``. A dead function is
-# cheaper than a durable-read outage.
-def _rebuild_prompt(
-    id_: str, version: str, template: str, inputs: tuple[str, ...], bound: dict[str, Any]
-) -> Prompt:
-    """Module-level factory for ``Prompt.__reduce__`` — pickle needs a global."""
-    return Prompt(id=id_, version=version, template=template, inputs=inputs, bound=bound)
 
 
 __all__ = ["Prompt"]

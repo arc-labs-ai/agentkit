@@ -660,11 +660,19 @@ def test_toolcall_survives_pickle_round_trip() -> None:
 
     Tool calls reach durable stores (checkpointer, replay recorder) and a
     ``FrozenContext`` is advertised as shareable across an agent boundary —
-    which means pickle once that boundary is a process. ``__reduce__`` rebuilds
-    through the constructor, so the round trip comes back FROZEN, not as a
-    plain dict — and now frozen ALL THE WAY DOWN, which the mappingproxy
-    version never was (``clone.arguments["nested"]["k"].append(4)`` used to
-    work)."""
+    which means pickle once that boundary is a process. The round trip comes
+    back FROZEN, not as a plain dict — and frozen ALL THE WAY DOWN, which the
+    mappingproxy version never was (``clone.arguments["nested"]["k"].append(4)``
+    used to work).
+
+    ``ToolCall`` carries no ``__reduce__`` of its own any more, and neither
+    does it need one: ``arguments`` is a ``FrozenDict``, which pickles through
+    its own hook and comes back a ``FrozenDict``. That is what makes this test
+    worth keeping rather than a formality — pickle uses the default protocol
+    here, which restores state directly and never runs ``__post_init__``, so
+    the assertions below are the only thing standing between a payload-side
+    regression (``FrozenDict`` losing ``__reduce__``) and a tool call arriving
+    from a durable store as an editable dict."""
     import pickle
 
     original = ToolCall("c1", "search", {"q": "hello", "nested": {"k": [1, 2, 3]}})
@@ -681,9 +689,11 @@ def test_toolcall_survives_pickle_round_trip() -> None:
 
 
 def test_toolcall_construction_and_access_are_unchanged() -> None:
-    """POSITIVE CONTROL: adding ``__hash__`` / ``__reduce__`` must not disturb
-    the constructor, the field defaults, or read access — passes identically
-    before and after the fix."""
+    """POSITIVE CONTROL: adding ``__hash__`` must not disturb the constructor,
+    the field defaults, or read access — passes identically before and after
+    the fix. It also passed unchanged when the hand-written ``__reduce__`` that
+    once sat beside ``__hash__`` was deleted, which is the point of a control:
+    the surface a caller touches did not move."""
     tc = ToolCall("c1", "search", {"q": "hello"})
     assert (tc.id, tc.name) == ("c1", "search")
     assert tc.arguments["q"] == "hello"

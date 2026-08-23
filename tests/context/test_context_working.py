@@ -356,11 +356,12 @@ def test_frozen_context_works_as_a_memoization_cache_key():
 def test_frozen_context_survives_deepcopy_and_pickle_with_tool_calls():
     """Pickling a snapshot of a tool-using agent once raised ``TypeError:
     cannot pickle 'mappingproxy' object``, and ``ToolCall.__reduce__`` was
-    written to fix it. ``FrozenDict`` now carries its own ``__reduce__``, so
-    the payload pickles on its own account and ``ToolCall``'s hook survives
-    only to keep already-written records readable. ``FrozenContext`` needs no
-    hook at all: it pickles as soon as its contents do, which is what this
-    test says."""
+    written to fix it. That hook is gone: ``FrozenDict`` carries its own
+    ``__reduce__``, so the payload pickles on its own account and every
+    hand-written hook that existed to work around the proxy — on ``Prompt``,
+    ``SignalEnvelope`` and ``ToolCall`` alike — was removed once it did.
+    ``FrozenContext`` never needed one: it pickles as soon as its contents do,
+    which is what this test says."""
     import copy as _copy
     import pickle
 

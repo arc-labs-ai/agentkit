@@ -363,12 +363,35 @@ def test_deepcopy_copies_the_bound_values_too() -> None:
     assert clone.bound["v"] is not original.bound["v"]
 
 
-def test_a_bound_prompt_survives_pickle() -> None:
-    """A durable store or a process boundary must not choke on the proxy."""
+def test_a_bound_prompt_survives_pickle_and_arrives_still_frozen() -> None:
+    """A durable store or a process boundary must not choke on the proxy —
+    and the prompt it hands back must still be a VALUE.
+
+    The frozen-ness half is the part that needs saying. `Prompt` used to carry
+    a `__reduce__` naming a module-level `_rebuild_prompt` factory, so unpickle
+    came back through the constructor and `__post_init__` re-froze `bound` on
+    the way in. Both are deleted: pickle now takes the default protocol, which
+    restores `__dict__` directly and runs `__post_init__` ZERO times (measured
+    by counting calls — one on construction, one on `dataclasses.replace`, none
+    on unpickle or deepcopy). So the freeze rides entirely on the payload
+    container being a `FrozenDict` that pickles itself.
+
+    Equality cannot see that slipping, which is why the render/`==` assertions
+    alone were not enough: a `FrozenDict` compares equal to the plain `dict` it
+    would decay into, so a revived prompt could be silently mutable and every
+    other assertion here would still pass."""
     import pickle
 
     b = _p("hi {a}", "a").bind(a="x")
     assert pickle.loads(pickle.dumps(b)).render() == "hi x"
+
+    deep = _p("{v}", "v").bind(v={"tags": ["a"]})
+    clone = pickle.loads(pickle.dumps(deep))
+    assert clone == deep
+    with pytest.raises(TypeError):
+        clone.bound["v"] = "evil"
+    with pytest.raises(TypeError):
+        clone.bound["v"]["tags"].append("evil")  # deep, not just at the top
 
 
 def test_a_copied_prompt_is_still_immutable() -> None:

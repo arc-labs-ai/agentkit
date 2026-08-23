@@ -307,14 +307,47 @@ def test_subclass_payload_is_frozen_and_unaliased() -> None:
 
 
 def test_subclass_round_trips_and_hashes() -> None:
-    """``__reduce__`` is built from ``fields()`` rather than a fixed
-    argument list precisely so a user subclass with extra fields
-    (``url`` here) round-trips instead of losing them."""
+    """A user subclass with extra fields (``url`` here) must round-trip
+    instead of losing them.
+
+    This once guarded a ``SignalEnvelope.__reduce__`` built from
+    ``fields()`` rather than a fixed argument list. That hook, and the
+    module-level ``_rebuild_signal`` factory it named, are both gone —
+    a mapping payload is a ``FrozenDict``, which pickles itself, and a
+    sequence payload is a plain ``tuple``, which always could. The
+    GUARANTEE is unchanged, which is why the test is.
+
+    It has to assert the FROZEN-ness of the revived payload, not just
+    equality, and that is a change made when the hook was deleted.
+    Without a ``__reduce__`` pickle takes the default path, which
+    restores state directly and never re-runs ``__post_init__``
+    (measured: zero calls on unpickle and deepcopy, one on construction
+    and on ``replace``). So the freeze now rides entirely on the
+    container, and equality would not notice it slipping — a
+    ``FrozenDict`` compares equal to the plain ``dict`` it would decay
+    into."""
     signal = FindingSignal[str](findings=["f1"], url="https://x")
     assert pickle.loads(pickle.dumps(signal)) == signal
     assert copy.deepcopy(signal) == signal
     assert isinstance(hash(signal), int)
     assert pickle.loads(pickle.dumps(signal)).url == "https://x"
+
+    # The payload must come back refusing mutation, by both routes.
+    for clone in (pickle.loads(pickle.dumps(signal)), copy.deepcopy(signal)):
+        with pytest.raises(AttributeError):
+            clone.findings.append("f2")
+
+    # ...and the MAPPING half, which is the one that actually depends on a
+    # container-level ``__reduce__`` rather than on tuple being immutable.
+    done = InheritedPayloadSignal[str](
+        final_delta=["m"], metrics={"used_cost": 1.0, "nested": {"k": [1]}}, verdict="ok"
+    )
+    for clone in (pickle.loads(pickle.dumps(done)), copy.deepcopy(done)):
+        assert clone == done and clone.verdict == "ok"
+        with pytest.raises(TypeError):
+            clone.metrics["used_cost"] = 999.0
+        with pytest.raises(TypeError):
+            clone.metrics["nested"]["k"][0] = 9  # deep, not just at the top
 
 
 @dataclass(slots=True, frozen=True)

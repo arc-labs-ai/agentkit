@@ -433,12 +433,12 @@ class FrozenContext:
         cache key at all.
 
         No ``__reduce__`` here, and that is now the ordinary case rather than
-        the exception: ``Prompt`` and ``SignalEnvelope`` each had one purely to
-        work around a ``MappingProxyType`` payload, and both were deleted when
-        those payloads became ``FrozenDict`` — which pickles itself. ``ToolCall``
-        is the last type still carrying one, and only to keep the
-        ``_rebuild_tool_call`` global honest for records already on disk (see
-        its docstring), not because a snapshot containing one needs it. A
+        the exception: ``Prompt``, ``SignalEnvelope`` and ``ToolCall`` each had
+        one purely to work around a ``MappingProxyType`` payload, and all three
+        were deleted once those payloads became ``FrozenDict`` — which pickles
+        itself. No public value type carries a hand-written ``__reduce__`` any
+        more; the guarantee moved down into the payload container, which is
+        where it belongs, because that is the thing that was unpicklable. A
         scratchpad holding a genuinely unpicklable value (an open socket, a
         lambda) still fails to pickle — correctly, and that failure is the
         caller's object, not this type's shape. Hashing such a snapshot works,

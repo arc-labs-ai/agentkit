@@ -147,8 +147,23 @@ class ToolCall:
     def __post_init__(self) -> None:
         # Frozen dataclass — assign via object.__setattr__ to bypass the freeze.
         # ``deep_freeze`` short-circuits on an already-frozen payload, so the
-        # re-freeze on every ``dataclasses.replace`` / unpickle costs one
-        # isinstance check rather than a second walk.
+        # re-freeze on every ``dataclasses.replace`` costs one isinstance check
+        # rather than a second walk.
+        #
+        # This is NOT the only door into the invariant, and it must not be read
+        # as one. ToolCall used to carry a ``__reduce__`` naming a module-level
+        # ``_rebuild_tool_call`` factory, so unpickling came back through the
+        # constructor; both are gone, and pickle now uses the default protocol,
+        # which restores ``__dict__`` directly. Measured by counting calls: the
+        # constructor and ``dataclasses.replace`` run this method once each,
+        # while unpickle, ``deepcopy`` and ``copy`` run it ZERO times. The
+        # freeze survives those three anyway because ``arguments`` is already a
+        # ``FrozenDict``, which carries its own ``__reduce__`` / ``__deepcopy__``
+        # and rebuilds as a ``FrozenDict`` — verified at every nested level, so
+        # ``clone.arguments["filters"]["deep"]["x"][1]["y"] = 9`` still raises.
+        # If a future change makes the payload a plain container again, that
+        # guarantee moves back onto a ``__reduce__`` here; it does not survive
+        # on this method's account today.
         object.__setattr__(self, "arguments", deep_freeze(self.arguments))
 
     def __hash__(self) -> int:

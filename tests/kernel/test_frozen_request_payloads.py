@@ -452,6 +452,15 @@ def test_a_toolcall_arrives_frozen_however_it_is_reconstructed() -> None:
     So assert the guarantee: however a ToolCall is rebuilt — through the
     constructor from a plain dict, through pickle, through deepcopy — its
     payload arrives frozen, all the way down.
+
+    "All the way down" is asserted rather than asserted-about, because only
+    the constructor route runs `__post_init__`. Measured by counting calls:
+    construction and `dataclasses.replace` run it once each; unpickle,
+    `deepcopy` and `copy` run it zero times, since the default pickle protocol
+    restores state directly. On those two routes the freeze survives purely
+    because a `FrozenDict`/`FrozenList` rebuilds as itself — and `==` would not
+    notice if it stopped, a `FrozenDict` being equal to the plain `dict` it
+    would decay into.
     """
     tc = ToolCall("c1", "search", dict(DEEP))
 
@@ -464,6 +473,12 @@ def test_a_toolcall_arrives_frozen_however_it_is_reconstructed() -> None:
         assert isinstance(got.arguments, FrozenDict)
         with pytest.raises(TypeError, match="frozen value"):
             got.arguments["injected"] = "forged"
+        # DEEP nests dict -> list -> dict; a shallow freeze passes the line
+        # above and fails these two.
+        with pytest.raises(TypeError, match="frozen value"):
+            got.arguments["filters"]["lang"] = "forged"
+        with pytest.raises(TypeError, match="frozen value"):
+            got.arguments["filters"]["tags"][1]["nested"].append(3)
         assert got == tc
 
 

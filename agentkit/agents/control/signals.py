@@ -125,7 +125,8 @@ def _freeze_payload(owner: str, name: str, value: Any) -> Any:
         # proxy is invisible to ``json.dumps`` and ``dataclasses.asdict`` — the
         # two things an audit trail is most likely to be run through. It also
         # cost a ``__reduce__`` on the envelope purely to make deepcopy and
-        # pickle work at all.
+        # pickle work at all; that hook, and the module-level rebuild factory
+        # it had to name, are both gone now that the payload pickles itself.
         return deep_freeze(dict(value))
     if isinstance(value, (str, bytes)):
         # Under the old ``options: list[str]`` annotation, ``options="retry"``
@@ -143,21 +144,6 @@ def _freeze_payload(owner: str, name: str, value: Any) -> Any:
     # touching the project's own ``MutationT`` objects, which is exactly the
     # line this module already drew.
     return tuple(deep_freeze(v) for v in value)
-
-
-# Kept for BACKWARD COMPATIBILITY only; nothing in this process calls it.
-# ``SignalEnvelope.__reduce__`` used to name this factory, so any signal already
-# pickled by a checkpointer or replay recorder references it by dotted path.
-# The method is gone — mapping payloads are ``FrozenDict`` now, which carries
-# its own ``__reduce__``, so deepcopy and pickle work without it (verified
-# including that a user SUBCLASS with extra fields round-trips and that the
-# clone comes back frozen). Deleting this function would turn those existing
-# streams into ``AttributeError: Can't get attribute '_rebuild_signal'``.
-def _rebuild_signal(cls: type[Any], values: dict[str, Any]) -> Any:
-    """Module-level factory for ``SignalEnvelope.__reduce__`` — pickle
-    needs a global to name, and it must work for user subclasses too,
-    hence the class travelling as an argument."""
-    return cls(**values)
 
 
 # ── Common envelope ─────────────────────────────────────────────────
@@ -182,7 +168,16 @@ class SignalEnvelope:
       start. The channel stamps this at emit time too.
 
     Also carries the payload-freezing machinery every signal in the
-    hierarchy inherits (``__post_init__`` / ``__reduce__``).
+    hierarchy inherits (``__post_init__``). There is no ``__reduce__``
+    here and no rebuild factory: a mapping payload becomes a
+    ``FrozenDict``, which pickles and deep-copies itself, and a sequence
+    payload becomes a plain ``tuple`` (with any nested containers frozen
+    inside it), which always could — so the envelope needs no hook of
+    its own. Note the freeze is NOT re-applied on the way back: pickle
+    takes the default protocol, which restores state directly and never
+    calls ``__post_init__``. Verified for a user subclass with extra
+    fields, which round-trips by both routes with its payload still
+    refusing mutation at every nested level.
     """
 
     correlation_id: str | None = None
