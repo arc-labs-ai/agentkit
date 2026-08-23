@@ -44,18 +44,32 @@ def _literal(vec: list[float]) -> str:
 
 
 class PgVectorStore:
-    _DDL = (
-        "CREATE EXTENSION IF NOT EXISTS vector",
-        f"CREATE TABLE IF NOT EXISTS agentkit_vectors (scope TEXT NOT NULL, id TEXT NOT NULL, "
-        f"text TEXT NOT NULL, metadata JSONB NOT NULL DEFAULT '{{}}', embedding vector({_DIM}) NOT NULL, "
-        f"PRIMARY KEY (scope, id))",
-        "CREATE INDEX IF NOT EXISTS agentkit_vectors_scope ON agentkit_vectors (scope)",
-    )
-
     def __init__(self, dsn: str | None = None, *, pool: Any = None, dim: int = _DIM) -> None:
+        if dim < 1:
+            raise ValueError(f"dim must be >= 1, got {dim}")
         self._dsn = dsn
         self._pool = pool
         self._dim = dim
+
+    @property
+    def _ddl(self) -> tuple[str, ...]:
+        """DDL for THIS instance's `dim`.
+
+        It was a class-level constant interpolating the module default
+        (``vector(256)``) while ``upsert`` wrote ``_embed(..., self._dim)``.
+        So ``PgVectorStore(dim=64)`` built a ``vector(256)`` column and every
+        one of its own writes was rejected by Postgres for wrong
+        dimensionality — a constructor argument that could only ever produce
+        an unusable table. Derived per-instance, the column and the vectors
+        are the same width by construction."""
+        return (
+            "CREATE EXTENSION IF NOT EXISTS vector",
+            "CREATE TABLE IF NOT EXISTS agentkit_vectors (scope TEXT NOT NULL, id TEXT NOT NULL, "
+            "text TEXT NOT NULL, metadata JSONB NOT NULL DEFAULT '{}', "
+            f"embedding vector({self._dim}) NOT NULL, "
+            "PRIMARY KEY (scope, id))",
+            "CREATE INDEX IF NOT EXISTS agentkit_vectors_scope ON agentkit_vectors (scope)",
+        )
 
     async def _get_pool(self) -> Any:
         if self._pool is None:
@@ -67,7 +81,7 @@ class PgVectorStore:
     async def init(self) -> None:
         pool = await self._get_pool()
         async with pool.acquire() as con:
-            for ddl in self._DDL:
+            for ddl in self._ddl:
                 await con.execute(ddl)
 
     async def aclose(self) -> None:

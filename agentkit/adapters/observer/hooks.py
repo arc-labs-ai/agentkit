@@ -37,3 +37,20 @@ class Hooks:
                     pass
         if self._inner is not None:
             await self._inner.emit(obs)
+
+    async def close(self) -> None:
+        """Forward shutdown to `inner` (no-op when unwired).
+
+        ``ObserverPort`` declares ``close()``; without it
+        ``isinstance(Hooks(), ObserverPort)`` was ``False`` (measured) and,
+        because `Hooks` chains in FRONT of another observer, the whole chain
+        below it lost its shutdown hook — a ``Hooks -> PolicyObserver ->
+        RollupObserver`` stack silently dropped the rollup's trailing summary
+        at process exit. Like `emit`, a handler must never destabilise the
+        run, so a failing inner ``close`` is not swallowed here: ``close`` is
+        an explicit shutdown call, and hiding a flush failure would lose the
+        buffered tail without a trace."""
+        if self._inner is not None:
+            inner_close = getattr(self._inner, "close", None)
+            if inner_close is not None:
+                await inner_close()

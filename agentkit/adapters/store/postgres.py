@@ -7,6 +7,10 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+# Sentinel for "row absent", distinct from a stored ``None``. ``value`` is
+# ``TEXT NOT NULL``, so a ``None`` from ``fetchval`` can only mean "no row".
+_MISS = object()
+
 
 class PostgresStore:
     """Durable `StorePort` over Postgres (extra: `arc-agentkit[postgres]`, via asyncpg). One KV table +
@@ -46,11 +50,19 @@ class PostgresStore:
             await self._pool.close()
             self._pool = None
 
-    async def get(self, key: str) -> Any | None:
+    async def _lookup(self, key: str) -> Any:
+        """Return the stored value, or `_MISS` when the row is absent — the
+        distinction `get` has to collapse to satisfy the `StorePort`
+        signature, but which `get_or_set` needs to tell a cached ``None``
+        from a cache miss."""
         pool = await self._get_pool()
         async with pool.acquire() as con:
             row = await con.fetchval("SELECT value FROM agentkit_kv WHERE key = $1", key)
-        return None if row is None else json.loads(row)
+        return _MISS if row is None else json.loads(row)
+
+    async def get(self, key: str) -> Any | None:
+        found = await self._lookup(key)
+        return None if found is _MISS else found
 
     async def set(self, key: str, value: Any, *, ttl: int | None = None) -> None:
         # PostgresStore has no background sweeper for TTL — silently
@@ -88,13 +100,17 @@ class PostgresStore:
                 "PostgresStore.get_or_set does not support ttl — see "
                 "PostgresStore.set for the rationale."
             )
-        existing = await self.get(key)
-        if existing is not None:
+        # Presence-based, not truthiness-based — see the same fix in
+        # `RedisStore.get_or_set`. ``existing is not None`` re-ran a
+        # ``None``-returning producer on every call (measured: 3 calls → 3
+        # runs, against 1 for the `InMemoryStore` reference contract).
+        existing = await self._lookup(key)
+        if existing is not _MISS:
             return existing
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
-            existing = await self.get(key)
-            if existing is not None:
+            existing = await self._lookup(key)
+            if existing is not _MISS:
                 return existing
             result = await fn()
             await self.set(key, result)

@@ -37,6 +37,15 @@ class QueueObserver:
 
     def __init__(self, maxsize: int = 256) -> None:
         self._items: deque[Observation] = deque()
+        # QUEUE DEPTH, not a lifetime counter. It is incremented on
+        # ``emit`` and decremented on every path that removes an item
+        # (``_drop_oldest_noncritical`` and ``stream``'s pop) — the two
+        # must stay paired. Counting lifetime emissions instead made
+        # ``maxsize`` a lifetime budget: measured with ``maxsize=4`` and a
+        # consumer draining each item, 12 progress observations emitted
+        # → the consumer saw only ``['p0','p1','p2','p3']`` and the queue
+        # ended at ``_noncritical=4, len(_items)=0`` — 8 silently lost
+        # from an EMPTY queue, with nothing backed up at all.
         self._noncritical = 0
         self._max_noncritical = maxsize
         self._event = asyncio.Event()
@@ -47,14 +56,19 @@ class QueueObserver:
         if obs.kind not in CRITICAL_KINDS:
             self._noncritical += 1
             while self._noncritical > self._max_noncritical:  # coalesce: drop oldest non-critical
-                for i, it in enumerate(self._items):
-                    if it.kind not in CRITICAL_KINDS:
-                        del self._items[i]
-                        self._noncritical -= 1
-                        break
-                else:
+                if not self._drop_oldest_noncritical():
                     break
         self._event.set()
+
+    def _drop_oldest_noncritical(self) -> bool:
+        """Evict the oldest coalescable item; ``False`` when the queue holds
+        only ``CRITICAL_KINDS`` (never dropped, and never counted)."""
+        for i, it in enumerate(self._items):
+            if it.kind not in CRITICAL_KINDS:
+                del self._items[i]
+                self._noncritical -= 1
+                return True
+        return False
 
     async def close(self) -> None:
         self._closed = True
@@ -67,4 +81,11 @@ class QueueObserver:
                     return
                 self._event.clear()
                 await self._event.wait()
-            yield self._items.popleft()
+            item = self._items.popleft()
+            # Decrement BEFORE the yield: the item has left the queue, so
+            # the depth must reflect that even if the consumer never
+            # resumes. Omitting this is what turned the bound into a
+            # lifetime budget.
+            if item.kind not in CRITICAL_KINDS:
+                self._noncritical -= 1
+            yield item

@@ -537,3 +537,312 @@ def test_filestore_says_so_when_it_ignores_a_ttl() -> None:
         warnings.simplefilter("always")
         asyncio.run(FileStore(tempfile.mkdtemp()).set("k", "v"))
     assert caught == []
+
+
+# ── A cached ``None`` is a HIT, not a miss ──────────────────────────────────
+#
+# ``get_or_set`` gated on ``existing is not None``, which cannot tell "no key"
+# from "the key holds null". A producer that legitimately returns ``None`` —
+# "this lookup found nothing", the single most common thing to want cached —
+# re-ran on every call, and single-flight silently stopped holding. Measured
+# against the `InMemoryStore` reference contract: 3 calls with a
+# ``None``-returning fn → InMemory ran it 1x, Redis 3x, Postgres 3x.
+
+
+class _FakePgPool:
+    """In-memory stand-in for the asyncpg pool surface PostgresStore uses.
+    ``agentkit_kv.value`` is ``TEXT NOT NULL``, so a missing row is the only
+    way ``fetchval`` yields ``None`` — the fake preserves that."""
+
+    def __init__(self):
+        self.kv: dict = {}
+        self.log: dict = {}
+
+    def acquire(self):
+        pool = self
+
+        class _Con:
+            async def execute(self, sql, *a):
+                if sql.startswith("INSERT INTO agentkit_kv"):
+                    pool.kv[a[0]] = a[1]
+                elif sql.startswith("DELETE FROM agentkit_kv"):
+                    pool.kv.pop(a[0], None)
+                elif sql.startswith("INSERT INTO agentkit_log"):
+                    pool.log.setdefault(a[0], []).append(a[1])
+
+            async def fetchval(self, sql, *a):
+                return pool.kv.get(a[0])
+
+            async def fetch(self, sql, *a):
+                return [{"value": v} for v in pool.log.get(a[0], [])]
+
+        class _CM:
+            async def __aenter__(self):
+                return _Con()
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _CM()
+
+    async def close(self):
+        return None
+
+
+def _backend(name):
+    """Build a fresh instance of one of the three `StorePort` implementations
+    that share the ``get_or_set`` contract. All three are fully offline."""
+    from agentkit.adapters.store import InMemoryStore
+
+    return {
+        "inmemory": lambda: InMemoryStore(),
+        "redis": lambda: RedisStore(client=_FakeRedis()),
+        "postgres": lambda: PostgresStore(pool=_FakePgPool()),
+    }[name]()
+
+
+_BACKENDS = ["inmemory", "redis", "postgres"]
+
+
+@pytest.mark.parametrize("name", _BACKENDS)
+def test_get_or_set_caches_a_none_result_on_every_backend(name):
+    """All three backends must agree: ``None`` is a value, and caching it
+    means the producer runs exactly once."""
+    store = _backend(name)
+    calls = {"n": 0}
+
+    async def produce_none():
+        calls["n"] += 1
+        return None
+
+    async def go():
+        return [await store.get_or_set("null-key", produce_none) for _ in range(3)]
+
+    assert _run(go()) == [None, None, None]
+    assert calls["n"] == 1, f"{name} re-ran the producer on a cached None"
+
+
+@pytest.mark.parametrize("name", _BACKENDS)
+def test_get_or_set_still_treats_an_absent_key_as_a_miss(name):
+    """POSITIVE CONTROL. A "fix" that returned the sentinel-guarded value
+    unconditionally, or one that just cached the first result forever, would
+    pass the test above and break here: a genuinely absent key must run the
+    producer, and a `delete` must make the next call run it again."""
+    store = _backend(name)
+    calls = {"n": 0}
+
+    async def produce_none():
+        calls["n"] += 1
+        return None
+
+    async def go():
+        await store.get_or_set("k1", produce_none)
+        await store.get_or_set("k2", produce_none)  # different key → a real miss
+        assert calls["n"] == 2
+        await store.delete("k1")
+        await store.get_or_set("k1", produce_none)  # deleted → a real miss again
+        assert calls["n"] == 3
+        # The public ``get`` signature is unchanged: absent and null both read None.
+        assert await store.get("k1") is None and await store.get("never-set") is None
+
+    _run(go())
+
+
+@pytest.mark.parametrize("name", _BACKENDS)
+def test_get_or_set_caches_the_other_falsy_values_too(name):
+    """Edge: ``0``, ``""``, ``[]`` and ``False`` were never the bug (they are
+    ``is not None``) but they share the failure's shape, so they are pinned —
+    the gate must be presence, never truthiness."""
+    store = _backend(name)
+
+    async def go():
+        for i, falsy in enumerate((0, "", [], False, {})):
+            calls = {"n": 0}
+
+            async def produce(v=falsy, c=calls):
+                c["n"] += 1
+                return v
+
+            first = await store.get_or_set(f"falsy{i}", produce)
+            second = await store.get_or_set(f"falsy{i}", produce)
+            assert first == second == falsy and calls["n"] == 1
+
+    _run(go())
+
+
+def test_inmemory_get_or_set_single_flight_holds_for_a_none_producer():
+    """Edge: the concurrent path shares the same gate. Twenty racers on a
+    cold key whose producer returns ``None`` must still see exactly one run —
+    before the fix the Redis/Postgres double-check inside the lock also read
+    the cached ``None`` as a miss."""
+    import asyncio as _aio
+
+    store = RedisStore(client=_FakeRedis())
+    calls = {"n": 0}
+
+    async def produce_none():
+        await _aio.sleep(0)
+        calls["n"] += 1
+        return None
+
+    async def go():
+        return await _aio.gather(*(store.get_or_set("cold", produce_none) for _ in range(20)))
+
+    assert _run(go()) == [None] * 20
+    assert calls["n"] == 1
+
+
+# ── InMemoryStore keeps nothing it no longer needs ──────────────────────────
+#
+# Three write-only tables: ``_locks`` grew one ``asyncio.Lock`` per key ever
+# touched (5,000 ``get_or_set`` + ``delete`` pairs → ``kv=0`` but
+# ``locks=5000``), TTL'd keys nobody read again were retained forever because
+# expiry was purge-on-read only, and ``list()`` on a missing key materialized
+# a permanent ``defaultdict`` bucket.
+
+
+def test_inmemory_lock_table_is_reclaimed_when_nobody_is_waiting():
+    """Measured before: ``kv=0, locks=5000``. A long-lived process keying by
+    run/tenant id leaked one lock object per identifier, forever."""
+    from agentkit.adapters.store import InMemoryStore
+
+    s = InMemoryStore()
+
+    async def go():
+        async def produce():
+            return "v"
+
+        for i in range(500):
+            await s.get_or_set(f"k{i}", produce)
+            await s.delete(f"k{i}")
+
+    _run(go())
+    assert s._kv == {} and s._locks == {}
+
+
+def test_inmemory_lock_reclamation_does_not_break_single_flight():
+    """POSITIVE CONTROL, and the reason the reclamation is reference-counted
+    rather than "drop it when ``lock.locked()`` is False": ``release()``
+    clears ``locked()`` BEFORE the woken waiter resumes, so that test would
+    let a queued contender build a second lock and run the producer twice.
+    Twenty racers, one run — then an empty lock table."""
+    import asyncio as _aio
+
+    from agentkit.adapters.store import InMemoryStore
+
+    s = InMemoryStore()
+    calls = {"n": 0}
+
+    async def slow_producer():
+        await _aio.sleep(0)  # force every contender onto the lock
+        calls["n"] += 1
+        return {"generated": True}
+
+    async def go():
+        return await _aio.gather(*(s.get_or_set("hot", slow_producer) for _ in range(20)))
+
+    assert _run(go()) == [{"generated": True}] * 20
+    assert calls["n"] == 1  # single-flight intact
+    assert s._locks == {}  # and the lock did not survive the burst
+
+
+def test_inmemory_lock_is_reclaimed_when_the_producer_raises():
+    """Edge: the failure path takes the same exit. A store hammered by a
+    permanently-failing producer must not accumulate locks either."""
+    from agentkit.adapters.store import InMemoryStore
+
+    s = InMemoryStore()
+
+    async def boom():
+        raise ValueError("nope")
+
+    async def go():
+        for i in range(50):
+            with pytest.raises(ValueError):
+                await s.get_or_set(f"k{i}", boom)
+
+    _run(go())
+    assert s._locks == {}
+
+
+def test_inmemory_expired_keys_are_reclaimed_without_ever_being_read():
+    """Purge-on-read only reclaimed a key if something read it AGAIN — the one
+    thing an idempotency key is never used for. The amortized sweep on the
+    write path bounds the table by live data instead of lifetime traffic."""
+    from agentkit.adapters.store import InMemoryStore
+    from agentkit.adapters.store.memory import _SWEEP_EVERY
+
+    now = {"t": 0.0}
+    s = InMemoryStore(clock=lambda: now["t"])
+
+    async def go():
+        for i in range(300):
+            await s.set(f"ttl{i}", "v", ttl=1)  # written once, never read again
+        now["t"] = 100.0  # every deadline is now in the past
+        for i in range(_SWEEP_EVERY):  # ongoing traffic on OTHER keys
+            await s.set(f"live{i}", "v")
+
+    _run(go())
+    assert s._expiry == {}, "expired deadlines were never reclaimed"
+    assert not any(k.startswith("ttl") for k in s._kv), "expired values were retained"
+    assert len([k for k in s._kv if k.startswith("live")]) == _SWEEP_EVERY
+
+
+def test_inmemory_purge_expired_keeps_live_keys_and_reports_what_it_dropped():
+    """POSITIVE CONTROL: a sweep that simply cleared the tables would pass the
+    test above and destroy every unexpired entry. Only past-deadline keys go;
+    keys with no ttl and keys still inside their ttl stay."""
+    from agentkit.adapters.store import InMemoryStore
+
+    now = {"t": 0.0}
+    s = InMemoryStore(clock=lambda: now["t"])
+
+    async def go():
+        await s.set("gone", "v", ttl=10)
+        await s.set("still-live", "v", ttl=1000)
+        await s.set("no-ttl", "v")
+        now["t"] = 50.0
+        assert s.purge_expired() == 1
+        assert await s.get("gone") is None
+        assert await s.get("still-live") == "v"
+        assert await s.get("no-ttl") == "v"
+        assert s.purge_expired() == 0  # idempotent
+
+    _run(go())
+
+
+def test_inmemory_amortized_sweep_does_not_collect_the_key_being_written():
+    """Edge: the sweep runs inside `set`, so an off-by-one on the deadline
+    comparison would let a just-written key expire instantly. Pinned right at
+    the sweep boundary."""
+    from agentkit.adapters.store import InMemoryStore
+    from agentkit.adapters.store.memory import _SWEEP_EVERY
+
+    now = {"t": 0.0}
+    s = InMemoryStore(clock=lambda: now["t"])
+
+    async def go():
+        for i in range(_SWEEP_EVERY - 1):
+            await s.set(f"pad{i}", "v")
+        await s.set("boundary", "v", ttl=300)  # the write that triggers the sweep
+        assert await s.get("boundary") == "v"
+
+    _run(go())
+
+
+def test_inmemory_list_of_a_missing_key_does_not_create_a_bucket():
+    """``self._logs[key]`` on a defaultdict CREATES the entry, so a read of a
+    never-appended key leaked a permanent empty list (measured: one ``list()``
+    miss → ``len(_logs) == 1``). A read must not be a write."""
+    from agentkit.adapters.store import InMemoryStore
+
+    s = InMemoryStore()
+
+    async def go():
+        for i in range(100):
+            assert await s.list(f"never-appended-{i}") == []
+        await s.append("real", {"a": 1})
+        assert await s.list("real") == [{"a": 1}]  # appends still work
+
+    _run(go())
+    assert list(s._logs) == ["real"]

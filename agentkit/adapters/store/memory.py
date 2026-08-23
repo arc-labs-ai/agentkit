@@ -2,7 +2,12 @@
 
 TTL is honored: a caller passing a 300s idempotency entry must see
 expiry in dev the same way it sees it in Redis. Keys expire via a lazy
-deadline check on every read — no background sweeper needed.
+deadline check on every read, plus an amortized sweep on the write path so a
+key that is never read again is still reclaimed (`purge_expired`).
+
+Every table here is bounded by live data, not by lifetime traffic: `_locks`
+entries are reference-counted and dropped when the last waiter leaves, and
+reads never materialize log buckets.
 """
 
 from __future__ import annotations
@@ -11,7 +16,28 @@ import asyncio
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
+
+# Writes between amortized expiry sweeps. Purge-on-read alone never reclaims
+# a TTL'd key that is never read again — the common shape for idempotency
+# keys, which are written once and only ever *checked* under a different key.
+_SWEEP_EVERY = 256
+
+
+@dataclass
+class _KeyLock:
+    """A per-key lock plus a live-user count.
+
+    Reference counting, not eviction-on-delete: ``asyncio.Lock.release()``
+    clears ``locked()`` *before* the woken waiter resumes, so ``locked()`` is
+    not a safe "nobody needs this" test — dropping the lock in that window
+    lets a queued contender build a second lock for the same key and run the
+    producer twice, breaking single-flight. ``users`` is incremented and
+    decremented with no ``await`` in between, so it is exact under asyncio."""
+
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    users: int = 0
 
 
 class InMemoryStore:
@@ -19,8 +45,9 @@ class InMemoryStore:
         self._kv: dict[str, Any] = {}
         self._expiry: dict[str, float] = {}  # key → monotonic deadline (set only when ttl given)
         self._logs: dict[str, list[Any]] = defaultdict(list)
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, _KeyLock] = {}
         self._clock = clock
+        self._writes_since_sweep = 0
 
     def _is_expired(self, key: str) -> bool:
         deadline = self._expiry.get(key)
@@ -39,6 +66,22 @@ class InMemoryStore:
             return None
         return self._kv.get(key)
 
+    def purge_expired(self) -> int:
+        """Drop every key whose deadline has passed; returns how many went.
+
+        Purge-on-read reclaimed a key only if something read it again, so
+        TTL'd keys nobody revisits were retained forever — a store used purely
+        for idempotency grew without bound while reporting the right answers.
+        Public because a long-lived process may want to sweep on its own
+        cadence; `set` also calls it every ``_SWEEP_EVERY`` writes, which keeps
+        the table bounded by live data rather than lifetime traffic."""
+        now = self._clock()
+        dead = [k for k, deadline in self._expiry.items() if now >= deadline]
+        for k in dead:
+            self._kv.pop(k, None)
+            self._expiry.pop(k, None)
+        return len(dead)
+
     async def set(self, key: str, value: Any, *, ttl: int | None = None) -> None:
         self._kv[key] = value
         if ttl is not None:
@@ -47,6 +90,14 @@ class InMemoryStore:
             # An explicit ``ttl=None`` clears any prior expiry — match
             # Redis SET semantics (a SET without EX/PX removes the TTL).
             self._expiry.pop(key, None)
+        # Amortized O(1): one full sweep per ``_SWEEP_EVERY`` writes. The
+        # just-written key is never collected — its deadline is strictly in
+        # the future for any ``ttl > 0``, and ``ttl=0`` already means
+        # "expired now" on the read path.
+        self._writes_since_sweep += 1
+        if self._writes_since_sweep >= _SWEEP_EVERY:
+            self._writes_since_sweep = 0
+            self.purge_expired()
 
     async def get_or_set(
         self, key: str, fn: Callable[[], Awaitable[Any]], *, ttl: int | None = None
@@ -56,13 +107,25 @@ class InMemoryStore:
         ``ttl`` is applied on the stored result, matching the other backends."""
         if key in self._kv and not self._is_expired(key):
             return self._kv[key]
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
-            if key in self._kv and not self._is_expired(key):
-                return self._kv[key]
-            result = await fn()  # a raised fn propagates here, unstored
-            await self.set(key, result, ttl=ttl)
-            return result
+        entry = self._locks.get(key)
+        if entry is None:
+            entry = self._locks[key] = _KeyLock()
+        entry.users += 1  # no ``await`` between the lookup and this — atomic
+        try:
+            async with entry.lock:
+                if key in self._kv and not self._is_expired(key):
+                    return self._kv[key]
+                result = await fn()  # a raised fn propagates here, unstored
+                await self.set(key, result, ttl=ttl)
+                return result
+        finally:
+            # Reclaim on the way out (including on a raised ``fn``). The lock
+            # table used to be write-only: 5,000 ``get_or_set`` + ``delete``
+            # pairs left ``kv=0`` but ``locks=5000`` — one permanent
+            # ``asyncio.Lock`` per key ever touched.
+            entry.users -= 1
+            if entry.users == 0 and self._locks.get(key) is entry:
+                del self._locks[key]
 
     async def delete(self, key: str) -> None:
         self._kv.pop(key, None)  # idempotent: missing key is a no-op
@@ -72,4 +135,7 @@ class InMemoryStore:
         self._logs[key].append(value)
 
     async def list(self, key: str) -> list[Any]:
-        return list(self._logs[key])
+        # ``self._logs[key]`` on a defaultdict CREATES the bucket, so reading a
+        # never-appended key left a permanent empty list behind (measured: one
+        # ``list()`` miss → ``len(_logs) == 1``). A read must not be a write.
+        return list(self._logs.get(key, ()))

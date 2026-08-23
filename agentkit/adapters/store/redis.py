@@ -7,6 +7,10 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+# Sentinel for "key absent", distinct from a stored ``None``. A module-level
+# object() is unforgeable — no JSON value can ever compare identical to it.
+_MISS = object()
+
 
 class RedisStore:
     """Durable `StorePort` over Redis (extra: `arc-agentkit[redis]`). KV via GET/SET(EX), append-logs via
@@ -36,6 +40,17 @@ class RedisStore:
     def _loads(raw: Any) -> Any:
         return None if raw is None else json.loads(raw)
 
+    async def _lookup(self, key: str) -> Any:
+        """Return the stored value, or `_MISS` when the key is absent.
+
+        ``get`` collapses both onto ``None``, which is right for the public
+        `StorePort` signature but useless for `get_or_set`: a Redis miss and a
+        stored JSON ``null`` are different facts. Redis itself keeps them
+        apart (GET returns ``None`` vs the two bytes ``null``), so the
+        distinction is recovered here rather than guessed at the call site."""
+        raw = await self._redis.get(self._k(key))
+        return _MISS if raw is None else json.loads(raw)
+
     async def get(self, key: str) -> Any | None:
         return self._loads(await self._redis.get(self._k(key)))
 
@@ -48,13 +63,18 @@ class RedisStore:
     async def get_or_set(
         self, key: str, fn: Callable[[], Awaitable[Any]], *, ttl: int | None = None
     ) -> Any:
-        existing = await self.get(key)
-        if existing is not None:
+        # Presence-based, not truthiness-based. ``existing is not None``
+        # treated a legitimately cached ``None`` as a miss, so a producer
+        # returning ``None`` re-ran on EVERY call and single-flight silently
+        # stopped holding. Measured against the `InMemoryStore` reference: 3
+        # calls with a ``None``-returning fn → InMemory ran it 1x, Redis 3x.
+        existing = await self._lookup(key)
+        if existing is not _MISS:
             return existing
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
-            existing = await self.get(key)
-            if existing is not None:
+            existing = await self._lookup(key)
+            if existing is not _MISS:
                 return existing
             result = await fn()  # a raised fn propagates, unstored (never cache failure)
             await self.set(key, result, ttl=ttl)

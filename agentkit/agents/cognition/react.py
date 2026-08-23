@@ -474,9 +474,11 @@ class ReActCognition:
                     # ``except MeterExceeded`` would miss it. Unwrap the ceiling
                     # and raise it as itself; anything else keeps its group,
                     # because a genuine multi-failure fan-out IS a group.
-                    ceiling = _unwrap_ceiling(group)
-                    if ceiling is not None:
-                        raise ceiling from group
+                    # NOT named ``ceiling``: this scope already has one, a
+                    # ``str | None`` reason from ``_exhausted_ceiling``.
+                    breached = _unwrap_ceiling(group)
+                    if breached is not None:
+                        raise breached from group
                     raise
                 for tc, r in zip(res.tool_calls, results, strict=False):
                     context.append(self._tool_message(tc, r))

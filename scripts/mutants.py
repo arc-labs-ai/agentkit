@@ -115,6 +115,21 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+OBS_TESTS = ("tests/adapters/test_observer_adapters.py",)
+STORE2_TESTS = ("tests/adapters/test_stores.py",)
+VEC_TESTS = ("tests/adapters/test_vector_adapters.py",)
+PROV_TESTS = ("tests/adapters/test_provider_error_classification.py",)
+SSE_TESTS = ("tests/adapters/test_provider_sse_and_tool_calls.py",)
+MAP_TESTS = ("tests/adapters/test_callable_llm_mapping.py",)
+TOK_TESTS = (
+    "tests/context/test_context_tokens.py",
+    "tests/capabilities/test_compaction_strategies.py",
+)
+SCHEMA2_TESTS = (
+    "tests/capabilities/test_output_schema_dataclass.py",
+    "tests/capabilities/test_output_schema_attrs.py",
+    "tests/capabilities/test_output_schema_pydantic.py",
+)
 MW_MEMO_TESTS = ("tests/middlewares/test_memoize_tool_identity.py",)
 MW_METER_TESTS = ("tests/middlewares/test_meter_stream_and_cache.py",)
 MW_SEM_TESTS = ("tests/middlewares/test_semantic_memoize_tool_turns.py",)
@@ -163,6 +178,110 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── observers / stores / vectors ────────────────────────────────────────
+    Mutant(
+        tag="obs",
+        why="the queue bound counts lifetime emissions again, dropping 8 of 12 with an idle queue",
+        path="agentkit/adapters/observer/sinks.py",
+        before="            if item.kind not in CRITICAL_KINDS:\n                self._noncritical -= 1",
+        after="            if False:\n                self._noncritical -= 1",
+        tests=OBS_TESTS,
+    ),
+    Mutant(
+        tag="obs",
+        why="the rollup buffer is read after the await again, raising IndexError into emit()",
+        path="agentkit/adapters/observer/cadence.py",
+        before="        buf, self._buf = self._buf, []",
+        after="        buf = self._buf",
+        tests=OBS_TESTS,
+    ),
+    Mutant(
+        tag="obs",
+        why="close() stops forwarding, so a wrapped rollup loses its trailing summary",
+        path="agentkit/adapters/observer/hooks.py",
+        before="    async def close(self) -> None:",
+        after="    async def _disabled_close(self) -> None:",
+        tests=OBS_TESTS,
+    ),
+    Mutant(
+        tag="store",
+        why="a cached None reads as a miss, so a null-returning producer re-runs every call",
+        path="agentkit/adapters/store/redis.py",
+        # Target ``_lookup`` itself, not either ``is not _MISS`` guard: there
+        # are two of those (a fast path outside the lock and the decision
+        # inside it), so breaking one alone is EQUIVALENT — the other still
+        # catches it and only an extra lock acquisition changes. ``_lookup`` is
+        # where the miss/stored-null distinction is actually recovered.
+        before="        return _MISS if raw is None else json.loads(raw)",
+        after="        return _MISS if raw is None else (json.loads(raw) or _MISS)",
+        tests=STORE2_TESTS,
+    ),
+    Mutant(
+        tag="vec",
+        why="a repeated id inside one upsert is appended twice, breaking upsert-by-id",
+        path="agentkit/adapters/vector/in_memory.py",
+        before="        bucket.extend((ch, _vec(ch.text)) for ch in incoming.values())",
+        after="        bucket.extend((ch, _vec(ch.text)) for ch in chunks)",
+        tests=VEC_TESTS,
+    ),
+    # ── providers ───────────────────────────────────────────────────────────
+    Mutant(
+        tag="prov",
+        why="the permanent-429 message carries a transient marker again, so classify says retry",
+        path="agentkit/adapters/llm/providers/base.py",
+        before="def _permanent_message(",
+        after="def _unused_permanent_message(",
+        tests=PROV_TESTS,
+    ),
+    Mutant(
+        tag="prov",
+        why="the error body is truncated BEFORE parsing, losing error.type on a long body",
+        path="agentkit/adapters/llm/providers/base.py",
+        before="def _error_type(",
+        after="def _unused_error_type(",
+        tests=PROV_TESTS,
+    ),
+    Mutant(
+        tag="prov",
+        why="a dict-shaped provider response coerces to an empty result again",
+        path="agentkit/adapters/llm/_mapping.py",
+        before="def _first_int(",
+        after="def _unused_first_int(",
+        tests=MAP_TESTS,
+    ),
+    Mutant(
+        tag="prov",
+        why="multi-line SSE data frames are dropped whole and silently",
+        path="agentkit/adapters/llm/providers/base.py",
+        before="def _sse_decode(",
+        after="def _unused_sse_decode(",
+        tests=SSE_TESTS,
+    ),
+    # ── token accounting ────────────────────────────────────────────────────
+    Mutant(
+        tag="tokens",
+        why="tool calls stop counting, so compaction never fires on an agentic transcript",
+        path="agentkit/context/tokens.py",
+        before="def estimate_message_tokens(",
+        after="def _unused_estimate_message_tokens(",
+        tests=TOK_TESTS,
+    ),
+    Mutant(
+        tag="schema",
+        why="an init=False dataclass field crashes with a raw TypeError again",
+        path="agentkit/capabilities/output_schema/dataclass_adapter.py",
+        before="def _coerce_dataclass(",
+        after="def _unused_coerce_dataclass(",
+        tests=SCHEMA2_TESTS,
+    ),
+    Mutant(
+        tag="schema",
+        why="pydantic serialize emits field names while parse expects aliases",
+        path="agentkit/capabilities/output_schema/pydantic_adapter.py",
+        before="model_dump(by_alias=True)",
+        after="model_dump()",
+        tests=SCHEMA2_TESTS,
+    ),
     # ── middlewares: bill it, key it, and report the failure ────────────────
     Mutant(
         tag="mw",
@@ -322,8 +441,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="ceiling",
         why="the ceiling reaches the caller wrapped in an ExceptionGroup nobody catches",
         path="agentkit/agents/cognition/react.py",
-        before="                    ceiling = _unwrap_ceiling(group)",
-        after="                    ceiling = None",
+        before="                    breached = _unwrap_ceiling(group)",
+        after="                    breached = None",
         tests=CEILING_TESTS,
     ),
     Mutant(

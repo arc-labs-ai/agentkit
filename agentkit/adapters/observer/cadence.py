@@ -5,6 +5,7 @@ human-gate `interrupt` are never silenced or delayed behind a cadence policy."""
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
@@ -29,6 +30,17 @@ class PolicyObserver:
     async def emit(self, obs: Observation) -> None:
         if self._allow is None or obs.kind in self._allow or obs.kind in _ALWAYS_FORWARD:
             await self._inner.emit(obs)
+
+    async def close(self) -> None:
+        """Forward shutdown to `inner`. ``ObserverPort`` declares ``close()``,
+        so without it ``isinstance(PolicyObserver(...), ObserverPort)`` was
+        ``False`` (measured) — a cadence wrapper did not satisfy the very
+        Protocol it exists to compose. Worse, a wrapper that swallows
+        ``close`` strands a buffering inner: wrapping a `RollupObserver`
+        dropped its trailing summary entirely."""
+        inner_close = getattr(self._inner, "close", None)
+        if inner_close is not None:
+            await inner_close()
 
     @classmethod
     def everything(cls, inner: Any) -> PolicyObserver:
@@ -76,6 +88,10 @@ class RollupObserver:
         self._summarize = summarize or _default_rollup
         self._kind = kind
         self._buf: list[Observation] = []
+        # ``_flush`` awaits a caller-supplied ``summarize`` (the async hook is
+        # an LLM/Compactor call), so concurrent ``emit``s re-enter it. Serialise
+        # the whole flush so exactly one task owns a buffer generation.
+        self._flush_lock = asyncio.Lock()
 
     async def emit(self, obs: Observation) -> None:
         if obs.kind in _ALWAYS_FORWARD:  # critical → flush the roll-up, then forward it
@@ -87,22 +103,33 @@ class RollupObserver:
             await self._flush()
 
     async def _flush(self) -> None:
-        if not self._buf:
-            return
-        text = self._summarize(self._buf)
-        if inspect.isawaitable(text):
-            text = await text
-        src = self._buf[-1]  # carry correlation from the last buffered item
-        rolled = Observation(
-            kind=self._kind,
-            render=text,
-            payload={"rolled": len(self._buf)},
-            run_id=src.run_id,
-            agent=src.agent,
-            parent_id=src.parent_id,
-        )
-        self._buf = []
-        await self._inner.emit(rolled)
+        # DETACH the buffer before any await, under a lock. The previous order
+        # (await ``summarize``, *then* ``self._buf = []``) left a window in
+        # which a concurrent ``emit`` re-entered ``_flush``: the first task
+        # cleared the buffer and the second read ``self._buf[-1]`` on an empty
+        # list. Measured with an async summarizer, ``every=2``, 6 concurrent
+        # observations: ``IndexError('list index out of range')`` raised INTO
+        # the caller's ``emit`` — an observer is contractually forbidden from
+        # breaking the run it observes. The same window also discarded every
+        # observation appended during the await, because the post-await
+        # ``self._buf = []`` threw them away unsummarised.
+        async with self._flush_lock:
+            buf, self._buf = self._buf, []
+            if not buf:
+                return
+            text = self._summarize(buf)
+            if inspect.isawaitable(text):
+                text = await text
+            src = buf[-1]  # carry correlation from the last buffered item
+            rolled = Observation(
+                kind=self._kind,
+                render=text,
+                payload={"rolled": len(buf)},
+                run_id=src.run_id,
+                agent=src.agent,
+                parent_id=src.parent_id,
+            )
+            await self._inner.emit(rolled)
 
     async def close(self) -> None:
         """Flush any buffered tail (and close the inner observer if it supports it)."""

@@ -40,12 +40,21 @@ class InMemoryVector:
         self._store: dict[str, list[tuple[Chunk, dict[str, float]]]] = defaultdict(list)
 
     async def upsert(self, scope: Scope, chunks: list[Chunk]) -> None:
+        # Dedupe the INCOMING batch first, not just against what is already
+        # stored. The old code only rewrote the bucket when ``ch.id`` was in
+        # the pre-call id set, so an id appearing twice within a single
+        # ``upsert`` call was appended twice — measured: one call with
+        # ``Chunk("doc1", ...)`` twice, then ``search`` returned two hits both
+        # with id ``doc1``. "Upsert by id" has to hold per call, not just
+        # across calls, or a chunker that emits a repeated id corrupts the
+        # index on first ingest. Last write wins, matching pgvector's
+        # ``ON CONFLICT ... DO UPDATE``.
+        incoming: dict[str, Chunk] = {ch.id: ch for ch in chunks}
+        if not incoming:
+            return
         bucket = self._store[scope.key()]
-        existing = {c.id for c, _ in bucket}
-        for ch in chunks:
-            if ch.id in existing:  # idempotent upsert by id
-                bucket[:] = [(c, v) for c, v in bucket if c.id != ch.id]
-            bucket.append((ch, _vec(ch.text)))
+        bucket[:] = [(c, v) for c, v in bucket if c.id not in incoming]  # idempotent upsert by id
+        bucket.extend((ch, _vec(ch.text)) for ch in incoming.values())
 
     async def search(
         self, scope: Scope, query: str, k: int = 5, where: dict[str, Any] | None = None
