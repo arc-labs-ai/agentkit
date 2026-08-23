@@ -191,9 +191,59 @@ MEMOIZE_TESTS = (
 )
 SIGNAL_TESTS = ("tests/agents/test_signal_immutability.py",)
 BUS_TESTS = ("tests/runtime/test_event_bus_close_race.py",)
+PARSED_TESTS = (
+    "tests/kernel/test_result_to_stream_parity.py",
+    "tests/middlewares/test_memoize_preserves_parsed.py",
+)
+MAPPING_TESTS = ("tests/adapters/test_callable_llm_mapping.py",)
+VALUETYPE_TESTS = (
+    "tests/kernel/test_kernel.py",
+    "tests/context/test_context_working.py",
+    "tests/meta/test_value_type_invariants.py",
+)
 REPLAY_TESTS = ("tests/adapters/test_replay_file.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
+    Mutant(
+        tag="valuetype",
+        why="ToolCall is unhashable again, so union merge dies on every tool-using agent",
+        path="agentkit/kernel/types.py",
+        before="        return hash((self.id, self.name))",
+        after="        return hash(self.arguments)",
+        tests=VALUETYPE_TESTS,
+    ),
+    Mutant(
+        tag="valuetype",
+        why="ToolCall loses __reduce__, so pickling one hits the mappingproxy again",
+        path="agentkit/kernel/types.py",
+        before="    def __reduce__(self) -> tuple[Any, ...]:",
+        after="    def __reduce_unused__(self) -> tuple[Any, ...]:",
+        tests=VALUETYPE_TESTS,
+    ),
+    Mutant(
+        tag="valuetype",
+        why="scratchpad VALUES re-enter the FrozenContext hash, breaking its memoization-key promise",
+        path="agentkit/context/context.py",
+        before="        return hash((self.prefix, self.messages, tuple(k for k, _ in self.scratchpad)))",
+        after="        return hash((self.prefix, self.messages, self.scratchpad))",
+        tests=VALUETYPE_TESTS,
+    ),
+    Mutant(
+        tag="parsed",
+        why="a replayed/cached chat result loses its typed object again",
+        path="agentkit/kernel/middleware.py",
+        before='            parsed=getattr(result, "parsed", None),',
+        after="",
+        tests=PARSED_TESTS,
+    ),
+    Mutant(
+        tag="parsed",
+        why="CallableLLM.stream drops parsed, so chat() and stream() disagree on the same call",
+        path="agentkit/adapters/llm/_mapping.py",
+        before="        parsed=res.parsed,\n",
+        after="",
+        tests=MAPPING_TESTS,
+    ),
     Mutant(
         tag="bus",
         why="`closed` goes back to being dead state, so a mid-attach subscriber hangs forever",
