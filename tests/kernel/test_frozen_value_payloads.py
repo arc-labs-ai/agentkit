@@ -320,7 +320,11 @@ def test_equality_and_hash_are_untouched() -> None:
     assert a != b
     assert len({a, b}) == 2
     assert hash(SearchHit("u", "t", "s", 0.5, {"a": 1})) == hash(("u", "t"))
-    assert hash(Observation(kind="progress", payload={"a": 1})) == hash(("", "", 0, 0.0, "progress"))
+    # The stream key was ``(run_id, agent, seq, ts, kind)`` when this line was
+    # written. `seq`/`ts` are gone — nothing in the package ever set them, so
+    # the two slots this literal spelled as ``0, 0.0`` were constants on every
+    # record a real run produced. The key is now ``(run_id, agent, kind)``.
+    assert hash(Observation(kind="progress", payload={"a": 1})) == hash(("", "", "progress"))
     assert hash(FetchResponse("u", 200, {"a": "b"}, "x", "text/html", 1.0)) == hash(("u", 200, "text/html", 1.0))
 
 

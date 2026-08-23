@@ -61,11 +61,51 @@ class Observation:
     WebSocket forwarders, rollup buffers) that may retain the ref
     alongside the run's live emit loop. Post-emit mutation of
     ``render``/``payload`` would corrupt the record every subsequent
-    consumer sees — the same reason ``TraceContext`` is frozen."""
+    consumer sees — the same reason ``TraceContext`` is frozen.
+
+    NO ``seq`` / ``ts``, deliberately — they used to be here and were
+    removed rather than populated. Measured before the removal:
+    ``Observation(kind="tool_result", payload={}).seq`` was ``0`` and
+    ``.ts`` was ``0.0``, and NOTHING in the package ever set them — not
+    ``RunContext.emit``, not the signal channel, not ``RollupObserver``,
+    not any adapter. ``__hash__`` nonetheless folded both into the stream
+    key and its docstring described ``seq`` as "that emitter's monotonic
+    counter", so the type promised an audit ordering it never delivered.
+
+    Populating them was the other option and was rejected on evidence,
+    not taste:
+
+    * **The channel already orders itself, more strongly.** ``emit`` is
+      awaited, so a sink observes emissions in emission order:
+      ``CollectingObserver.items`` is append-ordered and
+      ``QueueObserver.stream()`` yields in insertion order. A ``seq``
+      would be a second, weaker source of truth for something the
+      structure guarantees — and it would be wrong in the one case a
+      field could beat arrival order (cross-process replay), because a
+      per-``RunContext`` counter restarts at 0 in every ``child()`` while
+      a counter on the shared ``Services`` would be shared by any two
+      runs an application wires to one ``Services``.
+    * **Durable ordering is already owned by the store.** The Postgres
+      log adapter allocates ``seq BIGSERIAL PRIMARY KEY`` per row and
+      reads back ``ORDER BY seq``. An audit stream that outlives the
+      process gets its sequence there, from the only component that can
+      make it total.
+    * **One truthful seam is not enough.** Observations are constructed
+      at four sites (``RunContext.emit``, ``SignalChannel``'s
+      ``signal.emitted``, ``RollupObserver``'s roll-up, and the testing
+      fake ctx). Stamping only the emit seam re-tells the same lie in
+      three smaller places.
+    * **``ts`` had no owner either.** Wall-clock display and operational
+      timing both already live on the span ``trace_context`` deep-links
+      into; a second, unpopulated timestamp on the record only invites
+      the monotonic-vs-wall-clock question with no consumer to answer it.
+
+    A consumer that genuinely needs a per-sink sequence or arrival stamp
+    should keep it in the SINK, beside the record — the sink is what
+    knows when it saw the observation, and one shared record cannot carry
+    a different number for each of the three fan-out targets anyway."""
 
     kind: ObservationKind
-    seq: int = 0
-    ts: float = 0.0
     agent: str = ""
     render: str = ""
     run_id: str = ""
@@ -126,8 +166,8 @@ class Observation:
         object.__setattr__(self, "payload", deep_freeze(self.payload))
 
     def __hash__(self) -> int:
-        """Hash on the STREAM key — ``(run_id, agent, seq, ts, kind)`` — never
-        on ``payload``.
+        """Hash on the STREAM key — ``(run_id, agent, kind)`` — never on
+        ``payload``.
 
         A frozen dataclass derives ``__hash__`` from every compared field, and
         ``payload: Any`` is in practice always a dict. That annotation is why
@@ -147,20 +187,53 @@ class Observation:
         ratchet rather than by a caller, precisely because a ratchet that
         builds MINIMAL instances would have passed it too.
 
-        The stream key is a genuine identity rather than a leftover subset: an
-        observation stream is ORDERED and ATTRIBUTED, so ``run_id`` says which
-        run, ``agent`` says who inside it, ``seq`` is that emitter's monotonic
-        counter, and ``ts`` + ``kind`` finish the tuple for the zero-default
-        case where a caller constructs observations directly (as the observer
-        adapters' tests do) and leaves ``seq`` at 0. None of it has anything to
-        do with the payload, which is the point.
+        The stream key is what the ATTRIBUTION fields actually say: ``run_id``
+        says which run, ``agent`` says who inside it, ``kind`` says what sort of
+        record it is. None of it has anything to do with the payload, which is
+        the point.
+
+        It used to read ``(run_id, agent, seq, ts, kind)`` and describe ``seq``
+        as "that emitter's monotonic counter". Nothing in the package ever set
+        either field (see the class docstring for the removal and its
+        rationale), so that sentence was false and the two extra tuple slots
+        were constants. **Dropping them cost no discrimination at all**, which
+        is the whole argument — measured over 1000 progress observations from
+        one agent in one run::
+
+                                          before   after
+            distinct hashes                    1       1
+            distinct records (``set``)      1000    1000
+            hash, 1-key payload           0.372   0.258 µs
+            hash, 100_000-key payload     0.434   0.252 µs
+
+        Both hash counts are 1 because ``seq=0`` / ``ts=0.0`` on every record
+        already made those two slots constant in every real run. The key
+        discriminates exactly as well as it did before; it just no longer
+        claims otherwise — and hashing got slightly cheaper for hashing three
+        things instead of five. The payload is still never read, which is why
+        the 1-key and 100_000-key rows agree.
+
+        The 1000-vs-1 rows are the invariant that makes the collapse safe:
+        ``__eq__`` still compares every field, so a ``set`` of a replayed
+        stream keeps all 1000 records.
+
+        The flip side is worth stating plainly rather than hiding: a run that
+        dedups N same-``kind`` observations from one agent through a ``set``
+        puts all N in one bucket and pays O(N²) in ``__eq__``. That is a real
+        cost — and it is TODAY's cost, not a new one, for the same reason the
+        table above shows 1 and 1. If it ever bites, the fix is a key that
+        includes something genuinely varying (the sink's own arrival index),
+        not a field the framework leaves at zero.
 
         ``payload`` is excluded because it cannot be hashed — it is
         machine-readable application JSON, nested by design — and because the
         hash must stay O(1) in it: an observation is fanned out to every
         attached observer on the hot emit path, and a ``result`` payload is a
-        whole agent output. Measured: 0.32 µs for a 1-key payload and 0.32 µs
-        for a 100_000-key one, because the payload is never read.
+        whole agent output. Measured: 0.258 µs for a 1-key payload and 0.252 µs
+        for a 100_000-key one, because the payload is never read. (Those two
+        numbers were 0.32/0.32 when the key still carried ``seq``/``ts``; the
+        table above has the before/after. The point of the pair is that they
+        agree with each other, not their absolute value.)
 
         ``render`` is excluded as well, though ``str`` is hashable: it is a
         human line DERIVED from the same information as the payload, it varies
@@ -179,7 +252,7 @@ class Observation:
         is for, and it is what keeps a ``set``-based dedup of a replayed
         observation stream exact.
         """
-        return hash((self.run_id, self.agent, self.seq, self.ts, self.kind))
+        return hash((self.run_id, self.agent, self.kind))
 
 
 @runtime_checkable

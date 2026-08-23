@@ -19,6 +19,38 @@ of the same file tree (a uniform `MemorySource` over the backend) lives at
 The default backend is an in-memory file tree (`InMemoryFiles`, deterministic, zero-dep);
 inject a durable/FS backend for persistence across sessions. `FileTool` is a duck-typed tool
 (`name`/`schema`/`run`/`side_effecting`), so `ToolRegistry`/`Agent` accept it directly.
+
+WHY THE MODEL-FACING NAME IS ``memory`` AND MUST NOT BE "FIXED"
+--------------------------------------------------------------
+``FileTool().schema.name`` is ``'memory'``, which reads like a collision with the
+`agentkit.memory` package — a reader comparing the two sees one word for two things, and
+so does a model choosing between them. It is nonetheless correct, and it is a WIRE
+CONTRACT rather than a label: this tool is agentkit's implementation of Anthropic's
+client-side **memory tool** (`{"type": "memory_20250818", "name": "memory"}`), where the
+vendor fixes all four of the things this module implements —
+
+    name        ``memory``                                          (vendor-fixed)
+    commands    view · create · str_replace · insert · delete · rename   (vendor-fixed)
+    root        ``/memories``                                        (vendor convention)
+    dispatch    one call, ``command=`` selects the operation         (vendor-fixed)
+
+Every one matches exactly, and the match is not a coincidence: a model trained on that
+tool already knows the argument shapes, the ``/memories`` convention, and when to reach
+for it. Renaming to ``files`` or ``notes`` would spend that for a word — the tool would
+keep working, but against a name the model has never seen, and it would silently stop
+being drop-in for callers wiring agentkit behind a vendor-shaped memory tool.
+
+Renaming is also breaking in the ordinary way: a tool name is what the MODEL sees, so it
+is baked into every stored transcript, every ``ToolCall.name`` in a replayed run, every
+prompt that mentions the tool by name, and any ``ToolRegistry.get("memory")`` a caller
+wrote. There is no in-band compatibility story — an alias would put TWO memory-ish tools
+on the menu, which is the confusion this rename was meant to remove.
+
+So the collision is real, and the resolution is naming discipline on the OTHER side of it,
+not here: `agentkit.memory` is the retrieval/scoring surface (``MemorySource.query``) and
+this is the model-driven edit surface. Both wrap the same file tree and answer different
+questions. ``tests/tools/test_file_tool.py`` pins the four rows above so a future
+tidy-up trips a test that explains itself instead of a silent contract break.
 """
 
 from __future__ import annotations
@@ -29,7 +61,15 @@ from typing import Any
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import ToolSchema
 
+# Anthropic's memory-tool command set, verbatim and in the vendor's order. This
+# is a wire contract, not a menu we chose — see the module docstring. Adding a
+# command is safe; renaming or dropping one is not.
 _COMMANDS = ("view", "create", "str_replace", "insert", "delete", "rename")
+
+# The vendor-fixed, model-facing tool name. Named as a constant so the two places
+# that must agree (``FileTool.name`` and ``_schema()``) cannot drift apart, and so
+# a rename shows up as one deliberate edit rather than a search-and-replace.
+TOOL_NAME = "memory"
 
 
 class InMemoryFiles:
@@ -100,7 +140,7 @@ class InMemoryFiles:
 
 def _schema() -> ToolSchema:
     return ToolSchema(
-        name="memory",
+        name=TOOL_NAME,
         description=(
             "Persistent note memory the agent manages itself: "
             "view/create/str_replace/insert/delete/rename files under a path."
@@ -129,9 +169,16 @@ def _schema() -> ToolSchema:
 class FileTool:
     """The `memory(command=…)` tool. Declares ``description`` and
     ``output_schema`` so ``isinstance(FileTool(), Tool)`` holds under the
-    ``@runtime_checkable`` :class:`Tool` Protocol."""
+    ``@runtime_checkable`` :class:`Tool` Protocol.
 
-    name = "memory"
+    The class is ``FileTool`` and the tool is ``memory`` on purpose: the class
+    name is for the reader (it is a file-tree tool, and it sits next to
+    `agentkit.memory`, which is a different thing), while the tool name is for
+    the MODEL and is fixed by Anthropic's memory-tool contract. The module
+    docstring has the full argument for why that asymmetry is the right one and
+    why renaming the tool is not a tidy-up."""
+
+    name = TOOL_NAME
     description = (
         "Persistent note memory the agent manages itself: view/create/"
         "str_replace/insert/delete/rename files under a path."
@@ -143,6 +190,10 @@ class FileTool:
     url_arg = None
 
     def __init__(self, backend: Any = None, *, root: str = "/memories") -> None:
+        # ``/memories`` is Anthropic's documented convention for this tool, so a
+        # model that has seen it will address paths under that root unprompted.
+        # Overridable, but a caller who changes it is off the vendor contract and
+        # should say so in the tool description.
         self.root = "/" + root.strip("/")  # canonical absolute root
         self._fs = backend if backend is not None else InMemoryFiles(self.root)
         self.schema = _schema()
@@ -227,4 +278,4 @@ class FileTool:
         return await self._fs.rename(path, self._confine(args.get("new_path")))  # confine both ends
 
 
-__all__ = ["FileTool", "InMemoryFiles"]
+__all__ = ["TOOL_NAME", "FileTool", "InMemoryFiles"]

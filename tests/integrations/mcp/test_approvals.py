@@ -229,6 +229,124 @@ async def test_auto_allowed_tools_never_reach_the_person() -> None:
 
 
 @pytest.mark.asyncio
+async def test_auto_allow_matches_the_tool_name_and_ignores_the_arguments() -> None:
+    """POSITIVE CONTROL, and the thing the class docstring now says out loud:
+    ``auto_allow`` is a grant over a tool NAME, not over the operations that
+    tool could perform. Measured against this server with
+    ``auto_allow=("Read",)`` and a reviewer that denies everything::
+
+        Read   /etc/passwd      -> allow      (reviewer never consulted)
+        Read   /etc/shadow      -> allow      (reviewer never consulted)
+        Read   ~/.ssh/id_rsa    -> allow      (reviewer never consulted)
+        Write  /etc/passwd      -> deny       (reviewer consulted)
+
+    This passes both before and after the ``auto_allow_when`` change, on
+    purpose — the default behaviour is deliberate and must not drift. It is
+    here so the next reader finds the limitation pinned by a test rather than
+    only asserted by a docstring."""
+    asker = _Asker(Decision(kind="deny", note="should never be consulted"))
+    server = _server(asker, auto_allow=("Read",))
+
+    for path in ("/etc/passwd", "/etc/shadow", "~/.ssh/id_rsa"):
+        assert (await _decide(server, "Read", file_path=path))["behavior"] == "allow"
+    assert asker.seen == []
+
+    assert (await _decide(server, "Write", file_path="/etc/passwd"))["behavior"] == "deny"
+    assert [r.tool_call["name"] for r in asker.seen] == ["Write"]
+
+
+@pytest.mark.asyncio
+async def test_an_argument_aware_predicate_narrows_an_auto_allowed_tool() -> None:
+    """THE FIX. ``auto_allow_when`` lets an operator allow-list the safe
+    OPERATIONS they thought they were allow-listing: the same ``Read`` is
+    auto-allowed under ``/workspace`` and routed to the reviewer outside it,
+    with the arguments attached so the person can see what they are judging."""
+    asker = _Asker(Decision(kind="deny", note="out of scope"))
+    server = _server(
+        asker,
+        auto_allow=("Read",),
+        auto_allow_when=lambda tool, args: str(args.get("file_path", "")).startswith(
+            "/workspace/"
+        ),
+    )
+
+    assert (await _decide(server, "Read", file_path="/workspace/main.py"))["behavior"] == "allow"
+    assert asker.seen == []
+
+    out = await _decide(server, "Read", file_path="/etc/passwd")
+    assert out["behavior"] == "deny" and out["message"] == "out of scope"
+    assert asker.seen[0].tool_call == {"name": "Read", "arguments": {"file_path": "/etc/passwd"}}
+
+
+@pytest.mark.asyncio
+async def test_the_predicate_can_only_narrow_never_broaden() -> None:
+    """The reason this is safe to add to a security-adjacent seam: the name
+    list is checked FIRST, so a predicate is a filter over an already-approved
+    set and never a second way in. A predicate that says yes to everything
+    still cannot auto-allow a tool nobody listed."""
+    asker = _Asker(Decision(kind="deny", note="reviewer still decides"))
+    server = _server(asker, auto_allow=("Read",), auto_allow_when=lambda tool, args: True)
+
+    out = await _decide(server, "Bash", command="rm -rf /")
+    assert out["behavior"] == "deny"
+    assert [r.tool_call["name"] for r in asker.seen] == ["Bash"]
+
+
+@pytest.mark.asyncio
+async def test_a_raising_predicate_falls_through_to_the_reviewer() -> None:
+    """A broken narrowing rule must not widen the grant it exists to narrow,
+    and it must not break the prompt either — ``_decide`` never raises, because
+    an exception reaches the CLI as a broken permission system rather than a
+    decision. So a raise lands on the human, who was told this tool was routine
+    and can now see the call."""
+    asker = _Asker(Decision(kind="approve"))
+
+    def _broken(tool: str, args: dict[str, Any]) -> bool:
+        raise RuntimeError("the policy service is down")
+
+    server = _server(asker, auto_allow=("Read",), auto_allow_when=_broken)
+
+    out = await _decide(server, "Read", file_path="/workspace/main.py")
+    assert out == {"behavior": "allow", "updatedInput": {"file_path": "/workspace/main.py"}}
+    assert [r.tool_call["name"] for r in asker.seen] == ["Read"]  # the HUMAN allowed it
+
+
+@pytest.mark.asyncio
+async def test_a_raising_predicate_still_denies_when_the_reviewer_denies() -> None:
+    """The other half of the fail-closed claim: falling through to the reviewer
+    is not a soft allow. Same broken predicate, a reviewer who says no, and the
+    call is denied."""
+    def _broken(tool: str, args: dict[str, Any]) -> bool:
+        raise RuntimeError("the policy service is down")
+
+    server = _server(
+        _Asker(Decision(kind="deny", note="no")), auto_allow=("Read",), auto_allow_when=_broken
+    )
+    assert (await _decide(server, "Read", file_path="/x"))["behavior"] == "deny"
+
+
+@pytest.mark.asyncio
+async def test_a_narrowed_prompt_is_still_bounded_by_the_timeout() -> None:
+    """POSITIVE CONTROL: the timeout stays SERVER-enforced on the path the
+    predicate opens. A prompt the predicate pushes to the reviewer is an
+    ordinary prompt — it does not bypass ``_ask``'s ``wait_for``, so a queue
+    worker cannot be parked forever by narrowing a rule."""
+    class _Slow:
+        async def ask(self, request: Elicitation) -> Decision:
+            await asyncio.sleep(10)
+            return Decision(kind="approve")
+
+    server = _server(
+        _Slow(),
+        timeout_s=0.05,
+        auto_allow=("Read",),
+        auto_allow_when=lambda tool, args: False,  # narrow everything to the human
+    )
+    out = await _decide(server, "Read", file_path="/etc/passwd")
+    assert out["behavior"] == "deny" and "0.05s" in out["message"]
+
+
+@pytest.mark.asyncio
 async def test_prompts_are_counted_including_auto_allowed_ones() -> None:
     """A run reporting zero prompts either never needed permission or never
     reached the server, and those are worth telling apart."""

@@ -97,8 +97,6 @@ def _resp(**kw: Any) -> FetchResponse:
 def _obs(**kw: Any) -> Observation:
     base: dict[str, Any] = {
         "kind": "result",
-        "seq": 7,
-        "ts": 1_700_000_000.0,
         "agent": "writer",
         "render": "wrote intro",
         "run_id": "run-1",
@@ -280,8 +278,13 @@ def test_payload_only_differences_collide_in_one_bucket_and_both_survive(a: Any,
         pytest.param(_cp(run_id="r1"), _cp(run_id="r2"), id="Checkpoint.run_id"),
         pytest.param(_hit(url="https://a"), _hit(url="https://b"), id="SearchHit.url"),
         pytest.param(_resp(url="https://a"), _resp(url="https://b"), id="FetchResponse.url"),
-        pytest.param(_obs(seq=1), _obs(seq=2), id="Observation.seq"),
+        # `Observation.seq` used to be a case here. It was removed with the
+        # field: nothing in the package ever incremented `seq`, so every real
+        # run produced `seq=0` and the case only discriminated because the test
+        # set the value by hand. `agent` replaces it as the second attribution
+        # axis the stream key genuinely carries.
         pytest.param(_obs(run_id="r1"), _obs(run_id="r2"), id="Observation.run_id"),
+        pytest.param(_obs(agent="a"), _obs(agent="b"), id="Observation.agent"),
     ],
 )
 def test_the_hashed_subset_still_discriminates(a: Any, b: Any) -> None:

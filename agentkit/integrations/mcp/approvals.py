@@ -42,6 +42,7 @@ import asyncio
 import contextlib
 import json
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -96,11 +97,52 @@ class ApprovalServer:
     CLI prompts for reads too, and a person clicking "yes" on forty ``Read``
     calls is not oversight, it is habituation — the thing that makes the
     fortieth prompt, the one that mattered, get the same reflexive yes.
+
+    .. warning::
+       ``auto_allow`` matches on the tool NAME and **ignores the arguments
+       entirely**. Allow-listing ``Read`` allow-lists reading *anything the
+       agent can reach*, not "safe reads". Measured against this server with
+       ``auto_allow=("Read",)`` and a reviewer that denies everything::
+
+           Read   /etc/passwd      -> allow      (reviewer never consulted)
+           Read   /etc/shadow      -> allow      (reviewer never consulted)
+           Read   ~/.ssh/id_rsa    -> allow      (reviewer never consulted)
+           Write  /etc/passwd      -> deny       (reviewer consulted)
+
+       That is habituation-avoidance working as designed, and it is also a
+       larger grant than "allow-list the safe operations" sounds like. The
+       reason the docstring says this so loudly is that an operator reading
+       only the habituation rationale above could reasonably conclude the
+       opposite. Put a tool on this list only when EVERY call it could make is
+       one you would approve unread, or narrow it with ``auto_allow_when``.
+
+    ``auto_allow_when(tool_name, arguments) -> bool`` is the opt-in
+    argument-aware gate, and it can only SUBTRACT. A prompt is auto-allowed iff
+    the tool is on ``auto_allow`` *and* the predicate says yes, so a predicate
+    can never approve something the name list did not already approve — the
+    default-deny path is untouched by definition, and a caller who wants the
+    old behaviour simply leaves it ``None``. It is consulted only for tools
+    already on the list, so the common case (no predicate) does not pay for it
+    and does not have to think about it::
+
+        ApprovalServer(
+            asker=my_asker,
+            auto_allow=("Read", "Glob"),
+            auto_allow_when=lambda tool, args: str(
+                args.get("file_path", args.get("path", ""))
+            ).startswith("/workspace/"),
+        )
+
+    A predicate that RAISES falls through to the reviewer rather than
+    auto-allowing. A broken narrowing rule must not silently widen the grant it
+    exists to narrow, and ``_decide``'s never-raises contract means the
+    exception cannot be allowed to escape either.
     """
 
     asker: Asker
     timeout_s: float | None = None
     auto_allow: tuple[str, ...] = ()
+    auto_allow_when: Callable[[str, dict[str, Any]], bool] | None = None
     run_id: str = ""
     agent: str = ""
     host: str = "127.0.0.1"
@@ -236,7 +278,9 @@ class ApprovalServer:
         attached, so the model sees it and can adapt.
         """
         self._seen += 1
-        if tool_name in self.auto_allow:
+        if tool_name in self.auto_allow and self._arguments_are_auto_allowed(
+            tool_name, arguments
+        ):
             return _allow(arguments)
 
         request = Elicitation(
@@ -259,6 +303,35 @@ class ApprovalServer:
             return _deny(f"the approval transport failed ({type(exc).__name__}: {exc})")
 
         return self._render(decision, tool_name, arguments)
+
+    def _arguments_are_auto_allowed(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> bool:
+        """The opt-in argument check, evaluated only for tools already on
+        ``auto_allow``. ``True`` when there is no predicate, so the no-predicate
+        case is exactly the name-only behaviour it always was.
+
+        Ordering matters and is not incidental: ``tool_name in self.auto_allow``
+        is checked FIRST by the caller, so the predicate is a narrowing filter
+        over an already-approved set rather than a second, independent way in.
+        A predicate that returns ``True`` for a tool nobody allow-listed changes
+        nothing.
+
+        A raise is a ``False``, not a crash and not an allow. Three constraints
+        meet here: ``_decide`` must never raise (an exception reaches the CLI as
+        a broken permission system, which it reports as neither an allow nor a
+        deny, leaving the model to retry a call nobody approved); a gate must
+        fail closed; and "closed" for a NARROWING predicate means falling
+        through to the reviewer, not denying outright — the operator did say
+        this tool was routine, so the human is the right place to land, and they
+        still see the arguments on the ``Elicitation``.
+        """
+        if self.auto_allow_when is None:
+            return True
+        try:
+            return bool(self.auto_allow_when(tool_name, arguments))
+        except Exception:  # noqa: BLE001 — see the docstring: a broken narrowing
+            return False   # rule must never widen the grant it exists to narrow
 
     async def _ask(self, request: Elicitation) -> Decision:
         """Await the human, bounded by ``timeout_s``.

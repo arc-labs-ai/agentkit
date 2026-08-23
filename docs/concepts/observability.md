@@ -167,7 +167,7 @@ lists are walked.
     shallower payload, not an unfrozen one.
 
 `Observation.__hash__` is deliberately computed on the *stream key* —
-`(run_id, agent, seq, ts, kind)` — never on `payload`. A frozen
+`(run_id, agent, kind)` — never on `payload`. A frozen
 dataclass would otherwise derive its hash from every compared field, and
 `payload` is in practice always a dict, which made every observation a
 real run produced unhashable while a test that passed a string proved
@@ -882,10 +882,20 @@ without correlating against an external metric.
 
 ## Gotchas
 
-- **`Observation.seq` and `.ts` are never populated by the framework.**
-  They default to `0` / `0.0` and nothing in agentkit increments them
-  today. Ordering comes from the observer's arrival order. If you need a
-  monotonic sequence, stamp it in your own observer.
+- **`Observation` has no `seq` or `ts`.** It used to declare both, and
+  nothing in agentkit ever set either one — measured,
+  `Observation(kind="tool_result", payload={}).seq` was `0` and `.ts`
+  was `0.0` on every record any run produced, while `__hash__` folded
+  both into the stream key and called `seq` "that emitter's monotonic
+  counter". They were removed rather than populated, because ordering
+  already has two better owners: in-process, `emit` is awaited and every
+  sink preserves arrival order (`CollectingObserver.items` is
+  append-ordered, `QueueObserver.stream()` yields in insertion order);
+  durably, the Postgres log adapter allocates `seq BIGSERIAL PRIMARY
+  KEY` per row and reads back `ORDER BY seq`. If you need a per-sink
+  sequence or an arrival stamp, keep it **in the sink** beside the
+  record — one shared record cannot carry a different number for each
+  fan-out target, and the sink is what knows when it saw the event.
 - **Wrapping an observer without forwarding `close()` strands it.** This
   bit the framework itself: a `Hooks -> PolicyObserver -> RollupObserver`
   stack silently dropped the rollup's trailing summary at process exit,
