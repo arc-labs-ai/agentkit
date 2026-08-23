@@ -243,9 +243,11 @@ def test_a_latched_stop_cannot_be_rewritten() -> None:
 
 
 def test_stop_is_still_constructible_with_detail() -> None:
-    """Frozen shell, ordinary construction — ``detail`` stays a plain dict
-    because a ``MappingProxyType`` cannot be deep-copied, and conditions ARE
-    deep-copied per run."""
+    """Frozen shell, ordinary construction — and ``detail`` deep-copies,
+    which is the constraint that decided its type. Conditions ARE
+    deep-copied per run, so a ``MappingProxyType`` was never an option;
+    ``deep_freeze`` gives a ``FrozenDict``, which reads like a dict and
+    copies like one."""
     s = Stop("custom", {"k": 1})
     assert s.reason == "custom" and s.detail["k"] == 1
     assert copy.deepcopy(s) == s

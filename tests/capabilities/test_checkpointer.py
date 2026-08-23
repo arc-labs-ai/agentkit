@@ -483,10 +483,13 @@ def test_snapshot_deep_copies_nested_state_containers() -> None:
 
 
 def test_snapshot_state_containing_toolcalls_survives_deepcopy() -> None:
-    """State that carries ``ToolCall`` instances (whose ``arguments``
-    is a ``MappingProxyType``) must deep-copy cleanly. Regression:
-    without ``ToolCall.__deepcopy__`` this raised
-    ``TypeError: cannot pickle 'mappingproxy' object``."""
+    """State that carries ``ToolCall`` instances must deep-copy cleanly, or
+    the durable seam goes down with it. Regression: ``arguments`` was a
+    ``MappingProxyType`` and this raised ``TypeError: cannot pickle
+    'mappingproxy' object`` without a ``ToolCall.__deepcopy__`` hook. The
+    payload is a ``FrozenDict`` now and the hook is gone — ``FrozenDict``
+    defines its own — so this test is what says the guarantee outlived the
+    workaround."""
     from agentkit.capabilities.checkpointer.persistence import tc_to_dict
     from agentkit.kernel.types import ToolCall
 

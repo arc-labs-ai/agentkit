@@ -259,10 +259,18 @@ def test_route_by_handoff_via_tool_call_routes_to_target():
 
 
 def test_handoff_tool_accepts_mappingproxy_arguments():
-    """``handoff_tool`` extracts ``target``/``reason``/``message`` from
-    a ``MappingProxyType`` — the read-only view a ``ToolCall`` wraps
-    its arguments in. Matching only on ``dict`` would default every
-    field to ``""`` and reject every handoff as ``"'' is not a known
+    """``handoff_tool`` extracts ``target``/``reason``/``message`` from a
+    ``MappingProxyType`` — a stand-in for any read-only mapping.
+
+    An earlier version of this docstring said ``deep_freeze`` "hands through by
+    identity rather than rewriting into a ``FrozenDict``". That was true when
+    written; a proxy is now normalised, so it no longer reaches here via a
+    ``ToolCall``. The test still holds because it calls the tool's ``fn``
+    directly, and ``FunctionTool.run`` passes ``args`` down untouched — only the
+    ``Invoker``/``ToolRequest`` path freezes. Every OTHER ``Mapping`` (a
+    ``ChainMap``, a project's own type) is still returned by identity by design,
+    so this shape remains reachable. Matching only on ``dict`` would default
+    every field to ``""`` and reject the handoff as ``"'' is not a known
     target"``, silently breaking the handoff-via-tool path."""
     import asyncio
     from types import MappingProxyType

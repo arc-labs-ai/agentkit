@@ -38,16 +38,15 @@ class Stop:
     ``detail`` used to be left as a plain writable dict, and this docstring
     used to defend that: a ``MappingProxyType`` cannot be deep-copied, and
     conditions ARE deep-copied per drive (``ReActCognition`` at both entry
-    points, ``roundrobin._run_local_termination``) to keep counters
-    run-local. That
-    constraint was real and it is what ``_frozen`` was built to clear.
+    points, ``roundrobin._run_local_termination``) to keep counters run-local.
+    That constraint was real, and clearing it is what ``_frozen`` was built for.
     ``__post_init__`` below now deep-freezes ``detail`` into a ``FrozenDict``,
-    which deep-copies, pickles and json-dumps like the plain dict it
-    subclasses — measured on a latched ``Stop`` inside a condition:
-    ``deepcopy`` and a pickle round trip both return it intact, while
-    ``stop.detail["x"] = 1`` and ``stop.detail["nested"]["b"] = 1`` both raise
-    ``TypeError``. So the evidence is now as immutable as the ``reason``, and
-    the whole verdict is a record rather than half of one.
+    which deep-copies, pickles and json-dumps like the plain dict it subclasses.
+    Measured on a latched ``Stop`` held by a live condition: ``deepcopy`` and a
+    pickle round trip both return it intact, while ``stop.detail["x"] = 1`` and
+    ``stop.detail["nested"]["b"] = 1`` both raise ``TypeError``. So the evidence
+    is now as immutable as the ``reason``, and the whole verdict is a record
+    rather than half of one.
     """
 
     reason: str

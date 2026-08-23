@@ -42,12 +42,42 @@ def _tool_call_texts(tc: Any) -> tuple[str, str, str]:
     """The billable text of one ToolCall: ``(id, name, serialised arguments)``.
 
     The provider bills the SERIALISED arguments, so that is what we
-    measure — ``ToolCall.arguments`` is a ``MappingProxyType`` (see
-    ``kernel.types.ToolCall``), which ``json.dumps`` refuses outright
-    (``TypeError: Object of type mappingproxy is not JSON serializable``),
-    hence the ``dict()`` unwrap. Falls back to ``repr`` for the
-    pathological non-JSON-able payload: an approximate number beats an
-    exception thrown from inside a budget pre-check.
+    measure. The ``dict()`` unwrap is no longer what makes that work:
+    ``ToolCall.arguments`` is a ``FrozenDict``, not the
+    ``MappingProxyType`` this docstring used to name, and ``json.dumps``
+    encodes a ``dict`` subclass natively — verified by passing a
+    ``default=`` that raises, which is never called, and the bytes match
+    the plain dict's exactly.
+
+    ``tc`` is ``Any`` and read entirely through ``getattr``, and that is
+    what the unwrap is actually for. This estimator is deliberately
+    duck-typed end to end — ``estimate_message_tokens`` reads
+    ``getattr(m, "tool_calls", ())``, and ``middlewares.compaction``
+    hands it a ``list[Any]`` it has to filter with ``isinstance(m,
+    Message)`` first — because the objects reaching it are not all
+    agentkit's. ``Message`` has no ``__post_init__``, so nothing coerces
+    ``tool_calls`` either: a provider SDK object or a test double sits
+    there unchanged, carrying whatever mapping its author gave it, having
+    never passed through ``deep_freeze``. It is NOT for agentkit's own
+    ``ToolCall``, whose ``deep_freeze`` now normalises even a
+    ``MappingProxyType`` (nested ones too) into a ``FrozenDict``.
+
+    What it buys is ACCURACY, not raise-safety — ``default=str`` already
+    catches the exception. Measured on a foreign tool call whose
+    ``arguments`` is a ``MappingProxyType({"q": "hi"})``: with the unwrap
+    the text is ``{"q": "hi"}`` (11 chars); without it ``json.dumps``
+    hands the proxy to ``default=str`` and bills the repr ``"{'q':
+    'hi'}"`` (13). A ``ChainMap`` is worse — ``"ChainMap({'q': 'hi'})"``,
+    a string about the container rather than a count of the payload. Both
+    still produce a number; both produce the WRONG one, and this number
+    decides whether a compactor fires.
+
+    The unwrap is SHALLOW, so it is no defence one level down: a mapping
+    nested INSIDE the arguments still reaches ``default=str`` and is
+    billed as its repr. That is the deliberate floor — ``default=str``
+    plus the ``repr`` fallback below keep the count approximate rather
+    than fatal, and an approximate number beats an exception thrown from
+    inside a budget pre-check.
 
     Shared by both counters so the approximate and the tiktoken path
     count the same THINGS and differ only in the chars→tokens step."""

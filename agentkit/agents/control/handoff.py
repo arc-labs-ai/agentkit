@@ -148,10 +148,33 @@ def handoff_tool(
         raise ValueError("handoff_tool requires at least one target agent name")
 
     async def _fn(args: Any, ctx: Ctx) -> str:
-        # ``ToolCall.arguments`` is a ``MappingProxyType``, not a
-        # ``dict``. Match on ``Mapping`` so the proxy view flows in
-        # correctly — otherwise every handoff sees ``target=""`` and
-        # falls to the "not a known target" rejection branch.
+        # The payload the chain hands down is normally a ``FrozenDict`` — a
+        # ``dict`` SUBCLASS, not the ``MappingProxyType`` this comment used to
+        # name — so a narrow ``isinstance(args, dict)`` would pass today where it
+        # once silently failed and rejected every handoff. That is true all the
+        # way through the ``Invoker``: ``ToolRequest.__post_init__`` deep-freezes
+        # ``arguments``, and ``deep_freeze`` now NORMALISES a
+        # ``MappingProxyType`` into a ``FrozenDict`` instead of passing it
+        # through (measured — ``ToolRequest("t", MappingProxyType({...}), tool)``
+        # holds a ``FrozenDict``). So the "a ToolCall stores a proxy verbatim"
+        # justification this comment used to give is dead.
+        #
+        # ``Mapping`` stays because ``args`` is ``Any`` and this ``_fn`` is
+        # ``FunctionTool.fn`` — ``run(args, ctx)`` hands it straight down with no
+        # freeze of its own, so anything that calls the tool WITHOUT going
+        # through a ``ToolRequest`` supplies the mapping unmodified. That is not
+        # hypothetical: ``test_handoff_tool_accepts_mappingproxy_arguments``
+        # calls ``tool.fn(MappingProxyType({...}), None)`` directly, and measured
+        # at that seam ``isinstance(args, dict)`` is False. A ``dict``-only test
+        # would silently make that handoff ``target=""``. ``deep_freeze`` also
+        # still returns every non-proxy ``Mapping`` by identity — rewriting a
+        # caller's own type is the line it refuses to cross — so a ``ChainMap``
+        # or a project's own mapping survives even the ``ToolRequest`` path.
+        #
+        # The FAIL-CLOSED shape below is the part to preserve. A non-mapping
+        # yields ``target=""``, which cannot match ``targets_list`` and so falls
+        # to the rejection branch — no handoff is routed on an argument shape
+        # this function did not understand.
         is_map = isinstance(args, Mapping)
         target = args.get("target", "") if is_map else ""
         reason = args.get("reason", "") if is_map else ""

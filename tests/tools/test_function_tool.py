@@ -212,19 +212,30 @@ def test_registry_from_tools_propagates_collision_error():
         )
 
 
-# ── MappingProxyType flows correctly through tool arg handling ───────────────
+# ── a non-dict Mapping flows correctly through tool arg handling ─────────────
 #
-# ``ToolCall.arguments`` is exposed as a ``MappingProxyType`` (read-only
-# view). Every downstream site that interprets tool arguments must accept
-# ``Mapping`` — not just ``dict`` — otherwise the args silently fall
-# through to a default branch and the tool receives no arguments.
+# ``ToolCall.arguments`` is a ``FrozenDict``, which IS a ``dict`` subclass, and
+# ``deep_freeze`` now NORMALISES a ``MappingProxyType`` into one — so a proxy no
+# longer survives construction of a ``ToolCall`` or a ``ToolRequest``. An
+# earlier version of this comment said it was "stored VERBATIM"; that was true
+# when written and stopped being true when the normalisation landed.
+#
+# The test below is still exactly right, for a different reason: it calls
+# ``tool.fn(...)`` DIRECTLY, and ``FunctionTool.run`` passes ``args`` to ``fn``
+# untouched. Only the ``Invoker`` path freezes, via ``ToolRequest``. So any
+# caller that reaches a tool without going through a ``ToolRequest`` — in-repo,
+# ``memory/tool.py`` — can still hand down a bare ``Mapping``, and ``deep_freeze``
+# returns every non-proxy ``Mapping`` (a ``ChainMap``, a project's own type) by
+# identity by design. Matching on ``dict`` alone would let those args fall
+# through to a default branch and the tool would receive none.
 
 
 def test_as_tool_forwards_task_from_mappingproxy_arguments():
     """``as_tool`` extracts the ``task`` field from a ``MappingProxyType``
-    arg dict, not just a plain ``dict``. Matching only on ``dict``
-    (via ``isinstance``) would drop the ``task`` key from a ``ToolCall``
-    and hand the runnable the dict's ``str`` repr instead."""
+    arg mapping, not just a ``dict``. Matching only on ``dict`` (via
+    ``isinstance``) would drop the ``task`` key from any tool call whose
+    arguments are a mapping the freeze passed through untouched, and hand
+    the runnable the mapping's ``str`` repr instead."""
     import asyncio
     from types import MappingProxyType
 

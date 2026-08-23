@@ -538,10 +538,14 @@ def test_toolcall_arguments_view_isolated_from_source_dict() -> None:
 
 
 def test_toolcall_supports_deepcopy() -> None:
-    """MappingProxyType is not natively deep-copyable in stdlib. The
-    ``__deepcopy__`` hook unwraps to a dict, deepcopies, and rewraps
-    so ``Checkpointer.snapshot`` (which deep-copies state that
-    contains ToolCalls) works without a pickle detour."""
+    """``Checkpointer.snapshot`` deep-copies state that contains ToolCalls,
+    so a ToolCall that cannot be deep-copied takes the durable path down
+    with it. A ``MappingProxyType`` payload could not be, and ``ToolCall``
+    carried a ``__deepcopy__`` hook to work around it; the hook is GONE
+    (measured: ``'__deepcopy__' in ToolCall.__dict__`` is False) because
+    ``FrozenDict`` defines its own. The clone comes back frozen at every
+    level — measured ``FrozenDict / FrozenDict / FrozenList`` for the
+    nested payload below."""
     import copy
 
     original = ToolCall("c1", "search", {"q": "hello", "nested": {"k": [1, 2, 3]}})
@@ -564,8 +568,9 @@ def test_toolcall_arguments_hash_is_deterministic() -> None:
 
 # ── ToolCall / Message hashability ───────────────────────────────────────────
 #
-# ``arguments`` is a ``MappingProxyType``, and a mappingproxy is
-# UNHASHABLE — so the immutability guarantee silently cost the frozen
+# ``arguments`` is an immutable mapping — a ``MappingProxyType`` when this
+# was written, a ``FrozenDict`` now — and NEITHER is hashable, so the
+# immutability guarantee silently cost the frozen
 # dataclass its generated ``__hash__``, and took ``Message``,
 # ``PrefixContext`` and ``FrozenContext`` down with it. Measured before
 # the fix::
@@ -1063,10 +1068,14 @@ def test_stable_hash_handles_frozenset_and_set() -> None:
 
 
 def test_stable_hash_handles_nested_toolcall_with_frozen_arguments() -> None:
-    """A ToolCall containing a MappingProxyType view routes through
-    the encoder's Mapping branch. Regression: earlier the encoder
-    fell through to the bare-type fallback and two identical
-    ToolCalls hashed differently because of proxy identity."""
+    """A ToolCall's frozen arguments hash by CONTENT, not by identity.
+
+    The payload is a ``FrozenDict`` now, so stdlib ``json`` encodes it
+    directly and the encoder's Mapping branch is not what carries this
+    any more (measured: a spy in the ``default`` slot sees only
+    ``ToolCall``). The regression being locked is unchanged — the encoder
+    once fell through to the bare-type fallback and two identical
+    ToolCalls hashed differently because of container identity."""
     tc = ToolCall("c1", "search", {"query": "hello", "k": 5})
     h1 = stable_hash({"tool_call": tc})
     h2 = stable_hash({"tool_call": tc})

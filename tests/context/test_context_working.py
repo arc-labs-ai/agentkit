@@ -139,8 +139,9 @@ def test_merge_union_dedupes_messages():
 
 def test_merge_union_dedupes_tool_call_messages():
     """The bug ``mode="union"`` shipped with. Dedup does ``set(self.messages)``,
-    and a Message carrying tool calls was UNHASHABLE (``ToolCall.arguments`` is
-    a mappingproxy), so the documented parent-merging-two-siblings path raised::
+    and a Message carrying tool calls was UNHASHABLE — ``ToolCall.arguments``
+    was a mappingproxy then and is a ``FrozenDict`` now, and NEITHER is
+    hashable — so the documented parent-merging-two-siblings path raised::
 
         parent.merge(sibling, mode="union")
         TypeError: unhashable type: 'dict'
@@ -353,10 +354,13 @@ def test_frozen_context_works_as_a_memoization_cache_key():
 
 
 def test_frozen_context_survives_deepcopy_and_pickle_with_tool_calls():
-    """``ToolCall.__reduce__`` is what makes this work — before it, pickling a
-    snapshot of a tool-using agent raised ``TypeError: cannot pickle
-    'mappingproxy' object``. ``FrozenContext`` needs no ``__reduce__`` of its
-    own: it holds no proxy, so it pickles as soon as its contents do."""
+    """Pickling a snapshot of a tool-using agent once raised ``TypeError:
+    cannot pickle 'mappingproxy' object``, and ``ToolCall.__reduce__`` was
+    written to fix it. ``FrozenDict`` now carries its own ``__reduce__``, so
+    the payload pickles on its own account and ``ToolCall``'s hook survives
+    only to keep already-written records readable. ``FrozenContext`` needs no
+    hook at all: it pickles as soon as its contents do, which is what this
+    test says."""
     import copy as _copy
     import pickle
 

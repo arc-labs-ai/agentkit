@@ -313,8 +313,8 @@ Return AgentResult(output=<final brief>, usage=<merged>)
 | **`try_send_to` never raises on full inbox** | Best-effort broadcast becomes blocking → parent stalls waiting for a full child inbox | `test_channel_try_send_to_full_inbox_drops_without_raising` |
 | **Two independent channels don't cross-talk** | Concurrent emit from two channels crosses envelopes → attribution wrong | `test_two_channels_emit_independently` |
 | **`PlanPolicy` awaits async planner output** | Async Planner returns a coroutine; iteration raises TypeError | `test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating` |
-| **`Handoff` / `handoff_tool` accepts `MappingProxyType` args** | Tool receives `ToolCall.arguments` (a proxy view); `isinstance(dict)` fails → every handoff rejected as "unknown target" | `test_handoff_tool_accepts_mappingproxy_arguments` |
-| **`as_tool` extracts `task` from a `MappingProxyType`** | Skill invoked as a tool receives `str(args)` instead of the task string → sub-run gets garbage | `test_as_tool_forwards_task_from_mappingproxy_arguments` |
+| **`Handoff` / `handoff_tool` accepts a non-dict `Mapping`** | Tool receives arguments that are a `Mapping` but not a `dict`; `isinstance(dict)` fails → every handoff rejected as "unknown target" | `test_handoff_tool_accepts_mappingproxy_arguments` |
+| **`as_tool` extracts `task` from a non-dict `Mapping`** | Skill invoked as a tool receives `str(args)` instead of the task string → sub-run gets garbage | `test_as_tool_forwards_task_from_mappingproxy_arguments` |
 | **`ActorBudget` clamps overspend at the reservation** | A child spends beyond its reservation → the parent's budget bookkeeping goes negative | `test_actor_budget_settle_capped_at_reservation` |
 | **Cancellation propagates via `ctx.cancel`** | Aborting the coordinator leaves 5 researchers running | `test_cancellation_mid_flight_propagates_to_children` (live coordinator dispatch) + `test_cancel_token_is_shared_reference_across_ctx_child` (structural invariant) in `tests/agents/test_coordinator_agent.py` |
 | **`StreamEvent.type` is a `Literal`** | A typo in a consumer's branch (`"finl"` vs `"final"`) silently misses the terminal event | Type-level: `StreamEventType` Literal + mypy exhaustiveness on consumer branches |
@@ -778,11 +778,23 @@ proves the framework must support:
    at the call site. Any Protocol saying "may be sync or async" must have
    every consumer honour it — `LedgerPolicy` did, `PlanPolicy` had to catch
    up (regression documented in the review pass).
-4. `MappingProxyType` (arriving via `ToolCall.arguments`) flows through
-   every tool boundary: `FunctionTool._invoke`, `as_tool._fn`,
-   `handoff_tool._fn`, and the provider serializers
-   (`openai_compat._to_msg`, `anthropic._to_msg`). Missing one is a
-   silently-broken feature.
+4. A non-dict `Mapping` flows through every tool boundary:
+   `FunctionTool._invoke`, `as_tool._fn`, `handoff_tool._fn`, and the
+   provider serializers (`openai_compat._to_msg`, `anthropic._to_msg`).
+   Missing one is a silently-broken feature. The ordinary payload is a
+   `FrozenDict` — a `dict` subclass, so a `dict`-only test would pass —
+   and a `MappingProxyType` no longer changes that: `deep_freeze`
+   normalises the stdlib proxy into a `FrozenDict`, nested ones included,
+   so nothing arrives at these seams as a proxy *by way of a `ToolCall` or
+   `ToolRequest`*. Two routes still deliver a non-dict `Mapping`. The
+   three tool seams take `args: Any` and `FunctionTool.run` passes it down
+   untouched, so any caller invoking a tool WITHOUT building a
+   `ToolRequest` hands its mapping over raw — which is what the two tests
+   below do, calling `tool.fn(MappingProxyType({...}), ctx)` directly. All
+   five seams are additionally reachable with the mappings `deep_freeze`
+   declines to rewrite (a `ChainMap`, a project's own `Mapping`), since
+   returning those by identity rather than reconstructing them is a
+   deliberate limit of the freeze.
 5. `ActorBudget` + shared `CancellationToken` mean the parent has real
    control over children — cost, concurrency, and lifecycle.
 

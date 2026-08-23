@@ -351,13 +351,17 @@ class FrozenContext:
         break the equal-objects-hash-equally invariant this type needs to be a
         cache key at all.
 
-        No ``__reduce__`` here, unlike ``ToolCall`` / ``Prompt`` /
-        ``SignalEnvelope``: ``FrozenContext`` holds no ``MappingProxyType`` of
-        its own, so once ``ToolCall`` pickles, so does a snapshot containing
-        one. A scratchpad holding a genuinely unpicklable value (an open
-        socket, a lambda) still fails to pickle — correctly, and that failure
-        is the caller's object, not this type's shape. Hashing such a snapshot
-        works, which is the point of splitting the two.
+        No ``__reduce__`` here, and that is now the ordinary case rather than
+        the exception: ``Prompt`` and ``SignalEnvelope`` each had one purely to
+        work around a ``MappingProxyType`` payload, and both were deleted when
+        those payloads became ``FrozenDict`` — which pickles itself. ``ToolCall``
+        is the last type still carrying one, and only to keep the
+        ``_rebuild_tool_call`` global honest for records already on disk (see
+        its docstring), not because a snapshot containing one needs it. A
+        scratchpad holding a genuinely unpicklable value (an open socket, a
+        lambda) still fails to pickle — correctly, and that failure is the
+        caller's object, not this type's shape. Hashing such a snapshot works,
+        which is the point of splitting the two.
         """
         return hash((self.prefix, self.messages, tuple(k for k, _ in self.scratchpad)))
 

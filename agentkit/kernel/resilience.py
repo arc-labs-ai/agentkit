@@ -317,9 +317,40 @@ def _stable_default(o: Any) -> Any:
             # Heterogeneous unsortable contents — fall through to a stable
             # repr via list(_) + sort-by-_stable_repr.
             return sorted(o, key=lambda x: _stable_repr(x))
-    # Mappings that ``json`` can't natively encode (``MappingProxyType``
-    # from ``ToolCall.arguments`` is the load-bearing case — the type
-    # is used as a read-only view over the caller-supplied dict).
+    # Mappings that ``json`` can't natively encode. ``ToolCall.arguments`` is NO
+    # LONGER one of them: a ``FrozenDict`` is a ``dict`` SUBCLASS, so the encoder
+    # takes it directly and never consults ``default`` for it — verified by
+    # hashing a ``ToolCall`` with a spy in the ``default`` slot, which sees only
+    # ``ToolCall`` itself.
+    #
+    # Nor is a ``MappingProxyType`` inside a ``ToolCall`` one of them any more.
+    # ``deep_freeze`` NORMALISES the stdlib proxy into a ``FrozenDict``, nested
+    # ones included, so the "a caller put a proxy in the arguments and it is
+    # stored verbatim" case this comment used to cite cannot arrive that way:
+    # the same spy on ``ToolCall("c", "s", MappingProxyType({"a": 1}))`` sees
+    # only ``['ToolCall']``.
+    #
+    # The branch is live for the mappings ``deep_freeze`` deliberately does NOT
+    # rewrite — everything other than dict/list/proxy is returned by identity,
+    # because reconstructing a caller's own type is the line that module
+    # refuses to cross. Measured with the same spy:
+    # ``ToolCall("c", "s", ChainMap({"q": "hi"}))`` sees
+    # ``['ToolCall', 'ChainMap']``, and so does the nested form
+    # ``ToolCall("c", "s", {"m": ChainMap({"a": 1})})``. Without this line that
+    # hash raises instead of returning a key, and a cache/idempotency key that
+    # raises is a failed call rather than a miss. ``stable_hash`` is public API
+    # besides, so a ``ChainMap``, a ``Counter``-like custom mapping or a proxy
+    # handed to it DIRECTLY — never through a frozen payload — lands here too:
+    # measured, ``stable_hash(MappingProxyType({"a": 1}))`` and
+    # ``stable_hash({"a": 1})`` agree at ``f9d86028c6e0d64e``, which is the
+    # normalisation this branch exists to provide.
+    #
+    # Naming ``MappingProxyType`` explicitly is redundant rather than
+    # load-bearing: stdlib registers ``mappingproxy`` on
+    # ``collections.abc.Mapping`` and it is not a ``dict`` subclass, so the
+    # second half of the test already catches it (measured — both predicates
+    # True for the same proxy). It is kept as the named case because it is the
+    # shape this branch was written for, and it is the only use of ``_types``.
     if isinstance(o, _types.MappingProxyType) or (isinstance(o, _Mapping) and not isinstance(o, dict)):
         return dict(o)
     # Enums — value (already JSON-friendly if str/int).
@@ -334,19 +365,38 @@ def _stable_default(o: Any) -> Any:
         except TypeError:
             return model_dump()
     # Dataclass instance — walk fields manually rather than
-    # ``dataclasses.asdict``, which deep-copies every value via
-    # ``copy.deepcopy`` under the hood. Deep-copy fails on
-    # ``MappingProxyType`` (the immutable view over ``ToolCall.arguments``)
-    # because stdlib has no pickle protocol for the type. The manual
-    # walk hands each field back to ``_stable_default`` on the next
-    # recursion, which routes ``MappingProxyType`` through the mapping
-    # branch above.
+    # ``dataclasses.asdict``. The reason this comment gave for years —
+    # ``asdict`` choking on ``ToolCall.arguments`` — is RETIRED: a
+    # ``FrozenDict`` deep-copies through its own ``__deepcopy__``, and
+    # ``dataclasses.asdict(ToolCall("c1", "search", {...}))`` now returns a dict
+    # instead of raising. Two reasons survive it, and either alone is enough.
     #
-    # Only ``init=True`` fields feed the hash. ``init=False`` fields
-    # hold derived / cached scaffolding (adapter caches, TTL cursors,
-    # session tokens); folding them in would pollute
-    # idempotency / memoize / audit fingerprints with non-deterministic
-    # state that has nothing to do with the value's identity.
+    # 1. ``asdict`` DEEP-COPIES every leaf it does not recognise as a
+    #    dataclass / dict / list / tuple, so it inherits every restriction
+    #    ``copy.deepcopy`` has — and this encoder is handed LIVE objects, not
+    #    plain data. Measured on a real ``ToolRequest`` whose ``tool`` field
+    #    (annotated ``Any``, holding whatever the registry built) owns a
+    #    ``threading.Lock``, which is what any client with a connection pool
+    #    behind it does:
+    #
+    #        dataclasses.asdict(req)  TypeError: cannot pickle '_thread.lock' object
+    #        stable_hash(req)         '92fdf6019141538e'
+    #
+    #    A key that raises is a failed call, not a cache miss, which is why this
+    #    matters more than it looks. The manual walk copies NOTHING — it hands
+    #    each field straight back to ``_stable_default`` on the next recursion,
+    #    where the mapping branch above converts what needs converting and every
+    #    other leaf is read, never reconstructed.
+    #
+    # 2. Only ``init=True`` fields feed the hash, and ``asdict`` has no such
+    #    filter. ``init=False`` fields hold derived / cached scaffolding
+    #    (adapter caches, TTL cursors, session tokens); folding them in would
+    #    pollute idempotency / memoize / audit fingerprints with
+    #    non-deterministic state that has nothing to do with the value's
+    #    identity. Measured on two instances differing ONLY in an ``init=False``
+    #    cache: ``stable_hash`` gives both ``2b34ea7743872c41``, while the
+    #    ``asdict`` payloads differ — i.e. an ``asdict``-based key would miss
+    #    every cache hit and re-run the call.
     if _dc.is_dataclass(o) and not isinstance(o, type):
         return {f.name: getattr(o, f.name) for f in _dc.fields(o) if f.init}
     # Generic fallback — type + sorted __dict__ (no memory address, no

@@ -185,9 +185,49 @@ class FunctionTool:
         is_async = inspect.iscoroutinefunction(func)
 
         async def _invoke(args: Any, ctx: Ctx) -> Any:
-            # ``args`` may be a ``MappingProxyType`` (from ``ToolCall.arguments``,
-            # which is read-only). Accept any ``Mapping`` — dicts and
-            # MappingProxyType alike — so kwargs are always resolvable.
+            # ``args`` is ``Any``: through the ``Invoker`` the chain hands down
+            # ``ToolRequest.arguments`` (a ``FrozenDict`` — a ``dict`` SUBCLASS
+            # that refuses mutation, not the ``MappingProxyType`` this comment
+            # used to name), but ``FunctionTool.run`` passes ``args`` down
+            # untouched, so anything calling a tool WITHOUT building a
+            # ``ToolRequest`` supplies whatever it likes. In-repo,
+            # ``memory.tool.ToolBackedMemory.query`` does exactly that with a
+            # plain mutable dict; out of repo the seam is public.
+            #
+            # The ``Mapping`` test — rather than ``dict`` — is for those
+            # callers, and only for those. It is NOT because a ``ToolCall``
+            # might be holding a proxy: ``deep_freeze`` now normalises a
+            # ``MappingProxyType`` into a ``FrozenDict``, nested ones included,
+            # so nothing arriving via ``ToolRequest`` is a non-``dict`` mapping
+            # unless it is a type ``deep_freeze`` deliberately declines to
+            # rewrite (a ``ChainMap``, a project's own ``Mapping``). Measured
+            # directly at this seam: ``run(MappingProxyType({...}), ctx)`` and
+            # ``run(ChainMap({...}), ctx)`` both resolve their kwargs, and
+            # ``isinstance(args, dict)`` is False for both.
+            #
+            # The ELSE branch is what makes the ``isinstance`` load-bearing: a
+            # non-mapping collapses to ``{}`` and the checks below report it as
+            # missing arguments, BY NAME. Measured on a two-required-argument
+            # tool called as ``run("just a string", ctx)``: ``ToolArgumentError:
+            # tool 'two' call rejected: missing required argument(s) ['nested',
+            # 'q']`` — a diagnosable rejection instead of an ``AttributeError``
+            # on ``.get``.
+            #
+            # The ``dict()`` is a SNAPSHOT and it stays, though its original
+            # reason is retired: a ``FrozenDict`` reads like any other dict, so
+            # no unwrap is needed to make the payload readable. ``supplied`` is
+            # then read repeatedly below (a membership test per declared
+            # parameter, a lookup per match, one full iteration for the
+            # unexpected-key scan), and a lazily-derived mapping from one of the
+            # non-``ToolRequest`` callers above would re-derive on each. One
+            # shallow copy per tool call, immediately before the tool does its
+            # I/O.
+            #
+            # Shallow is the right depth. Nested values stay frozen all the way
+            # into the tool body — measured, a ``@tool`` function receiving
+            # ``nested={"a": 1}`` gets a ``FrozenDict`` and ``nested["x"] = 1``
+            # inside it raises — which is the point of a deep freeze: the
+            # arguments that were AUTHORISED stay the arguments that get EXECUTED.
             supplied = dict(args) if isinstance(args, Mapping) else {}
             kwargs = {k: supplied[k] for k in arg_params if k in supplied}
 

@@ -206,9 +206,12 @@ the framework's invariants slip.
    loop's continued mutation of `done_ids` corrupts every prior checkpoint
    on `InMemoryStore` (and diverges from serializing backends). *Locked by
    `test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it`.*
-2. **Deep-copy fails on nested containers or `MappingProxyType`.** State
-   carrying a `ToolCall.arguments` (a `MappingProxyType`) fails pickle on
-   Redis/Postgres → resume is broken on any real backend. *Locked by
+2. **Deep-copy fails on a frozen nested payload.** State carrying a
+   `ToolCall.arguments` fails pickle on Redis/Postgres → resume is broken
+   on any real backend. That is exactly what a `MappingProxyType` would
+   have caused, and why the freeze is a `dict` subclass instead: a
+   `FrozenDict` carries its own `__reduce__` / `__deepcopy__`, so it
+   round-trips. *Locked by
    `test_snapshot_state_containing_toolcalls_survives_deepcopy`.*
 3. **`Usage.__add__` becomes non-associative.** Concurrent workers fold
    Usage in different orders → cost totals drift → cost cap trips
@@ -606,7 +609,7 @@ snapshots periodically.
 | Invariant | Concrete failure if violated | Locked by |
 |---|---|---|
 | **Checkpoint state independent of live scratch dict** | Live loop's `done_ids` grows after checkpoint → resume from that checkpoint sees over-counted progress | `test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it` |
-| **Deep-copy handles nested containers + `MappingProxyType`** | State containing `ToolCall.arguments` fails pickle on serializing backends → job cannot resume across a real (non-InMemory) backend | `test_snapshot_state_containing_toolcalls_survives_deepcopy` |
+| **Deep-copy handles nested frozen containers (`FrozenDict` / `FrozenList`)** | State containing `ToolCall.arguments` fails pickle on serializing backends → job cannot resume across a real (non-InMemory) backend | `test_snapshot_state_containing_toolcalls_survives_deepcopy` |
 | **`Usage.__add__` is associative + commutative** | 8 concurrent workers folding usage in different orders produce different totals → cost cap trips inconsistently | `test_usage_add_is_associative`, `test_usage_add_is_commutative` (Hypothesis-generated) |
 | **`Usage` is frozen** | A worker mutates a shared Usage snapshot → concurrent workers' charges corrupt each other's view | `test_kernel_value_types_are_frozen` (parametrized) |
 | **`idempotency_key` is deterministic across processes** | Resume computes different keys than the original run → every row re-enriches → cost doubles | `test_idempotency_key_deterministic_across_calls`, `test_stable_hash_ignores_dict_iteration_order` |
@@ -674,9 +677,26 @@ The specific things this design proves the framework must support:
    live loop and the durable record. Any shared reference is a bug.
 2. `Usage.__add__` associativity + commutativity means "the numbers add up"
    is a real property, not a hope. Verified by Hypothesis.
-3. `MappingProxyType` (via `ToolCall.arguments`) survives every backend the
-   `Checkpointer` might use — proved by our `tc_to_dict` unwrap + the
-   `stable_hash` `_stable_default` Mapping branch.
+3. The frozen `ToolCall.arguments` payload survives every backend the
+   `Checkpointer` might use — because it is a `FrozenDict`, a `dict`
+   subclass that json-dumps, deep-copies and pickles like the plain dict
+   it subclasses. Neither mechanism this line used to credit is what makes
+   that true any more: `stable_hash`'s `_stable_default` Mapping branch is
+   never reached for a `FrozenDict` (stdlib `json` encodes it directly),
+   and `tc_to_dict`'s `dict()` unwrap is not what carries it across the
+   wire either — it is there so the exported helper hands callers an
+   editable plain dict. Nor is a `MappingProxyType` the shape they guard
+   against any more: `deep_freeze` now normalises the stdlib proxy into a
+   `FrozenDict`, nested ones included, so
+   `ToolCall("c", "s", MappingProxyType({...})).arguments` is a `FrozenDict`
+   and json-dumps cleanly. What `deep_freeze` still returns by identity is
+   every OTHER `Mapping` — reconstructing a project's own type is the line
+   it refuses to cross — so a `ChainMap` in the arguments is stored verbatim,
+   and `json.dumps` of it raises `Object of type ChainMap is not JSON
+   serializable` (it pickles and deep-copies fine, unlike the proxy did, so
+   only the JSON backends are exposed). `arguments` is annotated
+   `dict[str, Any]`, so that needs a caller mypy would reject; it is the
+   residue those two lines cover, not the everyday case.
 4. `gather_bounded` respects its semaphore under any interleaving of
    worker starts and completions.
 5. `run_with_resilience` retries the right classes, records the right

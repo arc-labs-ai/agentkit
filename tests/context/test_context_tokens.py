@@ -167,9 +167,11 @@ def test_short_chat_is_not_inflated_into_needless_compaction():
 def test_unserialisable_tool_arguments_do_not_raise():
     """A budget pre-check must never explode on an exotic payload.
 
-    ``ToolCall.arguments`` is a ``MappingProxyType`` (``json.dumps``
-    rejects it outright) and can hold non-JSON values; the estimator
-    falls back rather than raising from inside the pre-check.
+    ``ToolCall.arguments`` is a ``FrozenDict`` — which ``json.dumps``
+    encodes natively — but the freeze does not make the CONTENTS
+    serialisable: a bare ``object()`` value, as here, still has no JSON
+    form. The estimator falls back rather than raising from inside the
+    pre-check.
     """
     msgs = [
         Message("assistant", "", tool_calls=(ToolCall(id="1", name="t", arguments={"o": object()}),))

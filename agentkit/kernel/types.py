@@ -101,8 +101,13 @@ class ToolCall:
     a ToolCall does not have to be the argument, only reachable from it, so
     ``asdict`` of ANY dataclass holding a ToolCall raised. That is why
     ``resilience.stable_hash`` walks dataclass fields by hand instead of
-    calling ``asdict`` (see the note at its ``_stable_default``) and why four
-    other call sites carry a defensive ``dict(tc.arguments)`` unwrap.
+    calling ``asdict`` (see the note at its ``_stable_default``) and why five
+    other call sites carry a defensive ``dict(tc.arguments)`` unwrap
+    (``anthropic``, ``openai_compat``, ``checkpointer.persistence``,
+    ``context.tokens``, ``middlewares.memoize``), plus ``tools.function``'s
+    ``dict(args)``, which is a snapshot rather than an unwrap. The count is
+    spelled out because the previous "four" was wrong and nothing would have
+    caught it.
 
     One consequence to know about: ``asdict`` rebuilds each nested container as
     ``type(obj)(...)``, so it hands back a ``FrozenDict``, not a plain one. The

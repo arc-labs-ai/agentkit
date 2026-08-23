@@ -134,8 +134,10 @@ branch: `if autonomy == Autonomy.MANUAL: return True`. Even a read-only
 The SSE stream carries the `interrupt` event to the browser. The operator
 UI renders a REVIEW REQUIRED card with `tc.name="get_logs"` and
 `tc.arguments={"service": "checkout-api", "since_minutes": 15}` verbatim
-— the `MappingProxyType` on `ToolCall.arguments` prevents any downstream
-render code from mutating it.
+— the `FrozenDict` on `ToolCall.arguments` prevents any downstream render
+code from mutating it. It was a `MappingProxyType` originally; a `dict`
+SUBCLASS replaced it (see `agentkit/kernel/_frozen.py`) so the card's own
+`json.dumps` of the arguments keeps working, which a proxy refused.
 
 **t=~603ms → t=~90s — Human wall clock.** The oncall reads the card,
 clicks Approve. The API server receives `POST /runs/incident-2f9a/approve
@@ -177,10 +179,11 @@ For THIS tool, `tools.requires_approval("kubectl_rollout") = True` AND
 itself demands approval regardless of autonomy tier.
 
 `_needs_approval` returns True. Suspend #4. The interrupt card renders
-the **verbatim** `MappingProxyType` arguments — `args.pop("dry_run")`
-would raise `TypeError('mappingproxy' object does not support item
-deletion)`. The operator sees `revision="abc123"`. What they see is
-exactly what will run.
+the **verbatim** frozen arguments — `args.pop("dry_run")` raises
+`TypeError: this payload belongs to a frozen value and cannot be mutated
+in place.` (measured on `ToolCall("c1", "kubectl_rollout", {"dry_run":
+True})`; `__setitem__` and `__delitem__` raise the same). The operator
+sees `revision="abc123"`. What they see is exactly what will run.
 
 **t=~180s — Approve + execute.** Operator clicks Approve. `resume` runs
 `kubectl_rollout` with the frozen args. The tool shells out (this is the
@@ -235,10 +238,11 @@ the framework's invariants slip.
    *Locked by the `should_gate` truth-table in
    `tests/agents/test_gate.py`.*
 2. **Approval snapshot mutable across the seam.** If
-   `ToolCall.arguments` were a plain `dict` instead of `MappingProxyType`,
+   `ToolCall.arguments` were a plain `dict` instead of a `FrozenDict`,
    a tool implementation could `args.pop("dry_run")` between the UI
    render and execution — the operator sees "dry run" but the actual
-   call is destructive. *Locked by
+   call is destructive. The freeze is DEEP, so
+   `args["filters"]["tags"].append(...)` is refused too. *Locked by
    `test_toolcall_arguments_view_rejects_item_assignment` in
    `tests/kernel/test_kernel.py`.*
 3. **`Checkpointer.snapshot` shares state by reference.** If the
@@ -518,8 +522,12 @@ grep -n "check_cancelled\|ctx.cancel" agentkit/agents/cognition/react.py
 # Expected: at least one ctx.check_cancelled() at the top of _iterate's loop.
 
 # Tool arguments are frozen at construction.
-grep -n "MappingProxyType" agentkit/kernel/types.py
-# Expected: ToolCall.arguments wrapped in MappingProxyType on __post_init__.
+grep -n "deep_freeze" agentkit/kernel/types.py
+# Expected: `ToolCall.__post_init__` passes `arguments` through `deep_freeze`
+# (which returns a FrozenDict — a dict subclass that refuses mutation).
+# Grepping for MappingProxyType here is the OLD check and now only finds
+# prose: the freeze stopped being a proxy view when `kernel/_frozen.py`
+# landed, because a proxy broke json.dumps / asdict / isinstance(_, dict).
 
 # Snapshot deep-copies state.
 grep -n "deepcopy" agentkit/capabilities/checkpointer/base.py
@@ -571,7 +579,7 @@ async def main():
     try:
         susp.pending[0].arguments["namespace"] = "hacked"
     except TypeError:
-        pass   # expected: MappingProxyType blocks item assignment
+        pass   # expected: the FrozenDict payload refuses __setitem__
     # Also: pending is a tuple, not a list — a rebind attempt raises.
 
 asyncio.run(main())

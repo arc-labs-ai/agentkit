@@ -31,10 +31,23 @@ def _to_msg(m: Message) -> dict[str, Any]:
         }
     if m.role == "assistant" and m.tool_calls:
         blocks: list[dict[str, Any]] = [{"type": "text", "text": m.content}] if m.content else []
-        # ``dict(tc.arguments)`` — ``ToolCall.arguments`` is a
-        # ``MappingProxyType`` read-only view, and httpx's ``json=`` payload
-        # serializer goes through stdlib ``json.dumps`` which doesn't handle
-        # that type natively.
+        # ``dict(tc.arguments)`` — ``ToolCall.arguments`` is a ``FrozenDict``, a
+        # ``dict`` SUBCLASS, not the ``MappingProxyType`` this comment used to
+        # name, and httpx's ``json=`` serializer (stdlib ``json.dumps``) encodes
+        # it natively and byte-identically to a plain dict. The unwrap is
+        # therefore a no-op on every payload this function can be handed, and it
+        # stays for the same belt-and-braces reason as in
+        # ``openai_compat._to_msg``: ``m`` is a ``Message``, so every ``tc`` is
+        # agentkit's own ``ToolCall`` and ``deep_freeze`` has already run —
+        # including over a ``MappingProxyType``, which it now NORMALISES into a
+        # ``FrozenDict`` rather than passing through (measured, nested proxies
+        # too). What it still returns by identity is any other ``Mapping``,
+        # since rewriting a caller's own type is the line that module refuses to
+        # cross: measured, ``ToolCall("c", "s", ChainMap({...})).arguments`` is
+        # the ``ChainMap`` verbatim, and httpx would then fail the request at
+        # serialisation time rather than on the wire. Reaching that needs a
+        # caller violating the ``dict[str, Any]`` annotation, which is exactly
+        # the level of paranoia one ``dict()`` per tool call buys.
         blocks += [
             {"type": "tool_use", "id": tc.id, "name": tc.name, "input": dict(tc.arguments)}
             for tc in m.tool_calls

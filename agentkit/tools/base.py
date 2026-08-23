@@ -30,8 +30,17 @@ class Tool(Protocol):
     schema) or a ``ToolSchema``; ``output_schema`` accepts the same
     shapes ``FunctionTool.output_schema`` does — a JSON-Schema dict, a
     Pydantic / dataclass / attrs class, or ``None`` (no check).
-    ``run.args`` is ``Mapping[str, Any]`` — a plain dict OR a
-    ``MappingProxyType`` handed down from a ``ToolCall`` both satisfy it.
+    ``run.args`` is ``Mapping[str, Any]``, and the widest type is
+    deliberate: a plain dict, the ``FrozenDict`` the runtime normally
+    hands down (``ToolRequest.arguments`` — a ``dict`` SUBCLASS that
+    refuses mutation, see ``kernel._frozen``), and any other mapping a
+    caller supplies all satisfy it. An impl READING ``args`` needs to
+    know only that it is a mapping. An impl WRITING to it is the case
+    the freeze exists to stop: measured, a ``Tool.run`` reached through
+    the ``Invoker`` receives a ``FrozenDict`` and ``args["x"] = 1``
+    inside the tool raises ``TypeError``. Copy first if you need to
+    edit — ``dict(args)`` — and note that copy is SHALLOW, so nested
+    values stay frozen.
     """
 
     name: str

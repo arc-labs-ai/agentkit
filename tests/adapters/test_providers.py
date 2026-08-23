@@ -374,17 +374,20 @@ def test_injected_client_is_reused_and_never_owned():
 # ── Multi-turn tool-call history serializes cleanly ──────────────────────────
 #
 # When a ``ToolCall`` from a prior turn is embedded in the assistant
-# message history, ``_to_msg`` must convert its ``MappingProxyType``
-# arguments to a plain ``dict`` before JSON-serialization. A raw
-# ``mappingproxy`` in the JSON payload raises ``TypeError`` — every
-# multi-turn tool-calling flow would break at request build time.
+# message history, ``_to_msg`` has to hand ``json.dumps`` something it can
+# encode. The ordinary payload is a ``FrozenDict``, which it encodes
+# natively — but ``deep_freeze`` rewrites only dicts and lists, so a
+# ``MappingProxyType`` a caller supplied is stored verbatim, and a raw
+# ``mappingproxy`` in the JSON payload raises ``TypeError``. That is what
+# the ``dict()`` unwrap in both adapters is still for: without it, a
+# multi-turn tool-calling flow breaks at request build time.
 
 
 def test_openai_compat_serializes_assistant_history_with_prior_tool_call() -> None:
     """A follow-up chat with a prior assistant ``tool_calls`` message
-    in the history must serialize cleanly. The prior ``ToolCall``
-    holds its arguments as a ``MappingProxyType``; the request
-    builder must unwrap it before ``json.dumps`` sees it."""
+    in the history must serialize cleanly — the prior ``ToolCall``
+    holds its arguments as an immutable mapping, and the request
+    builder has to hand ``json.dumps`` a shape it can encode."""
     from agentkit.kernel.types import ToolCall
 
     seen_body: dict = {}
@@ -422,10 +425,11 @@ def test_openai_compat_serializes_assistant_history_with_prior_tool_call() -> No
 
 def test_anthropic_serializes_assistant_history_with_prior_tool_use() -> None:
     """Same invariant on the Anthropic side: a prior ``tool_use``
-    block in the assistant history must serialize the arguments as
-    a plain dict, not a ``MappingProxyType``. httpx's ``json=``
-    payload path calls stdlib ``json.dumps`` which cannot encode
-    the proxy view."""
+    block in the assistant history must serialize its arguments as a
+    plain dict. httpx's ``json=`` payload path calls stdlib
+    ``json.dumps``, which encodes a ``FrozenDict`` natively but refuses
+    a ``MappingProxyType`` — the shape ``deep_freeze`` passes through
+    untouched."""
     from agentkit.kernel.types import ToolCall
 
     seen_body: dict = {}

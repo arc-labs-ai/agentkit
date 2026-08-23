@@ -35,10 +35,35 @@ if TYPE_CHECKING:
 
 
 def tc_to_dict(t: ToolCall) -> dict[str, Any]:
-    # ``ToolCall.arguments`` is a ``MappingProxyType``. Serialize it as
-    # a plain ``dict`` so downstream deep-copy / JSON / pickle backends
-    # stay portable — ``mappingproxy`` is neither pickleable nor
-    # JSON-serializable by default.
+    # The PORTABILITY reason this unwrap was written for is gone.
+    # ``arguments`` is a ``FrozenDict`` now, not a ``MappingProxyType``, and a
+    # ``FrozenDict`` json-dumps, deep-copies and pickles like the plain dict it
+    # subclasses — so no backend needs the copy.
+    #
+    # Not merely weaker than it was: the specific hole an earlier note pointed
+    # at is CLOSED. ``deep_freeze`` now normalises a
+    # ``MappingProxyType`` into a ``FrozenDict``, nested ones included, so the
+    # "a caller passed a proxy and it is still sitting here" scenario cannot
+    # happen through ``ToolCall`` any more (measured:
+    # ``ToolCall("c", "s", MappingProxyType({...})).arguments`` is a
+    # ``FrozenDict``). What ``deep_freeze`` still hands back by identity is any
+    # OTHER ``Mapping`` — rewriting a caller's own type is the line it refuses
+    # to cross — and ``t`` is annotated ``ToolCall`` with ``arguments:
+    # dict[str, Any]``, so landing one of those here means a caller mypy would
+    # already have rejected. Real, but not the reason this line exists.
+    #
+    # The reason it exists is the CONTRACT. These helpers are exported
+    # (``agentkit.capabilities.checkpointer.tc_to_dict``): they are the shape an
+    # app builds its own snapshot out of, and the annotation promises a plain
+    # ``dict``. Without the unwrap ``arguments`` comes back frozen, and a caller
+    # assembling state — ``state["pending"][0]["arguments"]["x"] = ...`` — gets a
+    # ``TypeError`` from inside a value it built itself and never asked to be
+    # immutable. Measured both ways: with the unwrap the top level is a mutable
+    # ``dict`` and that assignment lands; without it, a ``FrozenDict`` that
+    # refuses it. The copy is SHALLOW and deliberately so — measured, the nested
+    # ``arguments["n"]`` stays a ``FrozenDict`` and ``["n"]["y"] = 1`` still
+    # raises. The freeze belongs on the ToolCall, which is the record; this
+    # function only unwraps the one layer the caller is handed.
     return {"id": t.id, "name": t.name, "arguments": dict(t.arguments)}
 
 

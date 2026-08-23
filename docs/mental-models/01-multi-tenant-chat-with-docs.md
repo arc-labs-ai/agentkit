@@ -488,8 +488,10 @@ things this design proves the framework must support:
 2. No in-process shared cache silently unpartitions tenants.
 3. The `MemorySource` decorator stack is safe to compose in any order that
    makes semantic sense (`ScopedMemory` outermost, `CachedMemory` inside).
-4. `MappingProxyType` (`ToolCall.arguments`) round-trips cleanly through the
-   tool boundary even when args carry per-tenant filters.
+4. The frozen `ToolCall.arguments` payload (a `FrozenDict`) round-trips
+   cleanly through the tool boundary even when args carry per-tenant
+   filters — and the freeze is DEEP, so a nested per-tenant filter dict
+   cannot be edited by a tool impl on the way through either.
 
 ## Verification snapshot
 
