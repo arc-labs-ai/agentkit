@@ -195,8 +195,11 @@ class FunctionTool:
             # shown. Silently dropping an unknown key let a defaulted parameter
             # run with its default — a side-effecting tool reporting success for
             # something it was never asked to do. A ``ctx``/``context`` key from
-            # the model is dropped rather than reported: it is not part of the
-            # advertised schema, and the real one is injected below.
+            # the model is dropped rather than reported ONLY when the function
+            # declares such a parameter: that name is not in the advertised
+            # schema, and the real ctx is injected over it below. A tool with no
+            # ctx parameter has no such name to shadow, so the key is reported as
+            # unexpected like any other.
             unexpected = tuple(
                 k for k in supplied if k not in arg_params and k not in ctx_params
             )

@@ -135,9 +135,10 @@ class ApproxTokenCounter:
     ``capabilities.compaction.base._approx_tokens`` — the two were
     separate copies of chars/4 and both silently ignored ``tool_calls``,
     which is how a pre-check here could pass while the compactor over
-    there refused to fire on the same transcript. Note that
-    ``RequestBuilder.approx_tokens`` still carries its own content-only
-    copy; it reports a LOWER number on a tool-heavy transcript.
+    there refused to fire on the same transcript.
+    ``RequestBuilder.approx_tokens`` now delegates to the same function
+    too, so a pre-check, a built request and a compaction decision all
+    report the SAME number on a tool-heavy transcript.
     """
 
     chars_per_token: float = 4.0

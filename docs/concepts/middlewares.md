@@ -32,17 +32,24 @@ The default chain the batteries-included `Chat` builds:
 tracing  →  meter  →  retry (with breaker)
 ```
 
-The full chain the framework's `Agent` typically composes for chat
-calls:
+The chains an app typically assembles for an `Agent` — the same two
+listed in `agentkit.middlewares`' own module docstring:
 
 ```
-tracing  →  meter  →  retry  →  memoize  →  compaction  →  security  →  output_coerce
+chat:  tracing  →  compaction  →  meter  →  fallback  →  retry
+tool:  tracing  →  meter  →  egress  →  idempotent  →  audit  →  retry
 ```
 
 Middlewares run **outer-to-inner** on the way in, and **inner-to-outer**
 on the way back — the standard onion. `tracing` outermost so every
-event is captured; `output_coerce` innermost so it sees the raw model
-result.
+event is captured. `compaction` sits **ahead of** `meter` so the meter
+estimates tokens on the already-compacted transcript, not the one that
+was never sent. In the tool chain `retry` is innermost, so `audit`
+records one outcome per logical tool call rather than one per attempt
+(the attempt count still reaches the record — `retry` stamps
+`call.meta["attempts"]`); swap `audit` inside `retry` when you want a
+record per attempt instead. Add `output_coerce` innermost on the chat
+chain when you want it to see the raw model result.
 
 ## What ships in `agentkit.middlewares`
 

@@ -152,12 +152,15 @@ else:
 
 `AgentResult.stop_reason` is a closed `Literal`, so a typo type-checks
 as an error rather than reading as `None` at 3am. A run that actually
-**failed** raises and produces no `AgentResult` at all — that is the
-distinction.
+**failed** normally raises and produces no `AgentResult` at all — that
+is the distinction. The one deliberate exception is
+`ClaudeCliCognition`, which reports the error as data so its
+exactly-one-terminal-event contract survives a subprocess that never
+starts; that run comes back with `stop_reason="failed"`.
 
 Values: `complete`, `suspended`, `expired`, `budget_exhausted`,
-`max_iterations`, `invalid_output`, `terminated`. The free-form detail
-string is still in `evals["stop_reason"]`.
+`max_iterations`, `invalid_output`, `terminated`, `failed`. The
+free-form detail string is still in `evals["stop_reason"]`.
 
 ## Secrets
 

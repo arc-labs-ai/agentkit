@@ -227,6 +227,7 @@ from agentkit.tools import (
     FunctionTool,
     InMemoryFiles,
     Tool,
+    ToolArgumentError,
     ToolDefinitionError,
     ToolRegistry,
     ToolShapeError,
@@ -332,6 +333,10 @@ __all__ = [
     "Tool",
     "ToolRegistry",
     "FunctionTool",
+    # The three tool error types travel together: a bad DEFINITION
+    # (decoration time), a bad CALL going in, a bad RESULT coming out.
+    # Callers catch all three at this seam, so all three are exported here.
+    "ToolArgumentError",
     "ToolDefinitionError",
     "ToolShapeError",
     "tool",

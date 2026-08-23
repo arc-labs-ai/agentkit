@@ -69,9 +69,12 @@ ClaudeCliCognition(
 ## Tools
 
 ```python
-from agentkit import tool, FunctionTool, ToolRegistry, FileTool, InMemoryFiles
+from agentkit import (
+    tool, FunctionTool, ToolRegistry, FileTool, InMemoryFiles, ToolArgumentError,
+)
 
-# The 90% case. `side_effecting=` is REQUIRED — decoration-time TypeError otherwise.
+# The 90% case. `side_effecting=` is REQUIRED — decoration-time
+# ToolDefinitionError (a ValueError) otherwise.
 @tool(side_effecting=False)
 async def search(query: str) -> str:
     """Search the web for `query`. Returns two bulleted hits."""
@@ -113,7 +116,10 @@ p = Prompt(
     id="briefer.system",
     version="1.2.0",
     template="You are a terse briefer. Cite every claim.",
-    inputs=(),  # declare template inputs here; render() is a pure fn returning the template
+    inputs=(),  # declared placeholders. With none declared, render() returns the
+                # stripped template and REFUSES any kwargs; declare a name here
+                # and render(name=...) substitutes `{name}` (missing or
+                # unexpected keys raise ValueError, never a half-filled prompt).
 )
 
 # Wire on the Agent — the version travels on every trace + AgentResult.prompt_version.
@@ -503,6 +509,8 @@ ReActCognition(tools=[ask_human_tool(secret=True)], approval_deadline_s=120)
 
 # Terminal state is a closed Literal, so suspended != failed.
 result.stop_reason   # complete | suspended | expired | budget_exhausted
-                     # | max_iterations | invalid_output | terminated
+                     # | max_iterations | invalid_output | terminated | failed
+                     # `failed` only from ClaudeCliCognition, which reports the
+                     # error as data so its terminal event still fires.
 result.is_suspended, result.is_resumable
 ```

@@ -92,11 +92,15 @@ workers.
 
 `Budget._verdict` uses **strict greater-than** (`spent > max`) — a call
 whose cost lands exactly on the ceiling completes; the next one trips
-`MeterExceeded`. The same applies to `max_calls`: the first call
-lands on `calls == 1`, then the second call's `guard` sees `1 > 1`
-false, `charge` bumps to `2`, and the third call's `guard` trips.
-That's why `max_calls=1` above stops the loop on the second iteration,
-not the first. `Budget` is also the run's depth + concurrency
+`MeterExceeded`. The same applies to `max_calls`, and note WHICH hook
+trips: `guard` runs before the work, `charge` after, and both raise on
+a bad verdict. With `max_calls=1` the first call's `guard` sees
+`calls == 0`, the work runs, and `charge` bumps to `1` — `1 > 1` is
+false, so it completes. The second call's `guard` still sees `1 > 1`
+false and lets the work run; its `charge` bumps to `2` and raises
+there. So `max_calls=1` stops the loop on the second iteration, from
+`charge` — the ceiling is enforced one call late by construction, which
+is the cost of counting completed work rather than intentions. `Budget` is also the run's depth + concurrency
 authority: `max_depth` caps how deep the agent tree can spawn, and
 `semaphore()` bounds tree-wide concurrency (default 8).
 

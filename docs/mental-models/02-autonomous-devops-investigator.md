@@ -69,8 +69,13 @@ concurrent investigations sharing the same cognition instance don't race
 on `MaxTurns.turn` / `Timeout._start`. `run_id = ctx.correlation_id =
 "incident-2f9a"`.
 
-**t=2ms — Checkpointer load probe.** `_load(ctx, run_id)` asks the
-`Checkpointer.resume(run_id)` port for a prior snapshot. First
+**t=2ms — Checkpointer load probe.** `_load(ctx, run_id, agent)` asks
+the `Checkpointer.resume(...)` port for a prior snapshot — at the
+per-producer SLOT, `ReActCognition.checkpoint_slot(run_id, agent.name)`
+== `"incident-2f9a:agent:investigator"`, not the bare `run_id`. (A
+coordinator and each of its children all key off the same
+`ctx.correlation_id`; sharing one slot meant a child's `_clear` deleted
+the coordinator's state.) First
 invocation of this run — returns `None`. The `RequestBuilder` builds the
 initial prompt from the alert body (`request_builder.build(task, context,
 ctx, output_adapter=None)`); `usage=Usage()`, `start_i=0`, `repaired=False`.
@@ -117,7 +122,7 @@ branch: `if autonomy == Autonomy.MANUAL: return True`. Even a read-only
 **t=~602ms — Suspend #1.** The cognition:
 
 1. Appends the assistant turn to the transcript.
-2. Calls `_save(ctx, run_id, context, usage, i=0, repaired, status="suspended", pending=(tc,))`.
+2. Calls `_save(ctx, run_id, agent, context, usage, i=0, repaired, status="suspended", pending=(tc,))`.
 3. `Checkpointer.snapshot` deep-copies `state`, bumps to `version=1`, calls
    `port.save(cp)`. On Postgres, that's one INSERT.
 4. Emits `StreamEvent("interrupt", tool_call=tc)`.
@@ -145,7 +150,7 @@ resume works identically.
 
 **t=~90.001s — Resume path.** `ReActCognition.resume`:
 
-1. `_load(ctx, run_id)` reads the latest checkpoint. `saved.status="suspended"`.
+1. `_load(ctx, run_id, agent)` reads the latest checkpoint from the same slot. `saved.status="suspended"`.
 2. `rehydrate(saved.state)` reconstructs the `WorkingContext`,
    `Usage`, iteration index `i=0`, `repaired=False`.
 3. `pending = [dict_to_tc(d) for d in saved.state["pending"]]` — one
@@ -191,7 +196,8 @@ every step.) Operator approves; slack notification fires.
 **t=~185s — Iteration 5, terminal.** The model returns no tool_calls —
 its terminal delta is `finish_reason="stop"` with a natural-language
 summary. Because `agent.parse is None`, the loop appends the assistant
-message, calls `_clear(ctx, run_id)` (Checkpointer.delete — the run is
+message, calls `_clear(ctx, run_id, agent)` (Checkpointer.delete on the
+slot — the run is
 done, no need to keep snapshots), and yields:
 
 ```
@@ -420,8 +426,9 @@ was wired and a span was open at emit time.
 
 ### Checkpoint state saved along the way
 
-`Checkpointer.list_versions("incident-2f9a")` at suspend #4 (before
-approval) returns `[1, 2, 3, 4, 5, 6, 7]` — one snapshot per suspend
+`Checkpointer.list_versions(ReActCognition.checkpoint_slot("incident-2f9a", "investigator"))`
+— i.e. the slot `"incident-2f9a:agent:investigator"` — at suspend #4
+(before approval) returns `[1, 2, 3, 4, 5, 6, 7]` — one snapshot per suspend
 (`status="suspended"`) and one per resumed iteration boundary
 (`status="running"`). After the terminal `final` event, `_clear` fires
 and `list_versions` returns `[]` — the durable state is gone; the run
@@ -586,8 +593,10 @@ the decisions through), the HITL story is holding structurally.
 4. An operator Cancel triggers, but another `interrupt` event fires
    after the Cancel timestamp — `ctx.check_cancelled()` missing from
    the loop top.
-5. `Checkpointer.list_versions(run_id)` returns non-empty after the
-   run's terminal `final` — `_clear` didn't fire on the success path.
+5. `Checkpointer.list_versions(ReActCognition.checkpoint_slot(run_id, "investigator"))`
+   returns non-empty after the run's terminal `final` — `_clear` didn't
+   fire on the success path. (Probe the SLOT, not the bare `run_id`:
+   that one is vacuously empty, so it detects nothing.)
 6. Under `autonomy="auto"`, a tool with `requires_approval=True` fires
    without an interrupt — the AUTO branch of `should_gate` regressed.
 

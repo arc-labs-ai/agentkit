@@ -66,15 +66,14 @@ class Audit(BaseMiddleware):
     INSIDE ``audit()`` in the documented chain, so its attempts are
     invisible from here and three executions fold into one record. That
     is an ordering choice, not something ``Audit`` can detect: placing
-    Since neither ordering gives both, the record now carries an
-    ``attempts`` count that ``retry()`` publishes on ``call.meta`` — so one
-    record covering three charges says three, instead of reading exactly like
-    a record covering one.
-
     ``audit()`` inside ``retry()`` yields one record per attempt, at the
     cost of the ``"deduped"`` record (``idempotent()`` short-circuits
-    before ``audit()`` is ever reached). Both orderings are supported
-    and pinned by tests; see the chain note in ``middlewares/__init__``.
+    before ``audit()`` is ever reached). Since neither ordering gives
+    both, the record now carries an ``attempts`` count that ``retry()``
+    publishes on ``call.meta`` — so one record covering three charges
+    says three, instead of reading exactly like a record covering one.
+    Both orderings are supported and pinned by tests; see the chain note
+    in ``middlewares/__init__``.
     """
 
     def __init__(self, *, store: Any = None, key: str = _AUDIT_LOG) -> None:

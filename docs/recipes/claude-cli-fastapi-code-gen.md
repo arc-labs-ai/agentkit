@@ -214,9 +214,10 @@ finaliser. What differs is what a shared process implies:
 
 - **Turns are serialised.** One stdin and one transcript, so a second
   concurrent `turn()` waits rather than interleaving two conversations.
-- **A dead process stays dead.** If the CLI exits mid-session, that turn
-  reports `stop_reason="session_closed"` and later turns refuse rather than
-  silently starting a fresh conversation with no history.
+- **A dead process stays dead.** If the CLI exits mid-session, that turn's
+  terminal result carries `stop_reason="failed"` with the free-form detail
+  `evals["stop_reason"] == "session_closed"`, and later turns refuse rather
+  than silently starting a fresh conversation with no history.
 - **Cancelling a turn ends the session.** No protocol message retracts a
   half-finished turn, so the process is terminated — better than a context
   holding half an answer nobody saw.
