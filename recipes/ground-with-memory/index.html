@@ -2938,7 +2938,10 @@ system prompt:</p>
 <p><strong>The prefix is not rewritten mid-run.</strong> That is the KV-cache
 discipline: mutating a token in the prefix invalidates the provider's
 cache from that point onwards. Grounding is fetched once by default, and
-compaction only ever touches the tail.</p>
+compaction only ever touches the tail. The cost of that default shows up
+in a multi-turn conversation — turn 5 gets turn 1's evidence — and
+<a href="../../concepts/capabilities/#the-cache-stable-prefix"><code>reground_every_turn</code></a>
+is the knob that trades it back for a 10x prefix bill.</p>
 <p><strong>The query is the task, verbatim.</strong> <code>as_grounder</code> passes the user's
 string straight to <code>memory.query(...)</code>. If you want query rewriting —
 HyDE, decomposition, a cheap model rewriting the question first — wrap
@@ -2966,9 +2969,13 @@ the <code>MemorySource</code> rather than reaching inside the grounder.</p>
 </span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">. </span><span class="si">{</span><span class="n">it</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="s2">  (</span><span class="si">{</span><span class="n">it</span><span class="o">.</span><span class="n">source</span><span class="si">}</span><span class="s2">)&quot;</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">it</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 </span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>            <span class="p">),</span>
 </span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        <span class="p">),</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="n">reground_every_turn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>   <span class="c1"># re-retrieve as the conversation moves</span>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="p">),</span>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="p">)</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="c1"># Re-retrieve on every `build()` — i.e. every user turn of a</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>        <span class="c1"># conversation that reuses one WorkingContext, NOT every step of a</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>        <span class="c1"># tool loop. Costs a prefix cache miss per turn; worth it when each</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>        <span class="c1"># question needs different evidence.</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>        <span class="n">reground_every_turn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>    <span class="p">),</span>
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="p">)</span>
 </span></code></pre></div>
 <p><code>request_builder=</code> overrides <code>prompt=</code> and <code>memory=</code> entirely — it is
 the "I'll take it from here" seam.</p>
@@ -3108,7 +3115,7 @@ backends score comparably — swap in your own for a cross-encoder.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 21:44:59 UTC">August 23, 2026</span>
   </span>
 
     

@@ -9407,19 +9407,22 @@ live outside the span's attribute budget.</p>
 <li><code>FileReplayStore.default()</code> — <code>$XDG_DATA_HOME/agentkit/replays</code>, or
    <code>~/.local/share/agentkit/replays</code> when <code>XDG_DATA_HOME</code> is unset.</li>
 </ol>
+<p>That list is exhaustive. <code>AGENTKIT_REPLAY_DIR</code> is the only env var
+read, and <code>default()</code> probes nothing on disk — it returns the same
+path whatever directories happen to exist, so where the store writes
+is always predictable from the environment alone.</p>
 <div class="admonition warning">
-<p class="admonition-title"><code>RIO_REPLAY_DIR</code> is deprecated</p>
-<p><code>RIO_REPLAY_DIR</code> and the old <code>~/.rio/replays</code> default date from
-before this package was <code>agentkit</code>. Both still work. The env var
-is honoured only when <code>AGENTKIT_REPLAY_DIR</code> is absent and emits a
-<code>DeprecationWarning</code>; when both are set, the <code>AGENTKIT_</code> one wins
-and the stale one is reported through the logger.</p>
-<p><code>default()</code> will not orphan replays you already have: if the new
-directory does not exist yet and the old one does, it keeps using
-the OLD directory and logs how to migrate (<code>mv ~/.rio/replays
-~/.local/share/agentkit/replays</code>). It never moves your files for
-you. Once the new directory exists, the old path is not consulted
-again.</p>
+<p class="admonition-title"><code>RIO_REPLAY_DIR</code> no longer does anything</p>
+<p><code>RIO_REPLAY_DIR</code> and the <code>~/.rio/replays</code> default date from before
+this package was <code>agentkit</code>, and neither is read any more. If you
+still set the old variable, replay is simply <strong>off</strong> —
+<code>from_env()</code> returns <code>None</code> and the caller falls back to
+<code>NoopReplayStore</code>, with nothing logged. Set <code>AGENTKIT_REPLAY_DIR</code>
+instead.</p>
+<p>Replays under an old directory are not migrated for you and are
+not found by <code>default()</code>. Move them yourself
+(<code>mv ~/.rio/replays ~/.local/share/agentkit/replays</code>) or point the
+store at them with <code>AGENTKIT_REPLAY_DIR</code>.</p>
 </div>
 <p>Writes are best-effort by contract — <code>ReplayStore.put</code> must never
 raise into a run — but never silent: a dropped write logs (once per
@@ -9607,19 +9610,11 @@ expected outcome for any span that was never recorded.</p>
         <p>Read <code>AGENTKIT_REPLAY_DIR</code> and construct; return <code>None</code> when
 the env var isn't set so callers can fall back to
 <code>NoopReplayStore</code>.</p>
-<p><code>RIO_REPLAY_DIR</code> is honoured as a deprecated fallback and emits a
-<code>DeprecationWarning</code> naming the replacement. When both are set the
-NEW name wins — an operator who has migrated must not be silently
-held on the old value by a leftover export, and "the new setting is
-the one that takes effect" is the only rule that makes a staged
-rollout predictable. That case is reported through the logger rather
-than as a <code>DeprecationWarning</code>, because nothing deprecated is being
-USED; the old var is merely present and ignored, and an unexpectedly
-ignored config value is exactly the kind of thing an operator needs
-told once.</p>
-<p>An empty value counts as unset for both names — <code>FOO=</code> in a shell
-profile or a compose file is how people spell "not configured", and
-treating it as a path would resolve to the process CWD.</p>
+<p>An empty value counts as unset. <code>FOO=</code> in a shell profile or a
+compose file is how people spell "not configured", and <code>Path("")</code>
+resolves to the process CWD — so treating it as a path would scatter
+replay JSON through whatever directory the app happened to start in,
+while looking configured.</p>
 
 
     </div>
@@ -9645,22 +9640,10 @@ treating it as a path would resolve to the process CWD.</p>
 
         <p>Conventional location: <code>$XDG_DATA_HOME/agentkit/replays</code> or
 <code>~/.local/share/agentkit/replays</code>.</p>
-<p>Migration rule for the pre-rename default (<code>$XDG_DATA_HOME/rio/replays</code>
-/ <code>~/.rio/replays</code>): if the current default does not exist yet but
-the legacy one does, this keeps using the LEGACY directory and says
-so once.</p>
-<p>The alternatives were both worse. Writing to the new path regardless
-orphans every replay the operator already has — the store would look
-healthy while every historical lookup missed, which is the exact
-"reports success while broken" failure this module is being fixed
-for. Copying or moving the files automatically means a library
-relocating user data behind their back, with no good answer for a
-half-finished move. Adopting the existing directory keeps old data
-reachable, writes nothing outside it, and self-heals: the moment the
-operator moves the directory (or creates the new one, or sets
-<code>AGENTKIT_REPLAY_DIR</code>), the legacy path stops being consulted. The
-blast radius is limited to the zero-config path — an explicit
-<code>root=</code> or the env var always wins outright.</p>
+<p>No directory probing and no fallbacks: the path is a pure function of
+<code>XDG_DATA_HOME</code>, so what this returns is predictable from the
+environment alone. An explicit <code>root=</code> or <code>AGENTKIT_REPLAY_DIR</code>
+is how you point the store anywhere else.</p>
 
 
     </div>
@@ -9703,7 +9686,7 @@ blast radius is limited to the zero-config path — an explicit
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 15:04:13 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 21:44:20 UTC">August 23, 2026</span>
   </span>
 
     

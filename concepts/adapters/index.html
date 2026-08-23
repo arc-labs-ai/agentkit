@@ -3785,8 +3785,8 @@ never meant to be invisible. Every failure path logs (once per failure
 class, so a full disk cannot flood the log) and bumps a counter. Alert
 on <code>dropped_writes</code> / <code>failed_reads</code> if replay data matters; an ordinary
 cache miss is neither logged above <code>DEBUG</code> nor counted.</p>
-<p>Configuration and the deprecated <code>RIO_REPLAY_DIR</code> migration rule are in
-<a href="../../api-reference/adapters/">API › adapters</a>.</p>
+<p>Configuration — the <code>AGENTKIT_REPLAY_DIR</code> env var and the default
+directory — is in <a href="../../api-reference/adapters/">API › adapters</a>.</p>
 <h2 id="the-model-registry">The model registry<a class="headerlink" href="#the-model-registry" title="Anchor link">&para;</a></h2>
 <p>Two problems wearing the same hat, so they share one table.</p>
 <p><strong>The last mile.</strong> <code>claude()</code> / <code>openai()</code> / <code>deepseek()</code> /
@@ -4112,7 +4112,7 @@ before you conclude retrieval quality is bad.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 19:55:26 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 21:44:20 UTC">August 23, 2026</span>
   </span>
 
     

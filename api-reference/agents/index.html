@@ -7534,7 +7534,16 @@ where dropping a hint is preferable to blocking the parent.</p>
   start. The channel stamps this at emit time too.</li>
 </ul>
 <p>Also carries the payload-freezing machinery every signal in the
-hierarchy inherits (<code>__post_init__</code> / <code>__reduce__</code>).</p>
+hierarchy inherits (<code>__post_init__</code>). There is no <code>__reduce__</code>
+here and no rebuild factory: a mapping payload becomes a
+<code>FrozenDict</code>, which pickles and deep-copies itself, and a sequence
+payload becomes a plain <code>tuple</code> (with any nested containers frozen
+inside it), which always could — so the envelope needs no hook of
+its own. Note the freeze is NOT re-applied on the way back: pickle
+takes the default protocol, which restores state directly and never
+calls <code>__post_init__</code>. Verified for a user subclass with extra
+fields, which round-trips by both routes with its payload still
+refusing mutation at every nested level.</p>
 
 
 

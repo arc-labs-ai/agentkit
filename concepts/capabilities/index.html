@@ -3168,9 +3168,61 @@ halves:</p>
 <p>Compaction touches <strong>only the tail</strong>. That is the KV-cache discipline:
 any token mutated in the prefix invalidates the provider's cache from
 that point onward, and the prefix is exactly the expensive, stable part.</p>
-<p><code>reground_every_turn=True</code> opts out — it re-renders the prefix with fresh
-grounding on every turn, which <em>is</em> a cache invalidation, deliberately.
-The default (<code>False</code>) keeps the prefix bit-identical.</p>
+<p><code>reground_every_turn</code> is where you choose which half of that to give up,
+and there is no free answer:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>False</code> (default)</th>
+<th><code>True</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Grounder invoked</td>
+<td>once, on turn 1</td>
+<td>every turn</td>
+</tr>
+<tr>
+<td>Turn 5 is answered with</td>
+<td>evidence retrieved for <strong>turn 1's</strong> question</td>
+<td>evidence for turn 5's question</td>
+</tr>
+<tr>
+<td>Prefix bit-identical to turn 1</td>
+<td>5 of 5 turns</td>
+<td>1 of 5 turns</td>
+</tr>
+<tr>
+<td>Prefix cost, 4k tokens × 20 turns</td>
+<td><code>$0.0228</code> (cache reads)</td>
+<td><code>$0.2280</code> (fresh reads)</td>
+</tr>
+</tbody>
+</table>
+<p>Measured on a five-turn conversation against a five-fact handbook at
+<code>k=1</code>: the default put the answering fact in front of the model on <strong>1
+of 5 turns</strong>, <code>reground_every_turn=True</code> on 4 of 5 (the fifth was a
+retrieval miss, not a staleness one). So it costs 10x on the prefix term
+to stop answering turn 5 with turn 1's evidence.</p>
+<p>Leave it <code>False</code> when the grounding is a corpus the whole conversation
+shares — a handbook, a spec, a codebase digest. Set it <code>True</code> when each
+turn asks about something different and the retrieved evidence <em>is</em> the
+answer.</p>
+<div class="admonition warning">
+<p class="admonition-title">A \"turn\" here is a <code>build()</code> call, not a tool-loop step</p>
+<p><code>reground_every_turn=True</code> does <strong>not</strong> re-retrieve as a ReAct agent
+works through its tools. <code>ReActCognition.drive()</code> calls <code>build()</code>
+exactly once and appends tool traffic straight to the tail, so a
+four-step ReAct run invokes the grounder once either way (measured:
+4 LLM calls, 1 grounder call). The flag only does anything when you
+reuse one <code>WorkingContext</code> across successive <code>agent.run(...)</code> calls
+— a multi-turn conversation.</p>
+<p>Note also that the auto-wired <code>Agent(memory=...)</code> path builds its
+<code>RequestBuilder</code> for you and cannot pass this flag. To set it, build
+the <code>RequestBuilder</code> yourself and pass <code>request_builder=</code>.</p>
+</div>
 <p><code>budget_check</code> is a <code>(approx_tokens) -&gt; None</code> hook you can raise from to
 abort <code>build()</code> before the messages are returned. The builder offers no
 judgement of its own about what is "too big"; that policy is yours.</p>
@@ -3217,7 +3269,9 @@ policy in once at wiring time:</p>
 </span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <p>By default the grounding block is written into the prefix on the <strong>first
-turn only</strong>, which is what keeps the prefix cacheable.</p>
+turn only</strong>, which is what keeps the prefix cacheable — and what makes
+turn 5 answer with turn 1's evidence. <code>reground_every_turn=True</code> buys
+freshness back at 10x on the prefix term; see the table above.</p>
 <h2 id="compactor"><code>Compactor</code><a class="headerlink" href="#compactor" title="Anchor link">&para;</a></h2>
 <p>A <code>Protocol</code> with one method: <code>compact(messages, ctx) -&gt; messages</code>. Each
 implementation owns its own threshold check, so calling <code>compact()</code> on a
@@ -3505,7 +3559,7 @@ on the <a href="../../">landing page</a>.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 18:14:10 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 21:44:59 UTC">August 23, 2026</span>
   </span>
 
     
