@@ -2124,8 +2124,13 @@ Drive deep-copies the termination clone into a drive-local variable so
 concurrent investigations sharing the same cognition instance don't race
 on <code>MaxTurns.turn</code> / <code>Timeout._start</code>. <code>run_id = ctx.correlation_id =
 "incident-2f9a"</code>.</p>
-<p><strong>t=2ms — Checkpointer load probe.</strong> <code>_load(ctx, run_id)</code> asks the
-<code>Checkpointer.resume(run_id)</code> port for a prior snapshot. First
+<p><strong>t=2ms — Checkpointer load probe.</strong> <code>_load(ctx, run_id, agent)</code> asks
+the <code>Checkpointer.resume(...)</code> port for a prior snapshot — at the
+per-producer SLOT, <code>ReActCognition.checkpoint_slot(run_id, agent.name)</code>
+== <code>"incident-2f9a:agent:investigator"</code>, not the bare <code>run_id</code>. (A
+coordinator and each of its children all key off the same
+<code>ctx.correlation_id</code>; sharing one slot meant a child's <code>_clear</code> deleted
+the coordinator's state.) First
 invocation of this run — returns <code>None</code>. The <code>RequestBuilder</code> builds the
 initial prompt from the alert body (<code>request_builder.build(task, context,
 ctx, output_adapter=None)</code>); <code>usage=Usage()</code>, <code>start_i=0</code>, <code>repaired=False</code>.</p>
@@ -2165,7 +2170,7 @@ branch: <code>if autonomy == Autonomy.MANUAL: return True</code>. Even a read-on
 <p><strong>t=~602ms — Suspend #1.</strong> The cognition:</p>
 <ol>
 <li>Appends the assistant turn to the transcript.</li>
-<li>Calls <code>_save(ctx, run_id, context, usage, i=0, repaired, status="suspended", pending=(tc,))</code>.</li>
+<li>Calls <code>_save(ctx, run_id, agent, context, usage, i=0, repaired, status="suspended", pending=(tc,))</code>.</li>
 <li><code>Checkpointer.snapshot</code> deep-copies <code>state</code>, bumps to <code>version=1</code>, calls
    <code>port.save(cp)</code>. On Postgres, that's one INSERT.</li>
 <li>Emits <code>StreamEvent("interrupt", tool_call=tc)</code>.</li>
@@ -2190,7 +2195,7 @@ run's in-memory state. A fresh worker picks up the same <code>run_id</code> and 
 resume works identically.</p>
 <p><strong>t=~90.001s — Resume path.</strong> <code>ReActCognition.resume</code>:</p>
 <ol>
-<li><code>_load(ctx, run_id)</code> reads the latest checkpoint. <code>saved.status="suspended"</code>.</li>
+<li><code>_load(ctx, run_id, agent)</code> reads the latest checkpoint from the same slot. <code>saved.status="suspended"</code>.</li>
 <li><code>rehydrate(saved.state)</code> reconstructs the <code>WorkingContext</code>,
    <code>Usage</code>, iteration index <code>i=0</code>, <code>repaired=False</code>.</li>
 <li><code>pending = [dict_to_tc(d) for d in saved.state["pending"]]</code> — one
@@ -2231,7 +2236,8 @@ every step.) Operator approves; slack notification fires.</p>
 <p><strong>t=~185s — Iteration 5, terminal.</strong> The model returns no tool_calls —
 its terminal delta is <code>finish_reason="stop"</code> with a natural-language
 summary. Because <code>agent.parse is None</code>, the loop appends the assistant
-message, calls <code>_clear(ctx, run_id)</code> (Checkpointer.delete — the run is
+message, calls <code>_clear(ctx, run_id, agent)</code> (Checkpointer.delete on the
+slot — the run is
 done, no need to keep snapshots), and yields:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>StreamEvent(
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    &quot;final&quot;,
@@ -2444,8 +2450,9 @@ a live invariant violation.</p>
 The <code>trace_context</code> field is set on each observation iff a real tracer
 was wired and a span was open at emit time.</p>
 <h3 id="checkpoint-state-saved-along-the-way">Checkpoint state saved along the way<a class="headerlink" href="#checkpoint-state-saved-along-the-way" title="Anchor link">&para;</a></h3>
-<p><code>Checkpointer.list_versions("incident-2f9a")</code> at suspend #4 (before
-approval) returns <code>[1, 2, 3, 4, 5, 6, 7]</code> — one snapshot per suspend
+<p><code>Checkpointer.list_versions(ReActCognition.checkpoint_slot("incident-2f9a", "investigator"))</code>
+— i.e. the slot <code>"incident-2f9a:agent:investigator"</code> — at suspend #4
+(before approval) returns <code>[1, 2, 3, 4, 5, 6, 7]</code> — one snapshot per suspend
 (<code>status="suspended"</code>) and one per resumed iteration boundary
 (<code>status="running"</code>). After the terminal <code>final</code> event, <code>_clear</code> fires
 and <code>list_versions</code> returns <code>[]</code> — the durable state is gone; the run
@@ -2587,8 +2594,10 @@ the decisions through), the HITL story is holding structurally.</p>
 <li>An operator Cancel triggers, but another <code>interrupt</code> event fires
    after the Cancel timestamp — <code>ctx.check_cancelled()</code> missing from
    the loop top.</li>
-<li><code>Checkpointer.list_versions(run_id)</code> returns non-empty after the
-   run's terminal <code>final</code> — <code>_clear</code> didn't fire on the success path.</li>
+<li><code>Checkpointer.list_versions(ReActCognition.checkpoint_slot(run_id, "investigator"))</code>
+   returns non-empty after the run's terminal <code>final</code> — <code>_clear</code> didn't
+   fire on the success path. (Probe the SLOT, not the bare <code>run_id</code>:
+   that one is vacuously empty, so it detects nothing.)</li>
 <li>Under <code>autonomy="auto"</code>, a tool with <code>requires_approval=True</code> fires
    without an interrupt — the AUTO branch of <code>should_gate</code> regressed.</li>
 </ol>
@@ -2874,7 +2883,7 @@ current tree.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 12:01:19 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 14:32:21 UTC">August 23, 2026</span>
   </span>
 
     

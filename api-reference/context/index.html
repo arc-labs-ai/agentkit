@@ -4420,9 +4420,10 @@ context-limit decision).</p>
 <code>capabilities.compaction.base._approx_tokens</code> — the two were
 separate copies of chars/4 and both silently ignored <code>tool_calls</code>,
 which is how a pre-check here could pass while the compactor over
-there refused to fire on the same transcript. Note that
-<code>RequestBuilder.approx_tokens</code> still carries its own content-only
-copy; it reports a LOWER number on a tool-heavy transcript.</p>
+there refused to fire on the same transcript.
+<code>RequestBuilder.approx_tokens</code> now delegates to the same function
+too, so a pre-check, a built request and a compaction decision all
+report the SAME number on a tool-heavy transcript.</p>
 
 
 

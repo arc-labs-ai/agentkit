@@ -1417,6 +1417,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.agents.Agent.check_prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;check_prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.agents.Agent.check_capabilities" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2939,6 +2950,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.agents.Agent.check_prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;check_prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.agents.Agent.check_capabilities" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4221,6 +4243,32 @@ max_repairs: reflect-and-retry budget for parse failures.</p>
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.agents.Agent.check_prompt" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">check_prompt</span>
+
+
+<a href="#agentkit.agents.Agent.check_prompt" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">check_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Refuse a <code>Prompt</code> whose declared <code>inputs</code> are not all bound.</p>
+<p>Called automatically at the end of <code>__post_init__</code>. Separate and
+public for the same reason as :meth:<code>check_capabilities</code>: <code>Agent</code> is a
+mutable dataclass, so assigning <code>agent.prompt</code> afterwards bypasses
+<code>__post_init__</code> — re-assert with <code>agent.check_prompt()</code>.</p>
+<p>A plain <code>str</code> prompt, a <code>None</code> prompt, and a <code>Prompt</code> declaring no
+<code>inputs</code> are all unaffected.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -7199,6 +7247,18 @@ the run paused on a human-gate.</p>
 
 
         <p>A typed node/edge graph with a deterministic, concurrent, bounded engine.</p>
+
+        <p><code>max_steps</code> is a never-hang backstop, checked BETWEEN waves.</p>
+<p>A wave runs whole once it starts, so the count can overshoot by up to
+(widest wave − 1): three independent root nodes with <code>max_steps=2</code>
+run all three and report <code>steps=3</code>. That surprises people, so it is
+worth stating rather than discovering.</p>
+<p>It is deliberate and it is BOUNDED. Stopping mid-wave would drop
+siblings that are already running — a partial, confusing state — and
+the overshoot cannot run away, because the graph's width is static and
+the check happens before every wave. The guarantee is "a cycle cannot
+spin forever", not "the node count never exceeds N"; if you need the
+latter, keep your waves narrow.</p>
 
 
 

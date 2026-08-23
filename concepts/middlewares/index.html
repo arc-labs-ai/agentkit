@@ -1955,14 +1955,21 @@ ASGI / Rack / Express middleware, applied to LLM and tool calls.</p>
 <p>The default chain the batteries-included <code>Chat</code> builds:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tracing  →  meter  →  retry (with breaker)
 </span></code></pre></div>
-<p>The full chain the framework's <code>Agent</code> typically composes for chat
-calls:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tracing  →  meter  →  retry  →  memoize  →  compaction  →  security  →  output_coerce
+<p>The chains an app typically assembles for an <code>Agent</code> — the same two
+listed in <code>agentkit.middlewares</code>' own module docstring:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>chat:  tracing  →  compaction  →  meter  →  fallback  →  retry
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>tool:  tracing  →  meter  →  egress  →  idempotent  →  audit  →  retry
 </span></code></pre></div>
 <p>Middlewares run <strong>outer-to-inner</strong> on the way in, and <strong>inner-to-outer</strong>
 on the way back — the standard onion. <code>tracing</code> outermost so every
-event is captured; <code>output_coerce</code> innermost so it sees the raw model
-result.</p>
+event is captured. <code>compaction</code> sits <strong>ahead of</strong> <code>meter</code> so the meter
+estimates tokens on the already-compacted transcript, not the one that
+was never sent. In the tool chain <code>retry</code> is innermost, so <code>audit</code>
+records one outcome per logical tool call rather than one per attempt
+(the attempt count still reaches the record — <code>retry</code> stamps
+<code>call.meta["attempts"]</code>); swap <code>audit</code> inside <code>retry</code> when you want a
+record per attempt instead. Add <code>output_coerce</code> innermost on the chat
+chain when you want it to see the raw model result.</p>
 <h2 id="what-ships-in-agentkitmiddlewares">What ships in <code>agentkit.middlewares</code><a class="headerlink" href="#what-ships-in-agentkitmiddlewares" title="Anchor link">&para;</a></h2>
 <table>
 <thead>
@@ -2069,7 +2076,7 @@ or the tool's return value for tool calls:</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 12:01:19 UTC">August 23, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 14:32:21 UTC">August 23, 2026</span>
   </span>
 
     

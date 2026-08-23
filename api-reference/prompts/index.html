@@ -1540,6 +1540,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;bound
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.bind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;bind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.prompts.Prompt.render" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1882,6 +1904,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;bound
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.prompts.Prompt.bind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;bind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.prompts.Prompt.render" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1936,7 +1980,7 @@ discovery, resolution, and any validation/evaluation contracts they
 choose to add — those don't belong in the framework's public surface
 unless the framework actually dispatches them.</p>
 <p>The skeleton:
-- <code>Prompt</code> (data type) — id + version + template + render()
+- <code>Prompt</code> (data type) — id + version + template + bind() + render()
 - <code>builtin</code> — the framework's own seed prompts (Compactor)</p>
 <p>Why no validator/evaluator skeleton: exporting <code>Validator</code> /
 <code>PromptEvaluator</code> type aliases the framework never dispatches would
@@ -1985,7 +2029,8 @@ their own infrastructure on top of this skeleton.</p>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">version</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">template</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">inputs</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">(),</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">bound</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="agentkit.prompts.prompt._EMPTY">_EMPTY</span></span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2043,8 +2088,73 @@ a stored prompt carries its own contract.</p>
 
 </div>
 
+<div class="doc doc-object doc-attribute">
 
 
+
+<h3 id="agentkit.prompts.Prompt.bound" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">bound</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-class-attribute"><code>class-attribute</code></small>
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#agentkit.prompts.Prompt.bound" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">bound</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="agentkit.prompts.prompt._EMPTY">_EMPTY</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Values already bound to the declared <code>inputs</code>. Normally set via
+:meth:<code>bind</code> rather than passed to the constructor. Because the values live
+on the <em>value</em>, a bound <code>Prompt</code> renders with no arguments — which is what
+lets every consumer in the framework (RequestBuilder, the CLI cognitions)
+keep calling <code>render()</code> with nothing while still shipping substituted
+text. Frozen to a read-only mapping in <code>__post_init__</code>.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.prompts.Prompt.bind" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">bind</span>
+
+
+<a href="#agentkit.prompts.Prompt.bind" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">bind</span><span class="p">(</span><span class="o">**</span><span class="n">values</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Prompt
+
+
+  
+      dataclass
+   (agentkit.prompts.prompt.Prompt)" href="#agentkit.prompts.Prompt">Prompt</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return a copy of this prompt with <code>values</code> bound to its inputs.</p>
+<p>The prompt is frozen, so this never mutates — it hands back a new value,
+which is the point: a bound prompt is still a pinnable, diff-able
+<code>Prompt</code> carrying the same <code>id</code> / <code>version</code>, and can be handed
+anywhere an unbound one goes (<code>Agent(prompt=...)</code>, <code>RequestBuilder</code>).</p>
+<p>Binding is incremental and last-write-wins, so partial binding at
+construction and the rest at the call site both work::</p>
+<div class="language-text highlight"><pre><span></span><code>p.bind(tenant=&quot;acme&quot;).bind(tone=&quot;terse&quot;)   # == p.bind(tenant=&quot;acme&quot;, tone=&quot;terse&quot;)
+</code></pre></div>
+<p>An undeclared name raises <code>ValueError</code> HERE rather than at
+<code>render()</code> — the earlier the typo surfaces, the cheaper it is.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -2060,18 +2170,20 @@ a stored prompt carries its own contract.</p>
     <div class="doc doc-contents ">
 
         <p>Substitute the declared <code>inputs</code> and return the prompt text.</p>
-<p>With no <code>inputs</code> declared this is what it has always been — the
-stripped template — so every existing caller is unaffected.</p>
+<p>Values come from :meth:<code>bind</code> and/or from <code>**values</code> here, with
+<code>**values</code> winning on a collision (a per-call override of a bound
+default). With no <code>inputs</code> declared this is what it has always been —
+the stripped template — so every existing caller is unaffected.</p>
 <p>Substitution is a literal replacement of <code>{name}</code> for each DECLARED
 input, never <code>str.format</code>. That is deliberate: system prompts are full
 of braces that are not placeholders — a JSON Schema, an example payload,
 a code fence — and <code>format</code> would either raise <code>KeyError</code> on them or
 silently eat the doubling a user added to escape them. Replacing only
 the names the prompt declared leaves every other brace untouched.</p>
-<p>Raises <code>ValueError</code> on a missing or unexpected input rather than
-rendering a half-filled prompt. A <code>{tenant}</code> that reaches the model
-unsubstituted is not a crash, which is exactly the problem: it is a
-plausible-looking prompt that quietly describes the wrong task.</p>
+<p>Raises <code>ValueError</code> when an input is neither bound nor supplied,
+rather than rendering a half-filled prompt. A <code>{tenant}</code> that reaches
+the model unsubstituted is not a crash, which is exactly the problem: it
+is a plausible-looking prompt that quietly describes the wrong task.</p>
 
 
     </div>

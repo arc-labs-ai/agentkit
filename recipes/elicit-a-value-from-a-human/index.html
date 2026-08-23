@@ -2153,11 +2153,14 @@ prevent. Wrap it:</p>
 </span></code></pre></div>
 <p><code>AgentResult.stop_reason</code> is a closed <code>Literal</code>, so a typo type-checks
 as an error rather than reading as <code>None</code> at 3am. A run that actually
-<strong>failed</strong> raises and produces no <code>AgentResult</code> at all — that is the
-distinction.</p>
+<strong>failed</strong> normally raises and produces no <code>AgentResult</code> at all — that
+is the distinction. The one deliberate exception is
+<code>ClaudeCliCognition</code>, which reports the error as data so its
+exactly-one-terminal-event contract survives a subprocess that never
+starts; that run comes back with <code>stop_reason="failed"</code>.</p>
 <p>Values: <code>complete</code>, <code>suspended</code>, <code>expired</code>, <code>budget_exhausted</code>,
-<code>max_iterations</code>, <code>invalid_output</code>, <code>terminated</code>. The free-form detail
-string is still in <code>evals["stop_reason"]</code>.</p>
+<code>max_iterations</code>, <code>invalid_output</code>, <code>terminated</code>, <code>failed</code>. The
+free-form detail string is still in <code>evals["stop_reason"]</code>.</p>
 <h2 id="secrets">Secrets<a class="headerlink" href="#secrets" title="Anchor link">&para;</a></h2>
 <p>Mark the request <code>secret=True</code> and three things happen:</p>
 <ol>
@@ -2219,7 +2222,7 @@ coerced. Same call site.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 16, 2026 20:55:51 UTC">August 16, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 14:32:21 UTC">August 23, 2026</span>
   </span>
 
     

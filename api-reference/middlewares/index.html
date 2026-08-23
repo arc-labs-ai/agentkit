@@ -2073,7 +2073,8 @@
 
 <h1 id="agentkitmiddlewares"><code>agentkit.middlewares</code><a class="headerlink" href="#agentkitmiddlewares" title="Anchor link">&para;</a></h1>
 <p>The standard middleware set: <code>tracing</code>, <code>meter</code>, <code>retry</code>, <code>fallback</code>,
-<code>memoize</code>, <code>output_coerce</code>, <code>compaction</code>, <code>guard</code>, <code>security</code>.</p>
+<code>memoize</code>, <code>idempotent</code>, <code>semantic_memoize</code>, <code>output_coerce</code>,
+<code>compaction</code>, <code>egress</code>, <code>audit</code>, <code>security</code>.</p>
 <p>See the <a href="../../concepts/middlewares/">Middlewares concept</a> for the
 mental model.</p>
 
@@ -2106,16 +2107,19 @@ it is the only ordering in which an <code>idempotent()</code> replay can be reco
 short-circuits everything inner). Swap to <code>[… idempotent(), retry(breaker=…), audit()]</code> when the question
 is "how many times did the side effect actually fire" — then every attempt gets its own record, and a
 deduped replay produces none at all because <code>audit()</code> is never reached. <code>Audit</code> records failures either
-way (<code>decision: "failed"</code>); it cannot see retry attempts it sits outside of.</p>
+way (<code>decision: "failed"</code>). It does not SEE the individual attempts it sits outside of, but it
+does report them: <code>retry()</code> stamps <code>call.meta["attempts"]</code> and <code>Audit</code> reads it onto the record, so
+one record covering three charges says <code>attempts=3</code> rather than reading exactly like one charge.</p>
 <p>.. note::
    <code>Egress</code> / <code>Audit</code> live in <code>egress_audit.py</code>, not <code>security.py</code>. A
    submodule named <code>security</code> shadowed the <code>security()</code> factory re-exported
    here — importing a submodule binds its name onto the parent package, and
    that binding happened AFTER the <code>from .guard import security</code> line, so
-   <code>middlewares.egress_audit</code> was the MODULE and <code>security()</code> raised
-   <code>TypeError: 'module' object is not callable</code>. The module was renamed
-   rather than the binding patched, because reordering the imports is undone by
-   the formatter and an explicit re-bind is one more thing to forget.
+   <code>middlewares.security</code> was the MODULE and <code>security()</code> raised
+   <code>TypeError: 'module' object is not callable</code>. The module was renamed to
+   <code>egress_audit</code> rather than the binding patched, because reordering the
+   imports is undone by the formatter and an explicit re-bind is one more thing
+   to forget.
    <code>tests/meta/test_public_surface.py</code> now fails on any recurrence.</p>
 
 
@@ -2174,8 +2178,12 @@ invisible from here and three executions fold into one record. That
 is an ordering choice, not something <code>Audit</code> can detect: placing
 <code>audit()</code> inside <code>retry()</code> yields one record per attempt, at the
 cost of the <code>"deduped"</code> record (<code>idempotent()</code> short-circuits
-before <code>audit()</code> is ever reached). Both orderings are supported
-and pinned by tests; see the chain note in <code>middlewares/__init__</code>.</p>
+before <code>audit()</code> is ever reached). Since neither ordering gives
+both, the record now carries an <code>attempts</code> count that <code>retry()</code>
+publishes on <code>call.meta</code> — so one record covering three charges
+says three, instead of reading exactly like a record covering one.
+Both orderings are supported and pinned by tests; see the chain note
+in <code>middlewares/__init__</code>.</p>
 
 
 
@@ -2441,6 +2449,14 @@ control can still pass <code>SecurityMiddleware(...)</code> directly.</p>
     <div class="doc doc-contents ">
 
         <p>Dedupe SIDE-EFFECTING tool calls on (run, scope, tool, args); a failure is never stored.</p>
+<p>This is the deliberate "safe to replay" case <code>memoize()</code> refuses to guess
+at, so it is the one caller of <code>allow_side_effects=True</code>. It stays safe
+because the key is pinned to <code>correlation_id</code>: replay is confined to a
+single run (a retry of <em>this</em> call), never across runs.</p>
+<p><code>when</code> uses :func:<code>_side_effecting</code> rather than the request flag alone —
+<code>ToolRequest.side_effecting</code> defaults to False, so a caller building the
+request positionally got NO idempotency for a tool that declares itself
+side-effecting on the tool object.</p>
 
 
     </div>
@@ -2468,7 +2484,10 @@ control can still pass <code>SecurityMiddleware(...)</code> directly.</p>
 
         <p>Near-duplicate reuse for READ-ONLY calls over a VectorPort (scored search), scope-isolated.
 NEVER attach to a side-effecting call — masking a real action behind a hit would be a correctness
-bug, so guard with <code>when=</code> (defaults to chat calls / explicitly read-only).</p>
+bug. That was documented as "guard with <code>when=</code>" while <code>when</code> defaulted to <code>None</code>, i.e. no
+guard at all: the same hole <code>memoize()</code> had, and worse here because a <em>near</em>-duplicate suffices.
+The guard is now enforced (:func:<code>_side_effecting</code>) instead of requested; <code>when=</code> still narrows
+further on top of it.</p>
 
 
     </div>
@@ -2560,7 +2579,7 @@ you can't un-send tokens). PERMANENT errors fail fast.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 3, 2026 18:44:48 UTC">August 3, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 23, 2026 14:32:21 UTC">August 23, 2026</span>
   </span>
 
     

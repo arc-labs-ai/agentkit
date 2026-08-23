@@ -1772,10 +1772,43 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.last_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;last_error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.allow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;allow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.kernel.CircuitBreaker.record_success" class="md-nav__link">
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_success
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.record_failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_failure
       
     </span>
   </a>
@@ -2761,10 +2794,43 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.last_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;last_error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.allow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;allow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentkit.kernel.CircuitBreaker.record_success" class="md-nav__link">
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_success
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentkit.kernel.CircuitBreaker.record_failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;record_failure
       
     </span>
   </a>
@@ -4413,7 +4479,9 @@ zero-config path.</p>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">_fails</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">_opened_at</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">_probe_started_at</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">_lock</span><span class="p">:</span> <span class="n"><span title="threading.Lock">Lock</span></span> <span class="o">=</span> <span class="n"><span title="threading.Lock">Lock</span></span><span class="p">(),</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">_last_error</span><span class="p">:</span> <span class="n"><span title="BaseException">BaseException</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4441,8 +4509,57 @@ zero-config path.</p>
 
 
 
+<div class="doc doc-object doc-attribute">
 
 
+
+<h3 id="agentkit.kernel.CircuitBreaker.last_error" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">last_error</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#agentkit.kernel.CircuitBreaker.last_error" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">last_error</span><span class="p">:</span> <span class="n"><span title="BaseException">BaseException</span></span> <span class="o">|</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The failure that opened the breaker, or <code>None</code>. Lets a refused call
+report a cause instead of a bare <code>CircuitOpen</code>.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="agentkit.kernel.CircuitBreaker.allow" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">allow</span>
+
+
+<a href="#agentkit.kernel.CircuitBreaker.allow" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">allow</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><span title="bool">bool</span></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Admit this caller, or refuse. The <code>half_open</code> state is itself the
+single-probe gate: the caller that flips open→half_open IS the probe;
+every other caller sees <code>half_open</code> and is refused until that probe
+resolves. The lock is what makes "the caller that flips it" exactly one
+caller, across threads as well as within an event loop.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -4483,6 +4600,27 @@ admitted after the cooldown speaks to that.</p>
 <div class="doc doc-object doc-function">
 
 
+<h3 id="agentkit.kernel.CircuitBreaker.record_failure" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">record_failure</span>
+
+
+<a href="#agentkit.kernel.CircuitBreaker.record_failure" class="headerlink" title="Anchor link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">record_failure</span><span class="p">(</span><span class="n">exc</span><span class="p">:</span> <span class="n"><span title="BaseException">BaseException</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Count a failure. <code>exc</code> is optional and remembered only so a later
+refused call can name what went wrong.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="agentkit.kernel.CircuitBreaker.release_probe" class="doc doc-heading">
 <code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">release_probe</span>
 
@@ -4503,12 +4641,18 @@ would grant health credit for a call that never proved the dependency
 recovered. Doing NEITHER — which is what happened — wedged the breaker in
 <code>half_open</code> forever, because the only exits were those two methods.</p>
 <p>So this is the third, neutral edge: consume nothing, grant nothing. The
-state returns to OPEN and the cooldown clock is <strong>not</strong> restarted, so the
-already-elapsed cooldown still holds and the very next caller is admitted
-as a fresh probe. A dependency that only ever answers with PERMANENT
-errors therefore keeps failing fast (the correct, un-masked error reaches
-the caller) instead of being hidden behind a <code>CircuitOpen</code> that
-classifies as TRANSIENT and invites a retry that can never succeed.</p>
+state returns to OPEN and the cooldown RESTARTS.</p>
+<p>Restarting it is a correction. The first version deliberately did not,
+reasoning that a permanently-failing dependency should keep surfacing
+its real 401 rather than hide behind a <code>CircuitOpen</code>. The effect was a
+breaker that does not brake: with a 60s cooldown, twenty consecutive
+calls spanning 2ms ALL reached the dead dependency, because an
+already-elapsed cooldown makes every caller a fresh probe, not just the
+next one.</p>
+<p>The premise was wrong anyway — <code>run_with_resilience</code> raises
+<code>CircuitOpen(...) from last</code>, so the real error is already reachable
+as <code>__cause__</code> on the calls that are refused. Nothing was being
+masked; the rate limiting was simply absent.</p>
 
 
     </div>
