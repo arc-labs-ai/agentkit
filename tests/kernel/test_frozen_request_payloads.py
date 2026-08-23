@@ -439,14 +439,32 @@ def test_a_payload_shared_between_two_values_is_not_walked_twice() -> None:
     assert replace(tc, name="other").arguments is tc.arguments
 
 
-def test_a_toolcall_rebuilt_from_a_plain_dict_is_re_frozen() -> None:
-    """`__reduce__` hands the constructor a PLAIN dict (the reduce arguments
-    have to be picklable too), so the invariant has to be re-established on the
-    way back in rather than assumed from the stream."""
+def test_a_toolcall_arrives_frozen_however_it_is_reconstructed() -> None:
+    """The invariant has to survive the trip, whichever route rebuilds it.
+
+    This used to call `tc.__reduce__()` directly and assert the shape of the
+    tuple it returned. That pinned an IMPLEMENTATION detail, and it broke the
+    moment `ToolCall.__reduce__` was deleted as redundant — `arguments` is a
+    `FrozenDict`, which carries its own `__reduce__`, so the hand-written hook
+    stopped earning its place. The guarantee never changed; only the mechanism
+    did, and the test was written against the mechanism.
+
+    So assert the guarantee: however a ToolCall is rebuilt — through the
+    constructor from a plain dict, through pickle, through deepcopy — its
+    payload arrives frozen, all the way down.
+    """
     tc = ToolCall("c1", "search", dict(DEEP))
-    fn, args = tc.__reduce__()
-    assert type(args[2]) is dict  # travels plain...
-    assert isinstance(fn(*args).arguments, FrozenDict)  # ...arrives frozen
+
+    rebuilt = [
+        ToolCall("c1", "search", dict(DEEP)),  # constructor, from a plain dict
+        pickle.loads(pickle.dumps(tc)),  # across a process boundary
+        copy.deepcopy(tc),  # the checkpointer's route
+    ]
+    for got in rebuilt:
+        assert isinstance(got.arguments, FrozenDict)
+        with pytest.raises(TypeError, match="frozen value"):
+            got.arguments["injected"] = "forged"
+        assert got == tc
 
 
 def test_deeply_nested_schema_bodies_freeze_all_the_way_down() -> None:

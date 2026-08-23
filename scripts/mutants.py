@@ -351,10 +351,18 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="valuetype",
-        why="ToolCall loses __reduce__, so pickling one hits the mappingproxy again",
+        why="ToolCall.arguments stops being frozen, so a tool call's payload is editable again",
         path="agentkit/kernel/types.py",
-        before="    def __reduce__(self) -> tuple[Any, ...]:",
-        after="    def __reduce_unused__(self) -> tuple[Any, ...]:",
+        before=(
+            '        object.__setattr__(self, "arguments", deep_freeze(self.arguments))\n\n'
+            "    def __hash__(self) -> int:\n"
+            '        """Hash on IDENTITY — ``(id, name)`` — never on ``arguments``.'
+        ),
+        after=(
+            "        pass\n\n"
+            "    def __hash__(self) -> int:\n"
+            '        """Hash on IDENTITY — ``(id, name)`` — never on ``arguments``.'
+        ),
         tests=VALUETYPE_TESTS,
     ),
     Mutant(

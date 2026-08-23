@@ -194,49 +194,6 @@ class ToolCall:
         """
         return hash((self.id, self.name))
 
-    def __reduce__(self) -> tuple[Any, ...]:
-        """Rebuild through the constructor. NO LONGER load-bearing for
-        correctness — kept for the records already on disk.
-
-        It existed because a mappingproxy cannot be pickled at all::
-
-            pickle.dumps(ToolCall("c1", "search", {"q": "hi"}))
-            TypeError: cannot pickle 'mappingproxy' object
-
-        A ``FrozenDict`` pickles itself (it carries its own ``__reduce__``), so
-        that reason is gone. Verified by MUTATION rather than by reading:
-        deleting this method leaves ``deepcopy`` / ``copy`` / ``pickle`` all
-        green and all three still return a DEEPLY frozen payload
-        (``FrozenDict`` at the top and at every nested level), at 13.3 µs vs
-        12.4 µs per deepcopy and 12.3 µs vs 12.6 µs per pickle round trip —
-        i.e. noise. The two hooks that sat beside it, ``__deepcopy__`` and
-        ``__copy__``, were pure mappingproxy workarounds under the same
-        mutation and have been deleted.
-
-        This one stays for a reason the migration does not retire: the
-        ``_rebuild_tool_call`` global below is BAKED INTO every ToolCall
-        already pickled by the checkpointer and the replay recorder, and
-        dropping the method drops the only caller keeping that global honest.
-        Reading a pre-existing record then fails at load, not at write::
-
-            pickle.loads(record)   # written by any earlier version
-            AttributeError: Can't get attribute '_rebuild_tool_call'
-                            on <module 'agentkit.kernel.types'>
-
-        A one-line method against a durable-read outage is a trade worth
-        making. The arguments travel as a plain ``dict`` because the
-        constructor ARGUMENTS have to be picklable too, not just the result;
-        ``__post_init__`` re-freezes on the way back in, which also means the
-        constructor stays the only door into the invariant — the state-restore
-        path pickle would use instead never runs ``__post_init__`` at all.
-        """
-        return (_rebuild_tool_call, (self.id, self.name, dict(self.arguments)))
-
-
-def _rebuild_tool_call(id_: str, name: str, arguments: dict[str, Any]) -> ToolCall:
-    """Module-level factory for ``ToolCall.__reduce__`` — pickle needs a global."""
-    return ToolCall(id=id_, name=name, arguments=arguments)
-
 
 @dataclass(frozen=True)
 class ToolSchema:
