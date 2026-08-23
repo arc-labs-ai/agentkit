@@ -115,6 +115,8 @@ PLAN_TESTS = (
     "tests/agents/test_plan_validation.py",
     "tests/agents/test_plan_policy.py",
 )
+WF_TESTS = ("tests/agents/test_workflow.py",)
+CEILING_TESTS = ("tests/agents/test_ceiling_propagation.py",)
 SURFACE_TESTS = ("tests/meta/test_public_surface.py",)
 PROMPT_TESTS = ("tests/test_prompt_render.py",)
 APPROVAL_TESTS = ("tests/integrations/mcp/test_approvals.py",)
@@ -152,6 +154,63 @@ REGISTRY_TESTS = (
 )
 
 MUTANTS: tuple[Mutant, ...] = (
+    # ── a declared ceiling must actually hold ───────────────────────────────
+    Mutant(
+        tag="workflow",
+        why="max_steps is checked after the wave again, so a self-route loops forever",
+        path="agentkit/agents/workflow.py",
+        before="                if steps >= self.max_steps:",
+        after="                if steps >= self.max_steps and pending and steps:",
+        tests=WF_TESTS,
+    ),
+    Mutant(
+        tag="workflow",
+        why="routes read `done` again, so a second route from a self-routing node KeyErrors",
+        path="agentkit/agents/workflow.py",
+        before="                        if when(wave_outputs[node.name]):",
+        after="                        if when(done[node.name]):",
+        tests=WF_TESTS,
+    ),
+    Mutant(
+        tag="workflow",
+        why="a tool node drops the tool's url_arg, so egress() never sees a URL to check",
+        path="agentkit/agents/workflow.py",
+        before='        url_arg = url_arg if url_arg is not None else getattr(tool, "url_arg", None)',
+        after="        url_arg = url_arg",
+        tests=WF_TESTS,
+    ),
+    Mutant(
+        tag="workflow",
+        why="a node can downgrade a side-effecting tool, opting it out of idempotent()",
+        path="agentkit/agents/workflow.py",
+        before='        side_effecting = side_effecting or bool(getattr(tool, "side_effecting", False))',
+        after='        side_effecting = side_effecting if side_effecting else bool(getattr(tool, "side_effecting", False)) and side_effecting is not False',
+        tests=WF_TESTS,
+    ),
+    Mutant(
+        tag="ceiling",
+        why="a budget ceiling below an as_tool boundary is reflected to the model again",
+        path="agentkit/agents/cognition/react.py",
+        before="        except _ceiling_errors():",
+        after="        except ():",
+        tests=CEILING_TESTS,
+    ),
+    Mutant(
+        tag="ceiling",
+        why="the ceiling reaches the caller wrapped in an ExceptionGroup nobody catches",
+        path="agentkit/agents/cognition/react.py",
+        before="                    ceiling = _unwrap_ceiling(group)",
+        after="                    ceiling = None",
+        tests=CEILING_TESTS,
+    ),
+    Mutant(
+        tag="ceiling",
+        why="a genuine multi-failure fan-out is unwrapped, hiding every failure but one",
+        path="agentkit/agents/_agent_helpers.py",
+        before="        if isinstance(exc, _ceiling_errors()):\n            return exc",
+        after="        return exc",
+        tests=CEILING_TESTS,
+    ),
     # ── a documented entry point must actually work ─────────────────────────
     Mutant(
         tag="surface",

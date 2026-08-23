@@ -787,3 +787,330 @@ def test_a_suspend_written_by_the_legacy_store_format_still_resumes() -> None:
     assert resumed.outputs["act"] == "done"
     # And the legacy record is reclaimed on terminal completion.
     assert not asyncio.run(store.get("workflow:wf-legacy"))
+
+
+# --------------------------------------------------------------------------------------------
+# Regression: the step budget must bound EVERY path, and `max_steps=0` must mean zero.
+#
+# The backstop used to run after the wave, guarded by `and pending`. A self-route
+# (`route("a", …, to="a")`) re-arms its own node in the route pass a few lines LATER, so at
+# check time `pending` was empty and the guard never fired: measured 39,782 executions in 3s
+# with `max_steps=20`, never terminating. A route to a genuine ancestor (`b → a`) only looked
+# bounded because its wave happened to leave a sibling pending. `max_steps=0` likewise ran one
+# node (measured `steps=1`) because nothing was checked before the first wave.
+# --------------------------------------------------------------------------------------------
+
+
+def _counter():
+    runs = {"n": 0}
+
+    def bump(inp):
+        runs["n"] += 1
+        return runs["n"]
+
+    return runs, bump
+
+
+def test_self_route_is_bounded_by_max_steps():
+    """A node routing to ITSELF looped forever (39,782 runs in 3s, no stop_reason)."""
+    runs, bump = _counter()
+    wf = Workflow(max_steps=6)
+    wf.fn("a", bump)
+    wf.route("a", when=lambda o: True, to="a")  # always self-loops
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-self"))
+    )
+    assert res.stop_reason == "max_steps"
+    assert res.steps == 6 and runs["n"] == 6  # bounded EXACTLY, not "eventually"
+
+
+def test_two_node_cycle_is_bounded_by_max_steps():
+    """The ancestor loop-back (`b → a`) stays bounded — and now stops ON the budget, not past it."""
+    wf = Workflow(max_steps=5)
+    wf.fn("a", lambda inp: 1)
+    wf.fn("b", lambda inp: True, after="a")
+    wf.route("b", when=lambda o: o, to="a")
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-cyc"))
+    )
+    assert res.stop_reason == "max_steps" and res.steps == 5
+
+
+def test_self_route_stops_on_its_own_when_the_condition_clears():
+    """POSITIVE CONTROL: the bound must not disable self-routing. A self-route whose
+    condition goes false still loops, terminates by itself, and feeds its final output
+    downstream — a fix that simply refused self-routes would fail here."""
+    runs, bump = _counter()
+    wf = Workflow(max_steps=20)
+    wf.fn("a", bump)
+    wf.fn("b", lambda inp: f"saw {inp['a']}", after="a")
+    wf.route("a", when=lambda o: o < 3, to="a")  # self-loop until the 3rd attempt
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-clear"))
+    )
+    assert res.stop_reason == "complete"
+    assert runs["n"] == 3  # looped, then stopped on its own condition
+    assert res.outputs["b"] == "saw 3"  # downstream re-ran against the final value
+
+
+def test_self_route_combined_with_another_route_still_reaches_the_other_branch():
+    """A self-route sharing a node with a second route: both are evaluated, and the
+    workflow still completes well inside the budget."""
+    runs, bump = _counter()
+    wf = Workflow(max_steps=20)
+    wf.fn("a", bump)
+    wf.fn("retry_marker", lambda inp: "retried")
+    wf.route("a", when=lambda o: o < 2, to="a")  # self-loop on the first pass
+    wf.route("a", when=lambda o: o >= 2, to="retry_marker")  # then fan out elsewhere
+    # Before the fix this pair raised ``KeyError: 'a'``: the self-route popped a's own
+    # entry from ``done`` and the second route re-read it.
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-both"))
+    )
+    assert res.stop_reason == "complete"
+    assert runs["n"] == 2 and res.outputs["retry_marker"] == "retried"
+
+
+def test_max_steps_zero_runs_nothing():
+    """`max_steps=0` used to run one node (measured `steps=1`, `nodes_ran=[0]`)."""
+    ran = {"n": 0}
+    wf = Workflow(max_steps=0)
+    wf.fn("a", lambda inp: ran.__setitem__("n", ran["n"] + 1) or "ran")
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-zero"))
+    )
+    assert res.stop_reason == "max_steps"
+    assert res.steps == 0 and res.outputs == {} and ran["n"] == 0  # zero means zero
+
+
+def test_max_steps_one_runs_exactly_one_wave():
+    """The tightest non-zero budget: one wave, then stop with the rest still pending."""
+    wf = Workflow(max_steps=1)
+    wf.fn("a", lambda inp: "alpha")
+    wf.fn("b", lambda inp: "beta", after="a")
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-one"))
+    )
+    assert res.stop_reason == "max_steps" and res.steps == 1
+    assert res.outputs == {"a": "alpha"}  # b never ran
+
+
+def test_a_budget_that_exactly_covers_the_graph_still_completes():
+    """POSITIVE CONTROL for the pre-wave check: an acyclic graph whose node count equals
+    `max_steps` must finish `complete`, not be strangled one step short."""
+    wf = Workflow(max_steps=3)
+    wf.fn("a", lambda inp: 1)
+    wf.fn("b", lambda inp: inp["a"] + 1, after="a")
+    wf.fn("c", lambda inp: inp["b"] + 1, after="b")
+    res = _run(
+        wf.run("g", make_test_ctx(llm=FakeLLM("x"), scope=Scope(1, 2), correlation_id="wf-exact"))
+    )
+    assert res.stop_reason == "complete" and res.steps == 3 and res.outputs["c"] == 3
+
+
+# --------------------------------------------------------------------------------------------
+# Regression: a workflow `tool` node must carry the tool's OWN `url_arg` / `side_effecting`
+# into the ToolRequest — the react cognition already does (`_tool_request`). It didn't, so a
+# tool declared `url_arg="url", side_effecting=True` reached the invoker as `None` / `False`:
+# measured, an egress()-guarded workflow fetched https://evil.com/x against an allowlist of
+# example.com (Egress only checks when `url_arg` is set), and idempotent() ran the same charge
+# twice (its `when` reads `request.side_effecting`).
+# --------------------------------------------------------------------------------------------
+
+
+def _fetcher(hits, *, url_arg="url", side_effecting=True):
+    from agentkit.tools.function import FunctionTool
+
+    return FunctionTool(
+        "fetch",
+        lambda a, c: hits.__setitem__("n", hits["n"] + 1) or "body",
+        description="fetch a URL and return its body; egress-gated in these tests",
+        side_effecting=side_effecting,
+        url_arg=url_arg,
+    )
+
+
+def _egress_ctx():
+    from agentkit.capabilities import Guardrail
+    from agentkit.middlewares.egress_audit import egress
+
+    return make_test_ctx(
+        llm=FakeLLM("x"),
+        tool_middleware=[egress(Guardrail(egress_allow=("example.com",)))],
+        scope=Scope(1, 2),
+        correlation_id="wf-egress",
+    )
+
+
+def _first_cause(eg):
+    """`gather_bounded` runs the wave in a TaskGroup, so a node failure surfaces as an
+    ExceptionGroup — unwrap to the middleware's real exception."""
+    while isinstance(eg, BaseExceptionGroup):
+        eg = eg.exceptions[0]
+    return eg
+
+
+def test_workflow_tool_node_inherits_url_arg_so_egress_can_block():
+    """The SSRF-guard bypass: the blocked host went through, and the tool executed."""
+    hits = {"n": 0}
+    wf = Workflow(max_steps=5)
+    wf.tool("f", _fetcher(hits), args=lambda inp: {"url": "https://evil.com/x"})
+    with pytest.raises(BaseException) as ei:  # noqa: B017 — ExceptionGroup or PermissionError
+        _run(wf.run("g", _egress_ctx()))
+    assert isinstance(_first_cause(ei.value), PermissionError)
+    assert hits["n"] == 0  # blocked BEFORE the side effect
+
+
+def test_workflow_tool_node_still_allows_a_permitted_url():
+    """POSITIVE CONTROL: inheriting `url_arg` must not turn egress into deny-everything —
+    an allowlisted host still runs."""
+    hits = {"n": 0}
+    wf = Workflow(max_steps=5)
+    wf.tool("f", _fetcher(hits), args=lambda inp: {"url": "https://api.example.com/x"})
+    res = _run(wf.run("g", _egress_ctx()))
+    assert res.stop_reason == "complete" and res.outputs["f"] == "body" and hits["n"] == 1
+
+
+def test_workflow_tool_node_without_url_arg_is_not_egress_gated():
+    """A tool that declares no `url_arg` stays ungated even when an argument happens to be
+    called `url` — the inheritance must read the TOOL, not the argument names."""
+    hits = {"n": 0}
+    wf = Workflow(max_steps=5)
+    wf.tool("f", _fetcher(hits, url_arg=None), args=lambda inp: {"url": "https://evil.com/x"})
+    res = _run(wf.run("g", _egress_ctx()))
+    assert res.stop_reason == "complete" and hits["n"] == 1
+
+
+def test_workflow_tool_node_kwargs_still_override_the_tool_declaration():
+    """POSITIVE CONTROL for the explicit kwargs: a graph author can still mark a
+    self-declaring-nothing tool as URL-bearing, and that gating takes effect."""
+    hits = {"n": 0}
+    wf = Workflow(max_steps=5)
+    wf.tool(
+        "f",
+        _fetcher(hits, url_arg=None, side_effecting=False),
+        args=lambda inp: {"url": "https://evil.com/x"},
+        url_arg="url",
+    )
+    with pytest.raises(BaseException) as ei:  # noqa: B017
+        _run(wf.run("g", _egress_ctx()))
+    assert isinstance(_first_cause(ei.value), PermissionError)
+    assert hits["n"] == 0
+
+
+def test_workflow_tool_node_cannot_downgrade_a_side_effecting_tool():
+    """The inheritance is ESCALATE-ONLY. A graph author must not be able to pass
+    ``side_effecting=False`` and quietly opt a tool out of the guards its own
+    author asked for — the tool knows what it does, the node does not.
+
+    Written because the fix reads ``side_effecting or getattr(...)``, which has
+    this property by construction rather than by intent. Without this test,
+    "clarifying" it into ``side_effecting if side_effecting is not None else …``
+    would silently allow the downgrade.
+    """
+    from agentkit.middlewares.memoize import idempotent
+    from agentkit.tools.function import FunctionTool
+
+    hits = {"n": 0}
+
+    async def _charge(args, ctx):
+        hits["n"] += 1
+        return "charged"
+
+    tool = FunctionTool(
+        name="charge",
+        fn=_charge,
+        description="Charge a card. Side-effecting, and says so on the tool itself.",
+        side_effecting=True,
+    )
+    wf = Workflow(max_steps=5)
+    wf.tool("a", tool, args=lambda inp: {"id": "x"}, side_effecting=False)
+    wf.tool("b", tool, args=lambda inp: {"id": "x"}, side_effecting=False, after="a")
+
+    # ``idempotent()`` keeps its dedupe record in the store, so it needs one
+    # plus a stable scope/run id. (Omitting the store made this test fail
+    # against a correct fix — the harness was wrong, not the code.)
+    ctx = make_test_ctx(
+        llm=FakeLLM("ok"),
+        tool_middleware=[idempotent()],
+        store=InMemoryStore(),
+        scope=Scope(1, 2),
+        correlation_id="wf-downgrade",
+    )
+    _run(wf.run("g", ctx))
+
+    # Deduped, because the TOOL's declaration survived the node's False.
+    assert hits["n"] == 1
+
+
+def test_workflow_tool_node_cannot_suppress_an_egress_check():
+    """Same rule for ``url_arg``: passing ``None`` inherits the tool's, it does
+    not disable the check."""
+    hits = {"n": 0}
+    wf = Workflow(max_steps=5)
+    wf.tool(
+        "f",
+        _fetcher(hits, url_arg="url", side_effecting=False),
+        args=lambda inp: {"url": "https://evil.com/x"},
+        url_arg=None,
+    )
+    with pytest.raises(BaseException) as ei:  # noqa: B017
+        _run(wf.run("g", _egress_ctx()))
+    assert isinstance(_first_cause(ei.value), PermissionError)
+    assert hits["n"] == 0
+
+
+def test_workflow_tool_node_inherits_side_effecting_so_idempotent_dedupes():
+    """`idempotent()` keys on (run, scope, tool, args) but only fires when the REQUEST says
+    side-effecting — measured: the same charge executed twice from a workflow."""
+    from agentkit.middlewares.memoize import idempotent
+    from agentkit.tools.function import FunctionTool
+
+    calls = {"n": 0}
+    charge = FunctionTool(
+        "charge",
+        lambda a, c: calls.__setitem__("n", calls["n"] + 1) or {"ok": 1},
+        description="charge an account a given amount; mutates the ledger",
+        side_effecting=True,
+    )
+    ctx = make_test_ctx(
+        llm=FakeLLM("x"),
+        tool_middleware=[idempotent()],
+        store=InMemoryStore(),
+        scope=Scope(1, 2),
+        correlation_id="wf-idem",
+    )
+    wf = Workflow(max_steps=5)
+    wf.tool("c1", charge, args=lambda inp: {"amt": 5})
+    wf.tool("c2", charge, args=lambda inp: {"amt": 5}, after="c1")
+    res = _run(wf.run("g", ctx))
+    assert res.stop_reason == "complete"
+    assert calls["n"] == 1  # at-least-once retry cannot re-fire the charge
+    assert res.outputs["c1"] == res.outputs["c2"] == {"ok": 1}  # both nodes still got a result
+
+
+def test_workflow_tool_node_read_only_tool_is_not_deduped():
+    """POSITIVE CONTROL: inheritance must not mark everything side-effecting — a read-only
+    tool is still invoked once per node."""
+    from agentkit.middlewares.memoize import idempotent
+    from agentkit.tools.function import FunctionTool
+
+    calls = {"n": 0}
+    read = FunctionTool(
+        "lookup",
+        lambda a, c: calls.__setitem__("n", calls["n"] + 1) or "row",
+        description="look up a row by id; read-only, safe to call repeatedly",
+        side_effecting=False,
+    )
+    ctx = make_test_ctx(
+        llm=FakeLLM("x"),
+        tool_middleware=[idempotent()],
+        store=InMemoryStore(),
+        scope=Scope(1, 2),
+        correlation_id="wf-ro",
+    )
+    wf = Workflow(max_steps=5)
+    wf.tool("r1", read, args=lambda inp: {"id": 1})
+    wf.tool("r2", read, args=lambda inp: {"id": 1}, after="r1")
+    res = _run(wf.run("g", ctx))
+    assert res.stop_reason == "complete" and calls["n"] == 2

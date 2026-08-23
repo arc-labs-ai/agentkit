@@ -181,6 +181,26 @@ class Workflow:
         url_arg: str | None = None,
     ) -> str:
         deps = _as_tuple(after)
+        # Fall back to the TOOL's own declaration, exactly as the ReAct cognition
+        # does (``_tool_request``). These kwargs used to be passed straight through,
+        # so a tool built with ``FunctionTool(..., side_effecting=True, url_arg="url")``
+        # reached the invoker as ``side_effecting=False, url_arg=None`` unless the
+        # graph author happened to restate both. Measured: an egress()-guarded
+        # workflow fetched https://evil.com/x with an allowlist of example.com
+        # (a real SSRF-guard bypass — Egress only checks when ``url_arg`` is set),
+        # and idempotent() executed the same charge twice (its ``when`` predicate
+        # reads ``request.side_effecting``). An explicit kwarg still wins, so a node
+        # can mark a tool side-effecting/URL-bearing that did not declare itself so.
+        #
+        # Both are ESCALATE-ONLY, and deliberately: a graph author cannot pass
+        # ``side_effecting=False`` to downgrade a tool that declares itself
+        # side-effecting, nor ``url_arg=None`` to suppress an egress check the
+        # tool asked for. These are safety flags — the tool's author knows what
+        # it does, and a node should not be able to quietly opt out of a guard
+        # on its behalf. Pinned by
+        # ``test_workflow_tool_node_cannot_downgrade_a_side_effecting_tool``.
+        side_effecting = side_effecting or bool(getattr(tool, "side_effecting", False))
+        url_arg = url_arg if url_arg is not None else getattr(tool, "url_arg", None)
 
         async def run(inputs: dict[str, Any], goal: str, ctx: Ctx) -> tuple[Any, Usage]:
             a = {} if args is None else (args(inputs, goal) if _arity(args) >= 2 else args(inputs))
@@ -405,6 +425,26 @@ class Workflow:
                     )
                     return WorkflowResult(done, usage, steps, "deadlock")
 
+                # Cycle/size backstop — checked BEFORE the wave, once per wave.
+                # It used to be checked after the wave, guarded by ``and pending``,
+                # which let two families of run escape the bound:
+                #   * a self-route (``route("a", …, to="a")``) leaves ``pending``
+                #     EMPTY at the post-wave check — the route that re-arms ``a``
+                #     is evaluated a few lines later — so the guard never fired.
+                #     Measured: max_steps=20, node ran 39,782 times in 3s and never
+                #     terminated. A route to a genuine ancestor (``b → a``) happened
+                #     to be bounded only because its wave left a sibling pending.
+                #   * ``max_steps=0`` ran one node (measured steps=1) because no
+                #     check preceded the first wave.
+                # ``pending`` is non-empty by the ``while`` condition, so the guard
+                # needs no extra qualifier here: reaching the top of the loop with
+                # the budget spent and work left IS the max_steps stop.
+                if steps >= self.max_steps:
+                    await ctx.emit(
+                        "error", "workflow hit max_steps", payload={"max": self.max_steps}
+                    )
+                    return WorkflowResult(done, usage, steps, "max_steps")
+
                 gate = next((n for n in ready if n.gate and n.name not in decisions), None)
                 if gate is not None:  # suspend for a human decision
                     run_id = ctx.correlation_id
@@ -477,17 +517,17 @@ class Workflow:
                     await ctx.emit(
                         "summary", f"{node.name} done", agent=node.name, payload={"step": steps}
                     )
-                if (
-                    steps >= self.max_steps and pending
-                ):  # cycle/size backstop — checked once per wave
-                    await ctx.emit(
-                        "error", "workflow hit max_steps", payload={"max": self.max_steps}
-                    )
-                    return WorkflowResult(done, usage, steps, "max_steps")
-
+                # Snapshot each node's output BEFORE evaluating routes: a route whose
+                # forward-closure contains its own source (a self-route, or any loop-back
+                # onto an ancestor of the source) pops that entry from ``done``, so a
+                # SECOND route from the same node then read a deleted key. Measured:
+                # a node with ``route(a→a)`` plus ``route(a→other)`` raised
+                # ``KeyError: 'a'`` mid-wave. Routing decides on the outputs the wave
+                # produced, not on what an earlier route has since cleared.
+                wave_outputs = {n.name: done[n.name] for n in ready}
                 for node in ready:  # conditional routes, after the wave
                     for when, to in self._routes.get(node.name, []):
-                        if when(done[node.name]):
+                        if when(wave_outputs[node.name]):
                             for name in self._forward_closure(
                                 to
                             ):  # loop-back: clear + re-run downstream
