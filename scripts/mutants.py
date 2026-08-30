@@ -142,6 +142,8 @@ MW_METER_TESTS = ("tests/middlewares/test_meter_stream_and_cache.py",)
 MW_SEM_TESTS = ("tests/middlewares/test_semantic_memoize_tool_turns.py",)
 MW_TRACE_TESTS = ("tests/middlewares/test_tracing_records_failures.py",)
 MW_COMPACT_TESTS = ("tests/middlewares/test_compaction_broken_tracer.py",)
+COMPACTION_TESTS = ("tests/capabilities/test_compaction_strategies.py",)
+TOOLCOERCE_TESTS = ("tests/tools/test_tool_argument_coercion.py",)
 MW_AUDIT_TESTS = ("tests/middlewares/test_audit_records_failures.py",)
 STREAMS_TESTS = ("tests/kernel/test_streams.py",)
 BREAKER_TESTS = ("tests/kernel/test_kernel.py",)
@@ -2521,6 +2523,139 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        if key in self._warned:\n            return",
         after="        if False:\n            return",
         tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="compaction",
+        why="the sliding window stops guarding its walk-back, so keep_recent=0 raises IndexError",
+        path="agentkit/capabilities/compaction/impls.py",
+        # Anchored on the comment above it: all THREE compactors in this file run
+        # the identical walk-back, and the other two already guarded it.
+        before=(
+            "        # ``ImportanceFilteringCompactor`` guards its identical loop the same way.\n"
+            '        while keep and start > head and messages[start].role == "tool":'
+        ),
+        after=(
+            "        # ``ImportanceFilteringCompactor`` guards its identical loop the same way.\n"
+            '        while start > head and messages[start].role == "tool":'
+        ),
+        tests=COMPACTION_TESTS,
+    ),
+    Mutant(
+        tag="compaction",
+        why="keep_recent stops being clamped, so a negative count reaches past the end of the list",
+        path="agentkit/capabilities/compaction/impls.py",
+        before="        keep = max(0, self.keep_recent)",
+        after="        keep = self.keep_recent",
+        tests=COMPACTION_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="abstract collections fall back to 'string', telling the model to send a JSON string",
+        path="agentkit/tools/schema.py",
+        before="    if origin in _ARRAY_ANNOTATIONS:\n        element = _element_annotation(ann)",
+        after="    if origin in (list, tuple, set, frozenset):\n        element = _element_annotation(ann)",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="a TypedDict parameter is advertised as a string again, so the body indexes a str",
+        path="agentkit/tools/schema.py",
+        before="    if not is_typeddict(ann):\n        return None",
+        after="    if True:\n        return None",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="a TypedDict's total=False keys are advertised as required, inverting the contract",
+        path="agentkit/tools/schema.py",
+        before='            "required": [key for key in hints if key in required],',
+        after='            "required": list(hints),',
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="money",
+        why="an unrepresentable ceiling escapes as decimal.InvalidOperation, past MoneyPrecisionError",
+        path="agentkit/runtime/meter.py",
+        before=(
+            "        raise MoneyPrecisionError(\n"
+            '            f"monetary amount {value!r} is too large to represent at "\n'
+            '            f"{MONEY_SCALE} decimal places"\n'
+            "        ) from exc"
+        ),
+        after="        raise",
+        tests=MONEY_TESTS,
+    ),
+    Mutant(
+        tag="money",
+        why="max_concurrency=0 constructs again, and the first fan-out waits on it forever",
+        path="agentkit/runtime/meter.py",
+        before="        if self.max_concurrency < 1:",
+        after="        if False:",
+        tests=MONEY_TESTS,
+    ),
+    Mutant(
+        tag="workflow",
+        why="a typo'd after= stops being caught, so dependent nodes silently never run",
+        path="agentkit/agents/workflow.py",
+        before="        self._validate_dependencies()",
+        after="        pass",
+        tests=WF_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="containers stop describing items, so list[Unit] is an untyped array again",
+        path="agentkit/tools/schema.py",
+        before="        return {\"type\": \"array\", \"items\": _json_type(element)}",
+        after="        return {\"type\": \"array\"}",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="a heterogeneous tuple claims one element type, advertising items that are a lie",
+        path="agentkit/tools/schema.py",
+        before="        if len(args) == 2 and args[1] is Ellipsis:\n            return None if args[0] is Any else args[0]\n        return None",
+        after="        return None if args[0] is Any else args[0]",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="elements stop being coerced, so the body gets strings where items promised members",
+        path="agentkit/tools/schema.py",
+        before="    if origin in _ARRAY_ANNOTATIONS:\n        return _sequence_coercer(ann, origin)",
+        after="    if origin in _ARRAY_ANNOTATIONS:\n        return None",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="set/tuple annotations receive a list again, so the body gets a container it did not ask for",
+        path="agentkit/tools/schema.py",
+        before="_REBUILT_CONTAINERS: dict[Any, Any] = {set: set, frozenset: frozenset, tuple: tuple}",
+        after="_REBUILT_CONTAINERS: dict[Any, Any] = {}",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="Optional collapses to bare X again, so a required X|None cannot be sent as null",
+        path="agentkit/tools/schema.py",
+        before="        nullable = len(real) != len(args)",
+        after="        nullable = False",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="*args is silently dropped again, leaving a parameter that can never be filled",
+        path="agentkit/tools/schema.py",
+        before="        if p.kind is p.VAR_POSITIONAL:",
+        after="        if False:",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="workflow",
+        why="dependency validation only checks the first node, so a later typo still slips through",
+        path="agentkit/agents/workflow.py",
+        before="        for name in self._order:",
+        after="        for name in self._order[:1]:",
+        tests=WF_TESTS,
     ),
 )
 
