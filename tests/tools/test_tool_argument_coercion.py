@@ -38,15 +38,24 @@ must not touch the SCHEMA path, must not touch primitives, and must not disturb
 import asyncio
 import enum
 import json
+from collections.abc import (
+    Collection,
+    Iterable,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Sequence,
+)
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 import pytest
 
 from agentkit.kernel.protocols import Ctx
 from agentkit.runtime import RunContext
 from agentkit.testing import FakeLLM, make_test_ctx
-from agentkit.tools import ToolArgumentError, tool
+from agentkit.tools import ToolArgumentError, ToolDefinitionError, tool
 
 CTX = make_test_ctx(llm=FakeLLM("x"))
 
@@ -346,22 +355,6 @@ def test_primitive_and_unannotated_parameters_are_untouched() -> None:
     )
 
 
-def test_a_list_of_enums_is_not_coerced_because_it_is_not_advertised() -> None:
-    """Deliberately out of scope, and it looks like an omission so it is pinned:
-    ``_json_type`` advertises ``list[Unit]`` as a bare ``{"type": "array"}`` with
-    no ``items``. The element type is never shown to the model, so coercing the
-    elements would enforce a contract the model was never given. When the schema
-    learns ``items``, this test is the one that should change."""
-
-    @tool(side_effecting=False)
-    def many(units: list[Unit]) -> str:
-        """Report readings for each of the units of measure supplied here."""
-        return f"{type(units).__name__}[{type(units[0]).__name__}]"
-
-    assert many.schema.parameters["properties"]["units"] == {"type": "array"}
-    assert _run(many, {"units": ["celsius"]}) == "list[str]"
-
-
 def test_kwargs_passthrough_still_works_and_extras_are_not_coerced() -> None:
     """Extras admitted by ``**kwargs`` have no annotation behind them, so there
     is nothing to honour — they arrive exactly as they were sent."""
@@ -452,7 +445,12 @@ def test_the_advertised_schema_is_byte_identical() -> None:
                     "additionalProperties": False,
                     "required": ["field"],
                 },
-                "opt": {"enum": ["celsius", "fahrenheit"], "type": "string"},
+                "opt": {
+                    "anyOf": [
+                        {"enum": ["celsius", "fahrenheit"], "type": "string"},
+                        {"type": "null"},
+                    ]
+                },
                 "mix": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
             },
             "required": ["s", "i", "u", "lit", "flt"],
@@ -476,3 +474,407 @@ def test_an_unresolvable_annotation_degrades_on_both_sides() -> None:
 
     assert ghost.schema.parameters["properties"]["x"] == {"type": "string"}
     assert _run(ghost, {"x": {"still": "a dict"}}) == "dict"
+
+
+# ── 6. abstract collections and TypedDict describe their real shape ─────────
+
+
+def test_abstract_sequence_and_mapping_are_not_advertised_as_strings() -> None:
+    """The same bug this file exists to close, one type-family over.
+
+    ``_json_type`` recognised the CONCRETE generics — ``list[int]`` became
+    ``{"type": "array"}``, ``dict[str, int]`` became ``{"type": "object"}`` —
+    by matching ``get_origin(ann)`` against ``(list, tuple, set, frozenset)``
+    and ``dict``. But ``get_origin(Sequence[int])`` is
+    ``collections.abc.Sequence``, which matched nothing and fell through to the
+    ``{"type": "string"}`` fallback at the bottom of the function.
+
+    ``Sequence``/``Mapping`` are the idiomatic annotations for a parameter the
+    tool only reads, so the failure landed on careful code. Measured before the
+    fix, on a tool whose body was ``sum(values)``::
+
+        advertises: {"values": {"type": "string"}}
+        model sends: {"values": "[1, 2, 3]"}
+        body raises: TypeError: unsupported operand type(s) for +: 'int' and 'str'
+
+    Not even a ``ToolArgumentError`` — a raw ``TypeError`` from inside the
+    author's own function, on a value the schema had instructed the model to
+    send."""
+
+    @tool(side_effecting=False)
+    def totals(values: Sequence[int], weights: Mapping[str, int]) -> str:
+        """Total the values and the weights, returning both sums as a string."""
+        return f"{sum(values)}/{sum(weights.values())}"
+
+    props = totals.schema.parameters["properties"]
+    assert props["values"] == {"type": "array", "items": {"type": "integer"}}
+    assert props["weights"] == {"type": "object", "additionalProperties": {"type": "integer"}}
+
+    # And the body receives what the schema promised.
+    assert _run(totals, {"values": [1, 2, 3], "weights": {"a": 4}}) == "6/4"
+
+
+def test_other_abstract_collection_origins_describe_their_json_kind() -> None:
+    """The rest of the ``collections.abc`` family a tool author reaches for.
+    ``Iterable``/``Collection``/``AbstractSet``/``MutableSequence`` are arrays;
+    ``MutableMapping`` is an object. All seven used to be ``"string"``."""
+
+    @tool(side_effecting=False)
+    def shapes(
+        a: Iterable[int],
+        b: Collection[str],
+        c: AbstractSet[int],
+        d: MutableSequence[int],
+        e: MutableMapping[str, int],
+    ) -> str:
+        """Accept the abstract collection flavours and report how many arrived."""
+        return "ok"
+
+    props = shapes.schema.parameters["properties"]
+    assert props["a"] == {"type": "array", "items": {"type": "integer"}}
+    assert props["b"] == {"type": "array", "items": {"type": "string"}}
+    assert props["c"] == {"type": "array", "items": {"type": "integer"}}
+    assert props["d"] == {"type": "array", "items": {"type": "integer"}}
+    assert props["e"] == {"type": "object", "additionalProperties": {"type": "integer"}}
+
+
+def test_a_typeddict_parameter_advertises_its_properties() -> None:
+    """A ``TypedDict`` is the stdlib way to name a JSON object's shape, and it
+    was advertised as ``{"type": "string"}`` — so the model sent a JSON string
+    and ``n["values"]`` raised ``TypeError: string indices must be integers``.
+
+    It gets the same treatment a dataclass already got: the real object schema.
+    No coercer is needed on the way back, because a ``TypedDict`` IS a ``dict``
+    at runtime — which is exactly why it belongs on the schema side of the line
+    and not the coercion side."""
+
+    class Query(TypedDict):
+        field: str
+        limit: int
+
+    @tool(side_effecting=False)
+    def search(q: Query) -> str:
+        """Search records using the structured query object supplied by caller."""
+        return f"{type(q).__name__}:{q['field']}/{q['limit']}"
+
+    assert search.schema.parameters["properties"]["q"] == {
+        "type": "object",
+        "properties": {"field": {"type": "string"}, "limit": {"type": "integer"}},
+        "additionalProperties": False,
+        "required": ["field", "limit"],
+    }
+    assert _run(search, {"q": {"field": "name", "limit": 2}}) == "dict:name/2"
+
+
+def test_a_total_false_typeddict_marks_its_keys_optional() -> None:
+    """``total=False`` means every key may be absent, so none are ``required``.
+    Getting this wrong in the other direction would be worse than the original
+    bug: the model would be told a key is mandatory when the tool treats it as
+    optional."""
+
+    class Partial(TypedDict, total=False):
+        field: str
+        limit: int
+
+    @tool(side_effecting=False)
+    def maybe(p: Partial) -> str:
+        """Accept a partial query object where every single key is optional."""
+        return str(sorted(p))
+
+    assert maybe.schema.parameters["properties"]["p"]["required"] == []
+
+
+def test_bare_abstract_collections_still_describe_their_kind() -> None:
+    """Unsubscripted ``Sequence`` / ``Mapping`` have no ``get_origin``, so they
+    take the identity branch alongside bare ``list`` / ``dict``."""
+
+    @tool(side_effecting=False)
+    def bare(a: Sequence, b: Mapping) -> str:
+        """Accept unparameterised abstract collections and report their arrival."""
+        return "ok"
+
+    props = bare.schema.parameters["properties"]
+    assert props["a"] == {"type": "array"}
+    assert props["b"] == {"type": "object"}
+
+
+def test_str_and_bytes_are_not_mistaken_for_sequences() -> None:
+    """The control that keeps the fix honest. ``str`` and ``bytes`` are both
+    registered ``Sequence`` subclasses, and a fix written as an ``isinstance``
+    check against the abc would have turned every string parameter in the
+    library into an array."""
+
+    @tool(side_effecting=False)
+    def text(a: str, b: bytes) -> str:
+        """Accept a string and a bytes parameter and report what came through."""
+        return "ok"
+
+    props = text.schema.parameters["properties"]
+    assert props["a"] == {"type": "string"}
+    assert props["b"] == {"type": "string"}
+
+
+# ── 7. containers describe their element type, and honour it ────────────────
+
+
+def test_a_list_of_enums_advertises_items_and_arrives_coerced() -> None:
+    """The other half of the promise this file is built on, finally kept for
+    containers.
+
+    ``list[Unit]`` used to advertise a bare ``{"type": "array"}``. The element
+    type was never shown to the model, so coercing the elements would have been
+    enforcing a contract the model was never given — which is why the coercer
+    correctly declined, and why the old behaviour was consistent rather than
+    merely incomplete.
+
+    Now the schema names the element type, so the coercion is owed. Both halves
+    move together; neither is correct alone."""
+
+    @tool(side_effecting=False)
+    def many(units: list[Unit]) -> str:
+        """Report readings for each of the units of measure supplied here."""
+        return f"{type(units).__name__}[{type(units[0]).__name__}]"
+
+    assert many.schema.parameters["properties"]["units"] == {
+        "type": "array",
+        "items": {"enum": ["celsius", "fahrenheit"], "type": "string"},
+    }
+    assert _run(many, {"units": ["celsius"]}) == "list[Unit]"
+
+
+def test_a_bad_element_is_refused_as_a_tool_argument_error() -> None:
+    """A value the advertised ``items`` excludes must fail the same way a bad
+    scalar does — as `ToolArgumentError`, which the retry/repair path
+    understands — not as a raw exception from inside the tool body."""
+
+    @tool(side_effecting=False)
+    def many(units: list[Unit]) -> str:
+        """Report readings for each of the units of measure supplied here."""
+        return "unreachable"
+
+    with pytest.raises(ToolArgumentError):
+        _run(many, {"units": ["kelvin"]})
+
+
+def test_scalar_element_types_are_described_but_not_laundered() -> None:
+    """``items`` on a scalar element type is advertisement only. Nothing turns
+    ``"3"`` into ``3`` — a provider that ignores the schema has a bug the
+    framework surfaces rather than hides, exactly as for a top-level scalar."""
+
+    @tool(side_effecting=False)
+    def totals(values: list[int]) -> str:
+        """Total the integer values supplied and report the element types."""
+        return ",".join(type(v).__name__ for v in values)
+
+    assert totals.schema.parameters["properties"]["values"] == {
+        "type": "array",
+        "items": {"type": "integer"},
+    }
+    assert _run(totals, {"values": [1, "2"]}) == "int,str"
+
+
+def test_a_dict_describes_its_value_type() -> None:
+    """The mapping equivalent of ``items``. The key type is not described
+    because JSON object keys are always strings."""
+
+    @tool(side_effecting=False)
+    def readings(by_city: dict[str, Unit]) -> str:
+        """Report the unit of measure recorded against each city named here."""
+        return type(by_city["sf"]).__name__
+
+    assert readings.schema.parameters["properties"]["by_city"] == {
+        "type": "object",
+        "additionalProperties": {"enum": ["celsius", "fahrenheit"], "type": "string"},
+    }
+    assert _run(readings, {"by_city": {"sf": "celsius"}}) == "Unit"
+
+
+def test_the_container_type_matches_the_annotation() -> None:
+    """JSON has one sequence type. The annotation may ask for a different one,
+    and the body should get what it annotated — the same rule the top-level
+    coercers already follow."""
+
+    @tool(side_effecting=False)
+    def shapes(a: set[Unit], b: frozenset[Unit], c: tuple[Unit, ...]) -> str:
+        """Accept the same units through three different container flavours."""
+        return f"{type(a).__name__},{type(b).__name__},{type(c).__name__}"
+
+    got = _run(shapes, {"a": ["celsius"], "b": ["celsius"], "c": ["celsius"]})
+    assert got == "set,frozenset,tuple"
+
+
+def test_abstract_containers_stay_lists() -> None:
+    """A `list` already satisfies `Sequence` / `Iterable`, so there is nothing
+    to rebuild and rebuilding anyway would be inventing a choice the author
+    did not make."""
+
+    @tool(side_effecting=False)
+    def readings(units: Sequence[Unit]) -> str:
+        """Report the readings for the sequence of units of measure given."""
+        return f"{type(units).__name__}[{type(units[0]).__name__}]"
+
+    assert readings.schema.parameters["properties"]["units"] == {
+        "type": "array",
+        "items": {"enum": ["celsius", "fahrenheit"], "type": "string"},
+    }
+    assert _run(readings, {"units": ["celsius"]}) == "list[Unit]"
+
+
+def test_a_heterogeneous_tuple_declines_to_describe_items() -> None:
+    """``items`` says "every element is this". That is false for
+    ``tuple[int, str]``, so nothing is claimed rather than something wrong."""
+
+    @tool(side_effecting=False)
+    def pair(p: tuple[int, str]) -> str:
+        """Accept a fixed two-element pair of an integer and a string value."""
+        return "ok"
+
+    assert pair.schema.parameters["properties"]["p"] == {"type": "array"}
+
+
+def test_an_unparameterised_container_describes_no_items() -> None:
+    """Bare `list` says nothing about its elements, so neither do we."""
+
+    @tool(side_effecting=False)
+    def anything(xs: list, ys: dict) -> str:
+        """Accept an unparameterised list and dict of entirely unknown shape."""
+        return "ok"
+
+    props = anything.schema.parameters["properties"]
+    assert props["xs"] == {"type": "array"}
+    assert props["ys"] == {"type": "object"}
+
+
+def test_nested_containers_describe_all_the_way_down() -> None:
+    """`items` recurses, because `_json_type` is what builds it."""
+
+    @tool(side_effecting=False)
+    def grid(rows: list[list[Unit]]) -> str:
+        """Accept a grid of unit-of-measure values arranged as nested rows."""
+        return f"{type(rows[0][0]).__name__}"
+
+    assert grid.schema.parameters["properties"]["rows"] == {
+        "type": "array",
+        "items": {"type": "array", "items": {"enum": ["celsius", "fahrenheit"], "type": "string"}},
+    }
+    assert _run(grid, {"rows": [["celsius"]]}) == "Unit"
+
+
+# ── 8. Optional says so ─────────────────────────────────────────────────────
+
+
+def test_an_optional_parameter_advertises_null() -> None:
+    """``X | None`` used to be advertised as bare ``X``, dropping the null arm.
+
+    For a parameter with a default that was merely incomplete — the model can
+    omit the key and the default applies. For a REQUIRED one it was a genuine
+    dead end: `category: str | None` with no default is in `required`, so the
+    model must send something, and the only thing the schema permitted was a
+    string. A tool meaning "a category, or null for all of them" had no way to
+    say the second half, and the model had no way to choose it."""
+
+    @tool(side_effecting=False)
+    def search(q: str, category: str | None) -> str:
+        """Search records for the query, narrowed to a category or all of them."""
+        return f"{q}/{category}"
+
+    props = search.schema.parameters["properties"]
+    assert props["category"] == {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    assert "category" in search.schema.parameters["required"]
+    assert _run(search, {"q": "x", "category": None}) == "x/None"
+
+
+def test_a_multi_member_optional_union_keeps_every_arm() -> None:
+    """The null arm is appended to the existing `anyOf`, not substituted for
+    the members already there."""
+
+    @tool(side_effecting=False)
+    def mixed(v: int | str | None) -> str:
+        """Accept an integer, a string, or nothing at all for this parameter."""
+        return type(v).__name__
+
+    assert mixed.schema.parameters["properties"]["v"] == {
+        "anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}]
+    }
+
+
+def test_an_optional_enum_still_coerces_and_still_accepts_null() -> None:
+    """Both halves survive: a member arrives as the member, and an explicit
+    null arrives as `None` rather than being refused."""
+
+    @tool(side_effecting=False)
+    def reading(unit: Unit | None = None) -> str:
+        """Report a reading in the unit of measure given, or the default one."""
+        return type(unit).__name__
+
+    assert reading.schema.parameters["properties"]["unit"] == {
+        "anyOf": [{"enum": ["celsius", "fahrenheit"], "type": "string"}, {"type": "null"}]
+    }
+    assert _run(reading, {"unit": "celsius"}) == "Unit"
+    assert _run(reading, {"unit": None}) == "NoneType"
+    assert _run(reading, {}) == "NoneType"
+
+
+def test_a_non_optional_union_gains_no_null_arm() -> None:
+    """The control. `int | str` does not accept None, and must not claim to."""
+
+    @tool(side_effecting=False)
+    def strict(v: int | str) -> str:
+        """Accept either an integer or a string, but never a null value here."""
+        return type(v).__name__
+
+    assert strict.schema.parameters["properties"]["v"] == {
+        "anyOf": [{"type": "integer"}, {"type": "string"}]
+    }
+
+
+# ── 9. `*args` cannot be filled, so it is refused ───────────────────────────
+
+
+def test_a_var_positional_parameter_is_refused_at_definition() -> None:
+    """A tool is called with a JSON object, so every argument arrives by NAME.
+    There is no wire spelling for a positional one, which makes ``*args``
+    permanently empty — not usually, always.
+
+    It used to be dropped from the schema in silence, leaving a parameter that
+    reads as meaningful and can never receive anything. This class already
+    refuses a tool with no docstring and one without an explicit
+    ``side_effecting=``; a parameter that cannot exist belongs in the same
+    bucket, and decoration time is where it is free to fix."""
+
+    with pytest.raises(ToolDefinitionError, match=r"\*rest"):
+
+        @tool(side_effecting=False)
+        def variadic(a: int, *rest: int) -> str:
+            """Total the first integer with any additional ones supplied."""
+            return "unreachable"
+
+
+def test_var_keyword_is_still_allowed() -> None:
+    """The control, and the reason this is not a blanket ban on variadics.
+    ``**kwargs`` IS reachable — the model can send keys the signature does not
+    name — and the framework documents it as the way to accept them."""
+
+    @tool(side_effecting=False)
+    def flexible(unit: Unit, **extra: object) -> str:
+        """Accept arbitrary extra keyword arguments alongside the unit given."""
+        return f"{unit.value}+{sorted(extra)}"
+
+    assert _run(flexible, {"unit": "celsius", "zzz": 1}) == "celsius+['zzz']"
+
+
+def test_the_var_positional_error_names_the_tool_and_the_fix() -> None:
+    """An error that says only "unsupported" makes the author guess. This one
+    has to name which parameter and what to do instead."""
+
+    with pytest.raises(ToolDefinitionError) as exc:
+
+        @tool(side_effecting=False)
+        def variadic(*rest: int) -> str:
+            """Total up however many integer values happen to be supplied."""
+            return "unreachable"
+
+    message = str(exc.value)
+    assert "variadic" in message
+    assert "rest" in message
+    assert "**kwargs" in message

@@ -1331,3 +1331,79 @@ def test_resume_can_commit_into_a_restored_frozen_checkpoint_state():
         working["a"]["nested"].append(2)
     # ...and the original checkpoint state was not touched by any of this.
     assert "b" not in frozen_state["done"]
+
+
+# ---- a dependency that names nothing ----------------------------------------------------------
+
+
+def test_an_after_naming_an_unknown_node_is_refused_at_run():
+    """``route()`` has always refused an endpoint that names no node
+    (``KeyError: route endpoints must be existing nodes``). ``after=`` — the
+    other way to name a node, and the one written far more often — accepted
+    anything at all.
+
+    A single typo therefore produced a workflow that ran its first node and
+    quietly stopped: every dependent stayed unreachable because its dependency
+    could never enter ``done``. Measured on a three-node pipeline with
+    ``after="fetsh"`` on the second::
+
+        outputs      {'fetch': 'fetched'}     # 'analyse' and 'report' never ran
+        stop_reason  'deadlock'
+
+    ``stop_reason`` did name it, which is the only reason this was a quiet
+    failure rather than a silent one — but nothing raised, and a caller reading
+    ``outputs`` (the obvious thing to read) sees a truncated pipeline wearing
+    the shape of a successful one."""
+    wf = Workflow()
+    wf.fn("fetch", lambda inp: "fetched")
+    wf.fn("analyse", lambda inp: "analysed", after="fetsh")
+
+    with pytest.raises(KeyError, match="fetsh"):
+        _run(wf.run("go", make_test_ctx()))
+
+
+def test_the_unknown_dependency_error_names_the_node_that_declared_it():
+    """The message has to carry both halves. Knowing only that ``'fetsh'`` is
+    unknown leaves the author grepping for it in a graph where, by definition,
+    it does not appear."""
+    wf = Workflow()
+    wf.fn("fetch", lambda inp: "fetched")
+    wf.fn("analyse", lambda inp: "analysed", after=("fetch", "polsh"))
+
+    with pytest.raises(KeyError, match="analyse"):
+        _run(wf.run("go", make_test_ctx()))
+
+
+def test_a_dependency_declared_later_in_the_graph_still_runs():
+    """The control that decides WHERE this check lives. ``after=`` may name a
+    node that has not been built yet — declaration order is not execution order,
+    and this works today:
+
+        wf.fn("b", ..., after="a")
+        wf.fn("a", ...)          # forward reference, resolves at run
+
+    So the check cannot go in ``_add`` (where ``route()`` does its own), because
+    that would make the order in which builders are called significant and break
+    every graph written this way. It goes at the top of ``_execute`` instead —
+    late enough that the graph is complete, early enough that nothing has run."""
+    wf = Workflow()
+    wf.fn("b", lambda inp: f"B after {inp['a']}", after="a")
+    wf.fn("a", lambda inp: "A")
+
+    res = _run(wf.run("go", make_test_ctx()))
+
+    assert res.outputs == {"a": "A", "b": "B after A"}
+    assert res.stop_reason == "complete"
+
+
+def test_a_valid_graph_is_unaffected():
+    """The other control: correctly-spelled dependencies, including a node with
+    no dependencies at all, must not trip the new check."""
+    wf = Workflow()
+    wf.fn("root", lambda inp: "R")
+    wf.fn("mid", lambda inp: "M", after="root")
+    wf.fn("leaf", lambda inp: "L", after=("root", "mid"))
+
+    res = _run(wf.run("go", make_test_ctx()))
+
+    assert res.outputs == {"root": "R", "mid": "M", "leaf": "L"}

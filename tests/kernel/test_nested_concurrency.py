@@ -140,6 +140,62 @@ def test_the_documented_worst_case_bound_holds() -> None:
     assert len(budget._sems) == budget.max_depth + 1
 
 
+def test_the_worst_case_bound_holds_against_observed_concurrency() -> None:
+    """The bound above is pinned by COUNTING POOLS — it proves one semaphore
+    exists per depth, not that in-flight work ever stays under
+    ``max_concurrency * (max_depth + 1)``. Those are different claims, and the
+    docstring makes the second one.
+
+    So: actually run a tree and watch it. A counter incremented on entry and
+    decremented in a ``finally`` records the real high-water mark of
+    concurrently-live nodes, which is the number an operator sizing a
+    connection pool or a rate limit actually cares about."""
+    depth, branch, cap = 5, 3, 4
+    budget = Budget(max_concurrency=cap, max_depth=depth)
+    live = 0
+    peak = 0
+
+    async def node(ctx: RunContext, d: int) -> int:
+        nonlocal live, peak
+        live += 1
+        peak = max(peak, live)
+        try:
+            if d == 0:
+                await asyncio.sleep(0)
+                return 1
+            kids = [node(ctx.child(), d - 1) for _ in range(branch)]
+            return sum(await gather_bounded(kids, sem=ctx.semaphore()))
+        finally:
+            live -= 1
+
+    root = RunContext("r", Scope(), budget)
+    total = asyncio.run(asyncio.wait_for(node(root, depth), timeout=30))
+
+    assert total == branch**depth  # every leaf ran
+    assert peak <= cap * (depth + 1), f"observed {peak}, documented bound {cap * (depth + 1)}"
+
+
+def test_a_deep_wide_tree_completes_without_deadlock() -> None:
+    """Scale, not mechanism. The per-depth design is asserted structurally
+    above; this is the empirical companion — a tree big enough that a
+    regression to a tree-wide pool would hang rather than merely slow down.
+
+    ``wait_for`` is the assertion: the failure mode being guarded is a
+    DEADLOCK, which without a timeout hangs the suite instead of failing it."""
+    depth, branch, cap = 5, 6, 4  # 7,776 leaves
+    budget = Budget(max_concurrency=cap, max_depth=depth)
+
+    async def node(ctx: RunContext, d: int) -> int:
+        if d == 0:
+            await asyncio.sleep(0)
+            return 1
+        kids = [node(ctx.child(), d - 1) for _ in range(branch)]
+        return sum(await gather_bounded(kids, sem=ctx.semaphore()))
+
+    root = RunContext("r", Scope(), budget)
+    assert asyncio.run(asyncio.wait_for(node(root, depth), timeout=60)) == branch**depth
+
+
 # ── cooperative cancellation must not be isolated into a failure slot ────────
 
 

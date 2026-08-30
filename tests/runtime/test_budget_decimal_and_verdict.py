@@ -887,3 +887,83 @@ def test_quota_sweeping_does_not_evict_a_live_tenant() -> None:
     _run(q.guard(call_for(1)))
     with pytest.raises(MeterExceeded):
         _run(q.guard(call_for(1)))  # 2 rpm cap still enforced after a sweep
+
+
+# ---- construction-time validation of the non-money ceilings -------------------------------
+
+
+def test_an_oversized_ceiling_is_refused_as_a_money_error() -> None:
+    """Every other malformed ceiling is refused as ``MoneyPrecisionError`` —
+    ``'abc'``, ``nan``, ``inf``, ``True``, and anything carrying more than six
+    decimal places. A Decimal too large to quantize used to escape as a raw
+    ``decimal.InvalidOperation`` instead.
+
+    That mattered because ``MoneyPrecisionError`` is a public export and the
+    documented thing to catch when accepting a ceiling from config: the one
+    input that skipped it was the one an operator most plausibly fat-fingers by
+    leaving an exponent in. The leak was in ``quantize``, not in the
+    ``Decimal(str(value))`` parse the existing guard already covered."""
+    with pytest.raises(MoneyPrecisionError, match="too large"):
+        Budget(max_cost_usd=Decimal("1E+30"))
+
+
+def test_an_oversized_ceiling_is_refused_from_every_spelling() -> None:
+    """The guard sits in ``to_money``, so it covers the str and float spellings
+    of the same magnitude, not just the ``Decimal`` one."""
+    for spelling in ("1E+30", 1e30):
+        with pytest.raises(MoneyPrecisionError, match="too large"):
+            Budget(max_cost_usd=spelling)
+
+
+def test_a_ceiling_at_the_edge_of_the_ledger_still_constructs() -> None:
+    """The control. The refusal must be about exceeding what the ledger can
+    represent, not about being merely large — a real operator ceiling of a
+    million dollars has to keep working."""
+    assert Budget(max_cost_usd="1000000").max_cost_usd == "1000000"
+
+
+@pytest.mark.parametrize("bad", [0, -1, -8])
+def test_a_non_positive_max_concurrency_is_refused(bad: int) -> None:
+    """``max_concurrency=0`` used to construct happily and then HANG: the
+    ceiling becomes ``asyncio.Semaphore(0)``, so the first ``gather_bounded`` /
+    ``run_agents`` waits forever on a permit that is never issued, with no
+    exception and no log line. A negative value reached the same constructor and
+    raised a bare ``ValueError: Semaphore initial value must be >= 0`` from deep
+    inside ``ctx.semaphore()``, far from the config that caused it.
+
+    Both are configuration mistakes, and this class already refuses
+    configuration mistakes loudly on its money axis. Being strict about dollars
+    and silent about a deadlock was the inconsistency."""
+    with pytest.raises(ValueError, match="max_concurrency"):
+        Budget(max_concurrency=bad)
+
+
+@pytest.mark.parametrize("bad", [-1, -5])
+def test_a_negative_max_depth_is_refused(bad: int) -> None:
+    """A negative depth ceiling means every child is over budget the moment the
+    tree is entered, which reads as "the framework is broken" rather than "the
+    config is wrong"."""
+    with pytest.raises(ValueError, match="max_depth"):
+        Budget(max_depth=bad)
+
+
+def test_max_depth_zero_is_allowed_and_means_no_children() -> None:
+    """Zero is a coherent request — run the root and refuse to fan out — so it
+    is NOT lumped in with the negatives."""
+    assert Budget(max_depth=0).max_depth == 0
+
+
+@pytest.mark.parametrize("bad", [-1, -100])
+def test_a_negative_max_calls_is_refused(bad: int) -> None:
+    """``max_calls=0`` is a legitimate "make no calls at all"; a negative count
+    is not expressible."""
+    with pytest.raises(ValueError, match="max_calls"):
+        Budget(max_calls=bad)
+
+
+def test_the_default_budget_still_constructs() -> None:
+    """The control that keeps the new validation from being over-eager: the
+    no-argument default, and the documented checkpoint-restore spelling, both
+    have to keep working."""
+    assert Budget().max_concurrency == 8
+    assert Budget(spent_usd=1.25, calls=3).calls == 3

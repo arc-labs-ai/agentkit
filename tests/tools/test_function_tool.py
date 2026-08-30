@@ -43,20 +43,24 @@ def test_type_mapping_covers_common_types():
         return a
 
     props = FunctionTool.from_callable(f).schema.parameters["properties"]
-    assert [props[k]["type"] for k in ("a", "b", "c", "d", "e", "g", "h")] == [
+    assert [props[k]["type"] for k in ("a", "b", "c", "d", "e", "g")] == [
         "string",
         "integer",
         "number",
         "boolean",
         "array",
         "object",
-        "string",
     ]
+    # `h` is `str | None`, which has no single `type`: it is an anyOf carrying
+    # the null arm explicitly, so the model can actually choose the None half.
+    assert props["h"] == {"anyOf": [{"type": "string"}, {"type": "null"}]}
 
 
 def test_literal_becomes_enum_and_multi_union_becomes_anyof():
     """Regression: Literal → JSON-schema enum (not a lossy 'string'); a genuine multi-type union →
-    anyOf (not an order-dependent single member); Optional[X] still collapses to X."""
+    anyOf (not an order-dependent single member); ``Optional[X]`` → an anyOf
+    carrying an explicit null arm, because ``X | None`` genuinely accepts null
+    and the collapsed form left a required optional with no way to say so."""
     from typing import Literal
 
     def f(
@@ -81,7 +85,9 @@ def test_literal_becomes_enum_and_multi_union_becomes_anyof():
     assert props["mixed"] == {
         "anyOf": [{"type": "integer"}, {"type": "string"}]
     }  # true union → anyOf
-    assert props["opt"] == {"type": "integer"}  # Optional[int] → int (None dropped)
+    assert props["opt"] == {  # Optional[int] → int OR null, both stated
+        "anyOf": [{"type": "integer"}, {"type": "null"}]
+    }
     assert props["u"] == {"anyOf": [{"type": "boolean"}, {"type": "string"}]}
 
 

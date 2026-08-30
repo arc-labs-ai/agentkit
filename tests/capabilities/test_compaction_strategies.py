@@ -132,6 +132,43 @@ async def test_sliding_window_orphaned_tool():
     assert compacted[2].role == "tool"
 
 
+@pytest.mark.parametrize("keep_recent", [0, -1, -5])
+@pytest.mark.asyncio
+async def test_sliding_window_non_positive_keep_recent_drops_history(keep_recent: int):
+    """``keep_recent=0`` means "keep the system prompt, drop every turn" — the
+    natural way to express a full reset, and a value a config file reaches by
+    default far more often than by intent.
+
+    It used to raise ``IndexError``. ``start`` is computed as
+    ``len(messages) - keep_recent``, which for a non-positive ``keep_recent``
+    lands AT or PAST the end of the list — fine as a slice bound, fatal as the
+    subscript in the orphaned-tool walk-back (``messages[start].role``). Any
+    transcript of two or more messages hit it.
+
+    ``ImportanceFilteringCompactor`` runs the identical walk-back and never had
+    the bug, because its loop is guarded ``while keep and start > head``. This
+    is that same guard, plus a clamp so a negative value means the same thing as
+    zero rather than reaching further past the end."""
+    messages = [Message("system", "sys")] + [Message("user", f"u{i}") for i in range(5)]
+
+    compacted = await SlidingWindowCompactor(keep_recent=keep_recent).compact(
+        messages, FakeCtx()
+    )
+
+    assert [m.content for m in compacted] == ["sys"]
+
+
+@pytest.mark.asyncio
+async def test_sliding_window_zero_keep_recent_without_system_prompt():
+    """The same clamp with no system message to fall back on: everything goes,
+    and the caller gets an empty transcript rather than an ``IndexError``."""
+    messages = [Message("user", "u1"), Message("assistant", "a1")]
+
+    compacted = await SlidingWindowCompactor(keep_recent=0).compact(messages, FakeCtx())
+
+    assert compacted == []
+
+
 # ---- under-ceiling is a no-op ----------------------------------------------------------------
 
 
