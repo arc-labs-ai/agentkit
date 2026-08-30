@@ -104,7 +104,26 @@ def run_sync(coro: Coroutine[Any, Any, R]) -> R:
 
 async def gather_bounded(coros: list[Awaitable[R]], *, sem: asyncio.Semaphore) -> list[R]:
     """Run coroutines concurrently, at most `sem._value` at once, preserving input order.
-    A failure cancels the rest (structured concurrency) and surfaces as an ExceptionGroup."""
+    A failure cancels the rest (structured concurrency) and surfaces as an ExceptionGroup.
+
+    **Pass ``sem=ctx.semaphore()``, not a semaphore of your own, whenever the
+    coroutines may themselves fan out.** A permit is held for the WHOLE duration
+    of each coroutine, so a nested call draws from a pool its own ancestors have
+    already drained — and the result is a permanent hang, not a slowdown.
+    Measured with one hand-rolled ``asyncio.Semaphore(2)`` shared across levels,
+    a two-deep two-wide tree never returns; at ``Semaphore(4)``, three-deep does
+    the same. The cliff moves with the cap, so a tree that works in testing can
+    still wedge in production once it gets one level deeper.
+
+    ``ctx.semaphore()`` returns a pool keyed on ``ctx.depth``, which makes the
+    cycle structurally impossible: an ancestor at depth d only ever holds
+    permits from pool d, and its children draw from pool d+1. See
+    :meth:`agentkit.runtime.Budget.semaphore` for the full rationale and the
+    bound this trades for (``max_concurrency`` per level, so worst-case
+    in-flight work is ``max_concurrency * (max_depth + 1)``).
+
+    A private semaphore is fine for a FLAT fan-out — a batch of independent
+    tool calls or provider requests that do not fan out again."""
 
     async def _run(coro: Awaitable[R]) -> R:
         async with sem:
@@ -128,6 +147,12 @@ async def gather_best_effort(
     ``cause``, so a caller can retry / route around / escalate uniformly. It also disambiguates
     "the coroutine returned an ``Exception`` value" from "the coroutine raised" — the raw-
     exception design conflated the two.
+
+    The nesting rule from :func:`gather_bounded` applies here identically, and
+    the isolation this function provides does NOT soften it: a deadlock is not a
+    failure any slot can hold, so a nested fan-out over a private semaphore
+    hangs exactly as it would there. Pass ``sem=ctx.semaphore()`` whenever the
+    coroutines may fan out again.
     """
 
     async def _run(idx: int, coro: Awaitable[R]) -> R | Failure:
@@ -216,7 +241,10 @@ async def run_agents(
     Returns AgentResults in input order. In ``best_effort`` mode a failed slot holds a
     :class:`~agentkit.kernel.errors.Failure` (with the raised exception on ``.cause``), not the
     raw exception, so callers can inspect it as first-class data. The shared budget accrues
-    across all of them; depth/concurrency caps apply tree-wide.
+    across all of them, and the depth cap applies tree-wide. The CONCURRENCY cap does not:
+    ``ctx.semaphore()`` is keyed on depth, so ``max_concurrency`` bounds each level
+    separately (see :meth:`agentkit.runtime.Budget.semaphore` for why a single tree-wide
+    pool deadlocks).
 
     Two opt-in coordination seams engage automatically when the caller wired
     them onto ``ctx``:

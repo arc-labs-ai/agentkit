@@ -81,7 +81,20 @@ def to_money(value: Decimal | float | int | str, *, strict: bool = False) -> Dec
         raise MoneyPrecisionError(f"not a monetary amount: {value!r}") from exc
     if not amount.is_finite():
         raise MoneyPrecisionError(f"monetary amount must be finite, got {value!r}")
-    quantized = amount.quantize(_QUANTUM, rounding=ROUND_HALF_UP)
+    try:
+        quantized = amount.quantize(_QUANTUM, rounding=ROUND_HALF_UP)
+    except InvalidOperation as exc:
+        # ``quantize`` raises when the result would need more digits than the
+        # decimal context allows — i.e. the amount is too large to hold at
+        # ``MONEY_SCALE``. The guard above only wraps the PARSE, so this escaped
+        # as a bare ``decimal.InvalidOperation``: every other malformed ceiling
+        # ('abc', nan, inf, excess precision) surfaced as ``MoneyPrecisionError``,
+        # and the one that didn't is the one an operator hits by leaving an
+        # exponent in a config value.
+        raise MoneyPrecisionError(
+            f"monetary amount {value!r} is too large to represent at "
+            f"{MONEY_SCALE} decimal places"
+        ) from exc
     if strict and quantized != amount:
         raise MoneyPrecisionError(
             f"{value!r} carries more than {MONEY_SCALE} decimal places of precision. "
@@ -213,6 +226,30 @@ class Budget:
     _sems: dict[int, Any] = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self) -> None:
+        # The non-money ceilings, held to the same standard as the money one.
+        # This class already refuses a malformed ``max_cost_usd`` at
+        # construction — where it is free to fix — and used to accept anything
+        # at all on the other three axes. That asymmetry had a sharp edge:
+        # ``max_concurrency=0`` builds an ``asyncio.Semaphore(0)``, so the first
+        # fan-out waits forever on a permit that is never issued. No exception,
+        # no log line, just a run that never returns. A negative value reached
+        # the same constructor and surfaced as a bare ``ValueError`` from inside
+        # ``ctx.semaphore()``, pointing at the framework rather than the config.
+        #
+        # Zero is meaningful on two of these axes and not on the third, so they
+        # are checked separately rather than with one shared predicate:
+        # ``max_depth=0`` is "run the root, never fan out" and ``max_calls=0``
+        # is "make no calls", but there is no run at all with zero permits.
+        if self.max_concurrency < 1:
+            raise ValueError(
+                f"max_concurrency must be at least 1, got {self.max_concurrency}. "
+                "A value of 0 does not mean 'unbounded' — it is a semaphore with no "
+                "permits, and the first fan-out would wait on it forever."
+            )
+        if self.max_depth < 0:
+            raise ValueError(f"max_depth must not be negative, got {self.max_depth}")
+        if self.max_calls is not None and self.max_calls < 0:
+            raise ValueError(f"max_calls must not be negative, got {self.max_calls}")
         # Normalise the ceiling STRICTLY here. A ceiling is the operator's
         # stated intent, so quietly rounding it is wrong; a charge is a
         # measurement, so quietly quantizing it is right. Different inputs,

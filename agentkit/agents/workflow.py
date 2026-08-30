@@ -250,6 +250,34 @@ class Workflow:
 
     # ---- engine ----------------------------------------------------------------------------------
 
+    def _validate_dependencies(self) -> None:
+        """Every name in every node's ``after`` must be a node in this graph.
+
+        ``route()`` has always refused an endpoint that names nothing. ``after``
+        — the other way to name a node, and the one written far more often — did
+        not, so a single typo produced a graph whose dependent nodes could never
+        become ready: their dependency was never going to enter ``done``. The
+        run completed with a partial ``outputs`` map and ``stop_reason
+        "deadlock"``, which named the symptom but not the cause, and only for a
+        caller who thought to look past ``outputs``.
+
+        Checked HERE rather than in ``_add`` because ``after`` may legitimately
+        forward-reference a node built later — declaration order is not
+        execution order, and graphs written that way work. ``_execute`` is the
+        first moment the graph is complete, and it is still before any node has
+        run, so the failure is total rather than partial.
+
+        Raises ``KeyError`` to match what ``route()`` already raises for the
+        same class of mistake."""
+        for name in self._order:
+            unknown = [dep for dep in self._nodes[name].after if dep not in self._nodes]
+            if unknown:
+                known = ", ".join(sorted(self._nodes)) or "<none>"
+                raise KeyError(
+                    f"node {name!r} depends on unknown node(s) {unknown!r}; "
+                    f"this workflow defines: {known}"
+                )
+
     def _forward_closure(self, start: str) -> set[str]:
         """`start` plus every node that (transitively) depends on it — what a loop-back must re-run."""
         rev: dict[str, list[str]] = {}
@@ -397,6 +425,7 @@ class Workflow:
         decisions: dict[str, Any],
         steps: int,
     ) -> WorkflowResult:
+        self._validate_dependencies()
         usage = Usage()
         pending = {name for name in self._order if name not in done}
 

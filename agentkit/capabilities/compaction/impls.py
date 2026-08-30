@@ -88,15 +88,28 @@ class SlidingWindowCompactor:
     keep_recent: int = 10
 
     async def compact(self, messages: list[Message], _ctx: Ctx) -> list[Message]:
-        if len(messages) <= self.keep_recent + 1:
+        # Clamped, because ``keep_recent`` is a COUNT and a negative one has no
+        # meaning to express. Left unclamped it doesn't degrade, it inverts:
+        # ``len(messages) - keep_recent`` reaches PAST the end of the list, and
+        # the walk-back below subscripts there.
+        keep = max(0, self.keep_recent)
+        if len(messages) <= keep + 1:
             return messages
 
         system = messages[0] if messages and messages[0].role == "system" else None
         head = 1 if system else 0
 
-        start = max(head, len(messages) - self.keep_recent)
-        # Ensure we don't orphan tool results
-        while start > head and messages[start].role == "tool":
+        start = max(head, len(messages) - keep)
+        # Ensure we don't orphan tool results.
+        #
+        # ``keep and`` is load-bearing, not a micro-optimisation. At ``keep == 0``
+        # (the honest way to say "system prompt only") ``start`` is exactly
+        # ``len(messages)`` — a valid slice bound, but not a valid subscript, so
+        # ``messages[start].role`` raised ``IndexError`` on every transcript of
+        # two or more messages. There is also nothing to walk back FROM: no
+        # message is being kept, so no tool result can be orphaned.
+        # ``ImportanceFilteringCompactor`` guards its identical loop the same way.
+        while keep and start > head and messages[start].role == "tool":
             start -= 1
 
         return ([system] if system else []) + list(messages[start:])

@@ -8,12 +8,13 @@ package ``__init__`` if something elsewhere needs them.
 
 from __future__ import annotations
 
+import collections.abc as _abc
 import contextlib
 import enum
 import inspect
 import types as _types
 from collections.abc import Callable
-from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Union, get_args, get_origin, get_type_hints, is_typeddict
 
 from agentkit.capabilities.output_schema import OutputCoercionError, SchemaAdapter, adapt
 from agentkit.kernel.types import ToolSchema
@@ -59,6 +60,34 @@ def _infer_output_schema(func: Callable[..., Any]) -> Any:
 
 
 _JSON_PRIMITIVES = {str: "string", int: "integer", float: "number", bool: "boolean"}
+
+# Annotations that describe a JSON array / object, matched BY IDENTITY against
+# either the annotation itself (bare ``list`` / ``Sequence``) or its
+# ``get_origin`` (``list[int]`` / ``Sequence[int]``).
+#
+# The ``collections.abc`` half is the part that was missing, and its absence was
+# not cosmetic: ``get_origin(Sequence[int])`` is ``collections.abc.Sequence``,
+# which matched nothing and fell through to the ``{"type": "string"}`` fallback
+# at the bottom of ``_json_type``. Since ``Sequence``/``Mapping`` are the
+# idiomatic way to annotate a parameter a tool only reads, the schema told the
+# model to send a JSON string for exactly the parameters written most carefully.
+#
+# Identity, never ``isinstance``/``issubclass``: ``str`` and ``bytes`` are both
+# registered ``Sequence`` subclasses, so a subclass test here would advertise
+# every string parameter in the library as an array.
+_ARRAY_ANNOTATIONS: tuple[Any, ...] = (
+    list,
+    tuple,
+    set,
+    frozenset,
+    _abc.Sequence,
+    _abc.MutableSequence,
+    _abc.Iterable,
+    _abc.Collection,
+    _abc.Set,
+    _abc.MutableSet,
+)
+_OBJECT_ANNOTATIONS: tuple[Any, ...] = (dict, _abc.Mapping, _abc.MutableMapping)
 _CTX_PARAMS = ("ctx", "context")  # injected with the RunContext, not advertised to the model
 _MIN_DESCRIPTION_LEN = 30  # the floor below which the model can't reliably understand the tool
 
@@ -151,19 +180,103 @@ def _struct_fragment(ann: Any) -> dict[str, Any] | None:
     return None
 
 
+def _element_annotation(ann: Any) -> Any | None:
+    """The single element type of a homogeneous container annotation, or
+    ``None`` when there isn't one to describe.
+
+    ``None`` is returned — deliberately, not as a fallback — for the two cases
+    where naming an element type would be a false claim:
+
+    * **Unparameterised** (`list`, `Sequence`). It says nothing about its
+      elements, so neither do we.
+    * **A heterogeneous tuple** (`tuple[int, str]`). ``items`` means "every
+      element is this", which is simply untrue of a fixed-shape pair. Only
+      ``tuple[X, ...]`` — the "any number of X" spelling — has one element type.
+
+    ``Any`` is also refused, since `{"items": {"type": "string"}}` derived from
+    `list[Any]` would advertise a constraint the annotation explicitly declines
+    to make.
+    """
+    args = get_args(ann)
+    if not args:
+        return None
+    if get_origin(ann) is tuple:
+        # `tuple[X, ...]` is homogeneous; `tuple[X, Y]` is not.
+        if len(args) == 2 and args[1] is Ellipsis:
+            return None if args[0] is Any else args[0]
+        return None
+    if len(args) != 1:
+        return None
+    return None if args[0] is Any else args[0]
+
+
+def _mapping_value_annotation(ann: Any) -> Any | None:
+    """The value type of a `dict[K, V]` / `Mapping[K, V]`, or ``None``."""
+    args = get_args(ann)
+    if len(args) != 2 or args[1] is Any:
+        return None
+    return args[1]
+
+
+def _typeddict_fragment(ann: Any) -> dict[str, Any] | None:
+    """A ``TypedDict`` → its real object schema, in the same shape
+    ``_struct_fragment`` produces for a dataclass / Pydantic model / attrs class.
+
+    ``TypedDict`` is the stdlib way to name a JSON object's shape, and it used to
+    be advertised as ``{"type": "string"}``: the model sent a JSON string and the
+    body's ``q["field"]`` raised ``TypeError: string indices must be integers``.
+
+    It belongs on the schema side of the line and NOT the coercion side, which is
+    the whole reason it can be handled here rather than through
+    ``_struct_adapter``: a ``TypedDict`` *is* a ``dict`` at runtime, so the value
+    ``json.loads`` produced is already the annotated type and there is nothing to
+    reconstitute. ``__required_keys__`` carries ``total=`` and per-key
+    ``Required``/``NotRequired``, so the ``required`` list stays honest in both
+    directions — claiming a key is mandatory when the tool treats it as optional
+    would be a worse lie than the one being fixed.
+    """
+    if not is_typeddict(ann):
+        return None
+    with contextlib.suppress(Exception):
+        hints = get_type_hints(ann)
+        required = getattr(ann, "__required_keys__", frozenset(hints))
+        return {
+            "type": "object",
+            "properties": {key: _json_type(hint) for key, hint in hints.items()},
+            "additionalProperties": False,
+            "required": [key for key in hints if key in required],
+        }
+    return None
+
+
 def _json_type(ann: Any) -> dict[str, Any]:
     """Map a Python type hint to a JSON-schema type fragment (best-effort, dependency-free)."""
     if ann in _JSON_PRIMITIVES:
         return {"type": _JSON_PRIMITIVES[ann]}
-    if ann in (list, tuple, set, frozenset):  # bare `list` / `tuple` (unsubscripted)
+    # Bare `list` / `dict` / `Sequence` / `Mapping` (unsubscripted).
+    if ann in _ARRAY_ANNOTATIONS:
         return {"type": "array"}
-    if ann is dict:
+    if ann in _OBJECT_ANNOTATIONS:
         return {"type": "object"}
+    typed_dict = _typeddict_fragment(ann)  # before the origin checks: it has none
+    if typed_dict is not None:
+        return typed_dict
     origin = get_origin(ann)
-    if origin in (list, tuple, set, frozenset):  # list[X] / tuple[...] / set[X]
-        return {"type": "array"}
-    if origin is dict:
-        return {"type": "object"}
+    # `list[X]` / `tuple[...]` / `set[X]` / `Sequence[X]` / `Iterable[X]` / …
+    if origin in _ARRAY_ANNOTATIONS:
+        element = _element_annotation(ann)
+        if element is None:
+            return {"type": "array"}
+        return {"type": "array", "items": _json_type(element)}
+    if origin in _OBJECT_ANNOTATIONS:  # `dict[K, V]` / `Mapping[K, V]`
+        value = _mapping_value_annotation(ann)
+        if value is None:
+            return {"type": "object"}
+        # Only the VALUE type is described. A JSON object's keys are strings by
+        # definition, so `dict[int, X]` cannot be honoured on the wire and
+        # claiming otherwise in the schema would be a lie the transport
+        # guarantees to break.
+        return {"type": "object", "additionalProperties": _json_type(value)}
     if origin is Literal:  # Literal["a","b"] / Literal[1,2] → enum
         vals = list(get_args(ann))
         frag: dict[str, Any] = {"enum": vals}
@@ -174,11 +287,28 @@ def _json_type(ann: Any) -> dict[str, Any]:
             frag["type"] = t
         return frag
     if origin is Union or origin is getattr(_types, "UnionType", None):  # Union[...] / X | Y
-        real = [a for a in get_args(ann) if a is not type(None)]
-        if len(real) == 1:  # Optional[X] / X | None → just X
+        args = get_args(ann)
+        real = [a for a in args if a is not type(None)]
+        # ``X | None`` used to collapse to bare ``X``, silently dropping the
+        # null arm. On a parameter WITH a default that was merely incomplete —
+        # the model can omit the key. On a REQUIRED one it was a dead end: the
+        # parameter is in ``required``, so the model must send something, and
+        # the only thing the schema permitted was an ``X``. A tool meaning
+        # "a category, or null for all of them" could not express the second
+        # half, and the model could not choose it.
+        #
+        # ``anyOf`` rather than ``{"type": ["string", "null"]}`` because the arms
+        # here are not always bare types — an enum arm is ``{"enum": [...],
+        # "type": "string"}`` and a struct arm is a whole object schema, neither
+        # of which fits in a type list.
+        nullable = len(real) != len(args)
+        if len(real) == 1 and not nullable:
             return _json_type(real[0])
-        if real:  # genuine multi-type union → anyOf (don't pick one)
-            return {"anyOf": [_json_type(a) for a in real]}
+        if real:
+            frags = [_json_type(a) for a in real]
+            if nullable:
+                frags.append({"type": "null"})
+            return {"anyOf": frags}
     if isinstance(ann, type) and issubclass(ann, enum.Enum):
         return _enum_fragment(ann)
     struct = _struct_fragment(ann)
@@ -218,7 +348,23 @@ def _build_schema(func: Callable[..., Any], name: str, description: str) -> Tool
     for pname, p in inspect.signature(func).parameters.items():
         if pname in ("self", "cls") or _is_ctx_param(p):
             continue
-        if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
+        if p.kind is p.VAR_POSITIONAL:
+            # A tool is invoked with a JSON OBJECT, so every argument arrives by
+            # name. There is no wire spelling for a positional one, which makes
+            # ``*args`` permanently empty — not usually, always. Dropping it from
+            # the schema in silence (the old behaviour) left a parameter that
+            # reads as meaningful and can never receive anything.
+            #
+            # ``**kwargs`` is deliberately NOT covered by this: the model CAN
+            # send keys the signature does not name, and that is the documented
+            # way to accept them.
+            raise ToolDefinitionError(
+                f"tool {name!r} declares `*{pname}`, which can never be filled: a tool is "
+                "called with a JSON object, so every argument arrives by keyword and no "
+                "positional one can be sent. Name the parameters you expect, or accept "
+                "**kwargs if the tool genuinely takes arbitrary keys."
+            )
+        if p.kind is p.VAR_KEYWORD:
             continue
         props[pname] = _json_type(hints.get(pname, str))
         if p.default is inspect.Parameter.empty:
@@ -350,6 +496,44 @@ def _coerce_struct(adapter: SchemaAdapter[Any], value: Any) -> Any:
         raise _CoercionRejected(f"not a valid {adapter.name}: {detail}") from exc
 
 
+#: Container origins whose annotation names a type JSON cannot produce, so the
+#: decoded list has to be rebuilt into it. `list` is absent because JSON already
+#: decodes to one, and the abstract ABCs are absent because a `list` already
+#: satisfies `Sequence` / `Iterable` / `Collection` — rebuilding those would be
+#: inventing a concrete choice the author deliberately did not make.
+_REBUILT_CONTAINERS: dict[Any, Any] = {set: set, frozenset: frozenset, tuple: tuple}
+
+
+def _sequence_coercer(ann: Any, origin: Any) -> _Coercer | None:
+    """Coerce a sequence's ELEMENTS, and rebuild the container the annotation
+    actually asked for.
+
+    Two independent reasons this can be needed, and either alone is enough:
+
+    * the element type needs reconstituting (`list[Unit]` — JSON hands us
+      strings, the body annotated members);
+    * the container type is one JSON has no spelling for (`set[str]` — JSON
+      only has arrays, so without this the body annotated `set` and received
+      `list`).
+    """
+    element = _element_annotation(ann)
+    inner = _coercer_for(element) if element is not None else None
+    rebuild = _REBUILT_CONTAINERS.get(origin)
+    if inner is None and rebuild is None:
+        return None
+
+    def coerce(value: Any) -> Any:
+        if not isinstance(value, (list, tuple)):
+            # Not a sequence at all. Leave it exactly as it arrived — the same
+            # rule the scalar coercers follow, so a provider that ignored the
+            # schema produces a visible failure rather than a laundered value.
+            return value
+        items = [inner(v) for v in value] if inner is not None else list(value)
+        return rebuild(items) if rebuild is not None else items
+
+    return coerce
+
+
 def _coercer_for(ann: Any) -> _Coercer | None:
     """An annotation → the function that reconstitutes its values, or ``None`` for
     "leave the value exactly as it arrived".
@@ -363,20 +547,30 @@ def _coercer_for(ann: Any) -> _Coercer | None:
     ``{"type": "integer"}`` parameter has a bug the framework must surface, not
     launder. The mandate is to honour what the schema says, not to widen it.
 
-    ``list[Unit]`` gets ``None`` for the same reason, and it is worth naming
-    because it looks like an omission. ``_json_type`` advertises it as a bare
-    ``{"type": "array"}`` with no ``items`` — the element type is never told to the
-    model. Coercing the elements would be enforcing a contract the model was never
-    shown. When the schema learns to describe ``items``, this is where the matching
-    coercer goes."""
+    ``list[Unit]`` is the exception, and it is the one the schema now earns.
+    ``_json_type`` describes the element type as ``items``, so the model HAS been
+    shown the contract and honouring it is owed rather than invented. The two
+    halves move together — element coercion without ``items`` would enforce a
+    promise never made, and ``items`` without coercion would make a promise never
+    kept."""
     origin = get_origin(ann)
+    if origin in _ARRAY_ANNOTATIONS:
+        return _sequence_coercer(ann, origin)
+    if origin in _OBJECT_ANNOTATIONS:
+        value = _mapping_value_annotation(ann)
+        coerce_value = _coercer_for(value) if value is not None else None
+        if coerce_value is None:
+            return None
+        each: _Coercer = coerce_value
+        return lambda v: {k: each(x) for k, x in v.items()} if isinstance(v, dict) else v
     if origin is Union or origin is getattr(_types, "UnionType", None):
         real = [a for a in get_args(ann) if a is not type(None)]
         if len(real) == 1:
-            # ``Optional[X]`` / ``X | None``. ``_json_type`` collapses this to
-            # bare ``X``, so the coercer collapses identically — with ``None``
-            # passed straight through, because ``None`` is what the annotation's
-            # other half is FOR. ``unit: Unit | None = None`` called without
+            # ``Optional[X]`` / ``X | None``. ``_json_type`` now advertises this
+            # as ``anyOf: [X, null]``, so both arms are honoured here: an ``X``
+            # is coerced as an ``X``, and ``None`` passes straight through
+            # because ``None`` is what the annotation's other half is FOR and
+            # the schema explicitly permits it. ``unit: Unit | None = None`` called without
             # ``unit`` never reaches a coercer at all (the key is absent from
             # kwargs and the default applies untouched); called with an explicit
             # JSON ``null`` it reaches here and must not become a rejection.
