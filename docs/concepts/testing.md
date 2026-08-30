@@ -3,6 +3,15 @@
 `agentkit.testing` is how you run an agent in a unit test — no API key,
 no network, no wall-clock waiting, deterministic every time.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you want an agent under test that is
+    deterministic, offline, and free.
+
+    **Skip it for now if** — honestly, don't. Every runnable example
+    in these docs is built on `FakeLLM` and `make_test_ctx`, so this
+    page is also the key to reading the rest of them.
+
 ## The problem it solves
 
 Agent code is mostly *wiring*: which middleware sits where, what the
@@ -510,12 +519,15 @@ recording.
     asyncio.run(main())
     ```
 
-    `ScriptExhausted` is a `BaseException`, not an `Exception`, for the
-    same reason `asyncio.CancelledError` is: the handlers between the
-    fake and your test body — react reflecting bad output back to the
-    model, tool failures becoming tool messages, `resilience` classifying
-    a pre-stream fault as retryable — are all correct for a real provider
-    fault, and all of them would swallow this one.
+    `ScriptExhausted` is a `BaseException`, not an `Exception` — the same
+    choice `asyncio.CancelledError` makes, for the same reason.
+
+    Several layers sit between the fake and your test body, and each one
+    catches `Exception` on purpose: react reflects bad output back to the
+    model, a failing tool becomes a tool message, `resilience` classifies
+    a pre-stream fault as retryable. Every one of those is right for a
+    real provider fault. Every one of them would also swallow this.
+    Inheriting from `BaseException` is what carries it past them.
 
     When the unbounded loop is the point of the test, say so:
 

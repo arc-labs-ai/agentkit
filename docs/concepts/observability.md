@@ -22,7 +22,15 @@ The one-line test: **if a user should see it, it is an observation. If
 an operator should see it, it is a trace. If an accountant should see
 it, it is a meter.**
 
-## The problem this solves
+!!! tip "Is this page for you?"
+
+    **Reach for it when** a run was slow, expensive, or wrong, and
+    you need to find out which — after the fact.
+
+    **Skip it for now if** you are still developing locally and
+    `print()` is genuinely enough.
+
+## The problem it solves
 
 An agent run is a long-lived, non-deterministic process that spends
 money. Without observations, a user stares at a spinner for ninety
@@ -35,7 +43,7 @@ starves everyone else on the box.
 
 Each one is cheap to wire and expensive to add after the incident.
 
-## The smallest working example
+## The smallest thing that works
 
 An observation stream, with nothing else configured:
 
@@ -880,7 +888,7 @@ budget.checkpoint {'spent_usd': 0.0001, 'remaining_usd': 0.0999, 'calls': 1}
 so you can find the call that crossed a threshold by reading the trace,
 without correlating against an external metric.
 
-## Gotchas
+## What bites people
 
 - **`Observation` has no `seq` or `ts`.** It used to declare both, and
   nothing in agentkit ever set either one — measured,

@@ -10,6 +10,15 @@ bus that reports on it.
 If the [kernel](kernel.md) is the vocabulary, the runtime is the frame of
 reference.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you are building a `RunContext` by hand,
+    capping spend, wiring cancellation, or asking "where does
+    tenancy live?"
+
+    **Skip it for now if** you are still using `make_test_ctx()` and
+    have not needed to change what a run is allowed to do.
+
 ## The problem it solves
 
 Passing loose keyword arguments through an agent graph is how state
@@ -24,7 +33,7 @@ in the meter for the whole tree. Scope it and memory, caches and quotas
 partition correctly — automatically, because none of them derive the key
 themselves.
 
-## The smallest example
+## The smallest thing that works
 
 ```python
 import asyncio
@@ -280,16 +289,31 @@ Worked wiring: [Cap spend with Budget and Quota](../recipes/spend-budget-and-quo
 
 ## Concurrency: the permit pool is per LEVEL
 
-`ctx.semaphore()` returns the pool for **this context's depth**, not one
-pool for the whole tree.
+When an agent starts several pieces of work at once, you want a limit —
+"at most eight of these running at a time". The usual tool for that is a
+**semaphore**: a fixed number of permits, where starting work takes one
+and finishing returns it. Run out of permits and the next piece of work
+waits for one to come back.
 
-A single tree-wide semaphore deadlocks nested fan-out. A parent's fan-out
-holds its permits for the entire duration of each child run, so an inner
-fan-out draws from a pool its own ancestors have already drained. At
-`max_concurrency=2`, an agent dispatching two `as_tool` sub-agents that
-each dispatch their own tools hung forever: the two outer permits are
-held until the inner runs finish, and the inner runs cannot start without
-a permit. Deeper trees hit the same wall at any cap.
+That works perfectly until the work you started *also* starts work of
+its own. Then it goes badly wrong, and it is worth understanding why,
+because the failure is a silent hang rather than an error.
+
+Here is the trap. A parent takes a permit and holds it for as long as
+its child runs — it has not finished, so it has not given the permit
+back. If that child now needs a permit of its own, it is asking for one
+from a pool its own parent has already drained. Nobody can move: the
+parent is waiting for the child, and the child is waiting for a permit
+the parent is holding.
+
+Concretely, at `max_concurrency=2`, an agent dispatching two `as_tool`
+sub-agents that each dispatch their own tools hung **forever**. The two
+outer permits stay held until the inner runs finish, and the inner runs
+cannot start without a permit. Deeper trees hit the same wall at any cap
+— a bigger number only moves the cliff further away.
+
+agentkit's answer is that `ctx.semaphore()` returns the pool for **this
+context's depth**, not one pool for the whole tree.
 
 Keying on depth breaks the cycle structurally. An ancestor at depth *d*
 can only ever hold permits from pool *d*, and its children draw from pool

@@ -3,6 +3,15 @@
 A Skill is a named recipe for a specialised agent, written once and
 reused.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you have an agent recipe — prompt,
+    cognition, tools, memory — that you want to spawn more than
+    once, or hand to another agent as a tool.
+
+    **Skip it for now if** you have one agent, constructed in one
+    place. A `Skill` would be indirection with nothing behind it.
+
 ## The problem it solves
 
 You have a "researcher": a particular system prompt, a `ReActCognition`
@@ -65,8 +74,16 @@ Octopuses use coconut shells as shelter.
 
 ## Skill versus Agent
 
-They are not the same kind of thing, and `Skill` is deliberately **not**
-an `Agent` subclass.
+The distinction is the same one as between a **recipe** and a **meal**.
+
+A recipe is written once, does not change, and can be cooked any number
+of times. Each meal is a separate thing that gets consumed. A `Skill` is
+the recipe — a frozen description of an agent. An `Agent` is what you
+get when you cook it, and it accumulates state as it runs, which is
+exactly why you want a fresh one per run rather than a shared one.
+
+So they are not the same kind of thing, and `Skill` is deliberately
+**not** an `Agent` subclass.
 
 | | `Skill` | `Agent` |
 |---|---|---|
@@ -295,7 +312,7 @@ Do **not** reach for one when you have a single agent used once. `Agent`
 is not heavy, and a Skill adds a layer for nothing. Mutation belongs on
 the materialised `Agent`, not on the recipe.
 
-## Gotchas
+## What bites people
 
 !!! warning "`prompt` and `cognition` cannot be overridden at materialisation"
     `as_agent()` and `as_tool()` take `model` only. If two call sites
@@ -337,8 +354,4 @@ the materialised `Agent`, not on the recipe.
 - [Memory](memory.md) — the `MemorySource` a Skill can carry.
 - [Prompts](prompts.md) — versioned `Prompt` objects, which a Skill
   should prefer over a bare string.
-
-## API
-
-Full generated reference lives at
-[API › skills](../api-reference/skills.md).
+- [API › skills](../api-reference/skills.md) — the generated reference.

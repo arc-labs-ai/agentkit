@@ -3,6 +3,16 @@
 Adapters are how agentkit talks to things it does not own — a model, a
 database, a vector index, a tracing backend, the clock.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you are swapping a backend — Postgres for
+    in-memory, a real vector index for a fake — or writing an
+    implementation of your own.
+
+    **Skip it for now if** the shipped defaults still fit. Every
+    adapter here is behind a `Protocol`, so swapping later costs you
+    one constructor argument.
+
 ## The problem it solves
 
 The moment a framework's core imports a vendor client, that vendor is in
@@ -67,7 +77,15 @@ asyncio.run(main())
 
 ### A Port is a seam, not a feature
 
-The distinction is the whole design, and it is easy to get wrong:
+A **port** is a description of something agentkit needs but will not
+build: a model, a database, a vector index, the clock. An **adapter** is
+an actual implementation of one. Application code only ever names the
+port, so changing which adapter is behind it is one line at startup.
+
+The design question, then, is *what deserves to be a port* — and getting
+it wrong in the generous direction is how frameworks end up with forty
+extension points that nobody can hold in their head. The rule here is
+strict, and it is easy to get wrong:
 
 - A **Port** is an *external system agentkit cannot implement itself* —
   a model, a durable store, a vector index, web search, the network,
@@ -782,11 +800,14 @@ the shared one.
     `output_coerce()` produces. Rebuilding a Pydantic model or a
     dataclass from JSON would mean importing a class named in a cache
     entry. So the rule is **carry it or refuse the entry, never
-    downgrade it**: a JSON-native `parsed` (dict/list/str/int/float/
-    bool/`None`) round-trips, and anything else makes that call
-    uncacheable on a serialising store — the call runs, the caller
-    gets the complete typed result, nothing is stored, and a
-    `UserWarning` plus `call.meta["cache_stored"] = False` say so.
+    downgrade it**.
+
+    A JSON-native `parsed` — dict, list, str, int, float, bool,
+    `None` — round-trips normally. Anything else makes that one call
+    uncacheable on a serialising store: the call still runs, the
+    caller still gets the complete typed result, but nothing is
+    stored, and a `UserWarning` plus
+    `call.meta["cache_stored"] = False` say so.
     On `InMemoryStore` the typed object survives a hit as before.
     Storing a `parsed=None` copy instead would mean a miss returning
     `Plan(...)` and a hit returning `None` — a wrong answer beats a

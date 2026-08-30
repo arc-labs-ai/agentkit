@@ -8,6 +8,16 @@ It contains no provider client, no policy, and no loop. Nothing in it
 decides *how* to use a model — it only says what a message, a request, a
 result, a cost and a tool call **are**.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you are writing a middleware, an adapter,
+    or anything that needs the exact shape of a `Message`, a `Usage`
+    or a `ChatRequest`.
+
+    **Skip it for now if** you are composing an `Agent` out of parts
+    that already exist — the kernel is underneath you either way,
+    and it stays out of your way.
+
 ## The problem it solves
 
 Frameworks rot from the middle. A "core" package that imports a provider
@@ -28,7 +38,7 @@ memoizer, the audit record and the provider adapter all talk about the
 same `Usage` object, a number that appears in a trace is the same number
 that appears on the invoice.
 
-## The smallest example
+## The smallest thing that works
 
 Everything below runs offline — `FakeLLM` and `make_test_ctx` come from
 `agentkit.testing` and need no API key.
@@ -110,10 +120,21 @@ you sum this field and expect cents to balance. `Budget.spent()` is a
 
 ## Ports: the seams to the outside world
 
-A port is an **external system agentkit cannot implement itself**.
-Features are not ports — idempotency, audit, caching and quota are
-middlewares and meters built over `StorePort`, not seams of their own.
-That distinction is what keeps the list short:
+A **port** is agentkit's word for a description of something it needs
+but refuses to build: a model, a database, a vector index, the clock.
+The port says only what shape that thing must have — which methods,
+taking what arguments. Somebody else supplies the actual implementation
+(an [adapter](adapters.md)), and agentkit never learns which one it got.
+
+That is what lets you run the entire framework offline in a unit test.
+Swap the real model for a fake one and nothing above the port notices.
+
+The bar for being a port is deliberately high: **an external system
+agentkit cannot implement itself.** Features are not ports —
+idempotency, audit, caching and quota are all things agentkit *can*
+build, out of a store plus some logic, so they are middlewares and
+meters rather than seams of their own. That distinction is what keeps
+the list short:
 
 | Port | The system behind it | Key methods |
 |---|---|---|
@@ -164,7 +185,14 @@ stub.
 
 ## The middleware contract
 
-Both units of work — a chat turn and a tool execution — are a `Call`:
+agentkit does exactly two kinds of work: it talks to a model, or it runs
+a tool. Rather than give those two separate plumbing, the kernel wraps
+both in one envelope — a `Call` — so that anything cross-cutting
+(retry, caching, cost tracking, tracing) is written once and works on
+both.
+
+That is the entire reason this contract exists, and why it is this
+small:
 
 ```python
 from agentkit import Call, ChatRequest, Message

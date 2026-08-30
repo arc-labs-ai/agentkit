@@ -6,7 +6,16 @@ agentkit — and, in one case, lets other software use agentkit.
 Today there is exactly one: the **Model Context Protocol** (MCP), under
 `agentkit.integrations.mcp`.
 
-## What MCP is, and why a framework bothers
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you want your agent to use MCP servers, or
+    you want to expose your own tools to something else that speaks
+    MCP.
+
+    **Skip it for now if** your tools are ordinary Python functions
+    and nothing outside your process needs to call them.
+
+## The problem it solves
 
 MCP is a small wire protocol for the thing every agent framework
 reinvents: "here are some tools you can call, some documents you can
@@ -50,7 +59,7 @@ than failing somewhere deep in a transport later.
     pieces are, which transport applies, what is cached and for how
     long, and what the server side is for.
 
-## The smallest working example
+## The smallest thing that works
 
 This spawns a real MCP server as a subprocess, adapts its tools, and
 calls one. It needs no API key, no network, and no third-party server —
@@ -214,13 +223,18 @@ servers are streamable HTTP.
 
 Both configs are frozen dataclasses, and both deep-freeze their one
 mutable field in `__post_init__` — `env` for stdio, `headers` for HTTP.
-The reason is stated plainly in the source: `env` is handed to a
-subprocess, and a later in-place edit would change what the *next* spawn
-inherits while the config object still reads as the one that was
-reviewed; `headers` can carry credentials, and "a value that can be
-edited after review is one that can be edited after the review that
-approved it." Neither field participates in `__hash__` — identity is the
-process (`command`, `args`, `cwd`) or the endpoint (`url`, `timeout_s`).
+Both fields carry the same risk, so both get the same treatment.
+
+`env` is handed to a subprocess. Edit it in place later and the *next*
+spawn inherits something different, while the config object still reads
+as the one that was reviewed.
+
+`headers` can carry credentials. As the source puts it: "a value that can
+be edited after review is one that can be edited after the review that
+approved it."
+
+Neither field participates in `__hash__`. Identity is the process
+(`command`, `args`, `cwd`) or the endpoint (`url`, `timeout_s`).
 
 !!! note "The HTTP transport moved underneath this adapter"
     Upstream renamed *and* re-signatured the streamable-HTTP transport:
@@ -541,7 +555,7 @@ Two properties make this safe to put on an approval seam:
 
 Leaving it unset (the default) keeps the old behaviour exactly.
 
-## Gotchas
+## What bites people
 
 - **Every MCP tool is `side_effecting=True`.** MCP has no standard
   read-only marker, so the adapter assumes the worst. `ReActCognition`

@@ -2,7 +2,15 @@
 
 Tools are how an agent does something other than talk.
 
-## The problem they solve
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you want the agent to *do* something
+    rather than only produce text.
+
+    **Skip it for now if** you are still deciding what the agent
+    should say, not what it should touch.
+
+## The problem it solves
 
 A model on its own can only produce text. It cannot read your database,
 call your billing API, or find out what today's price is. Left with only
@@ -121,23 +129,47 @@ accepts a plain list and wraps it in a `ToolRegistry` for you.
 
 ### The schema comes from the signature
 
-`FunctionTool.from_callable` (which `@tool` calls for you) inspects the
-function's signature and type hints and builds the `ToolSchema` the
-model sees. You never write the JSON by hand.
+The model cannot see your Python. Before it can ask for a tool, it has
+to be *told* the tool exists — its name, what it does, and what
+arguments it takes. That description is the **schema**, and it is sent
+along with every request.
 
-The mapping is deliberately small and dependency-free:
+Writing it by hand would mean maintaining the same information twice,
+and the two copies would drift the first time someone renamed a
+parameter. So agentkit reads your function signature and writes the
+schema for you: `FunctionTool.from_callable` (which `@tool` calls on
+your behalf) inspects the parameters and type hints and produces the
+`ToolSchema` the model sees.
+
+In practice this means **the annotations you write are a promise to the
+model**, and getting one wrong misleads it rather than failing loudly —
+which is why the mapping below is worth a glance.
 
 | Python annotation | JSON Schema fragment |
 |---|---|
 | `str` / `int` / `float` / `bool` | `{"type": "string" \| "integer" \| "number" \| "boolean"}` |
-| `list[X]`, `tuple`, `set` | `{"type": "array"}` |
-| `dict[str, X]` | `{"type": "object"}` |
+| `list[X]`, `set[X]`, `tuple[X, ...]` | `{"type": "array", "items": <X>}` |
+| `Sequence[X]`, `Iterable[X]`, `Collection[X]`, `Set[X]` | `{"type": "array", "items": <X>}` |
+| bare `list` / `tuple`, or `tuple[X, Y]` | `{"type": "array"}` — no single element type to name |
+| `dict[str, X]`, `Mapping[str, X]` | `{"type": "object", "additionalProperties": <X>}` |
+| a `TypedDict` | its real object schema, keys and all |
 | `Literal["a", "b"]` | `{"enum": ["a", "b"], "type": "string"}` |
 | an `Enum` subclass | `{"enum": [...member values...]}`, typed when homogeneous |
 | a Pydantic model / dataclass / attrs class | its real object schema, via the same `adapt()` the `Agent.output=` path uses |
-| `Optional[X]` / `X \| None` | just `X` |
+| `Optional[X]` / `X \| None` | `{"anyOf": [<X>, {"type": "null"}]}` |
 | a genuine multi-type union | `{"anyOf": [...]}` |
 | anything else, or unannotated | `{"type": "string"}` |
+
+`items` is a promise in both directions. Because the model is told the
+element type, the value it sends is reconstituted to match — a
+`list[Unit]` arrives as a list of `Unit` members, not of strings — and
+the container is rebuilt to whatever the annotation asked for, so a
+`set[X]` parameter receives a `set`.
+
+`*args` is refused at decoration time. A tool is called with a JSON
+object, so every argument arrives by keyword; a positional-only
+parameter can never be filled. Use `**kwargs` if the tool genuinely
+accepts arbitrary keys.
 
 A parameter with no default lands in `required`. One with a default does
 not.
@@ -704,12 +736,16 @@ tool 'notify' call rejected: unexpected argument(s) ['message']. Accepted argume
 unexpected = ('message',) | accepted = ('msg',)
 ```
 
-That example is the exact failure the error exists to stop. Unknown keys
-used to be dropped silently, so the parameter ran with its **default**:
-a model calling `notify(message="page the on-call, prod is down")`
-against `def notify(msg: str = "default message")` got back
-`"sent: default message"` — a side-effecting tool reporting success for
-something it never did, with nothing downstream able to tell.
+That example is the exact failure the error exists to stop.
+
+Unknown keys used to be dropped silently, so the parameter ran with its
+**default** instead. A model calling
+`notify(message="page the on-call, prod is down")` against
+`def notify(msg: str = "default message")` got back
+`"sent: default message"`.
+
+That is a side-effecting tool reporting success for something it never
+did, with nothing downstream able to tell the difference.
 
 A tool that genuinely accepts arbitrary keys declares `**kwargs`, and
 then extras are passed through instead of rejected:
@@ -778,7 +814,7 @@ print(ft.name, ft.side_effecting, ft.requires_approval)
 memory True False
 ```
 
-## Gotchas
+## What bites people
 
 !!! tip "Rich types arrive as the type you annotated"
     An `Enum`, a `Literal` or a typed struct is coerced at the call
@@ -839,8 +875,4 @@ memory True False
 - [Concepts · Integrations](integrations.md) — MCP tools adapted into this
   same `Tool` Protocol, and the server side where agentkit exposes one.
 - [Consume MCP tools from an agent](../recipes/mcp-tools.md).
-
-## API
-
-Full generated reference lives at
-[API › tools](../api-reference/tools.md).
+- [API › tools](../api-reference/tools.md) — the generated reference.

@@ -95,8 +95,17 @@ amended: ['approve', 'critique', 'draft', 'note', 'publish']
 
 ## How it works
 
-You declare **nodes** and their data dependencies (`after=`). The
-engine derives the schedule from those; you never write the order.
+You do not write the order of the steps. You write which step needs
+which other step's output, and the engine works the order out.
+
+This is the same idea as a build system: you say "the report needs the
+analysis, and the analysis needs the fetch", and it figures out that
+fetch goes first and that two things with no dependency between them can
+run at the same time. Adding a step later means declaring what it needs,
+not re-sequencing everything around it.
+
+In agentkit's terms: you declare **nodes** and their data dependencies
+(`after=`), and the engine derives the schedule from those.
 
 Each pass round the loop is a **wave**: every node whose dependencies
 are all satisfied runs, concurrently, bounded by the run's semaphore
@@ -187,7 +196,7 @@ approved. On a terminal result the checkpoint is reclaimed, so a naive
 `"fail"` is the idempotency guard: use it when a queue may deliver the
 same job twice.
 
-## Gotchas
+## What bites people
 
 - **A gate with no durable seam suspends into a void.** With neither
   `Services(checkpointer=...)` nor `Services(store=...)` wired, the

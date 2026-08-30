@@ -204,7 +204,7 @@ Postgres, where it outlives by weeks the ten minutes it was valid
 for. An un-resumable run can be re-run; a leaked credential cannot be
 un-leaked.
 
-## Gotchas
+## What bites people
 
 **The `RunPolicy` trifecta gate fires on `resume()` too.** Approving
 one tool *call* is not approval of the capability *combination*, so a

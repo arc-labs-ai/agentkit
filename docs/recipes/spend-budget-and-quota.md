@@ -94,6 +94,18 @@ if __name__ == "__main__":
 
 ## How it works
 
+Two questions get asked around every call: *are you allowed to do this?*
+before it runs, and *here is what it actually cost* after. The first is
+`guard`, the second is `charge`, and the `meter()` middleware is what
+asks them.
+
+Splitting it that way is what makes the accounting honest. Before a call
+you can only estimate; after it you know. So the ceiling is checked
+up front, and the ledger is written from measured reality — which does
+mean a call can finish and *then* tip you over. That is a deliberate
+trade, and the paragraph after next spells out exactly where the
+off-by-one lands.
+
 The `meter()` middleware calls `guard(...)` on every entry in
 `ctx.all_meters` before the invoker runs the call, and `charge(...)`
 after. Both hit an async lock so totals are invariant under concurrent
@@ -109,9 +121,18 @@ false, so it completes. The second call's `guard` still sees `1 > 1`
 false and lets the work run; its `charge` bumps to `2` and raises
 there. So `max_calls=1` stops the loop on the second iteration, from
 `charge` — the ceiling is enforced one call late by construction, which
-is the cost of counting completed work rather than intentions. `Budget` is also the run's depth + concurrency
-authority: `max_depth` caps how deep the agent tree can spawn, and
-`semaphore()` bounds tree-wide concurrency (default 8).
+is the cost of counting completed work rather than intentions.
+
+`Budget` is also the run's depth and concurrency authority. `max_depth`
+caps how deep the agent tree can spawn. `max_concurrency` (default 8)
+caps how many things run at once — **per level of the tree, not across
+the whole tree**. That per-level detail is not a technicality: one
+shared pool for the whole tree deadlocks, because a parent holds its
+permit for as long as its children run. See
+[Runtime](../concepts/runtime.md#concurrency-the-permit-pool-is-per-level)
+for the full picture; the practical consequence is that worst-case
+in-flight work is `max_concurrency * (max_depth + 1)`, so size it with
+that in mind.
 
 `Quota` is a rolling window keyed by `Scope.key()`. It counts requests
 made (not just completed), so a burst that overshoots RPM is caught on
@@ -226,7 +247,7 @@ axis. Slices are equal (so reservation order cannot skew fairness) and the
 money axis is carved in `Decimal`, so nothing is lost to float rounding; each
 child is granted exactly what was reserved for it and no more.
 
-## Gotchas
+## What bites people
 
 - **`meter()` is not on by default.** You wire it into
   `Invoker(chat_middleware=[..., meter(), ...])`. Put it after

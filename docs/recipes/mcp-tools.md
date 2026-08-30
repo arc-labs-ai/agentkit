@@ -141,7 +141,7 @@ prompts = await mcp_prompts(client)
 # {name: Prompt(id=name, version="mcp:1", template=<rendered>)}
 ```
 
-## Gotchas
+## What bites people
 
 - **Stateful vs stateless servers.** Some MCP servers keep per-session
   state (open file handles, DB transactions). `MCPClient` opens exactly

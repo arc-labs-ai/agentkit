@@ -175,6 +175,16 @@ guarantees and a side-by-side against the alternatives.
 
     [:octicons-arrow-right-24: Start the tutorial](tutorial.md)
 
+-   __Glossary__
+
+    ---
+
+    Every term these docs use, defined in one sentence of plain English
+    — *cognition*, *port*, *middleware*, *grounding*, *ReAct*. Start
+    here if the vocabulary is the thing slowing you down.
+
+    [:octicons-arrow-right-24: Read the glossary](glossary.md)
+
 -   __Cheatsheet__
 
     ---

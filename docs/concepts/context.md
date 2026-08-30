@@ -4,6 +4,16 @@
 reasoning over, the notes it has taken, and the record of what it has
 done.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** transcripts are getting long, a sub-agent
+    needs its own scratch space, or you are deciding what to drop
+    when the window fills.
+
+    **Skip it for now if** your conversations are short and the
+    default accumulate-everything behaviour has not cost you
+    anything yet.
+
 ## The problem it solves
 
 An agent loop needs somewhere to put its state. The obvious answer is
@@ -68,8 +78,16 @@ actually sees: the prefix rendered to messages, then the tail.
 
 ## How it works
 
-A `WorkingContext` has four axes, and they are orthogonal — you use the
-ones you need and the rest stay empty.
+"What the agent knows right now" turns out to be four separate things,
+and keeping them separate is what makes the rest of this page simple.
+
+Think of it as: the **standing instructions** that never change, the
+**conversation so far**, a **notepad** the agent writes to as it works,
+and — only if the agent reports to a parent — a **log of what it
+changed**.
+
+In agentkit's terms those are four independent axes. You use the ones
+you need and the rest stay empty.
 
 | Axis | Field | Shape | Who uses it |
 | --- | --- | --- | --- |
@@ -319,13 +337,16 @@ print(len(snap.messages), len(ctx.messages))      # 1 2
 That snapshot is hashable **even though a scratchpad value is a dict**,
 and the reason is worth knowing. `FrozenContext.__hash__` hashes the
 prefix, the message tuple, and the scratchpad **keys** — never the
-values, never the journal entries. The dataclass-generated all-fields
-hash could not do this: `update_scratchpad({"plan": {...}})` is the
-documented API, so `hash(...)` raised `TypeError: unhashable type:
-'dict'` on ordinary use, and it failed *by value* rather than by type —
-the same code path worked right up until someone stored a dict. Keys are
-kept because they are `str` by construction and they are the part that
-actually varies between snapshots a memoizer sees.
+values, never the journal entries.
+
+The dataclass-generated all-fields hash could not do this.
+`update_scratchpad({"plan": {...}})` is the documented API, so ordinary
+use raised `TypeError: unhashable type: 'dict'`. And it failed *by
+value* rather than by type: the same code path worked right up until
+someone happened to store a dict.
+
+Keys are kept because they are `str` by construction, and because they
+are the part that actually varies between the snapshots a memoizer sees.
 
 Excluding the values is sound rather than a dodge: `__eq__` still
 compares every field, and the hash contract only requires *equal*
@@ -358,14 +379,17 @@ except TypeError as exc:
     # this payload belongs to a frozen value and cannot be mutated in place
 ```
 
-`ContextDiff.scratchpad_changes` is deeply frozen at construction. The
-class always promised to be a value; leaving one plain dict in the
-middle meant a delta could be edited after it had been computed,
-reported and logged — and because `diff()` reads live scratchpad values,
-a nested value in the diff *was* the live object, so a later
-`update_scratchpad` retroactively changed what the diff said. Freezing
-copies, which un-aliases it. Cost: 0.49 µs for the empty diff, ~7.6 µs
-at 344 B of changed values, paid once in a debug helper.
+`ContextDiff.scratchpad_changes` is deeply frozen at construction.
+
+The class always promised to be a value, and leaving one plain dict in
+the middle broke that promise twice over. A delta could be edited after
+it had been computed, reported and logged. Worse, `diff()` reads live
+scratchpad values — so a nested value in the diff *was* the live object,
+and a later `update_scratchpad` retroactively changed what the diff had
+already said.
+
+Freezing copies, which un-aliases it. Cost: 0.49 µs for the empty diff,
+~7.6 µs at 344 B of changed values, paid once in a debug helper.
 
 The journal is deliberately absent from `ContextDiff` — it has its own
 watermark-based `journal.diff()`, which is the right semantic for

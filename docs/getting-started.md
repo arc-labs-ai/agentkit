@@ -7,6 +7,14 @@ It takes about five minutes. If you want the longer walk — a tool, a
 stream, a spend ceiling, a human approval gate — that is the
 [Tutorial](tutorial.md), which starts from the same script.
 
+!!! tip "New to agent frameworks?"
+
+    These docs use a handful of words in specific ways — *cognition*,
+    *port*, *middleware*, *grounding*. The
+    [glossary](glossary.md) defines each of them in a sentence of plain
+    English, and you can read any entry without having read the others.
+    It is the fastest way to make the rest of the docs make sense.
+
 ## Install
 
 ```bash

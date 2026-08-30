@@ -2,6 +2,14 @@
 
 Memory is what an agent reaches for before it answers.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** answers need to be grounded in documents,
+    past turns, or anything the model was not trained on.
+
+    **Skip it for now if** everything the agent needs already fits
+    in the prompt you hand it.
+
 ## The problem it solves
 
 A model knows what it was trained on and what is in the current prompt.
@@ -219,6 +227,12 @@ tool calls.
 ## The contract
 
 ### `MemorySource`
+
+Everything in this package is one interface with two methods: *find me
+things* and *store these things*. That is the entire contract, and it is
+small on purpose — a vector database, a folder of files, an MCP server
+and an in-memory dict can all satisfy it, so the agent is wired the same
+way no matter what is actually behind it.
 
 ```python
 from agentkit.memory import MemorySource
@@ -602,7 +616,7 @@ cognition-decided pre-fetch. That is the intended pattern, not a
 conflict. But writes are a no-op by adapter contract: a tool that mutates
 the world stays a tool.
 
-## Gotchas
+## What bites people
 
 !!! warning "`source` on write is not preserved"
     `MemoryItem.source` is stamped by whichever backend returned the
@@ -659,8 +673,4 @@ the world stays a tool.
   consume it.
 - [Skills](skills.md) — bundling a prompt, a cognition and a memory into
   one reusable unit.
-
-## API
-
-Full generated reference lives at
-[API › memory](../api-reference/memory.md).
+- [API › memory](../api-reference/memory.md) — the generated reference.

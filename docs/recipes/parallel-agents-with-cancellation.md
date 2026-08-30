@@ -134,6 +134,18 @@ if __name__ == "__main__":
 
 ## How it works
 
+There are only two things to decide, and they are about what should
+happen when one of the children fails.
+
+**Should the others keep going?** If you are fanning out five parts of
+one answer, no — a missing part makes the answer wrong, so stop
+everything and report. If you are enriching a thousand database rows,
+yes — one bad row should not discard nine hundred good ones.
+
+That is the whole difference between the two modes below. The first
+cancels the siblings on the first failure; the second isolates each
+failure into its own slot and lets the rest finish.
+
 **`run_agents(pairs, ctx)`** — the default mode. Builds per-child
 contexts, runs each `agent.run(task, child_ctx)` inside an
 `asyncio.TaskGroup` bounded by `ctx.semaphore()`. TaskGroup semantics
@@ -156,7 +168,7 @@ coroutines; it makes the next check raise `Cancelled`. `run_agents`
 shares the token by reference across all children, so cancelling the
 parent cancels the subtree.
 
-## Gotchas
+## What bites people
 
 - **`ExceptionGroup` isn't a plain exception.** Use `except*` (Python
   3.11+, agentkit requires 3.12) or iterate `eg.exceptions` inside a

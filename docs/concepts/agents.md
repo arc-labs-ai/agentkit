@@ -5,6 +5,15 @@ tools, and optionally some memory. `agentkit.agents` is where "a thing
 that talks to a model" becomes a thing you can plan, cancel, budget,
 coordinate and hand off between.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you are building anything that loops: one
+    agent with tools, a coordinator over children, or a fixed
+    multi-step `Workflow`.
+
+    **Skip it for now if** you only need a single model call — reach
+    for `Chat` and come back later.
+
 ## The problem it solves
 
 "Agent" is a loaded word, and most frameworks answer it with a base class
@@ -26,7 +35,7 @@ run that parked on a human decision and reported success, a coordinator
 whose child deleted its checkpoint on the way out. Every control
 primitive here is a named answer to one of those.
 
-## The smallest example
+## The smallest thing that works
 
 A leaf agent with one tool, driven by `FakeLLM`, so it runs offline:
 
@@ -135,17 +144,38 @@ whole value:
 
 ### `Cognition`
 
-The Protocol that owns the loop. It lives in `agentkit.agents.cognition`
-and ships four implementations:
+A cognition decides **how many times to call the model, and what happens
+between the calls.**
 
-- **`SingleCallCognition`** — one LLM call, one result. The default, and
-  the right choice for a narrow single-shot skill.
-- **`ReActCognition`** — thought → action → observation, with tool
-  calling, human-in-the-loop suspend/resume via a `Checkpointer`, and
-  cooperative cancellation between steps. The only cognition that
-  supports `agent.resume(...)`.
-- **`CoordinatorCognition`** — drives many child agents according to a
-  `Policy`, merging their signals through a `SignalChannel`.
+That sounds small, and it is the single biggest behavioural choice you
+make. Asking a model one question and returning its answer is one
+strategy. Letting it request a tool, running that tool, telling it what
+came back, and asking again — until it stops asking — is a completely
+different one. Running a team of child agents is a third.
+
+Most frameworks bury that choice inside the agent class. agentkit makes
+it a separate object you pass in, so you can change the strategy without
+touching your prompt, your tools, or anything downstream.
+
+Four ship in `agentkit.agents.cognition`:
+
+- **`SingleCallCognition`** — ask the model once, return the answer.
+  The default, and the right choice for a narrow single-shot skill.
+- **`ReActCognition`** — the tool loop. The model either answers or asks
+  for a tool; if it asks, the tool runs, the result goes back into the
+  conversation, and the model is asked again. ("ReAct" is *Reason +
+  Act*, from the 2022 paper that named the pattern.) This is the only
+  cognition that can pause for a human and be resumed later via
+  `agent.resume(...)`, and the only one that checks for cancellation
+  between steps.
+- **`CoordinatorCognition`** — runs several child agents, with a
+  `Policy` deciding whose turn it is and a `SignalChannel` carrying
+  messages between them.
+- **`ClaudeCliCognition`** — hands the whole loop to a locally installed
+  `claude` CLI, so you manage no API keys at all.
+
+If a term above is new, the [glossary](../glossary.md) defines each one
+in a sentence.
 
 Those signals come in two families, and the split is enforced by the type
 system rather than by convention: `ControlSignal` is parent → child

@@ -93,7 +93,22 @@ asyncio.run(main())
 
 ## What's happening
 
-`output_coerce()` sees each text delta, appends it to a running
+The model does not send you a finished JSON object. It sends the object
+a few characters at a time, so at any moment you are holding something
+like `{"title": "Octopus cog` — which is not valid JSON and cannot be
+parsed by anything strict.
+
+The trick is to parse it *leniently* after every chunk: fill in what is
+knowable so far, leave the rest empty, and hand that half-built object
+to the caller. Do that on every chunk and the UI can render fields as
+they arrive instead of waiting for the whole answer.
+
+That is all `partial_output` is — the best-effort object as of this
+instant. It is replaced each time more text lands, and the final,
+strictly-validated object still arrives at the end as usual.
+
+Mechanically: `output_coerce()` sees each text delta, appends it to a
+running
 buffer, and calls the adapter's tolerant `partial_parse` on the whole
 buffer. When the result differs from the last one it stamps it onto
 `Delta.partial`. Both chat cognitions forward that verbatim onto
@@ -121,7 +136,7 @@ events mid-stream can carry `None`. Hold the last non-`None` value.
 partials, so appending is safe, but don't treat an early value as
 final.
 
-## Gotchas
+## What bites people
 
 **The `final` event carries no partial.** `output_coerce` emits the
 strict `parsed` value on a synthetic post-terminal delta with no text,

@@ -153,7 +153,7 @@ declare it. That derived requirement only ever fires against a model
 declared `tools=NO` — it stays silent on `UNKNOWN`, so a made-up model
 name in development doesn't produce a warning nobody can act on.
 
-## Gotchas
+## What bites people
 
 **Fallback is opt-in.** `resolve_llm("...")` with no credential
 **raises** `ProviderNotConfigured`. Pass `fallback="fake"` to degrade

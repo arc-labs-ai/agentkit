@@ -14,6 +14,9 @@ If you want a linear walkthrough instead, use the
 [Concepts](../concepts/kernel.md); for the tightest possible menu while
 you're already writing code, the [Cheatsheet](../cheatsheet.md).
 
+Unfamiliar word? The [glossary](../glossary.md) defines every term
+these recipes use in a sentence of plain English.
+
 ## Making the agent do something
 
 <div class="grid cards" markdown>

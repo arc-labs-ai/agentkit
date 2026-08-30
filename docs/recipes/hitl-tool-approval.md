@@ -109,6 +109,21 @@ if __name__ == "__main__":
 
 ## How it works
 
+The run does not sit and wait for the human. That is the part worth
+getting straight before the details.
+
+When the agent reaches a tool it is not allowed to run unattended, it
+saves its state, **ends**, and hands you back a result that says
+"suspended" along with the list of calls awaiting a decision. Your
+process is now free. The user might answer in ten seconds or tomorrow
+morning; either way you call `resume` with their decisions and the run
+continues from where it stopped — possibly in a different process
+entirely.
+
+That is why approval here costs you no open connections and no parked
+coroutines, and why it survives a deploy in the middle of someone's
+lunch break.
+
 `Autonomy` is a run-wide tier carried on `RunContext.autonomy`.
 `should_gate(autonomy, requires_approval, key_step)` is the shared
 policy every gating surface consults:
@@ -133,7 +148,7 @@ your per-call decisions, appends the tool results to the transcript,
 and drives the loop to a final answer. You can call it from an
 entirely fresh process — that's the point of the checkpointer.
 
-## Gotchas
+## What bites people
 
 - **`side_effecting=` is required on every `@tool`.** The framework
   fails at decoration time (not at call time) if you forget — because

@@ -7,13 +7,14 @@ issuing anybody an API key.
 ## When you'd want this
 
 You have the [`claude` CLI](https://docs.claude.com/en/docs/claude-code)
-installed locally and already logged in (`claude login` set up your
-OAuth), and you want a small HTTP endpoint that runs Claude — with tool
-access and permission modes — inside an agentkit run without you
-managing API keys, provider quotas, or a second SDK. `ClaudeCliCognition`
-subprocesses the local CLI per run, streams its stream-JSON output as
-agentkit `StreamEvent`s, and hands you back the usual
-`AgentResult` — usage, session id, cost estimate.
+installed locally and already logged in — `claude login` set up your
+OAuth. You want a small HTTP endpoint that runs Claude inside an
+agentkit run, with tool access and permission modes, without managing
+API keys, provider quotas, or a second SDK.
+
+`ClaudeCliCognition` subprocesses the local CLI once per run, streams
+its stream-JSON output as agentkit `StreamEvent`s, and hands you back
+the usual `AgentResult` — usage, session id, cost estimate.
 
 Reach for this when:
 
@@ -413,7 +414,7 @@ ClaudeCliCognition(
 )
 ```
 
-## Gotchas
+## What bites people
 
 - **`tools` and `allowed_tools` are different flags.** `--tools` decides
   which built-in tools the session *has*; `--allowed-tools` decides which

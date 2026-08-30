@@ -142,7 +142,7 @@ match, so any adapter can lift them.
 and 1. When `sampler.should_sample` returns False, the span (and its
 replay write) is skipped — but the underlying handler still runs.
 
-## Gotchas
+## What bites people
 
 - **Don't set global providers more than once.** OTel forbids
   overriding `set_tracer_provider` after it's been set — sharing a

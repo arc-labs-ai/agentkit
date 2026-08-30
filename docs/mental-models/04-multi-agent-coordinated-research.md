@@ -174,11 +174,13 @@ frozen at construction, so the `Suspended` goes in when the result is
 made rather than being written into it afterwards. The synthesizer step in
 group 2 does NOT run.
 
-A gate must be **alone in its group**. `PlanPolicy` refuses a plan that
-puts a gate and dispatch steps in one group with `PlanShapeError`,
-because the group suspends before any step runs and resume continues at
-the next group — so the co-grouped steps would be announced in the trace
-and then silently never run, whichever way the human decided.
+A gate must be **alone in its group**, and `PlanPolicy` raises
+`PlanShapeError` on a plan that puts a gate and dispatch steps together.
+
+The reason is the resume path. The group suspends before any step runs,
+and resume continues at the *next* group. So the co-grouped steps would
+be announced in the trace and then silently never run — whichever way
+the human decided.
 
 **t=<indefinite> — Operator interacts.** The user drops two
 irrelevant sources on the canvas. The api posts an approve command

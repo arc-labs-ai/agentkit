@@ -190,7 +190,7 @@ results; the `Reranker` decides the final order and cut. The default
 sorts by the backends' own scores, which is only meaningful when the
 backends score comparably — swap in your own for a cross-encoder.
 
-## Gotchas
+## What bites people
 
 - **`ScopedMemory` demands BOTH `org_id` and `domain_id` by default.**
   A `Scope(org_id="acme")` with no `domain_id` fails the default check

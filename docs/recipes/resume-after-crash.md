@@ -115,6 +115,19 @@ if __name__ == "__main__":
 
 ## How it works
 
+The idea is ordinary bookkeeping. After every step that succeeds, the
+agent writes down where it got to — the conversation so far, what it has
+spent, which iteration it is on — and puts that note somewhere that
+survives the process dying. On restart it looks for the note, and if it
+finds one, carries on from there instead of from the beginning.
+
+Two details make it safe rather than merely clever. Each note is
+numbered, so you can always tell which is newest. And a run that
+*finished* is not resumable, so a naive "resume if a note exists" wiring
+cannot silently re-run a completed job.
+
+Now the specifics.
+
 `Checkpointer` is a thin facade over `CheckpointPort`. On every
 `snapshot(...)` it bumps the version monotonically and stamps
 `created_at` from an injected `ClockPort` (or `time.time()` as a
@@ -148,7 +161,7 @@ So `port.list_versions(run_id)` returns `[]` for a leaf agent's run —
 ask for the slot instead. `resume()` re-derives it for you; only
 direct `CheckpointPort` introspection needs to know.
 
-## Gotchas
+## What bites people
 
 - **One producer per `run_id`.** The version numbering is monotonic
   per-run, and the port assumes a single writer. Two workers running

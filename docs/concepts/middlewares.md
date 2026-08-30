@@ -9,6 +9,16 @@ ordered list you own.
 It is the same idea as ASGI, Rack or Express middleware, applied to LLM
 and tool calls.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you want retry, caching, tracing, cost
+    metering or a guardrail applied to every call without editing
+    the call sites.
+
+    **Skip it for now if** the provider presets already gave you
+    `tracing → meter → retry` and you have not needed to change the
+    chain.
+
 ## The problem it solves
 
 In a naive agent loop, every concern grows into the loop body. First a
@@ -23,7 +33,7 @@ and lets you swap or reorder them by editing a list. Which also means the
 list *is* the answer to "what happens to a call in this system" — you can
 read it.
 
-## The smallest example
+## The smallest thing that works
 
 ```python
 import asyncio
@@ -57,17 +67,40 @@ else changes. That is the whole property.
 
 ## How it works — the onion
 
-Middlewares run **outer-to-inner** on the way in and **inner-to-outer**
-on the way back. `chain(middlewares, terminal)` folds the list so
-`middlewares[0]` is outermost, and the terminal is the actual seam call —
-`llm.stream(...)` for a chat, `tool.run(...)` for a tool.
+Picture the call as a parcel passing through a stack of wrappers. On the
+way *in* it passes through each layer from the outside inwards, and at
+the centre the real work happens — the actual call to the model, or the
+actual execution of your tool. On the way *back out*, the response passes
+through the same layers in reverse.
 
-The contract is stream-shaped: a handler yields the operation's items —
-`Delta`s for a chat, exactly one item for a tool — and a middleware is an
-async generator wrapping the next handler. That shape is what makes
-retry, fallback and memoize expressible at all: retry re-invokes `next`,
-fallback rewrites the request and re-invokes, memoize may skip `next`
-entirely.
+So the first middleware in your list sees the request **first** and the
+response **last**. That ordering is the whole reason the list is worth
+reading top to bottom.
+
+In agentkit's words: middlewares run **outer-to-inner** on the way in and
+**inner-to-outer** on the way back. `chain(middlewares, terminal)` folds
+the list so `middlewares[0]` is outermost, and the *terminal* is that
+real call at the centre — `llm.stream(...)` for a chat,
+`tool.run(...)` for a tool.
+
+One detail shapes everything else: a middleware does not receive a
+finished answer and pass it on. It receives a **stream** of pieces and
+yields pieces onward — many small `Delta`s for a chat as the model types,
+exactly one item for a tool. Technically, each middleware is an async
+generator wrapping the next one.
+
+That sounds like an implementation detail, and it is actually what makes
+the interesting middlewares possible at all. Because a middleware
+*calls* the next layer rather than being handed its output, it can call
+it more than once, or not at all:
+
+- **retry** invokes the next layer again after a failure;
+- **fallback** rewrites the request and invokes it again with a different
+  model;
+- **memoize** may skip it entirely and serve a stored answer.
+
+None of those three are expressible if a middleware can only transform a
+value on its way past.
 
 Everything reaches the chain through the `Invoker`, so you build it once:
 

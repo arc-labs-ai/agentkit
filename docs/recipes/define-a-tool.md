@@ -86,7 +86,17 @@ required argument(s) ['order_id']. Accepted arguments: ['order_id', 'reason']
 
 ## How it works
 
-`@tool` inspects the function and builds a `FunctionTool`:
+The model cannot run your function. It can only produce text asking for
+it by name — so before any of this works, the model has to be *told*
+what functions exist, what each one does, and what arguments it takes.
+
+That description is the only thing standing between the model and a
+wrong call, and writing it by hand would mean maintaining the same
+information in two places. So `@tool` derives all of it from the
+function you already wrote. Your signature, your type hints, and your
+docstring **are** the specification the model is given.
+
+Concretely, `@tool` inspects the function and builds a `FunctionTool`:
 
 - the **signature and type hints** become the JSON Schema the model is
   shown (`tool.schema.parameters`);
@@ -240,7 +250,7 @@ and observation all flow through it, and the sub-result is rendered back
 to text for the calling loop by `render_result` (override with
 `render=`).
 
-## Gotchas
+## What bites people
 
 - **`side_effecting=` is required, and the failure is at decoration
   time.** `@tool` with no `side_effecting=` raises `ToolDefinitionError`

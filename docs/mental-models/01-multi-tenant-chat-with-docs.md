@@ -8,9 +8,21 @@ that a different tenant is also making.
 
 ## Problem
 
-Multi-tenant SaaS is the archetypal cross-cutting-concern challenge. Data
-isolation cannot be a promise the application layer remembers to enforce; it
-has to be a property the framework enforces **structurally**. The threat
+You sell one product to many companies, and they all share one running
+process. Acme's documents and Globex's documents live in the same
+database, go through the same cache, and are answered by the same agent
+code. The only thing keeping them apart is that every lookup is tagged
+with whose data it is.
+
+Get that tagging wrong in one place and Acme's agent cites a paragraph
+from Globex's contract. There is no error, no exception, no failed test
+— just a confident answer containing another customer's data. It is the
+single worst bug this kind of product can have, and it is usually a
+one-line omission.
+
+Which is why isolation cannot be a promise the application layer
+remembers to keep; it has to be a property the framework enforces
+**structurally**. The threat
 model isn't primarily malice — the more common failure is a well-meaning
 optimization (a shared cache, a shared memoize middleware, a "helpful"
 global rate limiter) that reads or writes across the tenant axis by accident.
@@ -150,7 +162,7 @@ Invoker, same LLM adapter, same CachedMemory instance — but with
 `ctx.scope=Scope(2, 1)`. Every scope-keyed lookup lands in a different
 partition. Ellen's cache entries are invisible to Priya's queries.
 
-## Composition sketch
+## Composition
 
 ```
 UI  ──▶  chat endpoint
@@ -243,7 +255,7 @@ the framework's invariants slip.
    must use it.
 3. **`scope.org_id=0` is treated as unscoped** by `_default_enforce` (falsy int). If your tenant IDs start at 0, override the enforce callable or use non-zero IDs.
 
-## Invariants matrix
+## Invariants
 
 Every row is a property the framework MUST hold. Each row names the test
 that locks it in — if you're changing code that touches these areas,

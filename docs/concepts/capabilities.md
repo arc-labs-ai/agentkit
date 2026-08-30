@@ -9,6 +9,15 @@ agent. Each one is a small typed seam with implementations shipped in
 `agentkit.capabilities`, and the point of the seam is that swapping an
 implementation never means editing the loop.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you need grounding, compaction,
+    checkpointing, typed output, a guardrail or an evaluator.
+
+    **Skip it for now if** your agent takes a prompt and answers —
+    every capability here is optional, and none of them are on by
+    default.
+
 ## The problem it solves
 
 Compaction, grounding, guardrails and durability are the wrong things to
@@ -33,7 +42,7 @@ combination. Concretely, the failures this avoids:
 
 Capabilities keep the loop small and the swap surface flat.
 
-## The smallest example
+## The smallest thing that works
 
 A `RequestBuilder` is the capability you meet first: it is the one place
 that turns a prompt, retrieved evidence and a growing transcript into the
@@ -87,8 +96,17 @@ understanding: the substitutable seam is not the capability but the
 
 ## How they plug in
 
-Capabilities are **not** `Agent` constructor arguments. They attach at
-the edges of the loop:
+The thing to expect — and the thing that surprises most people first —
+is that you do **not** pass capabilities to `Agent(...)`.
+
+That is deliberate. A capability is not part of what an agent *is*; it
+is something that happens to a request on its way out or on its way
+back. Making them constructor arguments would mean a constructor that
+grows a parameter every time the framework learns a new trick, and an
+agent that has to know about every one of them.
+
+So each capability attaches at whichever edge of the loop it actually
+acts on. Where that is depends on what the capability does:
 
 - a `Compactor` and a `Grounder` are configured on a `RequestBuilder`,
   which the agent uses to build every request;

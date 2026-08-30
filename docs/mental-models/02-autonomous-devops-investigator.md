@@ -10,10 +10,22 @@ autonomously take destructive action without an operator's explicit consent.
 An oncall AI observes production alerts (PagerDuty, Sentry, log-based),
 investigates by reading logs / deploys / metrics, forms a hypothesis, and
 proposes a remediation. It never applies the remediation without a human
-approving that specific action. The alert content is *untrusted* (attackers
-can shape it), the logs contain *private data*, and the remediation tools
-*egress* to production infra — the lethal trifecta. The framework's job is
-to make it impossible for that combination to fire autonomously.
+approving that specific action. Three things are true of this agent at once, and it is their
+combination that is dangerous:
+
+1. **The input is untrusted.** An alert body is attacker-shapeable — if
+   someone can trigger an alert, they can put text in it, and that text
+   reaches the model as instructions.
+2. **It reads private data.** Production logs contain customer records,
+   tokens, internal hostnames.
+3. **It can reach the outside world.** Remediation tools talk to
+   production infrastructure.
+
+Any one of those alone is manageable. All three together means a
+crafted alert could instruct the agent to read something sensitive and
+send it somewhere — a combination widely known as the **lethal
+trifecta**. The framework's job is to make it impossible for that
+combination to fire without a human in the path.
 
 ## User experience
 

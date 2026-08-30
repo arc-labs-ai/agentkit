@@ -8,6 +8,15 @@ owns the shape of a prompt and nothing else. No templating engine, no
 prompt store, no A/B router — those live in your app, or in a layer above,
 and consume this shape.
 
+!!! tip "Is this page for you?"
+
+    **Reach for it when** you want to know *which wording* changed
+    quality, or you ship prompts that outlive the code that calls
+    them.
+
+    **Skip it for now if** a plain string prompt is still telling
+    you everything you need to know.
+
 ## The problem it solves
 
 Prompt drift is a top source of silent regressions in agent systems. A
@@ -27,7 +36,7 @@ reaches the model unsubstituted. `{tenant}` arriving literally is not a
 crash — it is a plausible-looking prompt that describes the wrong task,
 and the model will happily answer it.
 
-## The smallest example
+## The smallest thing that works
 
 ```python
 import asyncio
@@ -63,6 +72,17 @@ asyncio.run(main())
 ```
 
 ## What a `Prompt` is
+
+A `Prompt` is a template string plus the paperwork that makes it
+traceable: a name, a version, and the list of blanks it expects you to
+fill in.
+
+The blanks are the part worth dwelling on. A template like
+`"You advise {tenant} on {topic}"` declares two names, and a `Prompt`
+knows it declares them. That means it can refuse to render until both
+are supplied, and refuse a name it never asked for — so a typo becomes
+an error at the point you make it, rather than a plausible-looking
+prompt that quietly describes the wrong task.
 
 | Field | What it carries |
 |---|---|

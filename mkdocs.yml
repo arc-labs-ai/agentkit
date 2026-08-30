@@ -121,6 +121,7 @@ nav:
   - Why: why.md
   - Getting started: getting-started.md
   - Cheatsheet: cheatsheet.md
+  - Glossary: glossary.md
   - Tutorial: tutorial.md
   - Concepts:
       - Kernel: concepts/kernel.md

@@ -218,7 +218,7 @@ There is no bridging runtime — everything is callable, and the budget /
 cancellation / observation spine flows through the `ctx.child()` it runs
 on.
 
-## Gotchas
+## What bites people
 
 - **A coordinator does not stream.** `CoordinatorCognition.drive` yields
   exactly one terminal `final` event carrying the aggregated result.

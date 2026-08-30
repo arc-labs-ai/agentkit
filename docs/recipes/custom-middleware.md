@@ -167,7 +167,7 @@ chat_middleware = [
 Reorder or swap by editing the list. There is no hidden default chain
 you have to override — the app owns the list.
 
-## Gotchas
+## What bites people
 
 - **Mutating `ctx.messages` in place does nothing.** `MiddlewareContext.messages`
   returns a copy. To rewrite the transcript, assign a new `ChatRequest`

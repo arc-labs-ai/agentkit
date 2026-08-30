@@ -79,9 +79,21 @@ sliding window: ~339 tokens on the wire
 
 ## Picking a compactor
 
-Four ship. All of them preserve a leading `system` message verbatim —
-that is the cache-stable prefix, and rewriting it would invalidate the
-provider's KV cache from that token onward.
+The choice comes down to one question: **is it cheaper to lose
+information, or to spend a model call keeping it?**
+
+Dropping old turns is instant and free, and it genuinely forgets things.
+Summarising them costs an extra call every time compaction fires, and
+keeps the gist. Neither is right in general — a support chat where only
+the last few turns matter wants the cheap option; a long research run
+where an early finding still matters wants the expensive one.
+
+Four ship. All of them preserve a leading `system` message verbatim.
+That message is the *cache-stable prefix*: providers cache the
+processing of your prompt from the beginning, and changing even one
+early token throws that cache away from that point onward — so rewriting
+the system message would quietly make every subsequent call slower and
+dearer.
 
 | Compactor | What it does | Costs |
 |---|---|---|
@@ -198,7 +210,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## Gotchas
+## What bites people
 
 - **Compaction is not on by default.** There is no hidden chain to
   override — the app owns the middleware list. An agent that has never

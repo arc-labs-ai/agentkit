@@ -8,6 +8,11 @@ Each step is a complete script — copy the whole block and run it. Each
 step exists because the previous one left a specific problem open, and
 each adds exactly one primitive to close it.
 
+If a word here is unfamiliar — *cognition*, *tool loop*, *budget*,
+*gate* — the [glossary](glossary.md) defines each one in a sentence.
+You do not need to read it first; it is there for when something
+doesn't land.
+
 ## Before you start
 
 ```bash

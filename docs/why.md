@@ -289,12 +289,13 @@ print(type(llm).__name__)
 OpenAICompatibleLLM
 ```
 
-`providers.*` return an `LLMPort` for you to wire. If you want the
-batteries-included version instead, `agentkit.client`'s `claude()` /
-`openai()` / `deepseek()` / `openrouter()` return a `Chat` that has
-already wrapped the same port in an `Invoker` with
-`tracing → meter → retry`, and is an async context manager so the HTTP
-pool closes on exit.
+`providers.*` return an `LLMPort` for you to wire yourself.
+
+If you want the batteries-included version instead, reach for
+`agentkit.client`: `claude()` / `openai()` / `deepseek()` /
+`openrouter()` return a `Chat` that has already wrapped the same port in
+an `Invoker` with `tracing → meter → retry`. It is also an async context
+manager, so the HTTP pool closes on exit.
 
 Or drop to `LLMPort` and write your own vLLM / Ollama / in-house
 wrapper. The `Agent` doesn't care.

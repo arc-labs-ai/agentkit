@@ -196,7 +196,7 @@ things worth pinning are the ones your code decides:
 - **suspend and resume** — `result.is_suspended`, then `agent.resume`
   from a freshly built agent and context.
 
-## Gotchas
+## What bites people
 
 - **`make_test_ctx` is not a fake.** It builds a real `RunContext` with
   real `Services` and a real `Invoker`. That is the point: a test that
