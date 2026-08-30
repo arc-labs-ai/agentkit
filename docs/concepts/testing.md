@@ -283,6 +283,54 @@ cancellation and timeout tests, where the wait is the thing under test.
 | `FakeCompactor` | `Compactor` | `.called` |
 | `RecordingTracer` | `TracePort` | `.spans` |
 | `FakeCtx` | `Ctx` | `.spans` |
+| `FakeClaudeCli` | the `claude` subprocess | `.spawns` — how many times it was launched |
+
+## `FakeClaudeCli` — testing the CLI path without spending
+
+Every double above fakes a **port**, which is why none of them helped
+here: `ClaudeCliCognition` does not talk to an `LLMPort`. It spawns the
+`claude` binary and parses the stream-json it writes. So a test of
+anything CLI-shaped used to mean either a real binary and real money, or
+no test at all.
+
+`FakeClaudeCli` sits at the spawn seam instead, so a test still exercises
+the real parsing, the real budget charging and the real event mapping. A
+double that returned finished `AgentResult`s would test none of those,
+which is where every bug on this path has actually lived.
+
+```python
+from agentkit.testing import FakeClaudeCli
+
+# a recorded session, replayed event for event
+cli = FakeClaudeCli.replay(Path("sessions/adds_endpoint.jsonl"))
+
+# or turns you assemble, for a case nobody has recorded
+cli = FakeClaudeCli.script([...])
+
+cognition = ClaudeCliCognition(spawn=cli)
+```
+
+A recording is a **finite claim about how many turns a run takes**, so
+asking for one more raises `ScriptExhausted` rather than replaying the
+last turn — the same discipline `FakeLLM.script` uses, and for the same
+reason. Pass `repeat_last=True` when the unbounded loop is the point of
+the test.
+
+Malformed sessions are constructible on purpose, because every bug worth
+a regression test here is a session that came back wrong: a truncated
+line, an unknown event type, no final result, a non-zero exit partway
+through. A raw `bytes` payload is the only way to express a line that is
+not valid UTF-8 — a real CLI output shape, and one that used to abort the
+run and bill the completed work at $0.00.
+
+!!! warning "What this double cannot do"
+
+    Reading a line never awaits, so the fake is faster than real I/O in a
+    way a test can notice. `asyncio.wait_for(...)` cannot time out
+    mid-stream, `asyncio.gather` over two drives runs them one after the
+    other, and an `interrupt()` task does not run until the consumer
+    yields — add `await asyncio.sleep(0)` to your loop if you need it to.
+    Cancellation through this double is `ctx.check_cancelled()`.
 
 ```python
 import asyncio

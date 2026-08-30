@@ -9,33 +9,121 @@ for abort, `ctx.emit()` for observation, the run `Budget` for cost — and the s
 suspend/resume the loop uses for **human-gate** nodes. Bounded by `max_steps` so a cycle can never
 run forever.
 
-Node kinds: `agent` · `coordinator` · `fn` (pure) · `tool` · `human_gate` · `subworkflow`. `run()`
-executes to completion or a suspend; `resume(run_id, decisions, ctx)` continues from a human gate.
+Node kinds: `agent` · `coordinator` · `fn` (pure) · `tool` · `human_gate` · `subworkflow` · `map`.
+`run()` executes to completion or a suspend; `resume(run_id, decisions, ctx)` continues from a human
+gate.
+
+**`map` is the one node whose shape is not a fact about the source.** Every other builder authors a
+node, so the graph is fully known before the run; `map` authors ONE node that expands into N element
+runs at execution time, where N comes from data a previous node just produced. That is what a
+plan-then-execute application needs and what neither an all-authored `Workflow` nor a `PlanPolicy`
+(which cannot express the rest of the structure) could give it. See :meth:`Workflow.map`.
 
 **Durable-resume contract.** A human-gate suspend checkpoints `{goal, done, steps}` to `ctx.store`, where
 `done` maps each completed node to its output. For resume to survive a *real* (serializing) store — not
 just `InMemoryStore`, which keeps live objects — those outputs must be serializable by that store. The
 built-in node kinds satisfy this (`agent`/`coordinator` → str, `subworkflow` → the child's `outputs`
 dict); a custom `fn`/`tool` node whose output crosses a gate must likewise return a serializable value.
+A `map` node additionally records its EXPANSION in `done` — one entry per finished element
+under `"<node>[<i>]"` plus an identity list under `"<node>#expansion"` — so a resume can tell which
+elements finished and re-run only the rest. Those keys are part of the checkpoint and of
+`WorkflowResult.outputs`; see :meth:`Workflow.map` for why recording the expansion, not only its
+results, is what makes resume across a dynamically sized node correct.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import copy
+import hashlib
 import inspect
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from agentkit.agents.result import Suspended, WorkflowResult
 from agentkit.capabilities.checkpointer import resolve_checkpointer
-from agentkit.kernel.concurrency import gather_bounded
-from agentkit.kernel.errors import CheckpointerError
+from agentkit.kernel.concurrency import gather_best_effort, gather_bounded
+from agentkit.kernel.errors import AgentkitError, CheckpointerError, Failure
 from agentkit.kernel.ports import CheckpointStatus
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import ToolRequest, Usage
 
 OnExisting = Literal["fail", "resume", "start_fresh"]
+
+
+#: How a ``map`` node's element results and expansion record are keyed in ``done``.
+#: Positional (``"impl[0]"``) rather than content-addressed, because a name a human
+#: can read is what makes a stuck checkpoint diagnosable — and because the identity
+#: list below is what actually defends the positions.
+_EXPANSION_SUFFIX = "#expansion"
+_ELEMENT_KEY = re.compile(r"^(?P<owner>.+)\[(?P<index>\d+)\]$")
+
+#: Identity strings longer than this are truncated and disambiguated with a digest.
+#: The record goes into every checkpoint the run writes, so a 500-element map over
+#: fat payloads would otherwise double the snapshot; the digest keeps the guard's
+#: discriminating power at full strength while the readable prefix keeps it
+#: debuggable. Truncating WITHOUT the digest would have silently weakened the guard.
+_IDENTITY_MAX = 120
+
+
+def _reserved_owner(name: str) -> str | None:
+    """Which map node, if any, owns ``name`` in the ``done`` namespace.
+
+    ``"impl[3]"`` and ``"impl#expansion"`` both answer ``"impl"``. Used by
+    ``_add`` to refuse a graph where an authored node and a map's element
+    records would fight over the same ``done`` key — a collision that would
+    otherwise surface as a node output silently replaced by an element
+    result (or vice versa), which no reader would ever attribute correctly.
+    """
+    if name.endswith(_EXPANSION_SUFFIX):
+        owner = name[: -len(_EXPANSION_SUFFIX)]
+        return owner or None
+    m = _ELEMENT_KEY.match(name)
+    return m.group("owner") if m is not None else None
+
+
+def _clear_map_records(done: dict[str, Any], name: str) -> None:
+    """Drop every ``done`` entry a map node owns — its element results AND its
+    expansion record. Used by the loop-back path; see the call site for what
+    survives when this is skipped."""
+    for k in [k for k in done if _reserved_owner(k) == name]:
+        done.pop(k, None)
+
+
+def _default_identity(item: Any) -> str:
+    """The default per-element identity for a ``map`` expansion record.
+
+    ``str(item)`` — the readable choice — with a length cap and a digest tail so a
+    long payload cannot bloat every checkpoint the run writes. See ``key=`` on
+    :meth:`Workflow.map` for when ``str`` is the wrong answer: a plain object
+    inherits ``object.__repr__``, which embeds a MEMORY ADDRESS, so a re-derived
+    expansion would look changed even though the items are the same. That is a
+    loud, actionable failure rather than a silent one, but ``key=`` is how you
+    avoid it.
+    """
+    s = str(item)
+    if len(s) <= _IDENTITY_MAX:
+        return s
+    return f"{s[:_IDENTITY_MAX]}…#{hashlib.sha256(s.encode('utf-8', 'replace')).hexdigest()[:12]}"
+
+
+class MapExpansionChanged(AgentkitError):
+    """A ``map`` node re-expanded to something different from what its checkpoint recorded.
+
+    Raised on RESUME, and deliberately loud. Element results are keyed by POSITION
+    (``"impl[0]"``), so reusing them against a collection whose contents or order
+    moved threads one element's output into another element's slot — a wrong answer
+    that completes successfully and looks right. Refusing is the only honest option:
+    the framework cannot know whether the drift was a reordered ``set``, a re-queried
+    database, or a genuine change of plan.
+
+    Fixes, in order of preference: make ``over=`` deterministic given the same
+    inputs (sort it); pass ``key=`` so identity comes from a stable field rather
+    than ``str(item)``; or start the run fresh.
+    """
 
 
 @dataclass
@@ -47,6 +135,17 @@ class _Node:
         [dict[str, Any], str, Any], Awaitable[tuple[Any, Usage]]
     ]  # (inputs, goal, ctx) -> (output, usage)
     gate: bool = False
+    # A ``map`` node cannot be driven through ``run`` above: expansion needs the
+    # live ``done`` map (to skip elements a previous attempt finished) and the
+    # current step count (to checkpoint partial progress), neither of which is on
+    # that signature. Rather than widen every node kind's signature for one of
+    # them, a map carries a second entry point and ``_execute`` prefers it.
+    expand: (
+        Callable[
+            [dict[str, Any], str, Any, dict[str, Any], int], Awaitable[tuple[Any, Usage]]
+        ]
+        | None
+    ) = None
 
 
 def _warn_unpersisted_gate(gate: str, run_id: str) -> None:
@@ -117,9 +216,39 @@ class Workflow:
     def _add(self, node: _Node) -> str:
         if node.name in self._nodes:
             raise ValueError(f"duplicate node {node.name!r}")
+        self._check_map_namespace(node)
         self._nodes[node.name] = node
         self._order.append(node.name)
         return node.name
+
+    def _check_map_namespace(self, node: _Node) -> None:
+        """Refuse a graph where an authored node and a map's ``done`` records collide.
+
+        A map writes ``"impl[0]"`` and ``"impl#expansion"`` into the same ``done`` map
+        that holds node outputs, so an authored node called ``impl[0]`` and a map called
+        ``impl`` are two writers of one key. Whoever runs second wins, and the loser's
+        value is read by its dependents as if it were its own — a wrong answer that
+        raises nothing. Both declaration orders are checked, because ``after=`` may
+        forward-reference and there is no "declare maps first" rule to lean on.
+        """
+        if node.expand is not None:
+            clashes = [n for n in self._order if _reserved_owner(n) == node.name]
+            if clashes:
+                raise ValueError(
+                    f"map node {node.name!r} records its expansion in ``done`` under "
+                    f"{sorted(clashes)!r}, and those name existing nodes. Rename the map "
+                    "or the node — a shared key means one silently overwrites the other."
+                )
+        # NOT an ``else``. A map can also be the VICTIM: ``map("a")`` followed by
+        # ``map("a[0]")`` puts the second map's own output on the first map's element
+        # key, and checking only one direction let that pair through.
+        owner = _reserved_owner(node.name)
+        if owner is not None and owner in self._nodes and self._nodes[owner].expand is not None:
+            raise ValueError(
+                f"node {node.name!r} collides with the ``done`` namespace of map node "
+                f"{owner!r} (its elements are recorded as {owner!r}[i] and "
+                f"{owner + _EXPANSION_SUFFIX!r}). Rename one of them."
+            )
 
     def agent(
         self,
@@ -239,6 +368,252 @@ class Workflow:
             return res.outputs, res.usage
 
         return self._add(_Node(name, "subworkflow", deps, run))
+
+    def map(
+        self,
+        name: str,
+        *,
+        over: Callable[..., Any],
+        each: Callable[..., Any],
+        after: Any = (),
+        bounded_by: int | None = None,
+        best_effort: bool = False,
+        prompt: Callable[[Any, str], str] | None = None,
+        key: Callable[[Any], str] | None = None,
+    ) -> str:
+        """ONE node that expands into N element runs, with N decided at RUNTIME.
+
+        ``over(inputs[, goal])`` returns the collection (any iterable — it is
+        materialised once, so a generator is safe); ``each(item[, index])`` returns
+        the worker for one element. The node's output is the list of element outputs
+        in expansion order, so a dependent reads it exactly like any other node's::
+
+            wf.map("implement", over=lambda d: d["plan"].requirements,
+                   each=lambda item: agent_for(item), after="plan", bounded_by=4)
+            wf.human_gate("review", after="implement")
+
+        **Why this belongs in the framework rather than in an application's ``fn`` node.**
+        An application can already fan out inside a plain ``fn``. What it cannot do is
+        make that fan-out RESUMABLE, because the engine's durable record is the ``done``
+        map and a hand-rolled fan-out is opaque to it: a run that dies after eight of ten
+        elements resumes by re-running all ten. So a map records its EXPANSION, not only
+        its result:
+
+        * ``done["impl[i]"]`` — one entry per FINISHED element, written as it finishes,
+          so a later attempt skips it. A failed element (``best_effort``) is deliberately
+          NOT recorded, because a resume must retry it.
+        * ``done["impl#expansion"]`` — the ordered identity list, written BEFORE any
+          element runs. This is the half that is easy to leave out and impossible to add
+          later: without it, resume has element results keyed by position and no way to
+          know the positions still mean the same things. With it, a drifted expansion
+          raises :class:`MapExpansionChanged` instead of threading element 2's output
+          into element 0's slot.
+
+        Both keys are visible in ``WorkflowResult.outputs``; that is the point — "which
+        elements finished" is the question you have at 3am.
+
+        **Determinism is the caller's half of the contract.** ``over`` must return the
+        same collection in the same order given the same inputs. It usually does for
+        free (its inputs come from ``done``, which the checkpoint restored), but a ``set``
+        comprehension or a re-queried table will not. Identity defaults to ``str(item)``;
+        pass ``key=`` when your items are objects whose ``repr`` embeds an address, or
+        when ``str`` is large.
+
+        **Concurrency reuses the spine, one level down.** Elements run under
+        ``gather_bounded`` against ``ctx.child().semaphore()`` — the pool at depth+1, NOT
+        the wave's own pool. That is not a stylistic choice: the wave already holds a
+        permit at its depth for this very node, so drawing elements from the same pool
+        deadlocks at ``max_concurrency=1`` and at any cap once the ancestors' outstanding
+        permits reach it. See ``Budget.semaphore`` for the full argument. ``bounded_by``
+        adds a node-local width on TOP of that, acquired first so a narrow map cannot sit
+        on level permits it is not using.
+
+        ``ctx.check_cancelled()`` runs at the top of every element, so an abort stops the
+        expansion at the next element boundary rather than after all N. A map counts as
+        ONE step against ``max_steps`` — the graph grew wider, not longer.
+
+        ``each`` may return: a runnable (anything with ``run(task, ctx)`` — an ``Agent``,
+        a coordinator, a ``Workflow``); an awaitable (``each=lambda i: work(i)`` over an
+        async ``work``); a callable (invoked ``worker(item[, goal])``); or, if none of
+        those, the element's RESULT itself (``each=lambda i: i.upper()``). The one shape
+        to avoid is returning a callable you meant as data — it will be called.
+
+        ``prompt(item, goal)`` builds the task string for the RUNNABLE shape only (the
+        default is ``_default_prompt({"item": item}, goal)``); the other three shapes are
+        handed the item itself and have nowhere to put a prompt. Passing ``prompt=`` with
+        a non-runnable element raises rather than dropping it — a prompt the author wrote
+        and the framework ignored is a wrong run that reports success.
+        """
+        if bounded_by is not None and bounded_by < 1:
+            # Refuse at CONSTRUCTION, where it is free to fix — the same rule the
+            # meters apply to a ceiling. A width of zero is a fan-out that reserves
+            # nothing and can never run: the "looks like it ran and did nothing"
+            # failure ``_at_least_one`` exists to prevent in ``kernel.concurrency``.
+            raise ValueError(
+                f"map node {name!r}: bounded_by must be >= 1, got {bounded_by}. "
+                "Omit it for 'as wide as the tree semaphore allows'."
+            )
+        deps = _as_tuple(after)
+        identity = key if key is not None else _default_identity
+        exp_key = f"{name}{_EXPANSION_SUFFIX}"
+
+        async def _record_partial(ctx: Any, goal: str, done: dict[str, Any], steps: int) -> None:
+            """Persist how far the expansion got, then let the failure through.
+
+            Without this a map is resumable in principle and never in practice: the
+            wave's ``gather_bounded`` cancels the siblings and the exception unwinds
+            out of ``_execute``, taking the live ``done`` — and every finished element
+            in it — with it. The human-gate suspend is the only other writer, and a map
+            that failed has not reached one.
+
+            ``RUNNING``, not ``SUSPENDED``: nothing is waiting on a human. It is also
+            not terminal, so ``Checkpointer.resume``'s default filter still hands it
+            back. Exceptions from the checkpointer itself are swallowed on purpose —
+            record-keeping must never replace the failure the caller needs to see.
+            """
+            cp = resolve_checkpointer(ctx)
+            if cp is None:
+                return
+            with contextlib.suppress(Exception):
+                await cp.snapshot(
+                    ctx.correlation_id,
+                    {"goal": goal, "done": done, "steps": steps},
+                    status=CheckpointStatus.RUNNING,
+                    ctx=ctx,
+                )
+
+        async def expand(
+            inputs: dict[str, Any], goal: str, ctx: Any, done: dict[str, Any], steps: int
+        ) -> tuple[Any, Usage]:
+            # Materialise ONCE. ``over`` may hand back a generator, and the expansion is
+            # read at least twice (identities, then elements) — a second pass over a
+            # consumed iterator yields nothing, which is a map that silently expands to
+            # width zero and a downstream node that silently sees an empty list.
+            items = tuple(over(inputs, goal) if _arity(over) >= 2 else over(inputs))
+            identities = [identity(it) for it in items]
+            recorded = done.get(exp_key)
+            if recorded is not None and list(recorded) != identities:
+                raise MapExpansionChanged(
+                    f"map node {name!r} expanded to {identities!r}, but its checkpoint "
+                    f"recorded {list(recorded)!r}. Element results are keyed by position, "
+                    "so reusing them here would thread one element's output into "
+                    "another's slot. Make ``over`` deterministic, pass ``key=``, or start "
+                    "the run fresh."
+                )
+            # Written BEFORE any element runs, so a failure two elements in still leaves
+            # a checkpoint that knows what the expansion WAS.
+            done[exp_key] = identities
+            # The one fact about this run that is NOT in the authored graph. A reader
+            # tailing observations sees every other node's shape in the source; the
+            # width of a map is only knowable here, and "did it expand to 3 or to
+            # 300?" is the first question asked of a run that cost more than expected.
+            await ctx.emit(
+                "progress",
+                f"{name} expanded to {len(items)}",
+                agent=name,
+                payload={"node": name, "elements": len(items)},
+            )
+
+            # depth+1, for both the permit pool and the element contexts — see the
+            # concurrency paragraph in the docstring.
+            child = ctx.child()
+            level_sem = child.semaphore()
+            width_sem = asyncio.Semaphore(bounded_by) if bounded_by is not None else None
+
+            async def _work(index: int, item: Any, slot: str) -> tuple[Any, Usage]:
+                worker = each(item, index) if _arity(each) >= 2 else each(item)
+                runner = getattr(worker, "run", None)
+                usage = Usage()
+                if prompt is not None and not callable(runner):
+                    # ``prompt`` only has a receiver when the element is a RUNNABLE —
+                    # the other three shapes are handed the item, not a task string.
+                    # Dropping it silently is the worst option available: the author
+                    # wrote a prompt, the framework ran something else, and nothing
+                    # anywhere says so. ``each`` resolves per element, so this is the
+                    # first moment the mismatch is knowable; saying it loudly here beats
+                    # a run that quietly ignored half its configuration.
+                    raise ValueError(
+                        f"map node {name!r}: prompt= was given, but element {index} "
+                        f"resolved to {type(worker).__name__}, which takes no prompt — "
+                        "only a runnable (anything with ``run(task, ctx)``) is handed "
+                        "one. Drop prompt=, or return a runnable from each=."
+                    )
+                if callable(runner):
+                    p = (
+                        prompt(item, goal)
+                        if prompt is not None
+                        else _default_prompt({"item": item}, goal)
+                    )
+                    res = await runner(p, child.child())
+                    out = getattr(res, "output", None)
+                    if out is None and hasattr(res, "outputs"):
+                        # A child ``Workflow``: hand on its ``outputs`` dict for the same
+                        # reason ``subworkflow`` does — a ``WorkflowResult`` object does
+                        # not survive a serializing store, and this value goes into
+                        # ``done`` and therefore into every later checkpoint.
+                        out = res.outputs
+                    usage = getattr(res, "usage", None) or Usage()
+                elif inspect.isawaitable(worker):
+                    out = await worker
+                elif callable(worker):
+                    out = worker(item, goal) if _arity(worker) >= 2 else worker(item)
+                    if inspect.isawaitable(out):
+                        out = await out
+                else:
+                    out = worker
+                # Commit PER ELEMENT, not once per wave. This is the line a resume
+                # depends on: when element 3 raises, elements 0-2 are already in ``done``
+                # and ``_record_partial`` has something worth persisting.
+                done[slot] = out
+                return out, usage
+
+            async def _element(index: int, item: Any) -> tuple[Any, Usage]:
+                slot = f"{name}[{index}]"
+                if slot in done:  # a previous attempt finished this one
+                    return done[slot], Usage()
+                ctx.check_cancelled()
+                if width_sem is not None:
+                    async with level_sem:
+                        return await _work(index, item, slot)
+                return await _work(index, item, slot)
+
+            coros: list[Awaitable[tuple[Any, Usage]]] = [
+                _element(i, it) for i, it in enumerate(items)
+            ]
+            # ``bounded_by`` is the OUTER bound and the level pool the inner one, so a
+            # narrow map waits on its own permit before taking a level permit it would
+            # only sit on. The reverse nesting is deadlock-free too, but it lets a
+            # ``bounded_by=1`` map hold every level permit while running one element,
+            # starving a sibling map in the same wave.
+            outer = width_sem if width_sem is not None else level_sem
+            try:
+                raw: list[Any] = (
+                    list(await gather_best_effort(coros, sem=outer))
+                    if best_effort
+                    else list(await gather_bounded(coros, sem=outer))
+                )
+            except BaseException:
+                await _record_partial(ctx, goal, done, steps)
+                raise
+
+            outputs: list[Any] = []
+            total = Usage()
+            for r in raw:
+                if isinstance(r, Failure):  # best_effort — the slot IS the failure
+                    outputs.append(r)
+                    continue
+                out, u = r
+                outputs.append(out)
+                total = total + u
+            return outputs, total
+
+        async def run(inputs: dict[str, Any], goal: str, ctx: Ctx) -> tuple[Any, Usage]:
+            # Unreachable: ``_execute`` prefers ``expand`` for any node that has one.
+            # Present because ``_Node.run`` is not optional, and a named error beats a
+            # ``None`` call if a future refactor ever routes a map through here.
+            raise RuntimeError(f"map node {name!r} must be executed through ``expand``")
+
+        return self._add(_Node(name, "map", deps, run, expand=expand))
 
     def route(self, from_: str, *, when: Callable[[Any], bool], to: str) -> Workflow:
         """Conditional edge: after `from_` runs, if `when(output)` is true, (re)activate `to`. A route to
@@ -509,10 +884,23 @@ class Workflow:
                     )
                     return WorkflowResult(done, usage, steps, "suspended", suspended=susp)
 
-                async def _one(node: _Node) -> tuple[Any, Usage]:
+                # ``at_step`` is a DEFAULT ARGUMENT, not a closure read, and that is
+                # load-bearing: a map checkpoints its partial progress against this
+                # number, while the commit loop below reassigns ``steps`` as the wave
+                # lands. A late-bound read would stamp the resume point with a count
+                # that includes siblings the failing wave never committed, so a resume
+                # would start from a step number no snapshot corresponds to. The
+                # default binds the PRE-wave value, once, when the wave starts.
+                async def _one(node: _Node, at_step: int = steps) -> tuple[Any, Usage]:
                     if node.gate:
                         return decisions[node.name], Usage()
-                    return await node.run({d: done[d] for d in node.after}, goal, ctx)
+                    inputs = {d: done[d] for d in node.after}
+                    if node.expand is not None:
+                        # A ``map``: it needs the live ``done`` (to skip elements a
+                        # previous attempt already finished) and a step count to
+                        # checkpoint partial progress against.
+                        return await node.expand(inputs, goal, ctx, done, at_step)
+                    return await node.run(inputs, goal, ctx)
 
                 outs = await gather_bounded([_one(n) for n in ready], sem=ctx.semaphore())
                 # ``strict=True`` ensures the wave length matches the
@@ -569,9 +957,18 @@ class Workflow:
                                     decisions.pop(
                                         name, None
                                     )  # not silently reuse the stale decision
+                                if self._nodes[name].expand is not None:
+                                    # A map's element results and expansion record live
+                                    # in ``done`` under their OWN keys, so popping the
+                                    # node name alone leaves them behind. The re-run then
+                                    # re-expands against a stale record: a loop whose
+                                    # collection shrinks raises ``MapExpansionChanged``,
+                                    # and one whose collection is unchanged reuses every
+                                    # element result — a "loop" that recomputes nothing.
+                                    _clear_map_records(done, name)
 
             await ctx.emit("result", "workflow complete", payload={"steps": steps})
             return WorkflowResult(done, usage, steps, "complete")
 
 
-__all__ = ["Workflow", "WorkflowResult"]
+__all__ = ["MapExpansionChanged", "Workflow", "WorkflowResult"]

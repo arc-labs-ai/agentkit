@@ -16,6 +16,7 @@ from agentkit.agents.cognition.base import Cognition
 from agentkit.agents.cognition.claude_cli import (
     ClaudeCliCognition,
     ClaudeCliSession,
+    CliSpawn,
     InterruptReceipt,
 )
 from agentkit.agents.cognition.coordinator import CoordinatorCognition
@@ -25,6 +26,7 @@ from agentkit.agents.cognition.single_call import SingleCallCognition
 __all__ = [
     "ClaudeCliCognition",
     "ClaudeCliSession",
+    "CliSpawn",
     "InterruptReceipt",
     "Cognition",
     "CoordinatorCognition",

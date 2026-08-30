@@ -42,7 +42,7 @@ import json
 import os
 import uuid
 import weakref
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -86,6 +86,13 @@ PermissionMode = Literal[
 _SEMAPHORES: weakref.WeakValueDictionary[tuple[str, str | None, int], asyncio.BoundedSemaphore] = (
     weakref.WeakValueDictionary()
 )
+
+
+# The transport seam's type. Deliberately ``...``-argumented: the two spawn
+# sites pass different ``stdin=`` modes and future flags may add keywords, and a
+# double that had to re-declare the exact signature would break on every one of
+# them for no gain — it forwards ``**kwargs`` anyway.
+CliSpawn = Callable[..., Awaitable["asyncio.subprocess.Process"]]
 
 
 def _get_semaphore(bin_: str, config_dir: str | None, max_concurrent: int) -> asyncio.BoundedSemaphore:
@@ -342,6 +349,28 @@ class ClaudeCliCognition:
     terminate_grace_s: float = 5.0
     max_concurrent: int = 8  # class-level semaphore (see module doc)
 
+    # ── the transport seam ──────────────────────────────────────────────────
+    # How the subprocess gets created. ``None`` — the default, and the only
+    # value production ever uses — means ``asyncio.create_subprocess_exec``,
+    # so nothing about a real run changes.
+    #
+    # It exists because the alternative is worse. Every CLI test in this repo
+    # reaches the same seam with
+    # ``patch("agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec")``,
+    # and that path resolves through this module's ``asyncio`` reference to the
+    # REAL ``asyncio`` module: the patch replaces the function process-wide, for
+    # every library in the interpreter, for as long as it is held. An explicit
+    # field scopes the substitution to one cognition instance, which is what
+    # lets a test run a faked CLI and a real subprocess side by side — see
+    # ``agentkit.testing.fakes.FakeClaudeCli``, which is the intended occupant.
+    #
+    # Injected here rather than one level up (a double that returns finished
+    # ``AgentResult``s) on purpose: everything this cognition has ever got wrong
+    # — line parsing, payload→event mapping, the stop-reason priority, the
+    # meter charge — lives BELOW this point, so a double above it tests none of
+    # it.
+    spawn: CliSpawn | None = None
+
     def __post_init__(self) -> None:
         """Refuse combinations the CLI itself refuses, at construction.
 
@@ -423,6 +452,13 @@ class ClaudeCliCognition:
         one and only one ``StreamEvent(type='final')`` regardless of
         outcome. On failure paths, ``AgentResult.partial=True`` and
         ``evals["stop_reason"]`` names the failure mode.
+
+        The guarantee is about the ``final`` event, not about swallowing.
+        A ``BaseException`` that is not an ``Exception`` — ``KeyboardInterrupt``,
+        ``SystemExit``, a test double's contract violation — is delivered as a
+        terminal event AND THEN re-raised, the same order ``CancelledError``
+        uses. See :func:`_reraise_if_not_an_exception` for why swallowing
+        those was a bug and not a policy.
 
         **`asyncio.CancelledError` semantics.** When the caller wraps this
         in ``asyncio.wait_for(...)`` or a ``TaskGroup`` and cancels,
@@ -508,7 +544,7 @@ class ClaudeCliCognition:
                 raise FileNotFoundError(wd_missing)
 
             async with sem:
-                proc = await asyncio.create_subprocess_exec(
+                proc = await (self.spawn or asyncio.create_subprocess_exec)(
                     *argv,
                     stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
@@ -554,8 +590,10 @@ class ClaudeCliCognition:
             # ``spawn_failed`` / ``parse_failed`` stop_reason. We
             # deliberately widen to ``BaseException`` so ``KeyboardInterrupt``
             # and ``SystemExit`` also produce a terminal event before
-            # propagating. (``CancelledError`` is handled separately above
-            # so timeouts propagate correctly.)
+            # propagating — see ``_reraise_if_not_an_exception`` past the
+            # final yield, which is the half that actually propagates and was
+            # missing for as long as this comment claimed it. (``CancelledError``
+            # is handled separately above so timeouts propagate correctly.)
             fatal_exc = exc
 
         result = await self._finalise(
@@ -575,6 +613,7 @@ class ClaudeCliCognition:
             # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
             # and TaskGroup cancels propagate to siblings.
             raise asyncio.CancelledError()
+        _reraise_if_not_an_exception(fatal_exc)
 
 
     async def _finalise(
@@ -1115,7 +1154,7 @@ class ClaudeCliSession:
         await sem.acquire()
         try:
             argv = cog._build_argv("", system_prompt="", stream_input=True)
-            self._proc = await asyncio.create_subprocess_exec(
+            self._proc = await (cog.spawn or asyncio.create_subprocess_exec)(
                 *argv,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -1580,6 +1619,7 @@ class ClaudeCliSession:
             yield StreamEvent("final", usage=state.usage, result=result)
             if should_reraise_cancel:
                 raise asyncio.CancelledError()
+            _reraise_if_not_an_exception(fatal_exc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1762,13 +1802,29 @@ def _parse_line(line: bytes) -> dict[str, Any] | None:
     The CLI occasionally emits a blank warmup line or a non-JSON diagnostic;
     those must NOT crash the loop — return ``None`` and let the caller move
     on.
+
+    ``ValueError``, not ``JSONDecodeError``. ``json.loads`` on **bytes** sniffs
+    the encoding first (RFC 4627 / :func:`json.detect_encoding`), so a line
+    opening with ``b"\\xff\\xfe"`` is read as a UTF-16-LE BOM and a line
+    opening with ``b"\\xef\\xbb\\xbf"`` as a UTF-8 one — and when the rest does
+    not decode, what comes back is a ``UnicodeDecodeError``, which is a
+    ``ValueError`` but is NOT a ``JSONDecodeError``. It escaped this function
+    and hit ``drive``'s ``except BaseException``, so ONE undecodable byte on
+    stdout ended the whole run: ``stop_reason="parse_failed"``, no output, and
+    — because the reader never got past that line — the ``result`` payload was
+    never seen, so a completed run reported ``$0.00`` to the budget. Measured.
+    Reachable without anything exotic: ``claude`` is Node, filenames are
+    arbitrary bytes, and a warning naming a latin-1 path is a non-UTF-8
+    diagnostic on stdout, which is exactly the case this docstring already
+    promised to survive. Both exceptions mean the same thing here — "this line
+    is not a JSON object" — and both must be skipped.
     """
     stripped = line.strip()
     if not stripped:
         return None
     try:
         obj = json.loads(stripped)
-    except json.JSONDecodeError:
+    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError
         return None
     if not isinstance(obj, dict):
         return None
@@ -1973,6 +2029,33 @@ def _flatten_tool_result_content(content: Any) -> str:
     return str(content)
 
 
+def _reraise_if_not_an_exception(fatal_exc: BaseException | None) -> None:
+    """Finish the sentence the outer ``except BaseException`` starts.
+
+    That arm widens past ``Exception`` so a ``KeyboardInterrupt`` or a
+    ``SystemExit`` mid-run still produces the terminal event this cognition
+    guarantees — its comment says "before propagating". It did not propagate.
+    Ctrl-C during ``agent.run()`` on a CLI cognition came back as a tidy
+    ``AgentResult(partial=True, stop_reason="failed")`` with
+    ``evals["error"] == "KeyboardInterrupt: "``, the interpreter kept running,
+    and the caller's own ``except KeyboardInterrupt`` never fired. Measured;
+    ``asyncio.CancelledError`` had exactly this bug and was fixed the same way
+    two lines above.
+
+    ``Exception`` is the dividing line and not a hand-written list because it
+    is the same line the language draws: things outside it are not "the
+    operation failed", they are "this program is being taken down" or "a
+    contract has been violated" — ``SystemExit``, ``KeyboardInterrupt``, and
+    ``agentkit.testing.ScriptExhausted``, which is a ``BaseException``
+    precisely so it survives sites like this one. A run's failure modes are all
+    ``Exception``s (``FileNotFoundError`` on a missing binary, ``PermissionError``,
+    a parse bug), so the reported-as-data contract is untouched: every one of
+    them still arrives as a ``final`` event and nothing more.
+    """
+    if fatal_exc is not None and not isinstance(fatal_exc, Exception):
+        raise fatal_exc
+
+
 async def _terminate(proc: asyncio.subprocess.Process, grace_s: float) -> None:
     """Send SIGTERM, wait ``grace_s`` for a clean exit, then SIGKILL if the
     process is still alive. Never raises: this runs from a ``finally`` and
@@ -1992,6 +2075,7 @@ async def _terminate(proc: asyncio.subprocess.Process, grace_s: float) -> None:
 __all__ = [
     "ClaudeCliCognition",
     "ClaudeCliSession",
+    "CliSpawn",
     "InterruptReceipt",
     "PermissionMode",
 ]

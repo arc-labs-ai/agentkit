@@ -29,7 +29,14 @@ from agentkit.memory.base import (
 # error a caller has to catch lived at a deeper import path than the class that
 # raises it — a caller writing ``except CompositeWriteError`` after
 # ``from agentkit.memory import CompositeMemory`` got an ImportError.
-from agentkit.memory.composite import CompositeMemory, CompositeWriteError, SequentialMemory
+from agentkit.memory.composite import (
+    DEDUPE_COUNT_KEY,
+    DEDUPE_SOURCES_KEY,
+    CompositeMemory,
+    CompositeWriteError,
+    DedupeMode,
+    SequentialMemory,
+)
 from agentkit.memory.decorators import CachedMemory, CompactedMemory, ScopedMemory
 from agentkit.memory.file import FileMemory
 from agentkit.memory.grounder import as_grounder
@@ -39,7 +46,14 @@ from agentkit.memory.tool import ToolMemory, default_parse
 from agentkit.memory.vector import VectorMemory
 
 __all__ = [
+    # The two metadata keys a dedupe survivor is stamped with. Named constants
+    # rather than string literals in a doc page: a consumer branching on
+    # "did more than one source agree?" should not have to keep a magic string
+    # in sync with this module by hand.
+    "DEDUPE_COUNT_KEY",
+    "DEDUPE_SOURCES_KEY",
     "CompositeWriteError",
+    "DedupeMode",
     "CachedMemory",
     "CompactedMemory",
     "CompositeMemory",

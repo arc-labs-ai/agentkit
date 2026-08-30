@@ -114,7 +114,7 @@ dependencies' outputs — `{dep_name: output}` — and returns its own
 output, which is threaded onward. Usage from every node is merged into
 one `WorkflowResult.usage`.
 
-Six node kinds:
+Seven node kinds:
 
 | Kind | What runs |
 |---|---|
@@ -122,8 +122,49 @@ Six node kinds:
 | `wf.coordinator(name, agent)` | a coordinator `Agent` — a whole team as one node |
 | `wf.fn(name, f)` | a plain function, `f(inputs)` or `f(inputs, goal)`, sync or async |
 | `wf.tool(name, tool)` | a `Tool`, through the invoker's tool middleware |
+| `wf.map(name, over=, each=)` | one node per element, **sized at runtime** |
 | `wf.human_gate(name)` | suspend, checkpoint, wait for a decision |
 | `wf.subworkflow(name, child)` | another `Workflow`, nested |
+
+### `map` — when you don't know the width until you get there
+
+Every other node kind is authored, so the graph is a fact about your
+source. `map` is the exception: `over=` is handed the outputs so far and
+returns a collection, and one element node runs per item in it.
+
+```python
+wf.fn("plan", make_plan)
+wf.map(
+    "implement",
+    over=lambda done: done["plan"].requirements,   # decided at runtime
+    each=lambda item: agent_for(item),             # one node per element
+    after="plan",
+    bounded_by=4,                                  # an EXTRA cap, see below
+)
+wf.human_gate("review", after="implement")
+```
+
+Three things about it are worth knowing before you rely on it:
+
+**`bounded_by` narrows, it never widens.** Elements take a permit from
+the level's pool *and* from the `bounded_by` cap, so the effective width
+is `min(bounded_by, max_concurrency)`. A `bounded_by` above your
+`max_concurrency` does not buy you more concurrency — it is a second
+bound, not a replacement for the first.
+
+**Resume needs the expansion to be reproducible.** A map records what it
+expanded to, not only what came back, so a resumed run can tell which
+elements finished. If `over=` returns a different collection on the
+second pass, that is a changed graph rather than a resumable one and it
+raises `MapExpansionChanged` instead of silently threading outputs into
+the wrong slots.
+
+**A `best_effort` map's output cannot cross a human gate.** Failed slots
+hold `Failure` objects, and no serialising store can persist those — so
+a gate downstream of a best-effort map will fail to checkpoint.
+
+Elements run one level deeper than the wave they belong to, which costs
+`max_depth`: three levels of nested map exhaust the default budget.
 
 `fn` nodes are how you keep the deterministic parts deterministic. If a
 step is "parse this JSON and pick the highest score", that is a

@@ -12,6 +12,11 @@ What lives under `fakes/`:
 - `FakeLLM`, `FakeClock`, `FakeFetch`, `FakeSearch` — port doubles.
 - `FakeGrounder`, `FakeCompactor` — capability doubles for
   RequestBuilder tests.
+- `FakeClaudeCli` (+ `CliRun`, `CliStderr`, `CliInvocation`) — the one
+  double that is NOT a port double, because the `claude` CLI is not
+  behind a port. It replaces the subprocess, replaying recorded or
+  scripted stream-json so the cognition's own parsing, event mapping
+  and meter charging still run.
 
 Naming convention: `Fake*` is the standard for test doubles. `Null*` /
 `Noop*` are production-grade null-object patterns; they live in their
@@ -19,6 +24,10 @@ respective runtime/kernel modules, NOT here.
 """
 
 from agentkit.testing.fakes import (
+    CliInvocation,
+    CliRun,
+    CliStderr,
+    FakeClaudeCli,
     FakeClock,
     FakeCompactor,
     FakeCtx,
@@ -36,6 +45,10 @@ from agentkit.testing.fakes import (
 from agentkit.testing.make_ctx import make_test_ctx
 
 __all__ = [
+    "CliInvocation",
+    "CliRun",
+    "CliStderr",
+    "FakeClaudeCli",
     "FakeClock",
     "FakeCompactor",
     "FakeCtx",

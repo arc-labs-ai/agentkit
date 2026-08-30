@@ -233,3 +233,60 @@ def test_memory_item_hash_survives_deepcopy_and_pickle() -> None:
     item = MemoryItem("c", "vector", 0.9, {"deep": {"a": [1, {"b": 2}]}})
     assert hash(copy.deepcopy(item)) == hash(item)
     assert hash(pickle.loads(pickle.dumps(item))) == hash(item)
+
+
+# ── id: the record identity, added so CompositeMemory can dedupe ────────────
+
+
+def test_memory_item_id_defaults_to_none_so_every_existing_backend_still_builds() -> None:
+    """``id`` is optional by construction. Six first-party backends and every
+    third-party one build ``MemoryItem`` without it; a required field would
+    have been a breaking change for all of them at once."""
+    assert MemoryItem(content="c", source="s").id is None
+    assert MemoryItem(content="c", source="s", id="r7").id == "r7"
+
+
+def test_memory_item_id_is_keyword_only_so_positional_callers_are_untouched() -> None:
+    """THE point of the field ordering. ``MemoryItem`` is constructed
+    positionally all over this suite as ``MemoryItem(content, source, score,
+    metadata)``. Declaring ``id`` third — where it reads most naturally — would
+    have silently rebound ``0.9`` to ``id`` and ``{"chunk": 1}`` to ``score``:
+    no error, wrong data, on every one of those call sites. ``kw_only`` makes
+    that impossible rather than merely unlikely, which is why it beats "just
+    put it last": last still lets a future field slide in front of it."""
+    item = MemoryItem("c", "vector", 0.9, {"chunk": 1})
+    assert (item.score, item.metadata, item.id) == (0.9, {"chunk": 1}, None)
+    with pytest.raises(TypeError, match="positional"):
+        MemoryItem("c", "vector", 0.9, {"chunk": 1}, "r7")  # type: ignore[misc]
+
+
+def test_memory_item_id_participates_in_equality() -> None:
+    """Two records that name themselves differently are two records. Leaving
+    ``id`` out of ``__eq__`` would make a deduped survivor compare equal to the
+    copy it replaced, which is exactly the confusion the field exists to end."""
+    assert MemoryItem("c", "s", id="r7") == MemoryItem("c", "s", id="r7")
+    assert MemoryItem("c", "s", id="r7") != MemoryItem("c", "s", id="r8")
+    assert MemoryItem("c", "s", id="r7") != MemoryItem("c", "s")
+
+
+def test_memory_item_hash_still_ignores_id_and_stays_sound() -> None:
+    """``id`` is deliberately NOT in the hash. The hash is the RECALL identity
+    a consumer reads — text, who said it, how relevant — and collapsing on a
+    record id needs the keep-the-higher-score / name-both-sources rule that a
+    ``set`` cannot express; that is ``CompositeMemory``'s job, not ``hash``'s.
+    Soundness is unaffected: equal items still share content/source/score, so
+    equal still implies equal hash."""
+    assert hash(MemoryItem("c", "s", 0.5, id="r7")) == hash(MemoryItem("c", "s", 0.5))
+    assert len({MemoryItem("c", "s", 0.5, id="r7"), MemoryItem("c", "s", 0.5, id="r8")}) == 2
+
+
+def test_memory_item_id_survives_replace_deepcopy_and_pickle() -> None:
+    """The field has to cross the same boundaries the rest of the item does —
+    ``CachedMemory`` pickles items, and the decorators rebuild them through
+    ``dataclasses.replace``. An ``id`` that evaporated at any of those hops
+    would turn dedupe off for exactly the wrapped sources most likely to
+    overlap."""
+    item = MemoryItem("c", "vector", 0.9, {"chunk": 1}, id="r7")
+    assert dataclasses.replace(item, score=0.1).id == "r7"
+    assert copy.deepcopy(item).id == "r7"
+    assert pickle.loads(pickle.dumps(item)).id == "r7"

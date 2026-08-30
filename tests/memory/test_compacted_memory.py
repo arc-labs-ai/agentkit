@@ -128,3 +128,15 @@ def test_score_and_metadata_preserved():
     assert out[0].score == 0.42
     assert out[0].metadata == {"url": "u"}
     assert out[0].source == "inner-src"
+
+
+def test_compaction_carries_the_record_id_through():
+    """``CompactedMemory`` rebuilds every item field by field, so a field it
+    forgets is a field that silently disappears behind the wrapper. ``id`` is
+    the one that costs an answer: a compacted source inside a
+    ``CompositeMemory`` would fall back to a content digest, and compaction is
+    exactly what makes two copies of one fact stop matching on content."""
+    inner = _FixedMemory(items=[MemoryItem(content="a long chunk", source="fixed", id="r7", score=0.4)])
+    mem = CompactedMemory(inner=inner, compactor=_ShorteningCompactor(keep=4))
+    out = _run(mem.query("q", k=5, ctx=make_test_ctx()))
+    assert [i.id for i in out] == ["r7"]

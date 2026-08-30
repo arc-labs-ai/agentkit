@@ -444,6 +444,54 @@ raising source verbatim, and the caller would have no signal that
 another source's write **committed**. Postmortems need to know which
 backends did.
 
+#### Deduping the fan-out
+
+Fanning out to several sources means the same fact can come back more
+than once — and that is the *normal* case rather than bad luck, because
+the journal a vector index was built from will happily return the same
+row the index does. Merged blindly, one fact then occupies two of the
+`k` slots the model actually reads.
+
+```python
+CompositeMemory(sources, dedupe="id")        # the default
+CompositeMemory(sources, dedupe="content")   # for backends with no ids
+CompositeMemory(sources, dedupe=None)        # concatenate, chosen rather than inherited
+```
+
+Two items are the same item if they share an `id` **or** their content
+matches once stripped — the two relations are unioned, so a source that
+supplies ids and one that does not can still agree on a fact.
+
+Identity is deliberately strict about what counts as "having one":
+
+- An `id` of `""` is **not** an identity. Admitting it would union every
+  idless-but-not-quite-idless record from two backends into one, and the
+  loser is deleted rather than ranked lower. Backends disagreed about
+  this before it was pinned — `ToolMemory` normalised `""` to `None` and
+  `VectorMemory` passed it through, so the same store deduped
+  differently depending on which adapter the rows arrived through.
+- Content that is **blank once stripped** carries no identity either, so
+  `""`, `"   "` and `"\n\t"` do not collapse onto one another. They can
+  still merge on a shared `id`. Without this a chunk that is whitespace
+  after boilerplate stripping would swallow unrelated records that had
+  perfectly good distinct ids.
+
+On a collision the **higher score** survives, and the merged item is
+stamped with `dedupe_sources` (every backend that agreed) and
+`dedupe_count`. That two independent sources returned the same fact is
+signal a reranker can use, and plain concatenation throws it away.
+
+The stamp is **accumulative across nesting**. A `CompositeMemory` of two
+`SequentialMemory` chains is a valid topology, and an inner composite's
+stamp is absorbed by the outer one — so `dedupe_count` is the true
+number of collapsed copies across the whole tree, and `dedupe_sources`
+names every leaf backend that agreed rather than just the immediate
+children.
+
+Both keys are **transient per-query annotations, not record metadata**.
+`VectorMemory.write` strips them rather than persisting them; a backend
+that round-tripped them would inflate its own count on every pass.
+
 ### The decorators
 
 Each is itself a `MemorySource`, single-responsibility, stackable in

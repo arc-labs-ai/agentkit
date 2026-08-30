@@ -241,6 +241,13 @@ def _synth(ann: Any, depth: int = 0) -> Any:
         return [_synth(first, depth + 1)]
     if low.startswith(("dict", "mapping")):
         return {"k": "v"}
+    if low.startswith("bytes"):
+        # NON-EMPTY, like every container above, and for the same reason: a
+        # `bytes` field defaulting to `b""` would otherwise be skipped by
+        # `_build` and the type would be checked with the payload slot empty.
+        # `CliStderr`/`CliRun` are the ones that caught this — they carry
+        # recorded stdout, which is the only interesting thing about them.
+        return b"x"
     if low.startswith("str"):
         return "x"
     if low.startswith("int"):

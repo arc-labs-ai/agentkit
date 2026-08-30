@@ -38,6 +38,16 @@ class MemoryItem:
     ``content`` is what the agent reads (already-formatted text).
     ``source`` names the backend that produced it (the ``MemorySource.name``)
     so consumers can attribute results and cognitions can format citations.
+    ``id`` is the backend's own identifier for the RECORD — a vector store's
+    chunk id, a journal row key. Stable within a source; not assumed
+    comparable across sources unless the caller knows they share a keyspace
+    (which is the usual case here, because the journal is normally what the
+    vector store was built from). It exists so ``CompositeMemory`` can tell
+    that two sources returned the SAME fact rather than two facts: without it
+    the merge was pure concatenation, a reranker scored both copies, and the
+    top-k the model saw was one fact occupying two slots. ``None`` is the
+    honest answer for a backend that has no stable key (a tool-wrapped search,
+    a scratchpad), and dedupe falls back to a content digest for those.
     ``score`` is the backend's relevance signal (cosine similarity for
     vector search, recency for journal, etc.); ``None`` when the backend
     doesn't rank.
@@ -46,10 +56,20 @@ class MemoryItem:
     FROZEN at construction (see ``__post_init__``) — still a ``dict`` for
     every consumer, but a backend that wants to annotate an item builds a new
     one: ``dataclasses.replace(item, metadata={**item.metadata, "path": p})``.
+
+    ``id`` is KEYWORD-ONLY, and that is load-bearing rather than stylistic.
+    This type is constructed positionally in tens of places
+    (``MemoryItem("c", "vector", 0.91, meta)``), so declaring ``id`` third —
+    where it reads most naturally, next to ``source`` — would have rebound
+    ``0.91`` to ``id`` and ``meta`` to ``score`` at every one of them: no
+    error, wrong data, silently. Appending it after ``metadata`` would have
+    fixed today and left the same trap for the next field; ``kw_only`` closes
+    it permanently and lets the declaration keep the order a reader wants.
     """
 
     content: str
     source: str
+    id: str | None = field(default=None, kw_only=True)
     score: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -128,8 +148,18 @@ class MemoryItem:
         ``str`` of unbounded length but CPython caches a string's hash on the
         object, so a long passage is walked at most once.
 
-        Sound rather than a workaround: ``__eq__`` still compares ``metadata``,
-        and the hash invariant only requires EQUAL objects to hash equally,
+        ``id`` is deliberately absent too, for a different reason than
+        ``metadata``: it is hashable, it is just not what this hash is FOR.
+        Collapsing two records that share an ``id`` is not a set operation —
+        the survivor has to keep the higher ``score`` and record which sources
+        agreed, and a ``set`` can express neither. That merge belongs to
+        ``CompositeMemory`` (see its ``dedupe`` mode), and putting ``id`` in
+        the hash would only make two copies of one fact land in different
+        buckets, which is the opposite of what a caller reaching for
+        ``set(items)`` wants.
+
+        Sound rather than a workaround: ``__eq__`` still compares ``metadata``
+        and ``id``, and the hash invariant only requires EQUAL objects to hash equally,
         never that unequal ones differ. Two items with identical text from the
         same source but different chunk ids collide into one bucket and
         ``__eq__`` separates them there — so a ``set`` still keeps both, which

@@ -104,9 +104,36 @@ def _item_from_dict(entry: dict[str, Any]) -> MemoryItem:
     return MemoryItem(
         content=str(content),
         source="tool",
+        id=_coerce_id(entry.get("id")),
         score=float(score) if isinstance(score, (int, float)) else None,
         metadata=dict(metadata) if metadata else {},
     )
+
+
+def _coerce_id(raw: Any) -> str | None:
+    """Lift a search result's own record id onto ``MemoryItem.id``.
+
+    ``{"content": ..., "id": ...}`` is the shape most search APIs return, and
+    before this the id only ever reached ``metadata`` — where the fan-out
+    dedupe cannot see it, so a tool-wrapped source over the same corpus as a
+    vector store had to fall back to comparing snippet text that two APIs never
+    render identically.
+
+    ``read`` from ``entry`` rather than the popped ``data`` on purpose: the id
+    stays in ``metadata`` too, because callers already ``where``-filter on it
+    and ``VectorMemory.write`` reads ``metadata["id"]`` as its chunk key.
+
+    Ints are coerced (a store that numbers its rows is routine, and dropping
+    those would disable dedupe for all of them); anything structured is NOT.
+    ``str({"a": 1})`` is a key whose text depends on dict insertion order, so
+    it would dedupe by accident today and stop deduping after an unrelated
+    serialisation change — a silent, untraceable behaviour drift.
+    """
+    if isinstance(raw, str):
+        return raw or None
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return str(raw)
+    return None
 
 
 @dataclass(slots=True)
@@ -160,6 +187,13 @@ class ToolMemory:
             MemoryItem(
                 content=item.content,
                 source=self.name,
+                # The rebuild exists only to overwrite ``source``; every other
+                # field has to survive it. ``id`` is the one that costs an
+                # answer if it doesn't — a parser that lifted the upstream
+                # API's record id would have had it silently erased by the
+                # attribution pass, and the fan-out dedupe would then fall back
+                # to comparing snippet text that two APIs never render alike.
+                id=item.id,
                 score=item.score,
                 metadata=item.metadata,
             )

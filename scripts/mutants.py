@@ -159,6 +159,13 @@ CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
 CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
 CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
 CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
+FAKE_CLI_TESTS = ("tests/testing/test_fake_claude_cli.py",)
+MEM_DEDUPE_TESTS = (
+    "tests/memory/test_composite_memory_dedupe.py",
+    "tests/memory/test_memory_item.py",
+)
+MEM_VECTOR_TESTS = ("tests/memory/test_vector_memory.py",)
+WORKFLOW_MAP_TESTS = ("tests/agents/test_workflow_map.py",)
 FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
     "tests/tools/test_tool_call_contract.py",
@@ -1076,6 +1083,81 @@ MUTANTS: tuple[Mutant, ...] = (
         before='    "interrupted": "terminated",',
         after='    "interrupted": "failed",',
         tests=("tests/agents/test_stop_reason_taxonomy.py",),
+    ),
+    # ── the offline CLI double, and the two bugs it surfaced ────────────────
+    Mutant(
+        tag="fakecli",
+        why="Ctrl-C during a CLI run is swallowed into a tidy successful-looking "
+        "terminal event instead of propagating — which also hides a test double's "
+        "ScriptExhausted, the one exception that must never be caught",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="    if fatal_exc is not None and not isinstance(fatal_exc, Exception):",
+        after="    if fatal_exc is not None and isinstance(fatal_exc, Exception):",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="the SESSION half of the re-raise is a separate line in a separate method; "
+        "deleting it leaves Ctrl-C during a session turn swallowed, and exactly one "
+        "test in the suite notices",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="""            yield StreamEvent("final", usage=state.usage, result=result)
+            if should_reraise_cancel:
+                raise asyncio.CancelledError()
+            _reraise_if_not_an_exception(fatal_exc)""",
+        after="""            yield StreamEvent("final", usage=state.usage, result=result)
+            if should_reraise_cancel:
+                raise asyncio.CancelledError()""",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="json.loads on bytes sniffs a BOM, so a non-UTF-8 diagnostic line raises "
+        "UnicodeDecodeError rather than JSONDecodeError; narrowing the catch lets one "
+        "bad byte abort the run and bill the completed work at $0.00",
+        path="agentkit/agents/cognition/claude_cli.py",
+        before="    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError",
+        after="    except json.JSONDecodeError:",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="a replayed process that reports its exit code before wait() makes every "
+        "persistent session look dead from turn two",
+        path="agentkit/testing/fakes/claude_cli.py",
+        before="        return self._invocation.returncode\n\n    async def wait(self) -> int:",
+        after="        return self._run.returncode\n\n    async def wait(self) -> int:",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="dropping the newline-less fragment at EOF silently loses a recording's "
+        "final result payload — cost, usage and session id vanish while the run still "
+        "reports partial=False",
+        path="agentkit/testing/fakes/claude_cli.py",
+        before="            yield blob[start:]\n            return",
+        after="            return",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="sorting the queued stderr chunks as whole tuples lets a tie on the stdout "
+        "position fall through to comparing BYTES, so a multi-write traceback is "
+        "reassembled in alphabetical order",
+        path="agentkit/testing/fakes/claude_cli.py",
+        before="sorted(run.interleaved_stderr, key=lambda pair: pair[0])",
+        after="sorted(run.interleaved_stderr)",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="a double whose terminate() does not stop the child still reports "
+        "stop_reason='cancelled', because cancellation outranks the exit code — so a "
+        "leaked subprocess is invisible from the result alone",
+        path="agentkit/testing/fakes/claude_cli.py",
+        before="        self._invocation.terminated = True",
+        after="        self._invocation.terminated = False",
+        tests=FAKE_CLI_TESTS,
     ),
     Mutant(
         tag="cliinterrupt",
@@ -2656,6 +2738,155 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        for name in self._order:",
         after="        for name in self._order[:1]:",
         tests=WF_TESTS,
+    ),
+    Mutant(
+        tag="memdedupe",
+        why=(
+            'Restores `item.id is not None`, so an id of "" is admitted as a real shared identity again and every '
+            'id-less-but-not-None record in the pool collapses into one group. Killed by '
+            'test_an_empty_string_id_is_treated_as_no_id_at_all.'
+        ),
+        path="agentkit/memory/composite.py",
+        before="        if mode == \"id\" and item.id:",
+        after="        if mode == \"id\" and item.id is not None:",
+        tests=MEM_DEDUPE_TESTS,
+    ),
+    Mutant(
+        tag="memdedupe",
+        why=(
+            'Removes the blank-content guard so `""`, `"   "` and `"\\n\\t"` share '
+            'one digest again and chain unrelated '
+            'records together across BOTH dedupe modes. Killed by '
+            'test_blank_content_is_not_evidence_that_two_records_are_the_same_fact.'
+        ),
+        path="agentkit/memory/composite.py",
+        before="    stripped = content.strip()\n    if not stripped:\n        return None\n    return hashlib.sha256(stripped.encode(\"utf-8\")).hexdigest()",
+        after="    stripped = content.strip()\n    return hashlib.sha256(stripped.encode(\"utf-8\")).hexdigest()",
+        tests=MEM_DEDUPE_TESTS,
+    ),
+    Mutant(
+        tag="memdedupe",
+        why=(
+            "Rebuilds the stamp from each member's own `source`/count of 1 instead of absorbing a prior stamp, "
+            're-breaking nested composites (dedupe_sources drops the inner sources, dedupe_count under-reports). '
+            'Killed by 2 tests: the nested-composite and stamp-absorption tests.'
+        ),
+        path="agentkit/memory/composite.py",
+        before="            agreed.extend(_prior_sources(m))\n            collapsed += _prior_count(m)",
+        after="            agreed.append(m.source)\n            collapsed += 1",
+        tests=MEM_DEDUPE_TESTS,
+    ),
+    Mutant(
+        tag="memdedupe",
+        why=(
+            'Drops the type guard on an absorbed count, so a backend that round-tripped a string `dedupe_count` '
+            'through storage propagates a str into an int accumulation and raises inside the query path. Killed by '
+            'test_a_corrupt_stamp_from_a_backend_does_not_crash_the_merge.'
+        ),
+        path="agentkit/memory/composite.py",
+        before="    if isinstance(prior, int) and not isinstance(prior, bool) and prior >= 1:\n        return prior",
+        after="    if prior is not None:\n        return prior  # type: ignore[no-any-return]",
+        tests=MEM_DEDUPE_TESTS,
+    ),
+    Mutant(
+        tag="memdedupe",
+        why=(
+            "Trusts a foreign source's id as a key into this store's keyspace again — the destructive regression: a "
+            'broadcast write of a journal item with row key "3" upserts over vector chunk "3". Killed by '
+            'test_a_foreign_sources_id_never_addresses_this_stores_keyspace.'
+        ),
+        path="agentkit/memory/vector.py",
+        before="            own_id = item.id if item.source == self.name else None",
+        after="            own_id = item.id",
+        tests=MEM_VECTOR_TESTS,
+    ),
+    Mutant(
+        tag="memdedupe",
+        why=(
+            'Stops stripping the transient dedupe stamp before upsert, so per-query fan-out bookkeeping is persisted '
+            'as durable record metadata and (given the absorb fix) inflates its own count on every round trip. Killed '
+            'by test_the_dedupe_stamp_is_not_persisted_as_record_metadata.'
+        ),
+        path="agentkit/memory/vector.py",
+        before="            for transient in (DEDUPE_SOURCES_KEY, DEDUPE_COUNT_KEY):\n                metadata.pop(transient, None)",
+        after="",
+        tests=MEM_VECTOR_TESTS,
+    ),
+    Mutant(
+        tag="workflowmap",
+        why=(
+            'bounded_by stops being an EXTRA bound and becomes a REPLACEMENT for the tree semaphore, so a '
+            "`bounded_by=100` map blows the run's `max_concurrency` entirely. SURVIVED all 29 original tests (the "
+            'shipped bounded_by test uses width 2 under the default max_concurrency=8, where both behave '
+            'identically). Now killed by test_map_bounded_by_does_not_escape_the_level_semaphore.'
+        ),
+        path="agentkit/agents/workflow.py",
+        before="                if width_sem is not None:\n                    async with level_sem:\n                        return await _work(index, item, slot)\n                return await _work(index, item, slot)",
+        after="                return await _work(index, item, slot)",
+        tests=WORKFLOW_MAP_TESTS,
+    ),
+    Mutant(
+        tag="workflowmap",
+        why=(
+            'the identity is truncated WITHOUT the disambiguating digest, so two items sharing a 120-char prefix '
+            'collapse onto one identity and a swapped re-expansion resumes silently against mis-threaded element '
+            'slots instead of raising MapExpansionChanged. SURVIVED all 29 original tests despite the source comment '
+            'claiming this exact risk. Now killed by test_map_long_identities_are_capped_but_stay_distinguishable.'
+        ),
+        path="agentkit/agents/workflow.py",
+        before="    return f\"{s[:_IDENTITY_MAX]}\u2026#{hashlib.sha256(s.encode('utf-8', 'replace')).hexdigest()[:12]}\"",
+        after="    return s[:_IDENTITY_MAX]",
+        tests=WORKFLOW_MAP_TESTS,
+    ),
+    Mutant(
+        tag="workflowmap",
+        why=(
+            "a failing checkpointer's exception replaces the element failure the caller needs to see, so "
+            "`RuntimeError('c is flaky')` is reported to the operator as `OSError('disk full')`. SURVIVED all 29 "
+            'original tests — no test had a store that fails. Now killed by '
+            'test_map_checkpointer_failure_does_not_replace_the_element_failure.'
+        ),
+        path="agentkit/agents/workflow.py",
+        before="            with contextlib.suppress(Exception):",
+        after="            if True:",
+        tests=WORKFLOW_MAP_TESTS,
+    ),
+    Mutant(
+        tag="workflowmap",
+        why=(
+            "the author's `prompt=` is dropped and every runnable element gets the default task instead — a run that "
+            'used a prompt nobody wrote and reported success. SURVIVED all 29 original tests: `prompt` appeared zero '
+            'times in the test file. Now killed by test_map_prompt_builds_the_task_for_a_runnable_element.'
+        ),
+        path="agentkit/agents/workflow.py",
+        before="                    p = (\n                        prompt(item, goal)\n                        if prompt is not None\n                        else _default_prompt({\"item\": item}, goal)\n                    )",
+        after="                    p = _default_prompt({\"item\": item}, goal)",
+        tests=WORKFLOW_MAP_TESTS,
+    ),
+    Mutant(
+        tag="workflowmap",
+        why=(
+            'the identity cap is removed, so a 500-element map over fat payloads writes every payload in full into '
+            'the expansion record and therefore into EVERY checkpoint the run takes. SURVIVED all 29 original tests. '
+            'Now killed by test_map_long_identities_are_capped_but_stay_distinguishable.'
+        ),
+        path="agentkit/agents/workflow.py",
+        before="_IDENTITY_MAX = 120",
+        after="_IDENTITY_MAX = 10**9",
+        tests=WORKFLOW_MAP_TESTS,
+    ),
+    Mutant(
+        tag="workflowmap",
+        why=(
+            'a `prompt=` the framework cannot deliver is silently dropped instead of refused, so a map whose `each` '
+            'returns plain data runs with the prompt never invoked and completes green. This is the mutant that '
+            'reproduces the ORIGINAL shipped behaviour, which I changed. Killed by '
+            'test_map_prompt_with_a_non_runnable_element_is_refused_not_dropped.'
+        ),
+        path="agentkit/agents/workflow.py",
+        before="                if prompt is not None and not callable(runner):",
+        after="                if False:",
+        tests=WORKFLOW_MAP_TESTS,
     ),
 )
 

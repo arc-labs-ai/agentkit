@@ -162,6 +162,14 @@ class CompactedMemory:
                 MemoryItem(
                     content=text or item.content,
                     source=item.source,
+                    # Carried through even though ``content`` changed: ``id``
+                    # names the RECORD, and a summary of a chunk is still that
+                    # chunk. Dropping it here would be worst exactly where it
+                    # matters — compaction is what makes two copies of one fact
+                    # stop matching on text, so a compacted source inside a
+                    # ``CompositeMemory`` would lose its only remaining way to
+                    # be recognised as a duplicate.
+                    id=item.id,
                     score=item.score,
                     metadata=item.metadata,
                 )

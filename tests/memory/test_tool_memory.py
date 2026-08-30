@@ -181,3 +181,45 @@ def test_result_cap_at_k():
     ctx = make_test_ctx()
     items = _run(mem.query("q", k=3, ctx=ctx))
     assert len(items) == 3
+
+
+def test_tool_memory_keeps_the_record_id_a_custom_parser_set():
+    """``ToolMemory.query`` re-stamps ``source`` by rebuilding each item, which
+    means every field the rebuild omits is dropped. A parser that lifts the
+    upstream API's record id — the whole reason a search tool is worth deduping
+    against a vector store holding the same corpus — must not have it thrown
+    away by the attribution pass."""
+
+    def search(query: str, limit: int = 5) -> list[dict]:
+        """Toy search returning documents that carry their own stable ids."""
+        del query, limit
+        return [{"content": "doc one", "id": "r7"}]
+
+    def parse(result, query):
+        del query
+        return [MemoryItem(content=r["content"], source="unstamped", id=r["id"]) for r in result]
+
+    mem = ToolMemory(tool=_make_tool(search), name="web", result_to_items=parse)
+    items = _run(mem.query("q", k=3, ctx=make_test_ctx()))
+    assert [(i.source, i.id) for i in items] == [("web", "r7")]
+
+
+def test_default_parse_lifts_an_id_out_of_a_result_dict():
+    """A search API returning ``{"content": ..., "id": ...}`` is the common
+    shape, and an ``id`` that lands in metadata instead of on the field is an
+    ``id`` the default fan-out dedupe never sees. It stays in metadata TOO,
+    because callers already ``where``-filter and read it from there."""
+    items = default_parse([{"content": "doc one", "id": "r7", "url": "u"}], "q")
+    assert [i.id for i in items] == ["r7"]
+    assert items[0].metadata["id"] == "r7"
+    assert items[0].metadata["url"] == "u"
+
+
+def test_default_parse_coerces_a_numeric_id_but_refuses_a_structured_one():
+    """Ids arrive from JSON, so an integer id is routine — dropping it would
+    disable dedupe for every store that numbers its rows. A structured id (a
+    dict, a list) is NOT stringified: ``str({"a": 1})`` is a key that depends
+    on dict ordering, so it would dedupe by accident and stop deduping after an
+    unrelated serialisation change."""
+    assert default_parse([{"content": "c", "id": 42}], "q")[0].id == "42"
+    assert default_parse([{"content": "c", "id": {"a": 1}}], "q")[0].id is None
