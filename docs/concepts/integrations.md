@@ -456,6 +456,9 @@ async def main() -> None:
                 res = await client.call_tool("approve", args)
                 print(f"  {args['tool_name']:6} -> {res.content[0].text}")
         print("prompts_seen:", approvals.prompts_seen)
+        for d in approvals.decisions:
+            print(f"  {d.tool:6} allowed={d.allowed!s:5} "
+                  f"source={d.source:10} asked={d.asked}")
 
 
 asyncio.run(main())
@@ -463,13 +466,48 @@ asyncio.run(main())
 
 ```text
 tool_name:  mcp__agentkit_approvals__approve
-cli_kwargs: {'mcp_config': ('{"mcpServers": {"agentkit_approvals": {"type": "http", "url": "http://127.0.0.1:64619/mcp"}}}',), 'strict_mcp_config': True, 'permission_prompt_tool': 'mcp__agentkit_approvals__approve'}
+cli_kwargs: {'mcp_config': ('{"mcpServers": {"agentkit_approvals": {"type": "http", "url": "http://127.0.0.1:65162/mcp", "headers": {"Authorization": "Bearer <43-char token>"}}}}',), 'strict_mcp_config': True, 'permission_prompt_tool': 'mcp__agentkit_approvals__approve'}
 tools:      ['approve']
   Read   -> {"behavior": "allow", "updatedInput": {"file_path": "/etc/passwd"}}
   Write  -> {"behavior": "deny", "message": "/etc is out of scope"}
   Write  -> {"behavior": "allow", "updatedInput": {"file_path": "out.txt"}}
 prompts_seen: 3
+  Read   allowed=True  source=auto_allow asked=False
+  Write  allowed=False source=asker      asked=True
+  Write  allowed=True  source=asker      asked=True
 ```
+
+Those last three lines are the point of `decisions`, and they are the
+reason a count could not do the job. The `Read` was allowed because it
+was on `auto_allow` — nobody was consulted, `asked=False`. The two
+`Write`s reached the reviewer. `prompts_seen` is `3` for all of them
+and says which is which about none of them.
+
+`source` is a closed set for the same reason:
+
+| `source` | what happened |
+|---|---|
+| `asker` | a person was consulted and answered |
+| `auto_allow` | the tool was pre-approved; no `Asker` was invoked |
+| `autonomy` | the run's tier did not gate this call |
+| `timeout` | nobody answered in time — denied, and **not** a refusal |
+| `error` | the `Asker` raised; denied, and **not** a policy decision |
+
+The two that matter most are the ones a boolean collapses. *Allowed
+because a person said so* and *allowed because the tier does not gate*
+are the facts an auditor most needs apart. And a `timeout` that degraded
+to a deny must not read afterwards as a human who said no.
+
+`asked` is separate from `source == "asker"` on purpose: a prompt can
+reach a human and then expire. Whether somebody was interrupted is a
+fact about what the run cost a person, and it is not recoverable from
+the verdict.
+
+Every decision is also emitted on `ctx.emit` as `gate.check` as it
+happens, best-effort — the in-memory append comes first, because a
+refusal that happened matters more than a record of it that did not.
+`arguments` is held on the record but deliberately kept off the
+broadcast.
 
 The port is ephemeral — `ApprovalServer` asks the OS for a free loopback
 port at `start()`, so you will see a different one. Picking a fixed port
@@ -1196,13 +1234,21 @@ repair a call it has been lied to about.
 - **One session per context.** Servers that keep per-session state (open
   file handles, a DB transaction) lose it if you split calls across
   independent `MCPClient` contexts.
-- **Both servers bind loopback with no authentication.** Anything able
-  to reach `ApprovalServer`'s port can answer permission prompts on the
-  agent's behalf; anything able to reach a `serve_registry` port can
-  *run your tools*, `requires_approval` ones included — that flag is a
-  declaration the CLI reads, not a check the server performs.
-  Loopback-only *is* the containment; do not give `host=` a routable
-  address.
+- **Both servers require a generated bearer token, and the token is
+  the fence rather than loopback.** Without it, anything able to reach
+  `ApprovalServer`'s port could answer permission prompts on the
+  agent's behalf, and anything able to reach a `serve_registry` port
+  could *run your tools*, `requires_approval` ones included — that flag
+  is a declaration the CLI reads, not a check the server performs. The
+  credential is checked on HTTP requests and every other ASGI scope is
+  refused outright. Still do not give `host=` a routable address:
+  the token narrows who can call, not who can reach.
+- **`ApprovalDecision.reason` is unredacted text from outside this
+  library** — a reviewer's free-text note, or the message of an
+  exception raised by your own `Asker` — and unlike `arguments` it IS
+  broadcast on `ctx.emit`. Plan retention for it. Nothing here redacts
+  anything, deliberately: a library that half-redacted would hand you
+  an audit trail nobody can trust to be complete.
 - **`serve_registry(timeout_s=None)` is the default, and it means
   forever.** A tool that never returns parks the CLI turn with no
   signal anywhere: the CLI waits on the MCP call, agentkit waits on the

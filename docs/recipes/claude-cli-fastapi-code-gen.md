@@ -352,8 +352,15 @@ place — same behaviour agentkit's own tool loop gets from the same protocol.
 - **It fails closed.** A broken transport, a timeout, an unexpected decision —
   all deny, with the reason attached. An approval gate that fails open is not
   a gate.
-- **The server binds loopback on an ephemeral port with no authentication.**
-  Loopback-only is the containment; do not bind it to a routable address.
+- **The server binds loopback and requires a generated bearer token.**
+  `cli_kwargs()` carries it, so nothing here assembles a header by hand. The
+  token matters most in exactly this deployment: the point of the CLI is that
+  it runs `Bash`, and a build step, a package install or a script from the
+  repository the agent was pointed at all execute in the same network namespace
+  as the server holding the agent's approvals. Loopback alone assumes nothing
+  untrusted shares the host, which is the assumption this worker exists to
+  break. The credential is checked on HTTP requests and every other ASGI scope
+  is refused outright. `auth="none"` restores the old behaviour by name.
 
 ## Running it as a service
 

@@ -100,8 +100,23 @@ branch table can be exhaustively type-checked:
 | `error` | the run failed |
 | `interrupt` | the run is waiting on a human |
 | `signal.emitted` | a `SignalChannel` published to a peer |
-| `gate.check` | an autonomy gate was evaluated |
+| `gate.check` | an autonomy gate was evaluated — see the note below, the payload is not one shape |
 | `memory.written` | a memory decorator wrote |
+
+!!! note "`gate.check` has three producers and two payload shapes"
+
+    `ReActCognition` and `elicit()` emit it with three keys.
+    `ApprovalServer` emits it with six — `tool`, `allowed`, `reason`,
+    `source`, `asked` and `at` — because a CLI permission prompt is
+    answered somewhere agentkit cannot see, so the record has to carry
+    who decided and whether a person was reached.
+
+    A consumer writing a typed handler off the table above will
+    otherwise assume one shape and lose fields on the producer that has
+    the most to say. Note also that `arguments` is deliberately absent
+    from the broadcast even though `ApprovalDecision` holds it: the
+    stream is the wrong place for a payload that may carry a secret.
+    Read it off `approvals.decisions` instead.
 
 `result` and `error` are `CRITICAL_KINDS`. Together with `interrupt`
 they are never silenced, delayed, or dropped by any cadence wrapper in
