@@ -294,10 +294,15 @@ frozen: this payload belongs to a frozen value and cannot be mutated in place. B
 {'path': '/a', 'chunk': 3} | still hashable: True
 ```
 
-Four fields: `content` (already-formatted text the agent reads),
-`source` (which backend produced it), `score` (the backend's relevance
-signal, `None` when it does not rank), `metadata` (backend-specific
-extras — chunk id, path, timestamp).
+Five fields: `content` (already-formatted text the agent reads),
+`source` (which backend produced it), `id` (stable within that source,
+`None` when the backend cannot supply one — see *Deduping the fan-out*
+below), `score` (the backend's relevance signal, `None` when it does not
+rank), `metadata` (backend-specific extras — chunk id, path, timestamp).
+
+`id` is keyword-only, deliberately: it landed after the other four and a
+positional insertion would have silently reassigned every existing
+`MemoryItem(content, source, score)` call site.
 
 Two things about it are not obvious and both were bugs first.
 

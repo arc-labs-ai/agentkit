@@ -220,10 +220,15 @@ So there is a typed seam beside the callable one:
 ```python
 RequestBuilder(
     grounding=source,                                             # -> Sequence[MemoryItem]
-    render=lambda items: "\n\n".join(i.content for i in items),   # the default
+    render=render_grounding,                                      # the default
     admit=lambda item: item.metadata.get("tier") != "inferred",   # optional veto
 )
 ```
+
+The default `render_grounding` emits one `[source] content` line per
+item, so provenance reaches the model rather than stopping at your
+code — which is the point of the seam, and the reason the default is not
+a plain join.
 
 Three things follow, each worth having alone. The **items are inspectable
 before rendering**, so an application can refuse one. The **rendering is

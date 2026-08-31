@@ -97,6 +97,12 @@ The map from "what I want to do" to "which primitive fills that slot".
 Every row is a slot in the same composition — the right-hand column is
 how you fill it, not what agentkit forces on you.
 
+It is five short tables rather than one long one. A single list of
+twenty rows is a list nobody reads past the eighth, and the row you
+needed is always further down than that.
+
+### Decide the next step
+
 | You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
 |---------------------------------------------------------------|-------------------------------------------------------------|
 | Wire one LLM call with retry / cost / trace on top            | `Chat` (from `claude()` / `openai()` / `deepseek()` / `openrouter()`) |
@@ -104,12 +110,48 @@ how you fill it, not what agentkit forces on you.
 | Delegate the whole loop to a local `claude` CLI               | `Agent` + `ClaudeCliCognition`                              |
 | Orchestrate many child agents                                 | `Agent` + `CoordinatorCognition`                            |
 | A fixed multi-step pipeline (author writes the plan)          | `Workflow`                                                  |
+| One pipeline step whose width you only learn at runtime       | `Workflow.map(name, over=..., each=...)`                    |
 | Package prompt + cognition + tools + memory as one unit       | `Skill` (`.as_agent()` / `.as_tool()`)                      |
-| Consume an MCP server's tools                                 | `MCPClient` + `mcp_tools()`                                 |
+
+### Keep the run inside its limits
+
+| You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
+|---------------------------------------------------------------|-------------------------------------------------------------|
 | Pause a tool for human approval                               | `Autonomy.GATED` on the `RunContext` + `Suspended` / `Agent.resume()` |
 | Cap what the run can spend                                    | `Budget(max_cost_usd=...)` / `Quota(max_rpm=..., max_usd=...)` |
 | Survive a worker crash                                        | `Checkpointer(port=...)`                                    |
+| Stop retrying a step that keeps failing the same way          | `attempt_until_stuck(fn, fingerprint=...)` → `Stuck`        |
 | Add a cross-cutting concern (tracing, retry, guardrail)       | Middleware in the `chain([...])` on the `Invoker`           |
+
+### Reach outside the process
+
+| You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
+|---------------------------------------------------------------|-------------------------------------------------------------|
+| Consume an MCP server's tools                                 | `MCPClient` + `mcp_tools()`                                 |
+| Let the `claude` CLI call the tools you already wrote         | `serve_registry(registry, name=..., ctx=...)` → `spec.cli_kwargs()` |
+| Send the CLI's permission prompts to your reviewer, and keep what they decided | `ApprovalServer(asker=...)` → `.cli_kwargs()` / `.decisions` |
+| Make your tool middleware reach the CLI's own `Write` / `Bash` | `hook_settings(middleware=..., ctx=..., tools=...)`         |
+
+### Give it something to know
+
+| You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
+|---------------------------------------------------------------|-------------------------------------------------------------|
+| Ground an answer in retrieved facts                           | A `MemorySource` (`VectorMemory` / `FileMemory` / …) + `as_grounder()` |
+| Ask several sources at once without reading one fact twice    | `CompositeMemory(sources, dedupe="id")`                     |
+
+### Prove it works without spending
+
+| You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
+|---------------------------------------------------------------|-------------------------------------------------------------|
+| Unit-test an agent end to end with no API key                 | `agentkit.testing` — `FakeLLM` + `make_test_ctx(...)`       |
+| Do the same for the `claude` CLI path, offline and free       | `FakeClaudeCli.script([...])` + `ClaudeCliCognition(spawn=...)` |
+
+Three rows in "reach outside the process" are one story. The CLI owns
+its loop, so anything you want it to respect — your tools, your
+reviewer, your guardrails — has to reach it as configuration before it
+starts. [The Claude CLI](concepts/claude-cli.md) walks those seams;
+[Integrations](concepts/integrations.md) has the two MCP servers in
+full.
 
 ## The run in one picture
 
@@ -126,10 +168,21 @@ flowchart TB
     F[RunContext] -.->|budget · cancel · autonomy| B
     F -.->|budget · cancel · autonomy| C
     F -.->|budget · cancel · autonomy| D
+    B -.->|ClaudeCliCognition — around the chain| G[claude CLI subprocess]
 ```
 
-Nothing in the picture is optional. Nothing in the picture is a class
-you can't rewrite.
+Nothing on the solid path is optional. Nothing on it is a class you
+can't rewrite.
+
+The dashed edge on the right is the one exception, and it is worth
+knowing before you take it. `ClaudeCliCognition` hands the loop to a
+subprocess, so when the CLI runs one of its *own* tools — `Write`,
+`Bash`, `WebFetch` — the call never walks your `Invoker`. Budget
+charging is patched onto that path by hand; nothing else in the chain
+is, so an `egress` guard you wired and documented does not run. The
+cognition warns and names the middlewares that stopped applying, and
+[The Claude CLI](concepts/claude-cli.md) covers the three ways to close
+the gap — including `hook_settings`, which makes the chain apply again.
 
 ## What agentkit deliberately does not do
 
@@ -149,7 +202,7 @@ know what it refuses.
   budgets and checkpointing cost you ceremony up front and only repay
   it when the code has to keep running under real load.
 
-[Why agentkit](why.md) makes the positive case in full: twelve concrete
+[Why agentkit](why.md) makes the positive case in full: sixteen concrete
 guarantees and a side-by-side against the alternatives.
 
 ## Where to go next
@@ -203,6 +256,17 @@ guarantees and a side-by-side against the alternatives.
     local `claude` CLI.
 
     [:octicons-arrow-right-24: Browse the recipes](recipes/index.md)
+
+-   __The Claude CLI__
+
+    ---
+
+    The one loop your code does not own. What `ClaudeCliCognition`
+    gives away, which of your middlewares stop applying when it does,
+    and the five seams — MCP tools, approvals, hooks, sub-agents, a
+    test double — that reach back into it.
+
+    [:octicons-arrow-right-24: Delegate to the CLI safely](concepts/claude-cli.md)
 
 -   __Worked scenarios__
 

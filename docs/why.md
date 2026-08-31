@@ -1,7 +1,7 @@
 # Why agentkit
 
 Every agent framework makes a bet. This page states agentkit's bet plainly,
-lists the twelve concrete guarantees you get if you take it, and compares
+lists the sixteen concrete guarantees you get if you take it, and compares
 the bet against the alternatives so you can pick the tool whose bet
 matches the code you're actually about to write.
 
@@ -71,7 +71,7 @@ slot in a composition; the composition is what agentkit is about.
 
 ## What you get
 
-Twelve concrete guarantees, each a capability the framework hands you and
+Sixteen concrete guarantees, each a capability the framework hands you and
 competitors mostly don't.
 
 ### 1. A run has an explicit ceiling that halts it, not a dashboard that warns you
@@ -190,16 +190,121 @@ for grounding. `mcp_prompts(client)` returns
 `dict[str, Prompt]` for server-authored versioned prompts. One
 network to consume every MCP server ever written.
 
+The wire runs both ways. `serve_registry(registry, name=..., ctx=...)`
+publishes a `ToolRegistry` you already have as an MCP server, and
+`ToolSchema.parameters` goes out as `inputSchema` **unchanged** — no
+translation step, because a translation step is a second description of
+one thing and second descriptions drift into a model being shown a
+schema the tool does not validate against.
+
 ### 12. A first-class testing kit that avoids double-implementation
 
 `FakeLLM`, `FakeFetch`, `FakeSearch`, `FakeMemory`, `FakeTool`,
-`FakeCompactor`, `FakeGrounder`, `FakeClock`, `RecordingTracer`,
+`FakeCompactor`, `FakeGrounder`, `FakeClock`, `FakeClaudeCli`,
+`RecordingTracer`,
 `FakeCtx`, and `make_test_ctx(...)` — the same doubles the framework's
 own suite uses. Zero API keys required to unit-test your agents end
 to end. Test doubles live under `agentkit.testing.*` and are
 **deliberately** not re-exported from the top-level package: a
 `from agentkit import FakeLLM` shape would let production code accidentally
 pin a test double. The boundary is enforced.
+
+### 13. Delegating the loop to the Claude CLI no longer delegates the controls
+
+`ClaudeCliCognition` gives the whole loop to a subprocess, and the
+subprocess does not walk your `Invoker`. So a service that wired
+`egress`, `audit` and `guard`, then reached for the CLI, got a session
+where **none of them applied** and nothing said so. `WebFetch` reached
+anywhere. There were no audit records.
+
+Three things close that now, and they are guarantees rather than
+features because each one changes what you can promise about a run.
+The cognition **warns and names the middlewares that stopped applying**,
+once per instance — not a vague caution that trains you to add a
+`filterwarnings` line. `hook_settings(middleware=..., ctx=...,
+tools=...)` regenerates the same chain as a `PreToolUse` hook, so it
+reaches `Write`, `Edit` and `Bash`; it **fails closed** on a payload it
+cannot parse and anchors its matcher (`^(Write|Edit)$`, so an `Edit`
+rule does not also fire for `NotebookEdit`). And `RunPolicy` can now see
+the session at all: `ClaudeCliCognition` declares capability tags
+derived from `tools=`, so the lethal-trifecta check refuses
+`("Read", "WebFetch")` — `WebFetch` supplies two legs by itself — and
+refuses the default `tools=None`, which means every built-in tool and
+is therefore the whole trifecta.
+
+Two honest costs. The hook runs in a *separate process*, so it cannot
+hold your live `ctx`; middlewares that need one are refused at
+generation time rather than accepted and silently skipped, and the
+refusal is the point. And the CLI's own hook timeout is a **fail-open**
+— a hook it times out prints an error and then runs the tool — so the
+inner deadlines have to fire first.
+
+### 14. An approval leaves a record, not a count
+
+`ApprovalServer(asker=...)` answers the CLI's `--permission-prompt-tool`
+with your existing `Asker`, so the CLI's permissions stop being a choice
+between `bypassPermissions` (anything, unattended) and `dontAsk` (the
+run just fails). What it hands back afterwards is the guarantee:
+`.decisions` is a list of `ApprovalDecision` — `tool`, `arguments`,
+`allowed`, `reason`, `source`, `at`, `asked`.
+
+A counter cannot answer the questions an incident asks. *Allowed because
+a person said so* and *allowed because the run's autonomy tier does not
+gate this call* are the two facts an auditor most needs kept apart, and
+a boolean collapses them; `source` is a closed set (`asker`,
+`auto_allow`, `autonomy`, `timeout`, `error`) that keeps them apart. A
+`timeout` deny must never read afterwards as a human who said no.
+`asked` is tracked separately from `source == "asker"` because a prompt
+can reach a person and then expire — whether somebody was interrupted is
+a fact about what the run cost a human, and it is not recoverable from
+the verdict.
+
+The default is deny, and `timeout_s` is enforced by the server rather
+than trusted to the `Asker`, because the `Asker` protocol permits
+waiting forever and a queue worker holding a CLI subprocess open
+indefinitely is a resource leak with a model attached.
+
+### 15. The CLI path is testable offline, and the test exercises the real code
+
+Testing anything that went through `ClaudeCliCognition` used to need a
+real `claude` binary, real auth and real money — so in practice it was
+tested by hand, or not at all, which is how a path that spawns processes
+and parses a stream ends up the least-covered code in a service.
+
+`FakeClaudeCli.script([...])` handed to `ClaudeCliCognition(spawn=...)`
+sits at the **spawn seam**, not in front of the cognition. That
+placement is the guarantee: the test still runs the real stream-json
+parsing, the real budget charging and the real `StreamEvent` mapping,
+which is where every bug on this path has actually lived. It earned that
+claim on its first hostile input — a line that is not valid UTF-8 raised
+`UnicodeDecodeError`, which is not a `JSONDecodeError`, so it escaped
+the parser's handler; the reader stopped before the `result` payload and
+a completed run was charged $0.00.
+
+### 16. The servers agentkit stands up are authenticated by default
+
+`serve_registry` and `ApprovalServer` both bind loopback and both
+**require a generated bearer token**. `cli_kwargs()` carries it in the
+config document's headers; `auth_headers` is the same credential for a
+non-CLI client. Nothing accepts a caller-supplied token, because a token
+a caller can set is a token that ends up a constant in somebody's config
+file.
+
+Loopback alone used to be the containment, and that argument holds
+exactly as long as nothing untrusted shares the host — which is the
+wrong assumption for the case these servers exist to serve. The point of
+`ClaudeCliCognition` is that the CLI runs `Bash`: a build, a package
+install, a script out of a repository the agent was pointed at, inside
+the same network namespace as the server holding your tools and your
+approval gate.
+
+The honest version is that a token is a weaker fence than a `0700`
+directory: it turns *anything on the host* into *anything that can read
+this process's temp directory*. That is why the config file is `0600`
+and why `stop()` removes it along with the listener — the file is a live
+credential now, so a stale one outliving its server would be worse than
+untidy. `auth="none"` restores the old behaviour, as something you ask
+for by name rather than something you get by default.
 
 ## When agentkit is the fit
 
@@ -381,6 +486,11 @@ backend.
 | Test fixtures pulled in real API keys                              | No test doubles                                     | `agentkit.testing.*` — `FakeLLM` + `make_test_ctx()`             |
 | Cost from cache hits was double-counted                            | Meter after cache                                   | Middleware order: `meter` above `memoize` in the chain           |
 | Structured output silently drifted from the schema                 | No coercion in the loop                             | `Agent(output=MyPydanticModel)` + `output_coerce` middleware     |
+| CLI session's `WebFetch` ignored the egress allowlist              | Native CLI tools never reach the `Invoker`          | `hook_settings(...)` → `ClaudeCliCognition(settings=...)`        |
+| "Who approved that?" answered with a number                        | A counter, not a record                             | `ApprovalServer(asker=...)` → `.decisions`                       |
+| The CLI path was only ever tested by hand                          | No double at the spawn seam                         | `FakeClaudeCli.script([...])` + `ClaudeCliCognition(spawn=...)`  |
+| One fact took two of the top-`k` slots the model reads             | Fan-out merged its sources blindly                  | `CompositeMemory(sources, dedupe="id")`                          |
+| Retry re-ran an attempt that kept failing the same way             | A count cannot tell progress from a loop            | `attempt_until_stuck(fn, fingerprint=...)` → `Stuck`             |
 
 ## The bet, restated
 
@@ -407,6 +517,9 @@ read.
   I X?".
 - **[Anti-patterns](anti-patterns.md)** — the fifteen traps every
   first-time user falls into.
+- **[Concepts › The Claude CLI](concepts/claude-cli.md)** — guarantees
+  13 to 16 in full: the one loop you don't own, what stops applying
+  when you take it, and the seams that reach back in.
 - **[Mental models](mental-models/README.md)** — four worked product
   scenarios that show these guarantees composing under load, and what
   breaks when one of them slips.

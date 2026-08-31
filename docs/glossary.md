@@ -82,6 +82,22 @@ failure behaviour to be explicit rather than up to the model.
 
 → [Agents](concepts/agents.md)
 
+### Map node
+
+**A workflow step whose width is not known until the run gets there.**
+
+Every other node is authored, so the graph is a fact about your source
+file. `wf.map(name, over=, each=)` is the exception: `over=` is handed
+the outputs so far and returns a collection, and one element node runs
+per item in it. You could already fan out inside a plain function node;
+what you could not do is make that fan-out *resumable*, which is why
+this belongs in the engine. The price is that a resumed run needs the
+same expansion — if `over=` returns a different collection on the second
+pass that is a changed graph, and it raises `MapExpansionChanged` rather
+than threading outputs into the wrong slots.
+
+→ [Recipe: the workflow graph](recipes/workflow-graph.md)
+
 ### Skill
 
 **A saved recipe for an agent, so you can stamp out copies of it.**
@@ -167,6 +183,24 @@ possibly the next day — you hand back the answer and it continues.
 
 → [Agents](concepts/agents.md)
 
+### Approval decision
+
+**The record of one permission prompt: what was asked, what was decided,
+and *what did the deciding*.**
+
+A boolean cannot hold that last part, and it is the part an auditor
+needs. *Allowed because a person looked at it* and *allowed because the
+run's tier does not gate this call* are the same `True`. So are *denied
+because the reviewer said no* and *denied because nobody answered in
+sixty seconds* — and the second is not a refusal, it is a timeout that
+degraded into one. So `ApprovalDecision.source` is a closed set naming
+which happened: `asker`, `auto_allow`, `autonomy`, `timeout`, `error`.
+`asked` is kept separate from `source == "asker"`, because a prompt can
+reach a human and then expire, and whether somebody was interrupted is a
+fact about what the run cost a person rather than about the verdict.
+
+→ [Integrations](concepts/integrations.md)
+
 ### Elicitation
 
 **Asking a person for a *value*, not just a yes or no.**
@@ -229,6 +263,40 @@ on. Usually backed by a search index.
 
 → [Memory](concepts/memory.md)
 
+### Dedupe and memory identity
+
+**Recognising that two sources returned the same fact, so it does not
+occupy two of the few slots the model actually reads.**
+
+Asking several sources at once means the same passage comes back twice,
+and that is the normal case rather than bad luck: the journal a vector
+index was built from will happily return the row the index does.
+`MemoryItem.id` is the backend's own identifier for a record — a chunk
+id, a row key — and `CompositeMemory` merges on it by default, or on the
+content once stripped for backends that have no ids. The surviving copy
+is the higher-scored one, stamped with how many copies collapsed and
+which backends agreed; that two independent sources said the same thing
+is signal a reranker can use, and plain concatenation throws it away.
+
+→ [Memory](concepts/memory.md)
+
+### Read-only memory
+
+**A source the agent may read and must never extend — enforced, rather
+than assumed.**
+
+A curated knowledge base, an operator-maintained registry. Nothing about
+the *backend* says it is read-only: the vector store behind a curated KB
+takes an upsert exactly like any other. So the only thing protecting it
+is that no code happens to call `write` today, which is a property of
+the code as it currently stands and not a rule. `ReadOnlyMemory`
+constrains exactly one verb — `query` passes straight through, `write`
+raises `MemoryWriteRefused`. `on_write="ignore"` drops the write instead,
+so one read-only member does not make a whole fan-out unwritable; it is
+the dangerous option, and it is counted and reported rather than silent.
+
+→ [Memory](concepts/memory.md)
+
 ### Grounding / Grounder
 
 **Fetching relevant material and putting it in the prompt before the
@@ -236,6 +304,25 @@ model sees the question.**
 
 The difference between asking a model "what is our refund policy?" and
 asking it the same question with your actual refund policy pasted above.
+
+→ [Capabilities](concepts/capabilities.md)
+
+### Grounding source
+
+**Grounding that reaches the prompt builder as records rather than as
+one flattened string.**
+
+A `Grounder` returns text, so by the time retrieved material reaches the
+prompt, which source it came from, what it scored, and whether it was a
+recorded fact or a summary a model wrote in an earlier run are all gone
+— flattened at exactly the boundary where they start to matter. That
+leaves one rule unenforceable at the only place it could be enforced: *a
+memory a model wrote is not evidence*. A `GroundingSource` hands over
+`MemoryItem`s instead, so an `admit` predicate can veto one before it is
+rendered, the formatting is a policy you choose (`render_grounding` is
+the default), and the admitted items can be recorded beside the prefix.
+The callable form still works unchanged; passing both is refused rather
+than quietly resolved.
 
 → [Capabilities](concepts/capabilities.md)
 
@@ -268,6 +355,26 @@ The port says "a store must be able to get and set keys". The adapter is
 the one backed by Postgres, or by a dict in memory, or by Redis. Your
 application code talks to the port, so swapping the adapter changes one
 line at startup and nothing else.
+
+→ [Adapters](concepts/adapters.md)
+
+### Compare-and-set, increment and scan
+
+**The three store operations that let two runs touch one key without
+racing each other.**
+
+Get and set express "cache this". They cannot express *changing
+something that is already there*. Allocating the next ordinal is "read
+the max, write max+1", and two writers race it: both read `4`, both
+write `5`, and one ordinal is handed to two runs.
+`compare_and_set(key, expected, value)` writes only if the key still
+holds what you read, and *returns* whether it applied rather than
+raising — losing is the expected half of an optimistic loop, not a
+fault. `increment(key, by, ttl=...)` is a counter with an expiry, which
+is the shape of every rate limit, as one atomic step. `scan(prefix)`
+enumerates the keys under a prefix, so "everything recorded for this
+run" no longer needs a hand-maintained index beside it that drifts.
+Every shipped store adapter implements all three.
 
 → [Adapters](concepts/adapters.md)
 
@@ -418,6 +525,24 @@ whether a given URL is allowed.
 
 **A check that can veto** — refusing a URL, blocking an output.
 
+### Lethal trifecta
+
+**One run that can reach private data, take in untrusted content, and
+send something outbound — the combination that turns a crafted input
+into an exfiltration.**
+
+Any two of the three are ordinary. All three together mean that text the
+agent merely *read* can instruct it to fetch something sensitive and
+post it somewhere. Tools declare which legs they supply as `caps`, and
+`RunPolicy` refuses a set that assembles all three without a human gate.
+Two things surprise people. One tool can supply two legs — `WebFetch`
+both ingests untrusted content and reaches the network — so you do not
+need three dangerous-looking tools. And a Claude CLI session now
+declares capabilities of its own, where the default "every built-in
+tool" is the full trifecta.
+
+→ [Agents](concepts/agents.md)
+
 ### Evaluator
 
 **Something that scores an answer**, so "did this get better?" has a
@@ -471,6 +596,25 @@ up front.
 **The rule for when a loop has gone on long enough** — a turn cap, a
 deadline, or a condition you write.
 
+### Recurrence-bounded retry
+
+**Stopping when an attempt fails the *same way* as an earlier one,
+rather than after N tries.**
+
+A retry count is the right bound for a call that failed to complete — a
+timeout, a 502 — and the wrong one for an attempt that finished,
+produced an answer, and did not achieve the goal. Three attempts with
+three different failures is progress; two with the same failure is a
+circle. A count cannot tell those apart, so it is either too tight for
+the first or too loose for the second. `attempt_until_stuck`
+fingerprints each outcome and stops when a signature it has already seen
+comes back — every signature seen, not just the previous one, because an
+A, B, A, B oscillation never repeats consecutively and would otherwise
+read as progress forever. It raises `Stuck`; `max_attempts` stays on as
+a backstop for the case where the signatures keep genuinely differing.
+
+→ [Kernel](concepts/kernel.md)
+
 ### MCP (Model Context Protocol)
 
 **A standard way for a program to publish tools, documents and prompts so
@@ -480,7 +624,82 @@ There are thousands of published MCP servers. Speaking the protocol once
 means you can use all of them, rather than writing an adapter per
 service.
 
+That is only half of it. agentkit speaks the protocol in both
+directions: as a *client* consuming other people's servers, and — see
+the next entry — as a *server* publishing your own tools.
+
 → [Integrations](concepts/integrations.md)
+
+### Serving tools over MCP
+
+**Publishing a `ToolRegistry` of your own as an MCP server, so a program
+you do not control can call your Python functions.**
+
+It exists because `ClaudeCliCognition` hands the whole loop to the
+`claude` binary, and that binary cannot import your code. The only way
+it calls your `deploy()` is if something serves it. Everything needed to
+*describe* an agentkit tool was already there and already correct — only
+the wire was missing, so a service wrote MCP JSON by hand and then owned
+the job of keeping a hand-written schema in step with the Python
+signature it claimed to describe. `serve_registry` sends the existing
+schema out unchanged, and carries `side_effecting`, `requires_approval`
+and `caps` across with it, so a policy check on your side still sees
+what the tools can do.
+
+→ [Integrations](concepts/integrations.md)
+
+### Bearer token and the loopback fence
+
+**Binding a server to `127.0.0.1` keeps it off the network. It does not
+keep it away from everything else running on the same machine.**
+
+Both of agentkit's MCP servers bind loopback and, by default, also
+require a token the listener generates and puts in the config document
+the CLI reads. Loopback alone used to *be* the containment, and that
+argument holds exactly as long as nothing untrusted shares the host —
+the wrong assumption here, because the point of the CLI cognition is
+that it runs `Bash` in that same namespace. Be honest about what the
+token buys: it turns *anything on this host* into *anything that can
+read this process's temp directory*, which is why the config file is
+`0600` and is removed along with the listener. `auth="none"` restores
+the unauthenticated behaviour, as something you ask for by name.
+
+→ [Integrations](concepts/integrations.md)
+
+### Hook (PreToolUse)
+
+**A callback the Claude CLI makes out to a script of yours before it
+runs one of its own tools.**
+
+It is the one place your middleware can still say no. When the CLI owns
+the loop, its `Write`, `Bash` and `WebFetch` never pass through your
+`Invoker`, so your egress checks, guards and audit records are wired,
+documented, and doing nothing. `hook_settings` generates CLI settings
+whose `PreToolUse` hook runs that same chain. The cost is real: the
+refusal now lives in a generated script, which is a second execution
+path to keep correct, and a middleware that needs your live `ctx` cannot
+run in a separate process at all — those are refused when the settings
+are generated, rather than accepted and then silently skipped.
+
+→ [The Claude CLI](concepts/claude-cli.md)
+
+### Sub-agent
+
+**A named helper the Claude CLI can delegate to, defined in its
+configuration rather than in your process.**
+
+It is the CLI's word for what agentkit calls a `Skill` — a prompt, a
+cognition, tools and memory under a name — which is why `as_cli_agents`
+projects one into the other instead of asking you to restate it as a
+second description of one thing. A skill's tool restriction survives the
+projection, and that is a security property rather than an ergonomic
+one: a reviewer that is read-only *because of its tool list* must not
+arrive as a sub-agent holding the parent's tools. A skill that cannot be
+expressed this way is refused by name with `SkillNotProjectable`, rather
+than projected into something that looks similar and behaves
+differently.
+
+→ [The Claude CLI](concepts/claude-cli.md)
 
 ---
 

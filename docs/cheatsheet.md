@@ -28,6 +28,27 @@ ctx = RunContext(
 
 result = await agent.run("hello", ctx)         # collect the stream into one AgentResult
 async for ev in agent.stream("hello", ctx): ...  # or handle StreamEvents live
+
+# `Services(store=...)` is the one KV seam. Cache half: get / set / get_or_set /
+# delete / append / list. Coordination half below.
+from agentkit.adapters.store import InMemoryStore  # FileStore / RedisStore / PostgresStore
+
+store = InMemoryStore()
+
+# Read-modify-write. Returns whether it APPLIED — losing is the expected half of an
+# optimistic loop, not a fault. Absent key equals `expected=None`; compared by equality.
+current = await store.get("run-42:ordinal")
+applied = await store.compare_and_set("run-42:ordinal", current, (current or 0) + 1)
+
+# One atomic counter + window. `by` is a non-bool int (StoreValueError otherwise) and
+# may be negative. `ttl` OPENS a window; it never slides an open one, or a rate limiter
+# under sustained traffic never resets. Honoured by InMemoryStore + RedisStore, ignored
+# with a one-time warning by FileStore, NotImplementedError on PostgresStore.
+used = await store.increment("run-42:calls", 1, ttl=60)
+
+# KEYS under a prefix — an AsyncIterator, no promised order, never the append-log
+# namespace. `limit` is a cap on what you will receive, not a page cursor.
+async for key in store.scan("run-42:", limit=100): ...
 ```
 
 ## Cognition
@@ -136,6 +157,7 @@ from agentkit import (
     ScopedMemory,
 )
 from agentkit.memory import CachedMemory, JournalMemory, FileMemory, ScratchpadMemory
+from agentkit.memory import MemoryItem, MemoryWriteRefused, ReadOnlyMemory
 
 # Vector store adapter (any VectorPort — pgvector, qdrant, memory-backed, ...).
 memory = VectorMemory(vector=my_vector_port)
@@ -143,8 +165,17 @@ memory = VectorMemory(vector=my_vector_port)
 # Filesystem-backed reads.
 memory = FileMemory(files=InMemoryFiles())
 
-# Fan-out across many sources, merge + rerank the top-k.
-memory = CompositeMemory(sources=[VectorMemory(...), JournalMemory(...)])
+# `id` is the backend's own record key, and KEYWORD-ONLY — declaring it third would
+# have rebound every positional MemoryItem("c", "vector", 0.91, meta) silently.
+MemoryItem(content="Refunds take 5 days.", source="handbook", id="chunk-7", score=0.9)
+
+# Fan-out across many sources, merge + rerank the top-k. Two sources returning one
+# fact is the NORMAL case (the journal is what the index was built from), so the same
+# fact is one item: matching `id` OR matching stripped content, higher score survives,
+# stamped `dedupe_sources` + `dedupe_count`. `id=""` and blank content are not identity.
+memory = CompositeMemory(sources=[VectorMemory(...), JournalMemory(...)])  # dedupe="id"
+CompositeMemory(sources=[...], dedupe="content")   # backends that have no ids
+CompositeMemory(sources=[...], dedupe=None)        # concatenate, chosen not inherited
 
 # Fan-in in order (first non-empty wins).
 memory = SequentialMemory(sources=[fast_cache_source, slow_vector_source])
@@ -152,6 +183,12 @@ memory = SequentialMemory(sources=[fast_cache_source, slow_vector_source])
 # Decorators (compose freely).
 memory = ScopedMemory(inner=memory)             # enforces ctx.scope at the boundary
 memory = CachedMemory(inner=memory, ttl_seconds=60, max_entries=256)
+
+# Read-only by POLICY, not by backend. `query` is a total pass-through — same k, same
+# `where`, same items, same `source` stamp, so dedupe still merges it with the bare path.
+kb = ReadOnlyMemory(inner=curated_kb)                     # write() -> MemoryWriteRefused
+kb = ReadOnlyMemory(inner=curated_kb, on_write="ignore")  # dropped; kb.refused_writes counts
+kb.accepts_writes                                         # False — CompositeMemory reads this
 
 Agent(name="researcher", cognition=ReActCognition(tools=[search]), memory=memory)
 ```
@@ -194,6 +231,8 @@ async def stopwatch(call: Call, nxt: Handler):
 from agentkit import (
     RequestBuilder,
     Grounder,
+    GroundingSource,
+    render_grounding,
     Checkpointer,
     Guardrail,
     Evaluator,
@@ -216,6 +255,23 @@ checkpointer = Checkpointer(port=InMemoryCheckpointStore())
 
 # The RequestBuilder assembles a ChatRequest from prompt + memory + tools.
 # The Agent builds one automatically from `prompt=` — override to plug grounding.
+
+# `grounder=` returns TEXT, so by the time it reaches the prefix the item is gone —
+# and a memory a MODEL wrote is no longer distinguishable from a recorded fact.
+# `grounding=` returns the MemoryItems, so provenance survives to the prompt.
+from agentkit.memory import as_grounding_source
+
+source: GroundingSource = as_grounding_source(memory, k=5)  # (ctx, task) -> Sequence[MemoryItem]
+builder = RequestBuilder(
+    prompt=my_prompt,
+    grounding=source,
+    admit=lambda i: i.metadata.get("tier") != "inferred",  # veto, BEFORE render
+    render=render_grounding,        # the default: one `[source] content` line per item
+    record_grounding=True,          # admitted items -> wc.scratchpad["grounding"], as
+)                                   # JSON-safe dicts so the record crosses a checkpoint
+# `grounder=` and `grounding=` together is a ValueError, and so is admit / render /
+# record_grounding without `grounding=` — a veto that silently applies to nothing is
+# the exact failure `admit` exists to prevent.
 ```
 
 ## Concurrency
@@ -225,7 +281,9 @@ from agentkit import (
     CancellationToken, Cancelled,
     gather_bounded, gather_best_effort,
     run_agents, run_sync,
+    attempt_until_stuck, Stuck,
 )
+from agentkit.agents.workflow import MapExpansionChanged, Workflow
 import asyncio
 
 # Fan-out N children, bounded by a semaphore. One failure cancels the rest.
@@ -237,6 +295,32 @@ results = await gather_best_effort([coro1(), coro2()], sem=sem)
 
 # Multi-agent: each pair runs under ctx.child(), sharing budget + cancel.
 results = await run_agents([(agent_a, "task-a"), (agent_b, "task-b")], ctx)
+
+# A DAG node whose fan-out width is decided at RUNTIME. Elements run one level deeper
+# under gather_bounded, so they cannot deadlock on the wave's own permits; `bounded_by`
+# narrows on top of `max_concurrency`, it never widens. One map = one `max_steps`.
+wf = Workflow("release")
+wf.fn("plan", make_plan)
+wf.map("implement", over=lambda done: done["plan"].requirements,  # decided at runtime
+       each=lambda item: agent_for(item), after="plan", bounded_by=4)
+result = await wf.run("ship it", ctx)
+result.outputs["implement"]             # element outputs, in expansion order
+result.outputs["implement#expansion"]   # the identity list, written BEFORE any element
+# A resume whose `over=` returns a different collection raises MapExpansionChanged
+# rather than threading element 2's output into element 0's slot. `key=` when `str(item)`
+# embeds an address. A best_effort map's Failures cannot cross a downstream human_gate.
+
+# Retry bounded by RECURRENCE, not by a count: three different failures is progress,
+# two identical ones is not. Every signature seen is compared, not just the previous
+# one, so an A,B,A,B oscillation is caught. `fingerprint` returning None IS success.
+answer = await attempt_until_stuck(
+    lambda: run_one(),
+    fingerprint=lambda outcome: outcome.failure_signature,
+    on_repeat="escalate",   # raise Stuck(failure); "stop" RETURNS the identical Failure
+    max_attempts=4,         # a BACKSTOP — exhaustion returns a Failure in both modes
+)
+# Exceptions are never fingerprinted — that is `run_with_resilience`'s job. Nest them:
+# attempt_until_stuck(lambda: run_with_resilience(call_model, max_attempts=3), ...)
 
 # Cooperative cancel across the whole subtree.
 token = CancellationToken()
@@ -389,6 +473,90 @@ async with MCPClient(server) as mcp:
         cognition=ReActCognition(tools=tools),
         memory=memory,
     )
+
+# The other direction — agentkit AS the MCP server, which is how anything you know
+# reaches the CLI's own loop.
+from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.integrations.mcp import (
+    ApprovalServer, McpServerSpec, serve_registry, stdio_command,
+)
+
+# Serve a ToolRegistry you already have. Sync: it reserves the port and writes the
+# config, so the spec is complete before anything listens. `async with` starts it.
+spec: McpServerSpec = serve_registry(registry, name="engine", ctx=ctx, timeout_s=120.0)
+async with spec:
+    ClaudeCliCognition(
+        model="claude-sonnet-4-6",
+        allowed_tools=spec.auto_approve,          # requires_approval tools still prompt
+        **spec.cli_kwargs(builtin_tools=False),   # mcp_config + strict_mcp_config=True
+    )
+spec.tool_names         # ('mcp__engine__deploy', ...) — the CLI's spelling
+spec.caps               # feed RunPolicy().check(...) BEFORE you start the CLI
+spec.calls_seen         # 0 means never called a tool OR never reached the server
+
+# `transport="stdio"` needs `command=` — the CLI spawns a fresh process, so this
+# process's registry, closures and ctx do not cross the boundary.
+serve_registry(registry, name="engine", ctx=ctx,
+               transport="stdio", command=stdio_command("myapp.mcp_server"))
+
+# HTTP binds 127.0.0.1 AND requires a generated bearer token by default: loopback
+# alone was the containment, and the point of the CLI is that it runs Bash in that
+# same namespace. No caller-supplied tokens — one you can set becomes a constant.
+spec.auth_headers       # {"Authorization": "Bearer ..."} for a non-CLI client
+serve_registry(registry, name="engine", ctx=ctx, auth="none")   # opt out BY NAME
+# transport="stdio" + auth="bearer" RAISES: there is no request to carry a header.
+
+# CLI permission prompts -> your Asker. The turn parks while a human thinks.
+async with ApprovalServer(asker=my_asker, timeout_s=120.0, auto_allow=("Read",)) as ap:
+    ClaudeCliCognition(model="claude-sonnet-4-6", **ap.cli_kwargs())
+for d in ap.decisions:  # one ApprovalDecision per prompt, oldest first
+    d.tool, d.allowed, d.reason, d.at
+    d.source   # asker | auto_allow | autonomy | timeout | error — a bool collapses
+               # "a person said yes" into "the tier did not gate this call"
+    d.asked    # separate from source=="asker": a prompt can reach a human and expire
+```
+
+## Claude CLI seams (the loop is not yours)
+
+```python
+from agentkit.agents import RunPolicy
+from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.integrations.claude_cli import (
+    HookSettings, SkillNotProjectable, as_cli_agents, hook_settings,
+)
+
+# The CLI's OWN tools (Write, Edit, Bash, WebFetch) bypass the Invoker, so egress,
+# guard, audit, memoize and Guardrail.check_url do not run. The cognition warns once
+# per instance, NAMING the middlewares that will not apply. Three ways to close it:
+# serve everything over MCP, generate hooks (below), or accept it knowingly.
+
+# A CLI session declares capability tags, so RunPolicy can see its trifecta.
+ClaudeCliCognition(tools=("Read",)).caps             # ('private_data',)
+ClaudeCliCognition(tools=("Read", "WebFetch")).caps  # full trifecta — WebFetch is two legs
+RunPolicy().check(entries)                           # reads `.caps`; a session is ONE entry
+# tools=None (the DEFAULT) is every built-in tool, i.e. the trifecta. Task and
+# SlashCommand each count as all three: they are indirections to the whole tool set.
+
+# Make the chain reach native tools — a PreToolUse hook answered by THIS process.
+# Call it from inside a running loop; it returns already listening.
+settings: HookSettings = hook_settings(
+    middleware=tool_chain,          # the same list you hand Invoker(tool_middleware=...)
+    ctx=ctx,
+    tools=("Write", "Edit", "Bash"),  # matcher is ANCHORED: ^(Write|Edit|Bash)$
+    timeout_s=5.0,                  # inner deadlines must fire first — the CLI's own
+)                                   # hook timeout is NON-blocking, i.e. fail-open
+async with settings:
+    ClaudeCliCognition(settings=settings.path)
+settings.decisions   # what the hook allowed/denied, for the audit
+# Unparseable payload = deny, never pass. A middleware needing a live ctx (Invoker,
+# store handle, cancel token) is refused at GENERATION time, not silently skipped.
+
+# Project a Skill into a CLI sub-agent. The tool restriction survives — a reviewer
+# that is read-only because of its tool list must not arrive holding the parent's.
+ClaudeCliCognition(agents=as_cli_agents([reviewer_skill, repairer_skill]))
+# A skill carrying custom agentkit tools raises SkillNotProjectable, by name, at
+# construction: serve them with serve_registry and the sub-agent reaches them as
+# mcp__<server>__<tool>.
 ```
 
 ## Structured output
@@ -456,9 +624,10 @@ services = Services(
 from agentkit.testing import (
     FakeLLM, FakeFetch, FakeSearch, FakeMemory, FakeTool, FakeClock,
     FakeGrounder, FakeCompactor, FakeCtx, RecordingTracer, Turn,
-    make_test_ctx,
+    FakeClaudeCli, make_test_ctx,
 )
 from agentkit import ToolCall
+from agentkit.agents.cognition import ClaudeCliCognition
 
 # One reply.
 llm = FakeLLM("42")
@@ -475,6 +644,18 @@ ctx = make_test_ctx(
     autonomy="gated",
     correlation_id="test-42",
 )
+
+# The `claude` CLI path, offline and free. Sits at the SPAWN seam, not above it, so
+# the real stream-json parsing, budget charging and event mapping still run — which
+# is where every bug on this path has lived. Raw `bytes` payloads express a line
+# that is not valid UTF-8; that shape used to bill a completed run at $0.00.
+cli = FakeClaudeCli.script([{"type": "result", "subtype": "success", "result": "done"}])
+cognition = ClaudeCliCognition(spawn=cli)   # .replay(path) replays a recorded session
+cli.spawns          # spawn count. One past the recording raises ScriptExhausted —
+                    # pass repeat_last=True when the unbounded loop IS the test.
+cli.invocations     # argv / cwd / env / stdin per spawn, no subprocess patch needed
+# Reading a line never awaits: wait_for() cannot fire mid-stream and gather() over
+# two drives runs them in series. Cancel through ctx.check_cancelled().
 ```
 
 Test doubles live under `agentkit.testing.*` on purpose — a

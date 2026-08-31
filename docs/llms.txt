@@ -1,60 +1,86 @@
 # arc-agentkit
 
-> A low-level, composable Python framework for building AI agents. Provider-neutral (`claude()`, `openai()`, `deepseek()`, `openrouter()`, `ClaudeCliCognition`, or your own `LLMPort`); typed seams throughout; zero core runtime dependencies; `mypy --strict` clean.
+> A low-level, composable Python framework for building AI agents. Provider-neutral (`claude()`, `openai()`, `deepseek()`, `openrouter()`, `ClaudeCliCognition`, or your own `LLMPort`); typed seams throughout; zero core runtime dependencies (`dependencies = []` — httpx, mcp, redis, asyncpg and OTel are all extras); `mypy --strict` clean.
 
-Organized around four themes: cognition (how the agent decides), control (what limits its authority), state (what it knows), behaviour (how each call is intercepted).
+Organized around four themes: cognition (how the agent decides), control (what limits its authority), state (what it knows), behaviour (how each call is intercepted). MCP runs in both directions — the agent consumes servers, and your `ToolRegistry` or approval prompt can *be* one.
 
 ## Getting started
-- [Landing](https://arc-labs-ai.github.io/agentkit/): pain-first intro and four-theme mental model.
-- [Why agentkit](https://arc-labs-ai.github.io/agentkit/why/): concrete guarantees and honest comparison.
-- [Getting started](https://arc-labs-ai.github.io/agentkit/getting-started/): install and first call.
-- [Tutorial](https://arc-labs-ai.github.io/agentkit/tutorial/): fifteen-minute walkthrough.
-- [Cheatsheet](https://arc-labs-ai.github.io/agentkit/cheatsheet/): every primitive on one page.
-- [Anti-patterns](https://arc-labs-ai.github.io/agentkit/anti-patterns/): shapes that void the framework's guarantees.
+- [Landing](https://arc-labs-ai.github.io/agentkit/): the three failures — no spend ceiling, a worker that died mid-run, an ungated `git push --force` — and the one line of wiring that fixes each.
+- [Why agentkit](https://arc-labs-ai.github.io/agentkit/why/): the four-theme mental model, what typed seams buy concretely, and where agentkit is the wrong tool.
+- [Getting started](https://arc-labs-ai.github.io/agentkit/getting-started/): a running agent in five minutes with no API key, then the same agent pointed at a real provider.
+- [Tutorial](https://arc-labs-ai.github.io/agentkit/tutorial/): one research agent in six steps, each step added because the previous one left a specific problem open.
+- [Cheatsheet](https://arc-labs-ai.github.io/agentkit/cheatsheet/): the invocation for every primitive, no prose — for when you are already writing code.
+- [Glossary](https://arc-labs-ai.github.io/agentkit/glossary/): what cognition, port, middleware, grounding and ReAct mean here, one sentence each, for someone who has read nothing else.
+- [Anti-patterns](https://arc-labs-ai.github.io/agentkit/anti-patterns/): fifteen shapes that void the framework's guarantees, each with the fix that restores them.
 
 ## Concepts
-- [Kernel](https://arc-labs-ai.github.io/agentkit/concepts/kernel/): opinion-free value types + Protocol ports.
-- [Runtime](https://arc-labs-ai.github.io/agentkit/concepts/runtime/): RunContext + Invoker + Budget/Quota.
-- [Agents](https://arc-labs-ai.github.io/agentkit/concepts/agents/): Agent + Cognition Protocol.
-- [Capabilities](https://arc-labs-ai.github.io/agentkit/concepts/capabilities/): RequestBuilder + Compactor + Guardrail + Checkpointer + Evaluator.
-- [Middlewares](https://arc-labs-ai.github.io/agentkit/concepts/middlewares/): tracing / retry / meter / memoize / compaction / security / audit / egress.
-- [Prompts](https://arc-labs-ai.github.io/agentkit/concepts/prompts/): versioned Prompt values.
+- [Kernel](https://arc-labs-ai.github.io/agentkit/concepts/kernel/): the opinion-free value types, the `Port` protocols, the `(call, next)` middleware contract — and `attempt_until_stuck` / `Stuck`, for the attempt that completed and still did not achieve the goal, bounded by recurrence instead of a retry count.
+- [Runtime](https://arc-labs-ai.github.io/agentkit/concepts/runtime/): `RunContext` as the per-request universe — who the work belongs to, who pays for it (`Budget`, `Quota`), and who can cancel it.
+- [Context](https://arc-labs-ai.github.io/agentkit/concepts/context/): `WorkingContext` — the transcript being reasoned over, the notes taken, the record of what was done, and how to scope or trim them before they stop fitting.
+- [Capabilities](https://arc-labs-ai.github.io/agentkit/concepts/capabilities/): `RequestBuilder`, `Compactor`, `Guardrail`, `Checkpointer`, `Evaluator` — plus `GroundingSource` / `render_grounding`, which keep a retrieved item's provenance alive into the prompt instead of flattening it to anonymous text.
+- [Agents](https://arc-labs-ai.github.io/agentkit/concepts/agents/): what an `Agent` actually wires together, and which `Cognition` decides the next step — single-call, ReAct, coordinator, or the Claude CLI.
+- [Tools](https://arc-labs-ai.github.io/agentkit/concepts/tools/): turning a Python function into something a model may call — schema, `ctx` injection, result validation, and declaring up front which calls mutate the world.
+- [Memory](https://arc-labs-ai.github.io/agentkit/concepts/memory/): one `MemorySource` Protocol and the backends that nest inside it; `MemoryItem.id` + `CompositeMemory(dedupe=)` so a fan-out over overlapping sources stops paying twice for the same passage; `ReadOnlyMemory` / `MemoryWriteRefused` for a source that refuses writes by policy rather than by convention.
+- [Skills](https://arc-labs-ai.github.io/agentkit/concepts/skills/): prompt + cognition + tools + memory packaged as one named unit, written once and reused.
+- [Prompts](https://arc-labs-ai.github.io/agentkit/concepts/prompts/): why a system prompt carries an id and a version, and what that makes possible downstream.
+- [Middlewares](https://arc-labs-ai.github.io/agentkit/concepts/middlewares/): the one seam every model turn and tool call passes through — tracing, retry, fallback, meter, memoize, compaction, security, audit, egress, output coercion.
+- [Adapters](https://arc-labs-ai.github.io/agentkit/concepts/adapters/): the catalogue of LLM, vector, store, checkpoint and observer backends behind the ports, the model registry, and `StorePort`'s coordination half — `compare_and_set` / `increment` / `scan` on all four store adapters, with the TTL differences between them stated plainly.
+- [Integrations (MCP)](https://arc-labs-ai.github.io/agentkit/concepts/integrations/): both directions — `MCPClient` with `mcp_tools` / `mcp_resources` / `mcp_prompts` to consume any published server, and `serve_registry` / `McpServerSpec` plus `ApprovalServer` / `ApprovalDecision` to serve your tools and your `Asker` to something else. Loopback binding plus a generated bearer token by default; `auth="none"` is now something you ask for by name.
+- [The Claude CLI](https://arc-labs-ai.github.io/agentkit/concepts/claude-cli/): the one place your code does not own the loop — what the middleware chain therefore cannot reach, and the five seams that get it back: `serve_registry`, `ApprovalServer`, `hook_settings` (`PreToolUse` hooks, so middleware reaches the CLI's *own* tools), `as_cli_agents` (a `Skill` projected into a CLI sub-agent, or `SkillNotProjectable`), and `FakeClaudeCli`. Capability tags survive the boundary, so `RunPolicy` can still see a lethal trifecta.
+- [Observability](https://arc-labs-ai.github.io/agentkit/concepts/observability/): three surfaces that all sound like telemetry — observations for your users, traces for you at 3am, meters for whoever pays — and which one actually answers your question.
+- [Testing](https://arc-labs-ai.github.io/agentkit/concepts/testing/): `make_test_ctx` and `FakeLLM` for runs that are offline, deterministic, and able to produce on cue the failures a real provider never will; `FakeClaudeCli` + `spawn=` to exercise the Claude CLI path without the binary or the bill.
 
 ## Recipes (indexed by problem)
-- [Pick a provider from config](https://arc-labs-ai.github.io/agentkit/recipes/provider-from-env/): model registry — from-env provider resolution + per-model capability declaration refused at bind time.
-- [Stream a typed object](https://arc-labs-ai.github.io/agentkit/recipes/stream-typed-output/): StreamEvent.partial_output — the in-progress typed object on every delta, via Agent.stream alone.
-- [Control cost](https://arc-labs-ai.github.io/agentkit/recipes/spend-budget-and-quota/): Budget + Quota, MeterExceeded.
-- [Pause for a human](https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/): Autonomy tier + Suspended + resume().
-- [Elicit a value from a human](https://arc-labs-ai.github.io/agentkit/recipes/elicit-a-value-from-a-human/): Elicitation/Decision/Asker — value requests, parkable in place, deadlined, typed, secret-safe.
-- [Survive a crash](https://arc-labs-ai.github.io/agentkit/recipes/resume-after-crash/): Checkpointer + resume-after-crash pattern.
-- [Parallel agents with cancellation](https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/): gather_bounded / run_agents / CancellationToken.
-- [Custom middleware](https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/): (call, next) contract, BaseMiddleware.
-- [OpenTelemetry](https://arc-labs-ai.github.io/agentkit/recipes/otel-tracing-and-metrics/): TracePort / MetricsPort wiring.
-- [Local Claude Code, no API key](https://arc-labs-ai.github.io/agentkit/recipes/claude-cli-fastapi-code-gen/): ClaudeCliCognition + FastAPI SSE.
-- [Any MCP server](https://arc-labs-ai.github.io/agentkit/recipes/mcp-tools/): MCPClient + mcp_tools / mcp_resources / mcp_prompts.
+- [Recipes index](https://arc-labs-ai.github.io/agentkit/recipes/): one page per wall you can hit, indexed by the question rather than by the class name.
+- [Give an agent a tool](https://arc-labs-ai.github.io/agentkit/recipes/define-a-tool/): `@tool` and the `ToolRegistry` — schemas, `ctx` injection, result validation, `side_effecting`, and an agent exposed as a tool to another agent.
+- [Answer from my documents](https://arc-labs-ai.github.io/agentkit/recipes/ground-with-memory/): retrieval and grounding, so the answer comes from your handbook rather than from training data that resembles it.
+- [Consume any MCP server](https://arc-labs-ai.github.io/agentkit/recipes/mcp-tools/): a published server's tools, resources and prompts arriving as agentkit's canonical `Tool`, `MemorySource` and `Prompt`.
+- [Stream a typed object](https://arc-labs-ai.github.io/agentkit/recipes/stream-typed-output/): `StreamEvent.partial_output` — the in-progress typed object on every delta, from `Agent.stream` alone.
+- [Run a fixed multi-step pipeline](https://arc-labs-ai.github.io/agentkit/recipes/workflow-graph/): a `Workflow` graph — declared dependencies, concurrent waves, branching, bounded loop-back, human gates with durable resume, and `wf.map(name, over=, each=)` for a node whose fan-out width is only decided at runtime (`MapExpansionChanged` rather than a silent re-shape on resume).
+- [Split work across several agents](https://arc-labs-ai.github.io/agentkit/recipes/multi-agent-coordination/): coordinators, the four policies, `Handoff` routing, composable termination — for when who-goes-next depends on what was just said.
+- [Fan out and cancel on failure](https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/): `run_agents` / `gather_bounded` under a shared budget and `CancellationToken`; `best_effort=True` when one sibling's failure should not stop the rest.
+- [Keep a long conversation in budget](https://arc-labs-ai.github.io/agentkit/recipes/compact-a-long-conversation/): four compactors and the two places to put them, so turn 40 does not cost forty times turn 1 and then stop fitting at all.
+- [Pause a tool for a human](https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/): approve, reject, or rewrite the arguments — with the run suspended to a checkpoint an entirely fresh process can pick up.
+- [Ask a person for a value](https://arc-labs-ai.github.io/agentkit/recipes/elicit-a-value-from-a-human/): `Elicitation` / `Decision` / `Asker` — a one-time code mid-run, nowhere near a tool call; parkable in place, deadlined, typed, secret-safe.
+- [Pick a provider from config](https://arc-labs-ai.github.io/agentkit/recipes/provider-from-env/): one model string decides the client, the credential, and whether that model can do the job at all — refused at bind time, before any spend.
+- [Cap spend](https://arc-labs-ai.github.io/agentkit/recipes/spend-budget-and-quota/): `Budget` for a hard per-run ceiling, `Quota` for a rolling per-tenant window, and `on_exceeded="stop"` to make exhaustion recoverable rather than fatal.
+- [Write a custom middleware](https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/): `BaseMiddleware` to transform, guard, or observe; raw `(call, next)` when you need to retry, skip, or wrap.
+- [Survive a crash](https://arc-labs-ai.github.io/agentkit/recipes/resume-after-crash/): same `run_id`, same `CheckpointPort`, hydrated transcript — the next worker continues from the last completed iteration instead of starting over.
+- [Wire OpenTelemetry](https://arc-labs-ai.github.io/agentkit/recipes/otel-tracing-and-metrics/): `TracePort` and `MetricsPort` into anything that speaks OTLP, one adapter each from `arc-agentkit[observability]`.
+- [Test an agentkit app](https://arc-labs-ai.github.io/agentkit/recipes/test-an-agentkit-app/): a suite that runs offline and deterministically, and can summon on demand the failures a real provider will not give you.
+- [Drive the local claude CLI](https://arc-labs-ai.github.io/agentkit/recipes/claude-cli-fastapi-code-gen/): `ClaudeCliCognition` behind a FastAPI SSE endpoint — its auth, its tools, its permission modes, with the spend still on your `Budget`.
+
+## Mental models (long, worked scenarios)
+- [Overview](https://arc-labs-ai.github.io/agentkit/mental-models/): four plausible products built out of primitives, then interrogated for what has to be true for them not to break.
+- [Multi-tenant chat with docs](https://arc-labs-ai.github.io/agentkit/mental-models/01-multi-tenant-chat-with-docs/): tenant isolation — how one customer's documents stay out of another's context under concurrency, a warm cache, and a stray retry.
+- [Autonomous devops investigator](https://arc-labs-ai.github.io/agentkit/mental-models/02-autonomous-devops-investigator/): safety under autonomy — `RunPolicy`, `requires_approval`, `Autonomy` tiers and the human gate, on a run nobody is watching.
+- [Long-running data enrichment](https://arc-labs-ai.github.io/agentkit/mental-models/03-long-running-data-enrichment/): durability and cost over 10k rows — `Workflow` + `Checkpointer` + `Budget` composed so a restart is not a re-bill.
+- [Multi-agent coordinated research](https://arc-labs-ai.github.io/agentkit/mental-models/04-multi-agent-coordinated-research/): coordination and streaming — `CoordinatorCognition` and `Skill.as_agent` producing one report out of several agents.
 
 ## Migrating
-- [From LangChain](https://arc-labs-ai.github.io/agentkit/migrating/from-langchain/): concept-by-concept mapping.
-- [From vanilla asyncio + provider SDK](https://arc-labs-ai.github.io/agentkit/migrating/from-vanilla-asyncio/): loop + primitives.
+- [Overview](https://arc-labs-ai.github.io/agentkit/migrating/): which of the two guides fits your starting point, and the promise that each names what you lose as well as what you gain.
+- [From LangChain](https://arc-labs-ai.github.io/agentkit/migrating/from-langchain/): concept-for-concept mapping plus a side-by-side rewrite.
+- [From vanilla asyncio + provider SDK](https://arc-labs-ai.github.io/agentkit/migrating/from-vanilla-asyncio/): which part of your hand-rolled loop becomes which primitive.
 
 ## Reference
-- [agents](https://arc-labs-ai.github.io/agentkit/api-reference/agents/): Agent, Workflow, Cognition, control primitives.
-- [runtime](https://arc-labs-ai.github.io/agentkit/api-reference/runtime/): RunContext, Invoker, Budget, Quota, EventBus.
-- [kernel](https://arc-labs-ai.github.io/agentkit/api-reference/kernel/): value types, ports, middleware contract, resilience, concurrency.
-- [capabilities](https://arc-labs-ai.github.io/agentkit/api-reference/capabilities/): RequestBuilder, Compactor, Guardrail, Checkpointer, Evaluator.
-- [middlewares](https://arc-labs-ai.github.io/agentkit/api-reference/middlewares/): tracing, retry, meter, memoize, compaction, security, audit, egress.
-- [context](https://arc-labs-ai.github.io/agentkit/api-reference/context/): WorkingContext, ContextScope, TokenCounter.
-- [memory](https://arc-labs-ai.github.io/agentkit/api-reference/memory/): MemorySource, VectorMemory, CompositeMemory, ScopedMemory.
-- [tools](https://arc-labs-ai.github.io/agentkit/api-reference/tools/): Tool, FunctionTool, ToolRegistry, @tool decorator.
-- [prompts](https://arc-labs-ai.github.io/agentkit/api-reference/prompts/): Prompt value type.
-- [skills](https://arc-labs-ai.github.io/agentkit/api-reference/skills/): Skill facade (prompt + cognition + tools + memory as one unit).
-- [adapters](https://arc-labs-ai.github.io/agentkit/api-reference/adapters/): LLM providers, vector, store, checkpoint, observer.
-- [testing](https://arc-labs-ai.github.io/agentkit/api-reference/testing/): FakeLLM, FakeFetch, FakeSearch, FakeMemory, FakeCtx.
+- [agents](https://arc-labs-ai.github.io/agentkit/api-reference/agents/): `Agent`, the cognitions, `Workflow` (including `map` and `MapExpansionChanged`), coordinators, `Handoff`, `RunPolicy`, `Suspended` + `resume()`.
+- [runtime](https://arc-labs-ai.github.io/agentkit/api-reference/runtime/): `RunContext`, `Services`, `Invoker`, `Budget`, `Quota`, `EventBus`.
+- [kernel](https://arc-labs-ai.github.io/agentkit/api-reference/kernel/): value types, the ports, the middleware contract, concurrency, resilience, and `attempt_until_stuck` / `Stuck`.
+- [capabilities](https://arc-labs-ai.github.io/agentkit/api-reference/capabilities/): `RequestBuilder`, `GroundingSource` / `render_grounding`, `Compactor`, `Guardrail`, `Checkpointer`, `Evaluator`.
+- [middlewares](https://arc-labs-ai.github.io/agentkit/api-reference/middlewares/): `tracing`, `retry`, `fallback`, `meter`, `memoize`, `compaction`, `security`, `audit`, `egress`, `output_coerce`.
+- [context](https://arc-labs-ai.github.io/agentkit/api-reference/context/): `WorkingContext`, `ContextScope`, `TokenCounter`.
+- [memory](https://arc-labs-ai.github.io/agentkit/api-reference/memory/): `MemorySource`, `MemoryItem`, `VectorMemory`, `CompositeMemory` (with `dedupe=`), `ScopedMemory`, `ReadOnlyMemory` / `MemoryWriteRefused`.
+- [tools](https://arc-labs-ai.github.io/agentkit/api-reference/tools/): `Tool`, `FunctionTool`, `ToolRegistry`, the `@tool` decorator, `as_tool`.
+- [prompts](https://arc-labs-ai.github.io/agentkit/api-reference/prompts/): the `Prompt` value type.
+- [skills](https://arc-labs-ai.github.io/agentkit/api-reference/skills/): the `Skill` facade — prompt + cognition + tools + memory as one unit.
+- [adapters](https://arc-labs-ai.github.io/agentkit/api-reference/adapters/): LLM providers and the model registry, vector, store (`compare_and_set` / `increment` / `scan` included), checkpoint, observer.
+- [testing](https://arc-labs-ai.github.io/agentkit/api-reference/testing/): `FakeLLM`, `Turn`, `make_test_ctx`, `FakeClaudeCli`, `FakeFetch`, `FakeSearch`, `FakeMemory`.
 
 ## Examples
-- [Examples index](https://arc-labs-ai.github.io/agentkit/examples/): runnable end-to-end scripts under `examples/` in the repo.
+- [Examples index](https://arc-labs-ai.github.io/agentkit/examples/): six standalone scripts under `examples/` in the repo, each demonstrating one thing top to bottom.
 
-## Repo
+## Project
+- [Contributing](https://arc-labs-ai.github.io/agentkit/contributing/): where to file an issue, what needs a design discussion before a PR, and how to preview these docs locally.
 - [GitHub](https://github.com/arc-labs-ai/agentkit)
 - [PyPI](https://pypi.org/project/arc-agentkit/)
 - [License](https://github.com/arc-labs-ai/agentkit/blob/main/LICENSE)
