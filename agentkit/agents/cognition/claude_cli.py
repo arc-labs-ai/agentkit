@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from agentkit.agents.control.safety import TRIFECTA
 from agentkit.agents.result import AgentResult, AgentStopReason, stop_reason_for
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import StreamEvent, ToolCall, Usage
@@ -154,6 +155,101 @@ _CLI_INVALID_OUTPUT_REASONS = frozenset(
 )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Capability tags for the CLI's OWN built-in tools.
+#
+# ``RunPolicy`` refuses a tool set that can reach private data, untrusted
+# content and egress at once (the lethal trifecta). It reads ``tool.caps`` off
+# every tool it is handed — and this cognition had none, at all: ``grep -c caps
+# claude_cli.py`` returned 0. So a CLI session holding ``Read`` + ``WebFetch`` +
+# ``Bash`` — which IS that trifecta, exactly — sailed past the same check that
+# refuses the equivalent agentkit tool set. The gate was not bypassed; it had
+# nothing to look at.
+#
+# The vocabulary is ``TRIFECTA``, imported rather than re-spelled. A parallel
+# vocabulary would be worse than none: ``RunPolicy.capabilities`` intersects
+# with ``TRIFECTA`` and silently DROPS every tag outside it, so an invented tag
+# reads like protection and provides none.
+#
+# Two judgement calls worth defending, because both are the kind that get
+# "fixed" later by someone tightening the table:
+#
+# * ``Bash`` is ``private_data`` + ``egress`` and NOT ``untrusted_content``. It
+#   can read anything on the box and it can ``curl`` anywhere, so those two are
+#   not arguable. Adding the third would make every session that holds Bash a
+#   trifecta on its own, and a check that fires on ~every real configuration is
+#   a check people turn off. The spec's own framing — "a session with Read,
+#   WebFetch and Bash is that trifecta exactly" — has each tool contributing.
+# * ``Write`` / ``Edit`` / ``NotebookEdit`` carry NO tag. They are side
+#   effecting, which matters, but ``RunPolicy``'s vocabulary has exactly three
+#   words and none of them means "mutates local state" — that axis is
+#   ``FunctionTool.side_effecting``, and inventing a fourth tag here would put
+#   it somewhere ``RunPolicy`` cannot read it (see above).
+#
+# ``Task`` and ``SlashCommand`` carry all three because they are indirections
+# to the full tool set: a subagent, or a user-authored command body, can do
+# whatever the session can. Tagging them narrowly would let a caller launder
+# the trifecta through one innocuous-looking name.
+CLI_TOOL_CAPS: dict[str, tuple[str, ...]] = {
+    "Bash": ("private_data", "egress"),
+    "BashOutput": (),  # only reads shells ``Bash`` already started
+    "Edit": (),
+    "ExitPlanMode": (),
+    "Glob": ("private_data",),
+    "Grep": ("private_data",),
+    "KillShell": (),
+    "NotebookEdit": (),
+    "Read": ("private_data",),
+    "SlashCommand": TRIFECTA,
+    "Task": TRIFECTA,
+    "TodoWrite": (),
+    "WebFetch": ("untrusted_content", "egress"),
+    "WebSearch": ("untrusted_content", "egress"),
+    "Write": (),
+}
+
+
+def _middleware_name(mw: object) -> str:
+    """A name a reader can match against the chain they wrote.
+
+    The two middleware shapes name themselves differently. ``BaseMiddleware``
+    instances (``Egress``, ``Audit``, ``MeterMiddleware``) have a useful class
+    name. The raw ``(call, next)`` ones are closures that are ALL called ``mw``
+    — ``memoize()``, ``retry()`` and ``tracing()`` return functions whose
+    ``__name__`` is literally ``"mw"``, which in a warning would read as three
+    identical entries. Their ``__qualname__`` is ``"memoize.<locals>.mw"``, and
+    the half before ``.<locals>`` is the factory the caller actually typed.
+
+    ``idempotent()`` therefore reports as ``memoize`` — it delegates to it. That
+    is a small inaccuracy kept on purpose: the alternative is a registry of
+    factory identities that drifts the first time someone writes a middleware
+    of their own, and "memoize" still points at the right module.
+    """
+    qualname = getattr(mw, "__qualname__", None)
+    if isinstance(qualname, str) and qualname:
+        return qualname.split(".<locals>.")[0].rsplit(".", 1)[-1]
+    return type(mw).__name__
+
+
+def _tool_middleware_names(ctx: Ctx | None) -> tuple[str, ...]:
+    """The tool chain's middleware names, de-duplicated, in chain order.
+
+    Read defensively off ``ctx.invoker`` because a context legitimately has no
+    invoker (``make_test_ctx()`` with no LLM, a bare structural stub) and a
+    missing collaborator must not turn a safety warning into an AttributeError
+    raised out of ``drive``.
+
+    Only the TOOL chain. The chat chain is bypassed too, but it was never going
+    to see a tool call, so naming ``compaction`` in a warning about tool calls
+    would be a name the reader cannot act on.
+    """
+    invoker = getattr(ctx, "invoker", None)
+    chain = getattr(invoker, "tool_middleware", None) or ()
+    # ``dict.fromkeys`` rather than ``set``: chain ORDER is what the caller
+    # wrote, and two ``retry()`` entries should read as one name, not two.
+    return tuple(dict.fromkeys(_middleware_name(mw) for mw in chain))
+
+
 def _coerce_structured(agent: Agent | None, value: Any) -> tuple[Any, str | None]:
     """Turn the CLI's validated JSON into the type the agent declared.
 
@@ -225,6 +321,34 @@ class ClaudeCliCognition:
     Surface this as **a CLI-side estimate**, not a billed number — the CLI
     computes it from published per-token prices and can drift from provider
     invoices.
+
+    **The middleware chain does not apply to a native CLI tool call.** The CLI
+    bypasses the ``Invoker``, so for every ``Write`` / ``Edit`` / ``Bash`` /
+    ``WebFetch`` the CLI runs inside its own process there is no ``egress()``
+    URL check, no ``Guardrail.check_url`` SSRF or allowlist check, no
+    ``security()`` input guard, no ``audit()`` record, and no ``memoize()`` /
+    ``idempotent()`` key. Not "reduced" — absent. ``meter()`` had the identical
+    hole and was patched by hand (see ``_charge_meters``); the other five were
+    not, and a caller who reads agentkit's middleware documentation and wires
+    the documented tool chain gets a session where none of it applies, with
+    nothing saying so. That is a documented safety mechanism doing nothing,
+    five more times.
+
+    Two things are done about it here, neither of which is a fix — the CLI owns
+    its own tool loop and agentkit cannot reach into it:
+
+    * The first ``drive`` on a context that carries tool middleware, for a
+      session that has native tools, **warns and names the middlewares that
+      will not apply**. The failure is invisible by construction, so a generic
+      "middleware may not apply" would leave the reader no better off.
+    * The built-in tools carry ``caps`` (see :data:`CLI_TOOL_CAPS`), and
+      ``ClaudeCliCognition.caps`` is their union, so ``RunPolicy`` can refuse a
+      CLI session for the same lethal trifecta it refuses an agentkit tool set
+      for: ``RunPolicy(mode="deny").check([cognition, *other_tools])``.
+
+    Serving the tools over MCP instead — ``mcp_config=...`` with ``tools=("",)``
+    — routes every call back through agentkit's own tool path, where the chain
+    does apply. That is the configuration the warning is steering toward.
     """
 
     name: str = "claude_cli"
@@ -371,6 +495,19 @@ class ClaudeCliCognition:
     # it.
     spawn: CliSpawn | None = None
 
+    # Latch for the middleware-bypass warning. Per INSTANCE, deliberately:
+    #
+    # * Not per ``drive`` — a warning that repeats every iteration is noise,
+    #   and noise is what teaches people to add a ``filterwarnings`` line,
+    #   which is how the NEXT silent misconfiguration gets through.
+    # * Not per process — two cognitions in one service are usually two
+    #   different configurations, and a module-level latch would suppress the
+    #   second one's warning. The second one is the one nobody has audited.
+    #
+    # Set only when a warning is actually emitted, so a cognition first driven
+    # on a middleware-free context still warns when it later meets one.
+    _bypass_warned: bool = field(default=False, init=False, repr=False, compare=False)
+
     def __post_init__(self) -> None:
         """Refuse combinations the CLI itself refuses, at construction.
 
@@ -474,6 +611,11 @@ class ClaudeCliCognition:
 
         - ``ctx.autonomy`` — the CLI's own ``permission_mode`` owns
           permissions; agentkit's autonomy tier is not translated.
+        - ``ctx.invoker.tool_middleware`` — NOT RUN for a native CLI tool
+          call. No ``egress()`` URL check, no ``security()`` guard, no
+          ``audit()`` record, no ``memoize()`` key. The first drive on a
+          context that carries tool middleware warns and names them; see
+          the class docstring for why that is a warning and not a fix.
         - ``agent.memory`` — the CLI manages its own context; the agent's
           ``MemorySource`` (if any) is never queried.
         - ``Agent.resume()`` — not supported (ReAct-only). For a CLI-native
@@ -489,6 +631,12 @@ class ClaudeCliCognition:
           ``meter_spend=False`` to opt a run out of both ends.
         """
         del context  # unused — the CLI owns its own transcript
+
+        # Before anything else, including the spawn: the warning is worth more
+        # on the run that dies in ``create_subprocess_exec`` than on the one
+        # that works, because a mis-wired chain is a config problem and config
+        # problems are diagnosed from the first failed run.
+        self._warn_if_middleware_bypassed(ctx)
 
         # Bounded-concurrency spawn guard. Held for the whole CLI lifetime so
         # concurrent drives don't race the subprocess table (SDK issue #728).
@@ -837,6 +985,126 @@ class ClaudeCliCognition:
         if isinstance(prompt, Prompt):
             return prompt.render()
         return prompt
+
+    def native_tools(self) -> tuple[str, ...]:
+        """The CLI's OWN built-in tools this session actually holds, sorted.
+
+        Three flags interact and only two of them restrict:
+
+        * ``tools=None`` (the default) passes no ``--tools`` at all, leaving the
+          CLI's whole default set in place — every name in
+          :data:`CLI_TOOL_CAPS`, ``Bash`` included.
+        * ``tools=("",)`` is the CLI's spelling of "disable every tool"; a
+          restriction naming only MCP tools (``mcp__server__name``) leaves no
+          native tool behind either, and neither does one naming a tool this
+          table has never heard of.
+        * ``disallowed_tools`` subtracts. Covering the whole enabled set is
+          therefore equivalent to enabling none.
+
+        ``allowed_tools`` is deliberately NOT consulted. It is an auto-approve
+        list, not a grant: it decides which tools run without a permission
+        prompt, and it cannot hand back a tool ``--tools ''`` removed. Reading
+        it here would re-enable, on paper, tools the session does not have —
+        and it is already the flag callers most often confuse with ``tools``.
+
+        Matching is by exact name, which under-subtracts on purpose: a scoped
+        entry like ``disallowed_tools=("Bash(rm:*)",)`` restricts SOME Bash
+        invocations, so the session still holds Bash and the caps still say so.
+        Treating it as a full removal would quietly narrow the trifecta check.
+        """
+        if self.tools is None:
+            candidates = set(CLI_TOOL_CAPS)
+        else:
+            candidates = {t for t in self.tools if t in CLI_TOOL_CAPS}
+        # ``or ()`` for the same reason ``_tool_middleware_names`` reads
+        # defensively: this runs as the first statement of ``drive``, so an
+        # off-contract ``disallowed_tools=None`` — which every earlier version
+        # of this class simply ignored, since the argv builder only tests it for
+        # truthiness — must not turn a safety warning into a ``TypeError``
+        # raised out of the caller's first run.
+        return tuple(sorted(candidates - set(self.disallowed_tools or ())))
+
+    @property
+    def caps(self) -> tuple[str, ...]:
+        """Rule-of-Two tags for this session, in ``RunPolicy``'s vocabulary.
+
+        The union of :data:`CLI_TOOL_CAPS` over :meth:`native_tools`, which is
+        the shape ``RunPolicy.capabilities`` reads (``getattr(t, "caps", ())``).
+        So the cognition can be handed to the gate exactly like a tool::
+
+            RunPolicy(mode="deny").check([cognition, *agentkit_tools])
+
+        Mixing the two lists is the case that matters and the one a per-path
+        check misses: the CLI's ``Read`` + ``Bash`` supply private data and
+        egress, one MCP-served tool tagged ``untrusted_content`` completes the
+        trifecta, and only a check over BOTH sees it.
+
+        **Known under-approximation.** MCP tool names reaching the CLI as
+        ``mcp__server__tool`` contribute nothing here, because their caps live
+        on the MCP server's own tool definitions and this cognition never sees
+        them. Pass those tools' agentkit-side objects alongside the cognition
+        (as above) rather than assuming this property covers them.
+        """
+        tags: set[str] = set()
+        for name in self.native_tools():
+            tags.update(CLI_TOOL_CAPS[name])
+        return tuple(sorted(tags))
+
+    def _warn_if_middleware_bypassed(self, ctx: Ctx | None) -> None:
+        """Say which middlewares will not run, once, before the first spawn.
+
+        ``warnings.warn`` and not a log line or an ``Observation``, matching
+        ``_warn_if_bare_mode_has_no_credential``: this is a wiring mistake made
+        once at build time, and the audience is the developer at the REPL or in
+        CI, not the operator reading a run's telemetry. A log line needs a
+        configured logger to be seen at all; an ``Observation`` arrives on the
+        run's observer, i.e. inside the very machinery the caller has just been
+        told is not applying. ``warnings`` is also the only one of the three a
+        caller can promote to an error (``-W error``) or silence per-message.
+
+        Silent when the session has no native tools: everything then arrives
+        over MCP, through agentkit's own tool path, and the chain genuinely
+        does apply. Silent when the chain is empty or absent for the same
+        reason — there is nothing being skipped.
+        """
+        if self._bypass_warned:
+            return
+        names = _tool_middleware_names(ctx)
+        native = self.native_tools()
+        if not names or not native:
+            return
+        # Latch before warning, not after: ``warnings.warn`` can be promoted to
+        # an exception by the caller's filters, and an escaping error must not
+        # leave the latch unset so that the next drive raises again.
+        self._bypass_warned = True
+        # The prose shorthand is only true when the session really does hold
+        # every built-in tool. ``tools=None`` alone does not establish that:
+        # ``disallowed_tools=("Bash",)`` leaves ``tools`` None while removing
+        # the single most alarming name in the sentence, and a warning that
+        # tells a caller the chain "is not applied to every built-in CLI tool"
+        # about tools they explicitly locked down is the cry-wolf this feature
+        # exists to avoid. Fall through to the explicit list whenever anything
+        # was actually subtracted.
+        scope = (
+            "every built-in CLI tool (tools=None leaves the CLI's default set in place)"
+            if self.tools is None and set(native) == set(CLI_TOOL_CAPS)
+            else ", ".join(native)
+        )
+        import warnings
+
+        warnings.warn(
+            "ClaudeCliCognition bypasses the Invoker, so the tool middleware on this "
+            f"context does NOT run for a native CLI tool call. Not applied to {scope}: "
+            f"{', '.join(names)}. The CLI executes those tools inside its own process and "
+            "agentkit never sees the call, so there is no egress/SSRF or allowlist check, "
+            "no input guard, no audit record and no idempotency key for any of them — only "
+            "the run's total cost is reconciled afterwards. Serve the tools over MCP "
+            "(mcp_config=...) with tools=(\"\",) so every call comes back through agentkit, "
+            "or accept the gap deliberately. RunPolicy(mode=\"deny\").check([cognition]) "
+            "will refuse the lethal-trifecta configurations of it.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     def _warn_if_bare_mode_has_no_credential(self, env: dict[str, str]) -> None:
         """Bare mode ignores OAuth and the keychain — say so before the CLI does.
@@ -1335,6 +1603,25 @@ class ClaudeCliSession:
         """Whether the CLI advertised ``capability``."""
         return capability in self._capabilities
 
+    @property
+    def caps(self) -> tuple[str, ...]:
+        """Rule-of-Two tags for this session — the cognition's, unchanged.
+
+        A session can BE an agent's cognition (see :meth:`drive`), so it can be
+        handed to ``RunPolicy.check`` in exactly the place the cognition would
+        be. Without this delegation ``getattr(session, "caps", ())`` returns the
+        empty tuple and the gate sees a tool-less run — which is the same
+        shape of silent hole ``ClaudeCliCognition.caps`` was added to close, one
+        object further out.
+
+        Not to be confused with :attr:`capabilities` above: that is the CLI's
+        own control-protocol feature set, negotiated at ``system/init``. The
+        short name here is not a style choice — ``caps`` is the attribute name
+        ``RunPolicy.capabilities`` reads, and renaming it would make the tags
+        invisible again.
+        """
+        return self._cog.caps
+
     def _absorb_init(self, init: dict[str, Any]) -> None:
         """Record what the ``system/init`` payload said about this CLI."""
         advertised = init.get("capabilities")
@@ -1439,6 +1726,10 @@ class ClaudeCliSession:
     async def _turn(
         self, task: str, *, agent: Agent | None, ctx: Ctx | None
     ) -> AsyncIterator[StreamEvent]:
+        # Same bypass, same warning. A session reuses ONE cognition, so the
+        # latch on it makes this fire on the first turn and never again —
+        # which is the right cadence for a long conversation.
+        self._cog._warn_if_middleware_bypassed(ctx)
         state = _TurnState()
         cancelled = False
         fatal_exc: BaseException | None = None

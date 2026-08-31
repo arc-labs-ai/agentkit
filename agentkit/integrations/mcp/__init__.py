@@ -33,14 +33,24 @@ from agentkit.integrations.mcp.approvals import ApprovalServer
 from agentkit.integrations.mcp.client import MCPClient, StdioServer, StreamableHttpServer
 from agentkit.integrations.mcp.memory import mcp_resources
 from agentkit.integrations.mcp.prompts import mcp_prompts
+from agentkit.integrations.mcp.serve import (
+    McpServerSpec,
+    serve_registry,
+    serve_registry_stdio,
+    stdio_command,
+)
 from agentkit.integrations.mcp.tools import mcp_tools
 
 __all__ = [
     "ApprovalServer",
     "MCPClient",
+    "McpServerSpec",
     "StdioServer",
     "StreamableHttpServer",
     "mcp_prompts",
     "mcp_resources",
     "mcp_tools",
+    "serve_registry",
+    "serve_registry_stdio",
+    "stdio_command",
 ]

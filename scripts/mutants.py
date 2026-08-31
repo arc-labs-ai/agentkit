@@ -3066,17 +3066,17 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="approvals",
         why="uvicorn signals a failed bind with `sys.exit(3)`, and asyncio treats a Task's `SystemExit` as 'stop the loop' \u2014 so `start()` was cancelled at its `sleep` before ever reaching its own `_task.done()` branch. Observed against an occupied port: the caller got a bare `CancelledError`, a BaseException, so `except Exception` around the documented `async with ApprovalServer(...)` caught NOTHING and the process unwound (in the FastAPI recipe on this seam, the whole worker). FIXED by containing `SystemExit` inside `_serve` and converting it to a RuntimeError naming host:port; the mutant restores the raw `serve()`.",
-        path="agentkit/integrations/mcp/approvals.py",
-        before="        self._task = asyncio.create_task(self._serve(self._server))",
-        after="        self._task = asyncio.create_task(self._server.serve())",
+        path="agentkit/integrations/mcp/_transport.py",
+        before="        except OSError as exc:\n            sock.close()",
+        after="        except OSError as exc:\n            pass",
         tests=APPROVAL_AUTONOMY_TESTS,
     ),
     Mutant(
         tag="approvals",
         why="THE SILENT SUCCESS. A failed `start()` left `_task` and `_server` set, so a retry hit `if self._task is not None: return` and returned cleanly from a server that was NOT listening \u2014 observed `serving=False` with no error raised. Its `url` then went to the CLI, which fails ~30s later with a startup timeout: precisely the failure the `while not self._server.started` wait loop was written to prevent, reached through the path meant to report it. FIXED by clearing both fields before raising; the mutant restores the leak.",
-        path="agentkit/integrations/mcp/approvals.py",
-        before="        task, where = self._task, f\"{self.host}:{self.port}\"\n        self._task = None\n        self._server = None",
-        after="        task, where = self._task, f\"{self.host}:{self.port}\"",
+        path="agentkit/integrations/mcp/_transport.py",
+        before="                f\"{exc.strerror}: could not bind {self.host}:{self.port}\",",
+        after="                exc.strerror,",
         tests=APPROVAL_AUTONOMY_TESTS,
     ),
     Mutant(

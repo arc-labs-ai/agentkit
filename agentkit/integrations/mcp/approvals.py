@@ -48,15 +48,18 @@ and ``starlette`` arrive with it, so this adds no new dependency.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
-import socket
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agentkit.agents.control.elicitation import Decision, Elicitation
 from agentkit.agents.control.gate import Autonomy, should_gate
+from agentkit.integrations.mcp._transport import (
+    LoopbackMcpTransport,
+    http_mcp_config,
+    qualified_tool_name,
+)
 from agentkit.kernel.protocols import AutonomyLiteral
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -74,19 +77,6 @@ TOOL_NAME = "approve"
 # ``StrEnum``, so an ``Autonomy`` member compares equal to its literal and
 # passes this check without a cast.
 _TIERS: tuple[str, ...] = tuple(t.value for t in Autonomy)
-
-
-def _free_port() -> int:
-    """An ephemeral loopback port the OS says is free.
-
-    There is an unavoidable race between closing this socket and the server
-    binding it. Asking the OS beats picking a fixed port, which collides the
-    moment two agents run on one host.
-    """
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port: int = s.getsockname()[1]
-        return port
 
 
 def _allow(updated_input: dict[str, Any]) -> str:
@@ -223,8 +213,10 @@ class ApprovalServer:
     host: str = "127.0.0.1"
     port: int = 0  # 0 = ask the OS for a free one at start()
 
-    _server: Any = field(default=None, init=False, repr=False)
-    _task: asyncio.Task[Any] | None = field(default=None, init=False, repr=False)
+    # The listener is shared with ``serve_registry`` — see ``_transport``. Both
+    # servers had the same bind-and-wait loop and only one of them would have
+    # been fixed the next time it was wrong.
+    _transport: LoopbackMcpTransport | None = field(default=None, init=False, repr=False)
     _seen: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -297,85 +289,16 @@ class ApprovalServer:
 
     async def start(self) -> None:
         """Bind the port and serve. Idempotent."""
-        if self._task is not None:
+        if self._transport is not None:
             return
-        try:
-            import uvicorn
-        except ImportError as exc:  # pragma: no cover — exercised by the extra-less env
-            raise ImportError(
-                "ApprovalServer needs the 'mcp' extra: pip install 'arc-agentkit[mcp]'"
-            ) from exc
-
-        if not self.port:
-            self.port = _free_port()
-
-        config = uvicorn.Config(
-            self.build_mcp().streamable_http_app(),
-            host=self.host,
-            port=self.port,
-            log_level="error",  # the app's own logs are the interesting ones
-        )
-        self._server = uvicorn.Server(config)
-        self._task = asyncio.create_task(self._serve(self._server))
-        # Wait for the bind to actually happen: handing the CLI a URL that is
-        # not listening yet turns into a startup timeout 30 seconds later.
-        while not self._server.started:
-            if self._task.done():  # the bind failed — surface THAT, not a hang
-                await self._raise_start_failure()
-            await asyncio.sleep(0.01)
-
-    async def _serve(self, server: Any) -> None:
-        """Run uvicorn with its ``sys.exit`` contained inside our own task.
-
-        This wrapper is the load-bearing part of the bind-failure fix, not a
-        tidy-up. uvicorn calls ``sys.exit(3)`` when it cannot bind, and asyncio
-        treats ``SystemExit`` from a Task as a request to stop the LOOP: it
-        re-raises into the event loop, which cancels the caller. Measured
-        against an occupied port, ``start()`` never reached its own
-        ``_task.done()`` branch — it was cancelled at the ``sleep`` first, so
-        the caller saw a bare ``CancelledError``, ``except Exception`` caught
-        nothing, and the process unwound.
-
-        Converting it to a ``RuntimeError`` *inside* the task keeps it an
-        ordinary task failure, which is what the wait loop is written to read.
-        """
-        try:
-            await server.serve()
-        except SystemExit as exc:  # uvicorn's failed-bind signal
-            raise RuntimeError(f"uvicorn exited with status {exc.code}") from exc
-
-    async def _raise_start_failure(self) -> None:
-        """Turn a ``serve()`` that ended before it listened into an error a
-        caller can actually catch, and drop the half-built state.
-
-        uvicorn calls ``sys.exit(3)`` when the bind fails, so awaiting the task
-        propagates ``SystemExit`` — a ``BaseException``. Measured against a
-        port already in use: ``except Exception`` around
-        ``async with ApprovalServer(...)`` caught NOTHING, and the wiring the
-        module docstring recommends unwound the process instead of failing the
-        one run. In the documented FastAPI recipe that is the whole worker.
-
-        Clearing ``_task``/``_server`` is the other half. They used to be left
-        in place, so a caller who retried hit ``start``'s idempotence guard and
-        got a silent no-op: a server object reporting no error and not
-        listening, whose URL then went to the CLI, which failed thirty seconds
-        later with a startup timeout — the exact failure this wait loop exists
-        to prevent, reached by the path that was supposed to report it.
-        """
-        task, where = self._task, f"{self.host}:{self.port}"
-        self._task = None
-        self._server = None
-        try:
-            if task is not None:
-                await task
-        except (Exception, SystemExit, asyncio.CancelledError) as exc:
-            raise RuntimeError(
-                f"ApprovalServer could not listen on {where} "
-                f"({type(exc).__name__}: {exc}) — the port may already be in use"
-            ) from exc
-        raise RuntimeError(
-            f"ApprovalServer stopped serving {where} before it began listening"
-        )
+        transport = LoopbackMcpTransport(host=self.host, port=self.port)
+        await transport.start(self.build_mcp().streamable_http_app())
+        # Copy the OS-chosen port back onto the public field: callers read
+        # ``server.port`` (and ``server.url``, which is built from it) to wire
+        # the CLI, and leaving it at the 0 they passed would hand them
+        # ``http://127.0.0.1:0/mcp``.
+        self.port = transport.port
+        self._transport = transport
 
     def build_mcp(self) -> Any:
         """The ``FastMCP`` app this server serves. Public so the wire format
@@ -404,23 +327,10 @@ class ApprovalServer:
         return mcp
 
     async def stop(self) -> None:
-        """Shut the server down and wait for the port to be released.
-
-        Stopping a server that never started used to raise ``SystemExit(3)``
-        out of ``__aexit__`` — uvicorn's failed-bind signal, a
-        ``BaseException``, so this ``suppress`` did not catch it — during the
-        unwinding of whatever had already gone wrong, replacing the real error
-        with an exit code. It is not listed here because :meth:`_serve` now
-        converts it inside the task, which is the only place it can arise;
-        adding it here as well would be a branch no test could reach.
-        """
-        if self._server is not None:
-            self._server.should_exit = True
-        if self._task is not None:
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await asyncio.wait_for(self._task, timeout=5.0)
-            self._task = None
-        self._server = None
+        """Shut the server down and wait for the port to be released."""
+        if self._transport is not None:
+            await self._transport.stop()
+            self._transport = None
 
     # ---- wiring ----------------------------------------------------------------------------
 
@@ -434,12 +344,12 @@ class ApprovalServer:
         """The ``--mcp-config`` value, inline rather than a temp file so there
         is no path to clean up and no window where a stale file points at a
         dead port."""
-        return json.dumps({"mcpServers": {SERVER_NAME: {"type": "http", "url": self.url}}})
+        return json.dumps(http_mcp_config(SERVER_NAME, self.url))
 
     @property
     def tool_name(self) -> str:
         """The fully-qualified MCP tool name for ``--permission-prompt-tool``."""
-        return f"mcp__{SERVER_NAME}__{TOOL_NAME}"
+        return qualified_tool_name(SERVER_NAME, TOOL_NAME)
 
     @property
     def prompts_seen(self) -> int:

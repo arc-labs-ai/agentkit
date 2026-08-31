@@ -528,10 +528,17 @@ safe-sounding direction: it is tempting to read `auto_allow=("Read",)` as
 when a tool is *mostly* safe:
 
 ```python
+from agentkit.agents.control.elicitation import Decision, Elicitation
 from agentkit.integrations.mcp.approvals import ApprovalServer
 
+
+class Reviewer:
+    async def ask(self, request: Elicitation) -> Decision:
+        return Decision(kind="approve", actor="ops")
+
+
 server = ApprovalServer(
-    asker=None,  # your reviewer
+    asker=Reviewer(),
     auto_allow=("Read",),
     auto_allow_when=lambda tool, args: not str(
         args.get("file_path", "")

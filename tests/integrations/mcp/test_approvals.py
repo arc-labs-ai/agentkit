@@ -1256,10 +1256,18 @@ async def test_a_failed_bind_is_an_error_the_caller_can_catch(occupied_port: int
     before it could reach its own failure branch. The caller got a bare
     ``CancelledError`` — a ``BaseException`` — so the recommended
     ``async with ApprovalServer(...)`` unwound the process rather than failing
-    the run. In the FastAPI recipe on this seam, that is the whole worker."""
+    the run. In the FastAPI recipe on this seam, that is the whole worker.
+
+    The type is now ``OSError`` rather than a ``RuntimeError`` converted from
+    uvicorn's ``SystemExit``: ``LoopbackMcpTransport`` reserves the socket
+    before uvicorn is involved, so the real errno reaches the caller. The
+    endpoint is re-attached to the message because a bare
+    ``OSError: [Errno 48] Address already in use`` does not carry it, and a
+    process running several of these servers would get one indistinguishable
+    line per collision — which is exactly what the assertion below guards."""
     server = ApprovalServer(asker=_Asker(), port=occupied_port)
 
-    with pytest.raises(RuntimeError) as caught:
+    with pytest.raises(OSError) as caught:
         await server.start()
 
     assert str(occupied_port) in str(caught.value), "say which port, there may be many"
@@ -1274,12 +1282,20 @@ async def test_a_failed_bind_does_not_wedge_the_server(occupied_port: int) -> No
     caught the first failure and carried on — got a plain return from a server
     that was NOT listening. Its ``url`` then went to the CLI, which failed
     thirty seconds later with a startup timeout: the exact failure the wait
-    loop exists to prevent, reached through the path meant to report it."""
+    loop exists to prevent, reached through the path meant to report it.
+
+    The exception type moved from ``RuntimeError`` to ``OSError`` when the
+    transport was extracted, and that is an improvement rather than a
+    relabelling. ``ApprovalServer`` used to let uvicorn attempt the bind and
+    convert its ``sys.exit(3)`` into a ``RuntimeError`` inside the serve task.
+    ``LoopbackMcpTransport`` RESERVES the socket before uvicorn ever sees it,
+    so the genuine ``OSError: [Errno 48] Address already in use`` arrives in
+    the caller's own frame with the errno and the port intact."""
     server = ApprovalServer(asker=_Asker(), port=occupied_port)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(OSError):
         await server.start()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(OSError):
         await server.start()  # must NOT be a silent no-op
 
     await server.stop()  # and cleanup must not raise on top of the real error
@@ -1292,10 +1308,16 @@ async def test_stopping_a_server_that_never_started_does_not_raise(
     """``stop()`` suppressed ``Exception``, and uvicorn's failed bind is a
     ``SystemExit``. So ``__aexit__`` raised ``SystemExit(3)`` while unwinding
     whatever had already gone wrong, replacing the real error with an exit
-    code on the way out of the ``async with``."""
+    code on the way out of the ``async with``.
+
+    The failure is now an ``OSError`` from the pre-bind rather than a
+    ``RuntimeError`` from a converted ``SystemExit`` — see
+    ``test_a_failed_bind_does_not_wedge_the_server``. What this test pins is
+    unchanged: ``stop()`` on a server that never started must not raise on top
+    of the real error."""
     async with contextlib.AsyncExitStack() as stack:
         server = ApprovalServer(asker=_Asker(), port=occupied_port)
         stack.push_async_callback(server.stop)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(OSError):
             await server.start()
     # leaving the stack ran stop(); reaching here at all is the assertion
