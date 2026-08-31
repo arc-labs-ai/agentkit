@@ -14,10 +14,16 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from agentkit.adapters.store._keylock import KeyLock, key_lock
+from agentkit.adapters.store._primitives import (
+    check_by,
+    check_limit,
+    is_counter,
+    not_a_counter,
+)
 
 # Writes between amortized expiry sweeps. Purge-on-read alone never reclaims
 # a TTL'd key that is never read again — the common shape for idempotency
@@ -111,3 +117,81 @@ class InMemoryStore:
         # never-appended key left a permanent empty list behind (measured: one
         # ``list()`` miss → ``len(_logs) == 1``). A read must not be a write.
         return list(self._logs.get(key, ()))
+
+    async def compare_and_set(
+        self, key: str, expected: Any, value: Any, *, ttl: int | None = None
+    ) -> bool:
+        """Deliberately NOT under ``self._locks``.
+
+        There is no ``await`` between the read and the write below, and asyncio
+        is cooperative, so no other task can observe or interleave with the
+        intermediate state — the sequence is already atomic and a lock would
+        add nothing. Taking `get_or_set`'s lock instead would be actively
+        worse: a producer that itself compare-and-sets the key it is producing
+        would deadlock against its own single-flight entry.
+
+        ``==`` rather than ``is``: the durable backends compare JSON-decoded
+        values, and an identity check here would make the reference store the
+        only one where CAS on a dict could ever succeed.
+        """
+        current = None if self._is_expired(key) else self._kv.get(key)
+        if current != expected:
+            return False
+        await self.set(key, value, ttl=ttl)
+        return True
+
+    async def increment(self, key: str, by: int = 1, *, ttl: int | None = None) -> int:
+        """Same no-await-in-between argument as `compare_and_set`: read, add, write.
+
+        ``ttl`` is applied only when the key has no deadline yet, which is
+        Redis's ``EXPIRE NX`` and keeps a hot counter from sliding its own
+        window forever.
+
+        The deadline is captured and restored around the write because ``set``
+        CLEARS any expiry when handed ``ttl=None`` (it mirrors Redis's SET,
+        where a plain SET drops the TTL). Without that, the second increment of
+        every windowed counter would silently make it permanent — the counter
+        would keep counting and the window would never close.
+
+        Keyed on PRESENCE, not on ``get() is None``. A key holding a stored
+        ``null`` is a VALUE, and the durable backends cannot add to it — Redis
+        INCRBY on the four bytes ``null`` is an error, and so is Postgres's
+        ``::bigint`` cast. Treating it as zero here would make the offline
+        reference the one backend that accepted it, which is the same drift
+        `get_or_set` was already caught in.
+        """
+        check_by(key, by)
+        present = key in self._kv and not self._is_expired(key)
+        current = self._kv[key] if present else 0
+        if present and not is_counter(current):
+            raise not_a_counter(key, current)
+        deadline = self._expiry.get(key)
+        total = current + by
+        await self.set(key, total, ttl=None)
+        if deadline is not None:
+            self._expiry[key] = deadline
+        elif ttl is not None:
+            self._expiry[key] = self._clock() + ttl
+        return total
+
+    async def scan(self, prefix: str, *, limit: int | None = None) -> AsyncIterator[str]:
+        """Snapshot the key list BEFORE yielding any of it.
+
+        ``yield`` is a suspension point, so a writer runs between two
+        iterations of this loop; iterating ``self._kv`` live raised
+        ``RuntimeError: dictionary changed size during iteration`` the first
+        time an audit reader ran against a live run. The snapshot costs one
+        list of keys — which the caller is about to hold anyway — and buys the
+        only concurrency promise the port makes.
+        """
+        check_limit(limit)
+        if limit == 0:
+            return  # a real cap of zero, not "unset" — see `check_limit`
+        sent = 0
+        for key in list(self._kv):
+            if not key.startswith(prefix) or self._is_expired(key):
+                continue
+            yield key
+            sent += 1
+            if limit is not None and sent >= limit:
+                return

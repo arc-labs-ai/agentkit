@@ -105,7 +105,7 @@ subclass anything; it just has the right methods.
 
 ```python
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from agentkit.adapters.store import InMemoryStore
@@ -138,6 +138,24 @@ class CountingStore:
 
     async def list(self, key: str) -> list[Any]:
         return await self._inner.list(key)
+
+    # The coordination half. `isinstance` against a runtime_checkable Protocol
+    # checks for EVERY method, so leaving these three out makes the check below
+    # print False — a wrapper that forwards six of the nine is not a StorePort.
+    async def compare_and_set(
+        self, key: str, expected: Any, value: Any, *, ttl: int | None = None
+    ) -> bool:
+        return await self._inner.compare_and_set(key, expected, value, ttl=ttl)
+
+    async def increment(self, key: str, by: int = 1, *, ttl: int | None = None) -> int:
+        return await self._inner.increment(key, by, ttl=ttl)
+
+    # `def`, not `async def`: an `async def` that yields is a function returning
+    # an iterator, not a coroutine. Delegating with `async for`/`yield` keeps it
+    # an async generator, which is what the port asks for.
+    async def scan(self, prefix: str, *, limit: int | None = None) -> AsyncIterator[str]:
+        async for key in self._inner.scan(prefix, limit=limit):
+            yield key
 
 
 async def main() -> None:

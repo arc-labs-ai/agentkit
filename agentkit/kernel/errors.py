@@ -118,6 +118,20 @@ class StoreUnavailable(AgentkitError):
     """Raised when a StorePort operation cannot reach the backing store."""
 
 
+class StoreValueError(AgentkitError):
+    """Raised when a StorePort operation cannot be applied to what the key holds.
+
+    Distinct from `StoreUnavailable`: the store is reachable and answered, and
+    retrying will produce the same answer. ``increment`` on a key holding
+    ``{"a": 1}`` is the whole reason this exists — the three durable backends
+    each fail that differently (Redis ``ResponseError``, Postgres
+    ``InvalidTextRepresentationError`` from the ``::bigint`` cast, a dict-backed
+    store ``TypeError``), which is the backend-type leak this module's taxonomy
+    exists to close. A caller writing ``except StoreValueError`` must not have
+    to know which store is wired underneath.
+    """
+
+
 class ProviderAuthError(AgentkitError):
     """Raised when an LLM provider returns 401/403 (invalid credentials or forbidden).
 
@@ -135,5 +149,6 @@ __all__ = [
     "AgentkitError",
     "CheckpointerError",
     "StoreUnavailable",
+    "StoreValueError",
     "ProviderAuthError",
 ]

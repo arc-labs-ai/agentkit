@@ -78,7 +78,22 @@ class VectorPort(Protocol):
 @runtime_checkable
 class StorePort(Protocol):
     """The single KV seam that backs the former cache / idempotency / checkpoint / audit ports.
-    `get_or_set` is single-flight; a producer that raises is NOT stored (failures are never cached)."""
+    `get_or_set` is single-flight; a producer that raises is NOT stored (failures are never cached).
+
+    The last three methods are the *coordination* half. Without them the seam
+    could express "create if absent" and "read one log back", and nothing else,
+    so three ordinary shapes had to go around the port entirely:
+
+    * **read-modify-write.** Allocating a monotonic ordinal is "read max, write
+      max+1", and two writers race it. `get_or_set` cannot express "replace
+      only if unchanged".
+    * **a counter with an expiry** — the shape of every rate limit. The
+      observed consequence was an application writing a raw Lua script straight
+      at Redis, which put the check outside everything the framework can test,
+      trace or meter.
+    * **enumerating a prefix.** "Everything recorded for this run" was
+      answerable only if every writer had also maintained an index by hand.
+    """
 
     async def get(self, key: str) -> Any | None: ...
     async def set(self, key: str, value: Any, *, ttl: int | None = None) -> None: ...
@@ -88,6 +103,87 @@ class StorePort(Protocol):
     async def delete(self, key: str) -> None: ...  # idempotent remove (e.g. clear a checkpoint)
     async def append(self, key: str, value: Any) -> None: ...  # append-only log (audit)
     async def list(self, key: str) -> list[Any]: ...  # read an appended log back
+
+    async def compare_and_set(
+        self, key: str, expected: Any, value: Any, *, ttl: int | None = None
+    ) -> bool:
+        """Replace `key` with `value` only if it currently equals `expected`; report whether it applied.
+
+        **Returns a bool rather than raising.** Losing a compare-and-set is an
+        ordinary outcome that the caller retries — it is the *expected* half of
+        an optimistic loop, not a fault. Raising would force every
+        read-modify-write to wrap its own body in a ``try/except`` and to tell
+        "someone beat me" apart from "the store is down" by exception type,
+        which is precisely the distinction the return value already makes.
+
+        Comparison is by EQUALITY, never identity: three of the four backends
+        round-trip the value through JSON, so the caller never holds the object
+        that was written and an identity check would make CAS on any container
+        permanently impossible while appearing to work in memory.
+
+        An absent key compares equal to ``expected=None``, so the first
+        iteration of a read-modify-write loop behaves like every later one.
+        That deliberately collapses "absent" and "stored null" — but so does
+        `get`, which is where the caller's ``expected`` came from, so the
+        distinction was never observable at the call site anyway.
+
+        ``ttl`` applies only on the write that lands; a refused CAS leaves the
+        existing expiry alone.
+        """
+        ...
+
+    async def increment(self, key: str, by: int = 1, *, ttl: int | None = None) -> int:
+        """Atomically add `by` to the integer at `key` (absent ⇒ 0) and return the new total.
+
+        `by` may be negative — refunds and released reservations are
+        decrements, and a counter that only went up would need a second key to
+        track what came back.
+
+        ``ttl`` opens a window on the increment that finds no window; it never
+        slides one that already exists (Redis's ``EXPIRE key ttl NX``). The
+        alternative — resetting on every increment — breaks the exact case the
+        primitive is for: under sustained traffic the counter is touched more
+        often than the window is long, so it never expires, and the limit never
+        resets. The rate limiter would jam shut precisely under load. The
+        counter and its window are set together, atomically, so a failure
+        cannot leave a counter with no window (an immortal one) or a window
+        with no counter.
+
+        A key holding a non-integer raises `StoreValueError` — the same type
+        and message on every backend, so the caller does not have to know
+        whether Redis, Postgres or a dict answered. A stored ``null`` counts as
+        a non-integer, NOT as absent, which is the one place this deliberately
+        disagrees with `compare_and_set`: `compare_and_set`'s ``expected`` came
+        out of a `get`, which cannot tell null from absent, so it has to accept
+        both; `increment` is handed no such value and the durable backends
+        genuinely cannot add to a JSON ``null``.
+        """
+        ...
+
+    def scan(self, prefix: str, *, limit: int | None = None) -> AsyncIterator[str]:
+        """Yield the KV keys beginning with `prefix` — full keys, in no promised order.
+
+        Declared ``def`` returning an `AsyncIterator`, not ``async def``, for
+        the same reason as `LLMPort.stream`: an ``async def`` that yields is a
+        *function returning an iterator*, not a coroutine, so the ``async def``
+        spelling would reject every real implementation under a strict type
+        check. Call sites are identical — ``async for k in store.scan(p)``.
+
+        Keys, not values, and never the append-log namespace: `list(key)` reads
+        logs, and a scan that surfaced log keys would hand back keys `get`
+        answers ``None`` for. A key equal to the prefix is included — a summary
+        record stored at the prefix itself is part of "everything under it".
+
+        ``limit`` is a cap on how many keys the caller is willing to receive,
+        NOT a page cursor: with no ordering promised, *which* keys arrive under
+        a limit is backend-defined. ``0`` is a real cap of zero and a negative
+        limit raises `ValueError`.
+
+        Iteration is concurrent-safe in the weak sense that matters: it must
+        not raise when writers land mid-scan. No snapshot is promised — only
+        that keys present throughout appear, exactly once.
+        """
+        ...
 
 
 @dataclass(frozen=True)

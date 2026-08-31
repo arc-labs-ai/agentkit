@@ -8,11 +8,18 @@ import json
 import os
 import tempfile
 import warnings
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
+from agentkit.adapters.store._keylock import KeyLock, key_lock
+from agentkit.adapters.store._primitives import (
+    check_by,
+    check_limit,
+    is_counter,
+    not_a_counter,
+)
 from agentkit.kernel.errors import StoreUnavailable
 
 
@@ -37,7 +44,13 @@ class FileStore:
     def __init__(self, base_dir: str) -> None:
         self._root = Path(base_dir)
         self._root.mkdir(parents=True, exist_ok=True)
-        self._locks: dict[str, asyncio.Lock] = {}
+        # Reference-counted, like the other three backends. A plain
+        # ``setdefault`` table is write-only: it keeps one lock per key the
+        # process has ever touched, which is the exact regression
+        # ``_keylock`` was extracted to fix. FileStore was the one backend
+        # left out of that fix, and it was invisible because it was also the
+        # one backend missing from the reclaim test.
+        self._locks: dict[str, KeyLock] = {}
         # One-shot latches: a TTL that silently does nothing, and a log line
         # that could not be parsed, each deserve exactly one warning per store
         # rather than one per call.
@@ -80,7 +93,24 @@ class FileStore:
 
         return await asyncio.to_thread(_read)
 
-    async def set(self, key: str, value: Any, *, ttl: int | None = None) -> None:
+    def _warn_ttl_ignored(self, ttl: int | None) -> None:
+        """One warning per store, shared by every method that takes a ``ttl``.
+
+        Extracted when `compare_and_set` and `increment` arrived: three copies
+        of the latch would have meant three warnings from one store, and the
+        one-shot behaviour is itself tested (a per-call warning gets filtered
+        and stops being read).
+
+        ``stacklevel=3`` — one for this helper, one for the public method,
+        landing on the caller. The inlined version used 2 for the same reason;
+        pointing the warning inside the adapter tells a reader nothing.
+
+        The condition is kept in its original positive form rather than flipped
+        into an early return: the mutation catalogue neutralises exactly this
+        line to check the warning is still asserted somewhere, and a rewritten
+        guard would make that mutant silently inapplicable — a mutant that no
+        longer applies reads as "invariant enforced" while enforcing nothing.
+        """
         if ttl is not None and not self._warned_ttl:
             self._warned_ttl = True
             warnings.warn(
@@ -89,8 +119,11 @@ class FileStore:
                 "dedupes a legitimate retry of the same operation forever. Use a TTL-native "
                 "backend (RedisStore) when expiry is load-bearing.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
+
+    async def set(self, key: str, value: Any, *, ttl: int | None = None) -> None:
+        self._warn_ttl_ignored(ttl)
         path = self._kv_path(key)
         await asyncio.to_thread(self._write_atomic, path, json.dumps(value))
 
@@ -145,8 +178,7 @@ class FileStore:
         """
         if await self._exists(key):
             return await self.get(key)
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
+        async with key_lock(self._locks, key):
             if await self._exists(key):
                 return await self.get(key)
             result = await fn()  # a raised fn propagates here, unwritten (never cache failure)
@@ -199,3 +231,87 @@ class FileStore:
                 stacklevel=2,
             )
         return records
+
+    async def compare_and_set(
+        self, key: str, expected: Any, value: Any, *, ttl: int | None = None
+    ) -> bool:
+        """Atomic within the process, via the SAME lock table `get_or_set` uses.
+
+        Sharing the table is the load-bearing part: two lock tables keyed on
+        the same string give mutual exclusion between compare-and-sets and
+        between single-flights, and none at all BETWEEN them — a producer
+        writing its result while a CAS reads would be exactly the lost update
+        the primitive exists to prevent.
+
+        Across processes this is NOT atomic, and no file-based store can make
+        it so without a lock file protocol; the class docstring already says
+        cross-process single-flight needs the real DB's transaction, and this
+        inherits that caveat. `PostgresStore` and `RedisStore` do it properly.
+        """
+        self._warn_ttl_ignored(ttl)
+        async with key_lock(self._locks, key):
+            # ``get`` collapses absent and stored-null onto None, which is the
+            # documented CAS semantics — ``expected=None`` matches both.
+            if await self.get(key) != expected:
+                return False
+            await self.set(key, value)
+            return True
+
+    async def increment(self, key: str, by: int = 1, *, ttl: int | None = None) -> int:
+        """Read-add-write under the shared per-key lock — see `compare_and_set`.
+
+        Presence, not ``get() is None``: a key holding a stored ``null`` is a
+        value the durable backends refuse to add to, so it raises here too
+        rather than restarting the counter at ``by``.
+        """
+        check_by(key, by)
+        self._warn_ttl_ignored(ttl)
+        async with key_lock(self._locks, key):
+            current: Any = 0
+            if await self._exists(key):
+                current = await self.get(key)
+                if not is_counter(current):
+                    raise not_a_counter(key, current)
+            total = int(current) + by
+            await self.set(key, total)
+            return total
+
+    async def scan(self, prefix: str, *, limit: int | None = None) -> AsyncIterator[str]:
+        """List the directory ONCE, in a thread, then yield from that list.
+
+        Two reasons it is not lazy. A directory handle held open across an
+        ``await`` would see entries appear and vanish mid-iteration — the same
+        "must not raise while writers land" promise the in-memory backend needs
+        a snapshot for. And ``iterdir`` is blocking: streaming it would put a
+        stat syscall per key on the event loop, which is what
+        ``asyncio.to_thread`` exists here to avoid.
+
+        Filtering on the ``.json`` suffix is what excludes both namespaces that
+        must not appear: ``.log`` files (`list` reads those) and the
+        ``<name><random>.tmp`` scratch files `_write_atomic` leaves in flight,
+        which would otherwise surface a half-written key as a real one.
+        """
+        check_limit(limit)
+        if limit == 0:
+            return
+
+        def _keys() -> list[str]:
+            suffix = ".json"
+            return [
+                # Reverse of ``_safe``: the filename is percent-encoded, so the
+                # prefix has to be compared against the DECODED key. Comparing
+                # encoded forms would mean `scan("a/b")` matched nothing, since
+                # the stored name is ``a%2Fb``.
+                unquote(entry.name[: -len(suffix)])
+                for entry in self._root.iterdir()
+                if entry.name.endswith(suffix)
+            ]
+
+        sent = 0
+        for key in await asyncio.to_thread(_keys):
+            if not key.startswith(prefix):
+                continue
+            yield key
+            sent += 1
+            if limit is not None and sent >= limit:
+                return

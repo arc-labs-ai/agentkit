@@ -475,6 +475,27 @@ infrastructure rather than logic: a `StorePort` operation could not reach
 its backing store. Everything a memoize or checkpoint layer does on top
 of a store has to decide what that means for the run.
 
+`StoreValueError` is its logic-side counterpart, and the two want opposite
+responses: `StoreUnavailable` is usually worth a retry, `StoreValueError`
+never is. `StorePort.increment` raises it when the argument or the key is
+not an integer — either a `by` that is not a whole number, or a key that
+already holds a JSON document, a string or `null`:
+
+```python
+from agentkit import StoreValueError
+
+try:
+    remaining = await store.increment("ratelimit:user-7", 1, ttl=60)
+except StoreValueError:
+    ...          # a counter and a document are sharing one key — a bug, not an outage
+```
+
+It exists so that one mistake has one type and one message on every
+backend. Left to the backends, the same call raises `TypeError` from the
+in-memory store, `redis.ResponseError` over Redis and an `asyncpg` cast
+failure over Postgres — three driver-specific types leaking through the
+port whose purpose is that callers never see them.
+
 !!! note "Not every error in the tree is an `AgentkitError`"
     The tool errors are the deliberate exception — `ToolArgumentError`
     subclasses `ValueError`, because the model sending a bad argument is

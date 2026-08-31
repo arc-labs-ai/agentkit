@@ -139,6 +139,7 @@ from agentkit.kernel.errors import (
     Failure,
     ProviderAuthError,
     StoreUnavailable,
+    StoreValueError,
     compose_failures,
 )
 from agentkit.kernel.metrics import MetricsPort, NoopMetrics
@@ -290,6 +291,7 @@ __all__ = [
     "AgentkitError",
     "CheckpointerError",
     "StoreUnavailable",
+    "StoreValueError",
     "ProviderAuthError",
     # ---- kernel: observation + tracing seam ----------------------------------
     "Observation",

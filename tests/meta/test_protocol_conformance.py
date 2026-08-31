@@ -420,25 +420,102 @@ class TestCognitionContract:
 # producer returning None re-ran on every call — 3 invocations against
 # InMemoryStore's 1, on identical input.
 #
-# Postgres is omitted: it needs a live server. Redis rides its
-# JSON-round-tripping fake, which is the real serialization path.
+# All four run here. Redis and Postgres ride the fakes in ``tests/_store_fakes.py``
+# rather than a live server: neither extra is installed in the dev environment
+# and CI has no service containers, so "omit the ones that need a server" meant
+# two of the four implementations were never compared against the contract at
+# all. The fakes store what the adapter hands them (JSON text) and return what
+# a real client returns (bytes), so this is the real encode → store → fetch →
+# decode path, and they yield to the event loop on every command so the
+# concurrency assertions below are not vacuous.
+#
+# ``ttl`` is the one place the four legitimately differ, and the difference is
+# declared per case rather than skipped: Redis and memory honour it, FileStore
+# has no sweeper and warns, PostgresStore refuses. Tests assert the DECLARED
+# behaviour, so a backend that quietly changed camp fails here.
+
+
+@dataclasses.dataclass(frozen=True)
+class _StoreCase:
+    """One backend under test, plus the two things the contract cannot infer:
+    how it treats ``ttl``, and how to move its clock."""
+
+    store: Any
+    ttl: str  # "honored" | "ignored" | "refused"
+    advance: Any  # Callable[[float], None]; a no-op where ttl is not honored
+
+
+def _memory_case() -> _StoreCase:
+    from agentkit.adapters.store import InMemoryStore
+
+    now = {"t": 0.0}
+
+    def advance(seconds: float) -> None:
+        now["t"] += seconds
+
+    return _StoreCase(InMemoryStore(clock=lambda: now["t"]), "honored", advance)
+
+
+def _file_case() -> _StoreCase:
+    import tempfile
+
+    from agentkit.adapters.store import FileStore
+
+    return _StoreCase(FileStore(tempfile.mkdtemp()), "ignored", lambda _s: None)
+
+
+def _redis_case() -> _StoreCase:
+    from _store_fakes import FakeRedis
+
+    from agentkit.adapters.store import RedisStore
+
+    now = {"t": 0.0}
+
+    def advance(seconds: float) -> None:
+        now["t"] += seconds
+
+    return _StoreCase(RedisStore(client=FakeRedis(clock=lambda: now["t"])), "honored", advance)
+
+
+def _postgres_case() -> _StoreCase:
+    from _store_fakes import FakePgPool
+
+    from agentkit.adapters.store import PostgresStore
+
+    return _StoreCase(PostgresStore(pool=FakePgPool()), "refused", lambda _s: None)
 
 
 def _store_params():
-    import tempfile
-
-    from agentkit.adapters.store import FileStore, InMemoryStore
-
-    params = [
-        pytest.param(lambda: InMemoryStore(), id="memory"),
-        pytest.param(lambda: FileStore(tempfile.mkdtemp()), id="file"),
+    return [
+        pytest.param(_memory_case, id="memory"),
+        pytest.param(_file_case, id="file"),
+        pytest.param(_redis_case, id="redis"),
+        pytest.param(_postgres_case, id="postgres"),
     ]
-    return params
 
 
 @pytest.fixture(params=_store_params())
-def store(request: pytest.FixtureRequest):
+def store_case(request: pytest.FixtureRequest) -> _StoreCase:
     return request.param()
+
+
+@pytest.fixture
+def store(store_case: _StoreCase):
+    """The backend itself. Derived from ``store_case`` rather than built
+    separately so a test taking both gets ONE store, not two."""
+    return store_case.store
+
+
+async def _drain(keys: Any) -> list[str]:
+    """Collect a `scan` into a list.
+
+    ``scan`` is declared as a plain ``def`` returning an ``AsyncIterator`` — not
+    an ``async def`` — for the same reason ``LLMPort.stream`` is: an ``async
+    def`` that yields is a *function returning an iterator*, not a coroutine,
+    so declaring it ``async def`` in the Protocol would make every real
+    implementation fail a strict type check. Call sites are identical
+    (``async for k in store.scan(p)``); only the annotation differs."""
+    return [key async for key in keys]
 
 
 class TestStorePortContract:
@@ -569,3 +646,465 @@ class TestStorePortContract:
             return [await store.get(k) for k in ["a/b", "a\\b", "a:b", "a b", "a.b"]]
 
         assert asyncio.run(go()) == [0, 1, 2, 3, 4]
+
+    # ── compare_and_set ──────────────────────────────────────────────────────
+    #
+    # `get_or_set` covers *create if absent*. It does not cover *replace only
+    # if unchanged*, which is what every read-modify-write needs — allocating a
+    # monotonic ordinal is "read max, write max+1", and two writers race it.
+
+    def test_compare_and_set_replaces_a_matching_value(self, store) -> None:
+        async def go():
+            await store.set("k", 1)
+            applied = await store.compare_and_set("k", 1, 2)
+            return applied, await store.get("k")
+
+        applied, value = asyncio.run(go())
+        assert applied is True
+        assert value == 2
+
+    def test_compare_and_set_reports_a_lost_race_rather_than_raising(self, store) -> None:
+        """The design requirement, not a preference: a caller that loses a CAS
+        re-reads and retries, which is ordinary control flow. Raising would
+        force every read-modify-write loop to wrap its own body in a
+        ``try/except`` and to distinguish "someone beat me" from "the store is
+        down" by exception type."""
+
+        async def go():
+            await store.set("k", 1)
+            applied = await store.compare_and_set("k", 99, 2)
+            return applied, await store.get("k")
+
+        applied, value = asyncio.run(go())
+        assert applied is False
+        assert value == 1, "a losing compare_and_set wrote anyway"
+
+    def test_compare_and_set_creates_an_absent_key_when_expected_is_none(self, store) -> None:
+        """Absent compares equal to ``expected=None``, so the FIRST iteration
+        of a read-modify-write loop works like every later one. The ordinal
+        allocator reads ``None`` from an empty slot; if it then had to fall
+        back to ``set``, the create would be the one step of the loop with no
+        race protection — which is where the race actually is."""
+
+        async def go():
+            applied = await store.compare_and_set("fresh", None, 1)
+            return applied, await store.get("fresh")
+
+        assert asyncio.run(go()) == (True, 1)
+
+    def test_compare_and_set_refuses_to_create_when_expected_is_not_none(self, store) -> None:
+        """POSITIVE CONTROL for the rule above. "Absent means None" must not
+        decay into "absent matches anything"."""
+
+        async def go():
+            applied = await store.compare_and_set("fresh", 7, 1)
+            return applied, await store.get("fresh")
+
+        assert asyncio.run(go()) == (False, None)
+
+    def test_compare_and_set_matches_a_stored_null_against_expected_none(self, store) -> None:
+        """`get` collapses "absent" and "stored null" onto ``None``, so the
+        caller that produced ``expected`` from a `get` cannot tell them apart.
+        A CAS that DID tell them apart would reject a swap on evidence the
+        caller had no way to see."""
+
+        async def go():
+            await store.set("k", None)
+            applied = await store.compare_and_set("k", None, "now-set")
+            return applied, await store.get("k")
+
+        assert asyncio.run(go()) == (True, "now-set")
+
+    def test_compare_and_set_with_expected_none_loses_to_a_key_that_now_exists(self, store) -> None:
+        """The ordinal allocator's actual race, and the reason "absent means
+        None" cannot be implemented as a plain upsert: this reader saw an empty
+        slot, another writer filled it, and the write MUST NOT land. An
+        unconditional ``INSERT ... ON CONFLICT DO UPDATE`` would silently
+        overwrite the winner and hand both callers the same ordinal."""
+
+        async def go():
+            await store.set("ordinal", 1)  # a competitor got there first
+            applied = await store.compare_and_set("ordinal", None, 2)
+            return applied, await store.get("ordinal")
+
+        assert asyncio.run(go()) == (False, 1)
+
+    def test_compare_and_set_compares_by_equality_not_identity(self, store) -> None:
+        """The stored value round-trips through JSON on three of the four
+        backends, so the caller NEVER holds the object that was written — an
+        identity check would make CAS on any container permanently impossible,
+        and would appear to work on the in-memory reference alone."""
+
+        async def go():
+            await store.set("k", {"a": [1, 2], "b": {"c": 3}})
+            equal_but_distinct = {"b": {"c": 3}, "a": [1, 2]}  # different key order, too
+            applied = await store.compare_and_set("k", equal_but_distinct, {"a": []})
+            return applied, await store.get("k")
+
+        assert asyncio.run(go()) == (True, {"a": []})
+
+    def test_compare_and_set_on_a_container_that_differs_is_refused(self, store) -> None:
+        """POSITIVE CONTROL for the equality rule — a deep difference must still
+        lose, or "compare" degenerates into "always swap"."""
+
+        async def go():
+            await store.set("k", {"a": [1, 2]})
+            applied = await store.compare_and_set("k", {"a": [1, 3]}, "clobbered")
+            return applied, await store.get("k")
+
+        assert asyncio.run(go()) == (False, {"a": [1, 2]})
+
+    def test_exactly_one_of_two_concurrent_compare_and_sets_wins(self, store) -> None:
+        """THE reason the primitive exists. Both racers read the same value and
+        try to replace it; a read-modify-write that is not atomic lets both
+        report success and one write is silently lost — which for the ordinal
+        allocator means two runs with the same sequence number."""
+
+        async def go():
+            await store.set("ordinal", 0)
+            return await asyncio.gather(
+                store.compare_and_set("ordinal", 0, "a"),
+                store.compare_and_set("ordinal", 0, "b"),
+            )
+
+        outcomes = asyncio.run(go())
+        assert sorted(outcomes) == [False, True], f"both racers reported {outcomes}"
+
+    # ── increment ────────────────────────────────────────────────────────────
+    #
+    # A counter with an expiry is the shape of every rate limit. Without it an
+    # application writes a raw Lua script against Redis and bypasses the port,
+    # putting the check outside everything the framework can test or trace.
+
+    def test_increment_starts_a_missing_counter_at_by(self, store) -> None:
+        assert asyncio.run(store.increment("hits")) == 1
+
+    def test_increment_returns_the_new_total_and_get_agrees(self, store) -> None:
+        """The counter is an ordinary stored value, not a private register — a
+        rate limiter reports "37 of 50 used" by reading it back."""
+
+        async def go():
+            await store.increment("hits", 5)
+            total = await store.increment("hits", 2)
+            return total, await store.get("hits")
+
+        total, read_back = asyncio.run(go())
+        assert total == 7 and read_back == 7
+        assert isinstance(total, int) and not isinstance(total, bool)
+
+    def test_a_counter_written_by_set_can_be_incremented(self, store) -> None:
+        """Counters are ordinary values in the same key space, not a separate
+        register file. On Redis this holds only because ``json.dumps(5)`` is
+        exactly the string Redis stores an integer as — encode integers any
+        other way (a JSON envelope, a length prefix) and INCRBY stops seeing a
+        number, so this pins the encoding as much as the semantics."""
+
+        async def go():
+            await store.set("seeded", 5)
+            return await store.increment("seeded"), await store.get("seeded")
+
+        assert asyncio.run(go()) == (6, 6)
+
+    def test_increment_accepts_a_negative_by(self, store) -> None:
+        """Refunds and released reservations are decrements. A counter that
+        only went up would need a second key to track what came back."""
+
+        async def go():
+            await store.increment("balance", 3)
+            return await store.increment("balance", -5)
+
+        assert asyncio.run(go()) == -2
+
+    def test_increment_totals_correctly_under_concurrency(self, store) -> None:
+        """Twenty racers on one counter. A read-modify-write implementation
+        loses updates here — and loses them silently, which is how a rate
+        limiter starts admitting more than its ceiling."""
+
+        async def go():
+            await asyncio.gather(*(store.increment("hits") for _ in range(20)))
+            return await store.get("hits")
+
+        assert asyncio.run(go()) == 20
+
+    def test_increment_on_a_non_integer_refuses_identically_on_every_backend(self, store) -> None:
+        """Redis answers this with ``ResponseError``, Postgres with a cast
+        failure, and a dict-backed store with ``TypeError`` — three different
+        types for one mistake, which is exactly the leak the error taxonomy
+        exists to close. Bools are included because ``isinstance(True, int)``
+        is True in Python but ``true`` is not an integer in JSON or in Redis:
+        the one backend that could have accepted it is the reference one."""
+        from agentkit.kernel.errors import StoreValueError
+
+        async def go():
+            for i, value in enumerate(["text", {"a": 1}, [1], 1.5, True, None]):
+                key = f"notint{i}"
+                await store.set(key, value)
+                with pytest.raises(StoreValueError):
+                    await store.increment(key)
+                assert await store.get(key) == value, f"{value!r} was clobbered by a failed increment"
+
+        asyncio.run(go())
+
+    def test_increment_refuses_a_non_integer_by_identically_on_every_backend(self, store) -> None:
+        """The mirror of the test above, on the ARGUMENT rather than the stored
+        value — and the four backends did not agree before this existed.
+        Measured on ``increment(k, 1.5)``:
+
+        * memory and file returned ``1.5``, a float out of a method annotated
+          ``-> int``, and left ``1.5`` in the key, which the NEXT increment then
+          rejects as a non-counter. The counter is poisoned by a call that
+          reported success.
+        * redis returned ``1`` while the key held ``1.5`` — the ``int()`` around
+          INCRBY's reply truncates, so the total the caller acts on and the
+          total the store holds disagree. That is a rate limiter that reports
+          being under its ceiling while the counter says otherwise.
+        * postgres failed inside the driver with a bare ``ValueError``.
+
+        ``True`` is included for the same reason the stored-value test includes
+        it: ``isinstance(True, int)`` makes it silently count as 1 on three
+        backends and is rejected by the fourth.
+        """
+        from agentkit.kernel.errors import StoreValueError
+
+        async def go():
+            for by in (1.5, True, "3", None, 2 + 0j):
+                with pytest.raises(StoreValueError, match="`by`"):
+                    await store.increment("amount", by)
+                assert await store.get("amount") is None, f"by={by!r} wrote anyway"
+            # POSITIVE CONTROL: a real int still works, so the guard is not
+            # simply refusing everything.
+            assert await store.increment("amount", 3) == 3
+
+        asyncio.run(go())
+
+    # ── scan ─────────────────────────────────────────────────────────────────
+    #
+    # `list(key)` reads back one appended log. Without a prefix scan,
+    # "everything recorded for this run" is answerable only if every writer
+    # also maintained an index by hand.
+
+    def test_scan_returns_every_key_under_the_prefix_and_nothing_above_it(self, store) -> None:
+        async def go():
+            for key in ("run:1:a", "run:1:b", "run:1:c:d", "run:2:a", "run", "other"):
+                await store.set(key, 1)
+            return await _drain(store.scan("run:1:"))
+
+        assert set(asyncio.run(go())) == {"run:1:a", "run:1:b", "run:1:c:d"}
+
+    def test_scan_yields_full_keys_not_the_remainder_after_the_prefix(self, store) -> None:
+        """A caller feeds what it gets straight back into `get`/`delete`. A
+        backend that stripped the prefix would hand back keys that resolve to
+        nothing, and the reclaim pass built on it would delete zero rows while
+        reporting success."""
+
+        async def go():
+            await store.set("run:1:a", "v")
+            return await _drain(store.scan("run:1:"))
+
+        keys = asyncio.run(go())
+        assert keys == ["run:1:a"]
+        assert asyncio.run(store.get(keys[0])) == "v"
+
+    def test_scan_includes_a_key_that_is_itself_the_prefix(self, store) -> None:
+        """``"run"`` is a prefix of ``"run"``. Excluding it would mean a
+        summary record stored at the prefix itself vanished from the scan that
+        exists to enumerate that run."""
+
+        async def go():
+            await store.set("run", "summary")
+            await store.set("run:1", "step")
+            return await _drain(store.scan("run"))
+
+        assert set(asyncio.run(go())) == {"run", "run:1"}
+
+    def test_scan_of_a_prefix_that_matches_nothing_is_empty(self, store) -> None:
+        async def go():
+            await store.set("run:1", 1)
+            return await _drain(store.scan("nothing-here:"))
+
+        assert asyncio.run(go()) == []
+
+    def test_scan_with_an_empty_prefix_enumerates_every_key(self, store) -> None:
+        async def go():
+            for key in ("a", "b:1", "c"):
+                await store.set(key, 1)
+            return await _drain(store.scan(""))
+
+        assert set(asyncio.run(go())) == {"a", "b:1", "c"}
+
+    def test_scan_omits_a_deleted_key(self, store) -> None:
+        async def go():
+            await store.set("run:1", 1)
+            await store.set("run:2", 1)
+            await store.delete("run:1")
+            return await _drain(store.scan("run:"))
+
+        assert asyncio.run(go()) == ["run:2"]
+
+    def test_scan_does_not_see_the_append_log_namespace(self, store) -> None:
+        """`set` and `append` are different stores behind one key space — the
+        contract already pins that they do not collide. A scan that surfaced
+        log keys would return keys `get` answers ``None`` for."""
+
+        async def go():
+            await store.append("run:log", {"event": 1})
+            await store.set("run:kv", 1)
+            return await _drain(store.scan("run:"))
+
+        assert asyncio.run(go()) == ["run:kv"]
+
+    def test_scan_limit_caps_the_number_of_keys(self, store) -> None:
+        """A cap on what the caller is willing to receive, NOT a page cursor:
+        no ordering is promised, so *which* two arrive is backend-defined."""
+
+        async def go():
+            for i in range(5):
+                await store.set(f"run:{i}", i)
+            return await _drain(store.scan("run:", limit=2))
+
+        keys = asyncio.run(go())
+        assert len(keys) == 2
+        assert set(keys) <= {f"run:{i}" for i in range(5)}
+
+    def test_scan_with_limit_zero_yields_nothing(self, store) -> None:
+        """Zero is a real cap, not "unset". Collapsing it onto ``None`` would
+        make ``limit=remaining_budget`` return everything at exactly the moment
+        the budget ran out."""
+
+        async def go():
+            await store.set("run:1", 1)
+            return await _drain(store.scan("run:", limit=0))
+
+        assert asyncio.run(go()) == []
+
+    def test_scan_rejects_a_negative_limit(self, store) -> None:
+        """A negative limit is a caller bug (an underflowed budget). Silently
+        treating it as unlimited returns the whole key space to code that asked
+        for less than nothing."""
+
+        async def go():
+            with pytest.raises(ValueError, match="limit"):
+                await _drain(store.scan("run:", limit=-1))
+
+        asyncio.run(go())
+
+    def test_scan_treats_glob_metacharacters_in_the_prefix_literally(self, store) -> None:
+        """Keys are built by joining caller data (`Scope.key()`, tool names,
+        correlation ids), so a prefix containing ``*`` is user input, not a
+        pattern. Redis's SCAN takes a glob, so an unescaped ``*`` there turns
+        ``scan("a*")`` into "every key starting with a" — a cross-tenant read
+        on a store whose whole job is scoping."""
+
+        async def go():
+            for key in ("a*b", "a?b", "a[b", "axb", "ab"):
+                await store.set(key, 1)
+            return (
+                await _drain(store.scan("a*")),
+                await _drain(store.scan("a?")),
+                await _drain(store.scan("a[")),
+            )
+
+        star, question, bracket = asyncio.run(go())
+        assert star == ["a*b"]
+        assert question == ["a?b"]
+        assert bracket == ["a[b"]
+
+    def test_scan_does_not_raise_while_keys_are_being_written(self, store) -> None:
+        """The audit reader runs against a live run. A scan is a long-lived
+        iteration over a mutating table, and the in-memory backend's dict
+        raises ``RuntimeError: dictionary changed size during iteration`` the
+        moment a writer lands mid-scan. No snapshot semantics are promised —
+        only that the iteration completes and the keys present throughout
+        appear."""
+
+        async def go():
+            for i in range(6):
+                await store.set(f"run:{i}", i)
+
+            async def writer() -> None:
+                for i in range(6, 12):
+                    await store.set(f"run:{i}", i)
+                    await asyncio.sleep(0)
+
+            async def reader() -> list[str]:
+                seen = []
+                async for key in store.scan("run:"):
+                    seen.append(key)
+                    await asyncio.sleep(0)
+                return seen
+
+            seen, _ = await asyncio.gather(reader(), writer())
+            return seen
+
+        seen = asyncio.run(go())
+        assert len(seen) == len(set(seen)), "scan returned a key twice"
+        assert {f"run:{i}" for i in range(6)} <= set(seen), "a key present throughout was missed"
+
+    # ── ttl, declared per backend ────────────────────────────────────────────
+    #
+    # The four legitimately differ, and the difference is asserted rather than
+    # skipped so a backend cannot quietly change camp.
+
+    def test_compare_and_set_applies_its_ttl_only_on_the_write_that_landed(
+        self, store_case
+    ) -> None:
+        """A refused CAS must not touch the expiry either. Setting the TTL
+        before checking the compare would let a losing racer shorten the
+        winner's entry — the entry it never got to write."""
+        store = store_case.store
+
+        if store_case.ttl == "refused":
+            with pytest.raises(NotImplementedError, match="ttl"):
+                asyncio.run(store.compare_and_set("k", None, 1, ttl=10))
+            return
+        if store_case.ttl == "ignored":
+            with pytest.warns(UserWarning, match="ignores ttl"):
+                assert asyncio.run(store.compare_and_set("k", None, 1, ttl=10)) is True
+            return
+
+        async def go():
+            await store.set("winner", 1)
+            assert await store.compare_and_set("winner", 1, 2, ttl=10) is True
+            await store.set("loser", 1)
+            assert await store.compare_and_set("loser", 99, 2, ttl=10) is False
+            store_case.advance(10)
+            return await store.get("winner"), await store.get("loser")
+
+        winner, loser = asyncio.run(go())
+        assert winner is None, "the applied ttl did not expire the entry"
+        assert loser == 1, "a REFUSED compare_and_set still set an expiry"
+
+    def test_increment_ttl_expires_the_counter_and_its_window_together(self, store_case) -> None:
+        """``ttl`` opens the window on the increment that finds no window —
+        it never slides one that already exists.
+
+        The alternative (reset on every increment) breaks the exact case the
+        primitive is for: under sustained traffic the counter is touched more
+        often than the window is long, so it never expires and the limit never
+        resets — the rate limiter jams shut precisely under load. Redis's
+        ``EXPIRE key ttl NX`` is this rule, and it rides inside the same MULTI
+        as the INCRBY so a crash cannot leave a counter with no window (an
+        immortal counter) or a window with no counter.
+        """
+        store = store_case.store
+
+        if store_case.ttl == "refused":
+            with pytest.raises(NotImplementedError, match="ttl"):
+                asyncio.run(store.increment("c", ttl=10))
+            return
+        if store_case.ttl == "ignored":
+            with pytest.warns(UserWarning, match="ignores ttl"):
+                assert asyncio.run(store.increment("c", ttl=10)) == 1
+            return
+
+        async def go():
+            assert await store.increment("c", ttl=10) == 1
+            store_case.advance(9)
+            assert await store.increment("c", ttl=10) == 2, "the counter lost its value early"
+            store_case.advance(1)  # the ORIGINAL deadline, not a slid one
+            assert await store.get("c") is None, "the window slid instead of expiring"
+            assert await store.increment("c", ttl=10) == 1, "the counter outlived its window"
+            store_case.advance(9)
+            return await store.get("c")
+
+        assert asyncio.run(go()) == 1, "the replacement window inherited the old deadline"

@@ -8,35 +8,18 @@ from typing import Any
 
 import pytest
 
+# One fake per backend, in ``tests/_store_fakes.py``. This module used to carry
+# its own copies; they drifted the moment `compare_and_set` / `increment` /
+# `scan` arrived and needed WATCH, EXPIRE NX and SCAN, which is the same
+# four-copies-of-one-thing problem the shared `_keylock` was extracted to end.
+from _store_fakes import FakePgPool as _FakePgPool
+from _store_fakes import FakeRedis as _FakeRedis
+
 from agentkit.adapters.store import PostgresStore, RedisStore
 
 
 def _run(coro):
     return asyncio.run(coro)
-
-
-class _FakeRedis:
-    """In-memory stand-in for the redis.asyncio surface RedisStore uses: get/set/rpush/lrange."""
-
-    def __init__(self):
-        self.kv: dict = {}
-        self.lists: dict = {}
-
-    async def get(self, k):
-        return self.kv.get(k)
-
-    async def set(self, k, v, ex=None):
-        self.kv[k] = v
-
-    async def delete(self, k):
-        self.kv.pop(k, None)
-
-    async def rpush(self, k, v):
-        self.lists.setdefault(k, []).append(v)
-
-    async def lrange(self, k, start, end):
-        items = self.lists.get(k, [])
-        return items if end == -1 else items[start : end + 1]
 
 
 # ---- RedisStore (offline, fake client) --------------------------------------------------------
@@ -550,46 +533,6 @@ def test_filestore_says_so_when_it_ignores_a_ttl() -> None:
 # ``None``-returning fn → InMemory ran it 1x, Redis 3x, Postgres 3x.
 
 
-class _FakePgPool:
-    """In-memory stand-in for the asyncpg pool surface PostgresStore uses.
-    ``agentkit_kv.value`` is ``TEXT NOT NULL``, so a missing row is the only
-    way ``fetchval`` yields ``None`` — the fake preserves that."""
-
-    def __init__(self):
-        self.kv: dict = {}
-        self.log: dict = {}
-
-    def acquire(self):
-        pool = self
-
-        class _Con:
-            async def execute(self, sql, *a):
-                if sql.startswith("INSERT INTO agentkit_kv"):
-                    pool.kv[a[0]] = a[1]
-                elif sql.startswith("DELETE FROM agentkit_kv"):
-                    pool.kv.pop(a[0], None)
-                elif sql.startswith("INSERT INTO agentkit_log"):
-                    pool.log.setdefault(a[0], []).append(a[1])
-
-            async def fetchval(self, sql, *a):
-                return pool.kv.get(a[0])
-
-            async def fetch(self, sql, *a):
-                return [{"value": v} for v in pool.log.get(a[0], [])]
-
-        class _CM:
-            async def __aenter__(self):
-                return _Con()
-
-            async def __aexit__(self, *exc):
-                return False
-
-        return _CM()
-
-    async def close(self):
-        return None
-
-
 def _backend(name):
     """Build a fresh instance of one of the three `StorePort` implementations
     that share the ``get_or_set`` contract. All three are fully offline."""
@@ -934,10 +877,21 @@ def _fake_postgres_store():
 
 
 def _fake_backed_stores() -> list[Any]:
-    """One instance of each backend, with the network faked out."""
+    """One instance of each backend, with the network faked out.
+
+    FileStore is here because it was the backend the original reclaim fix
+    missed. It needs no fake — it is a real directory — and leaving it out is
+    why it kept a plain ``setdefault`` table long after the other three moved
+    to the reference-counted helper: 500 `compare_and_set` + `increment` pairs
+    on distinct keys left it holding 1,000 locks while the other three held
+    none. A per-backend regression test that omits a backend does not cover it.
+    """
+    import tempfile as _tempfile
+
+    from agentkit.adapters.store.file import FileStore
     from agentkit.adapters.store.memory import InMemoryStore
 
-    stores: list[Any] = [InMemoryStore()]
+    stores: list[Any] = [InMemoryStore(), FileStore(_tempfile.mkdtemp())]
     for factory in (_fake_redis_store, _fake_postgres_store):
         made = factory()
         if made is not None:

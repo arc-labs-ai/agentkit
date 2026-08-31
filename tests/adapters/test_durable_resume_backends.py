@@ -17,6 +17,12 @@ import os
 
 import pytest
 
+# The shared fake stores the JSON-encoded string RedisStore hands it and
+# returns bytes the way redis-py does, so this still exercises the same
+# encode → store → fetch → decode path a live Redis takes — which is the whole
+# point of this module. It replaces a third private copy of the same class.
+from _store_fakes import FakeRedis as _FakeRedis
+
 from agentkit.adapters.store import PostgresStore, RedisStore
 from agentkit.agents import Agent, Workflow
 
@@ -82,23 +88,6 @@ async def _resume_cycle(store):
 
 
 # ---- RedisStore over a JSON-round-tripping fake (always runs) ----------------------------------
-
-
-class _FakeRedis:
-    """The few redis.asyncio methods RedisStore needs for checkpoints — and it stores the JSON-encoded
-    string RedisStore hands it, so this exercises the same serialization path a live Redis takes."""
-
-    def __init__(self):
-        self.kv: dict = {}
-
-    async def get(self, k):
-        return self.kv.get(k)
-
-    async def set(self, k, v, ex=None):
-        self.kv[k] = v
-
-    async def delete(self, k):
-        self.kv.pop(k, None)
 
 
 def test_durable_resume_through_redis_store_serialization():

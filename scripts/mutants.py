@@ -64,14 +64,46 @@ def _recover_from_crash() -> bool:
     it had to do anything."""
     if not _BACKUP_DIR.exists():
         return False
-    restored = []
+    # The backup FILENAME is a LOSSY encoding of the path: `_backup_path` maps
+    # "/" to "__", so `agentkit/middlewares/__init__.py` is stored as
+    # `agentkit__middlewares____init__.py`, and decoding "__" back to "/" gives
+    # `agentkit/middlewares//init/.py` — a directory that does not exist. Every
+    # `__init__.py` and `__main__.py` hits it. Recovery then died on the write
+    # with `FileNotFoundError`, which is the worst possible moment to fail:
+    # every file after it in the sort order stayed MUTATED, and because the
+    # crash happened before the backup directory was cleared, the NEXT
+    # invocation crashed in the same place. The tool bricked itself and left
+    # the working tree silently modified (observed: a neutralised guard left
+    # behind in `claude_cli.py`).
+    #
+    # The MANIFEST already records the real paths, so decode through it rather
+    # than trying to invert an encoding that has no inverse.
+    manifest = _BACKUP_DIR / "MANIFEST"
+    by_encoded = {}
+    if manifest.exists():
+        for line in manifest.read_text().splitlines():
+            rel = line.strip()
+            if rel:
+                by_encoded[_backup_path(rel).name] = rel
+
+    restored, orphans = [], []
     for backup in sorted(_BACKUP_DIR.iterdir()):
         if backup.name == "MANIFEST":
             continue
-        rel = backup.name.replace("__", "/")
+        rel = by_encoded.get(backup.name)
+        if rel is None:
+            # Never guess: writing a backup to a path decoded by hand is how
+            # the original bug turned a crash into a corrupted tree.
+            orphans.append(backup.name)
+            continue
         (ROOT / rel).write_text(backup.read_text())
         restored.append(rel)
         backup.unlink()
+    if orphans:
+        print("could NOT map these backups to a path (restore them by hand):")
+        for name in orphans:
+            print(f"  {_BACKUP_DIR.name}/{name}")
+        return True
     (_BACKUP_DIR / "MANIFEST").unlink(missing_ok=True)
     _BACKUP_DIR.rmdir()
     if restored:
@@ -166,6 +198,11 @@ MEM_DEDUPE_TESTS = (
 )
 MEM_VECTOR_TESTS = ("tests/memory/test_vector_memory.py",)
 WORKFLOW_MAP_TESTS = ("tests/agents/test_workflow_map.py",)
+STORE_PRIM_TESTS = (
+    "tests/adapters/test_store_primitives.py",
+    "tests/adapters/test_stores.py",
+    "tests/meta/test_protocol_conformance.py",
+)
 FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
     "tests/tools/test_tool_call_contract.py",
@@ -2887,6 +2924,30 @@ MUTANTS: tuple[Mutant, ...] = (
         before="                if prompt is not None and not callable(runner):",
         after="                if False:",
         tests=WORKFLOW_MAP_TESTS,
+    ),
+    Mutant(
+        tag="storeprim",
+        why="`by` stops being validated, so the four backends diverge: memory/file return a float from a method annotated -> int and poison the key, while Redis reports 1 for increment(k, 1.5)",
+        path="agentkit/adapters/store/memory.py",
+        before="        check_by(key, by)",
+        after="",
+        tests=STORE_PRIM_TESTS,
+    ),
+    Mutant(
+        tag="storeprim",
+        why="FileStore's increment goes back to a plain setdefault lock table, leaking one asyncio.Lock per key forever \u2014 the exact regression `_keylock` exists to prevent",
+        path="agentkit/adapters/store/file.py",
+        before="        check_by(key, by)\n        self._warn_ttl_ignored(ttl)\n        async with key_lock(self._locks, key):",
+        after="        check_by(key, by)\n        self._warn_ttl_ignored(ttl)\n        lock = self._locks.setdefault(key, asyncio.Lock())\n        async with lock:",
+        tests=STORE_PRIM_TESTS,
+    ),
+    Mutant(
+        tag="storeprim",
+        why="the Postgres error path re-acquires a SECOND pooled connection while holding the first, so increment deadlocks outright on a max_size=1 pool \u2014 invisible until the pool is bounded",
+        path="agentkit/adapters/store/postgres.py",
+        before="        if total is None:\n            # The guard excluded the row, so something non-integer is there.\n            # Re-read it to name the type in the error \u2014 but OUTSIDE the\n            # ``acquire`` above, because ``self.get`` takes a connection of its\n            # own. Asking the pool for a second connection while still holding\n            # the first deadlocks outright on ``max_size=1`` (measured: the\n            # call hangs forever), and on any pool size it doubles the\n            # connections a concurrent burst of bad increments needs, so N\n            # workers each holding one and waiting for another is a deadlock at\n            # every size. The error path must not be the expensive one.\n            raise not_a_counter(key, await self.get(key))",
+        after="            if total is None:\n                # The guard excluded the row, so something non-integer is there.\n                # Re-read it to name the type in the error \u2014 but OUTSIDE the\n                # ``acquire`` above, because ``self.get`` takes a connection of its\n                # own. Asking the pool for a second connection while still holding\n                # the first deadlocks outright on ``max_size=1`` (measured: the\n                # call hangs forever), and on any pool size it doubles the\n                # connections a concurrent burst of bad increments needs, so N\n                # workers each holding one and waiting for another is a deadlock at\n                # every size. The error path must not be the expensive one.\n                raise not_a_counter(key, await self.get(key))",
+        tests=STORE_PRIM_TESTS,
     ),
 )
 
