@@ -1,7 +1,8 @@
 # Integrations
 
 An integration lets an agent use software that was never written for
-agentkit — and, in one case, lets other software use agentkit.
+agentkit — and, where the arrow reverses, lets other software use
+agentkit.
 
 Today there is exactly one: the **Model Context Protocol** (MCP), under
 `agentkit.integrations.mcp`.
@@ -33,14 +34,15 @@ an error path, a test. That work does not compose and it does not stop.
 With a protocol, one adapter serves all of them.
 
 So `agentkit.integrations.mcp` is a translation layer with three
-directions and one reversal:
+directions and two reversals:
 
 | MCP concept | becomes an agentkit | via |
 |---|---|---|
 | tool | `Tool` | `mcp_tools(client)` |
 | resource | `MemorySource` | `mcp_resources(client)` |
 | prompt | `Prompt` | `mcp_prompts(client)` |
-| *(the reversal)* | agentkit **is** the server | `ApprovalServer` |
+| *(reversed)* your `Asker` | an MCP **server** that answers permission prompts | `ApprovalServer` |
+| *(reversed)* your `ToolRegistry` | an MCP **server** that runs your tools | `serve_registry` |
 
 Each integration is opt-in and gated behind a `pyproject` extra so the
 core stays dependency-free:
@@ -372,11 +374,30 @@ The warning on the first line is the drop, working as designed.
 
 ## The other direction: agentkit as an MCP server
 
-`ApprovalServer` is the one place the arrow points the other way.
+Two things here are servers, and both exist for one reason.
+`ClaudeCliCognition` hands the whole agent loop to the Claude CLI, and
+the CLI owns that loop: you cannot step into it, wrap a tool call, or
+answer a prompt from inside. Anything you want it to do differently has
+to be handed to it on the way in — and the seams it offers are MCP
+servers.
 
-The problem it solves is specific. `ClaudeCliCognition` delegates the
-whole agent loop to the Claude CLI, and the CLI owns its own
-permissions. That left a service two options, both bad:
+| what you want | the CLI's seam | agentkit's server |
+|---|---|---|
+| a human to approve each action | `--permission-prompt-tool` | `ApprovalServer` |
+| the loop to call *your* tools | `--mcp-config` | `serve_registry` |
+
+Both run on the same `LoopbackMcpTransport`: one bind-and-wait loop,
+one shutdown that genuinely releases the port, one
+`mcp__<server>__<tool>` spelling. That is worth a sentence because the
+second server was written when the first already had all of it, and two
+copies of a bind-and-wait loop is two places to fix "handed the CLI a
+URL that was not listening yet" — only one of which would have been
+fixed.
+
+`ApprovalServer` is the narrower of the two, and it came first.
+
+The problem it solves is specific. The CLI owns its own permissions,
+which left a service two options, both bad:
 `bypassPermissions` (the agent may do anything, unattended) or
 `dontAsk` (anything not pre-approved is denied outright and the run just
 fails). agentkit already had the missing middle — `Asker`, the injected
@@ -562,6 +583,567 @@ Two properties make this safe to put on an approval seam:
 
 Leaving it unset (the default) keeps the old behaviour exactly.
 
+### Serving your own tools: `serve_registry`
+
+`ApprovalServer` answers questions about what the CLI wants to do.
+`serve_registry` gives it something to do that it did not ship with.
+
+The gap here was narrow and total. Everything needed to *describe* an
+agentkit tool to a model was already present and already correct:
+`FunctionTool` derives a `ToolSchema` from a signature and a docstring,
+`ToolRegistry` holds them and refuses a duplicate name, and
+`ToolArgumentError` refuses a bad call with a message naming the tool,
+the offending arguments and the accepted set. `ClaudeCliCognition`
+already accepted `mcp_config`. Only the wire was missing — nothing in
+agentkit could produce the document that flag reads. So a service that
+wanted the CLI to run its own `deploy()` wrote MCP JSON by hand, stood
+a server up beside it, and then owned the job of keeping a hand-written
+schema in step with the Python signature it claimed to describe.
+
+`serve_registry` takes the registry you already have and hands back an
+`McpServerSpec`: the config file, the qualified tool names, the safety
+declarations, and — for the HTTP transport — the listener.
+
+```python
+"""agentkit as the MCP server: a ToolRegistry the Claude CLI can call.
+
+Driven here by agentkit's own MCP client over a real loopback socket,
+because that is the only way to show the error contract holding.
+"""
+
+import asyncio
+import json
+import logging
+
+from agentkit.integrations.mcp import MCPClient, StreamableHttpServer, serve_registry
+from agentkit.testing import make_test_ctx
+from agentkit.tools import ToolRegistry, tool
+
+logging.disable(logging.INFO)
+
+
+@tool(side_effecting=False)
+def run_check(name: str, strict: bool = False) -> str:
+    """Run the named check and report whether it passed."""
+    return f"{name}:{'strict' if strict else 'lax'}:ok"
+
+
+@tool(side_effecting=True, requires_approval=True, caps=("egress",))
+def deploy(target: str) -> str:
+    """Deploy the current build to the named target environment."""
+    return f"deployed to {target}"
+
+
+async def main() -> None:
+    ctx = make_test_ctx()
+    spec = serve_registry(ToolRegistry.from_tools([run_check, deploy]), name="engine", ctx=ctx)
+
+    print("tool_names:       ", spec.tool_names)
+    print("requires_approval:", spec.requires_approval)
+    print("auto_approve:     ", spec.auto_approve)
+    print("caps:             ", spec.caps)
+    print("cli_kwargs keys:  ", sorted(spec.cli_kwargs()))
+
+    async with spec:
+        async with MCPClient(StreamableHttpServer(url=spec.url, timeout_s=10.0)) as client:
+            listed = {t.name: t for t in await client.list_tools()}
+            print("advertised:       ", sorted(listed))
+            assert run_check.schema is not None
+            print(
+                "schema unchanged: ",
+                json.dumps(listed["run_check"].inputSchema)
+                == json.dumps(dict(run_check.schema.parameters)),
+            )
+            print("deploy _meta:     ", listed["deploy"].meta["agentkit"])
+            print("deploy read-only: ", listed["deploy"].annotations.readOnlyHint)
+
+            ok = await client.call_tool("run_check", {"name": "lint"})
+            print("ok:               ", ok.content[0].text)
+
+            bad = await client.call_tool("run_check", {"name": "lint", "verbose": True})
+            print("bad isError:      ", bad.isError)
+            print("bad text:         ", bad.content[0].text)
+
+            after = await client.call_tool("run_check", {"name": "after"})
+            print("session survived: ", after.content[0].text)
+
+    print("calls_seen:       ", spec.calls_seen)
+
+
+asyncio.run(main())
+```
+
+```text
+tool_names:        ('mcp__engine__deploy', 'mcp__engine__run_check')
+requires_approval: ('mcp__engine__deploy',)
+auto_approve:      ('mcp__engine__run_check',)
+caps:              ('egress',)
+cli_kwargs keys:   ['mcp_config', 'strict_mcp_config']
+advertised:        ['deploy', 'run_check']
+schema unchanged:  True
+deploy _meta:      {'side_effecting': True, 'requires_approval': True, 'caps': ['egress']}
+deploy read-only:  False
+ok:                lint:lax:ok
+bad isError:       True
+bad text:          tool 'run_check' call rejected: unexpected argument(s) ['verbose']. Accepted arguments: ['name', 'strict']
+session survived:  after:lax:ok
+calls_seen:        3
+```
+
+Three lines in that output are the whole design, and each has its own
+subsection below: `schema unchanged: True`, the pair
+`bad isError: True` / `session survived`, and `deploy _meta`. The last
+line is the humbler one — `calls_seen` exists because a session that
+reports zero either never called a tool or never *reached* the server,
+and those are different bugs to go looking for.
+
+!!! note "What this example does and does not prove"
+    Every line above ran: a real loopback listener, a real MCP session
+    over a real socket, three real tool calls. What it does **not**
+    exercise is the Claude CLI — the binary that would normally be the
+    client. The config file and `cli_kwargs()` are the real values it
+    is handed; that it accepts them, connects, and runs the tool body
+    back in this process is covered by this project's own tests against
+    the binary, not by this snippet.
+
+In real use you never call the tools yourself. You hand `cli_kwargs()`
+to the cognition, exactly as with `ApprovalServer`:
+
+```python
+"""The shape a real caller writes."""
+
+from agentkit import Agent
+from agentkit.agents.cognition.claude_cli import ClaudeCliCognition
+from agentkit.integrations.mcp import serve_registry
+
+
+async def run(registry, task, ctx):
+    spec = serve_registry(registry, name="engine", ctx=ctx, timeout_s=120.0)
+    async with spec:
+        cognition = ClaudeCliCognition(
+            model="claude-sonnet-4-6",
+            allowed_tools=spec.auto_approve,        # the rest still prompt
+            **spec.cli_kwargs(builtin_tools=False),  # only OUR tools
+        )
+        return await Agent(name="dev", cognition=cognition).run(task, ctx)
+```
+
+`strict_mcp_config=True` is always in there. Without it the CLI also
+loads whatever MCP servers the working directory or the user's home
+configuration happen to define — the difference between "these tools"
+and "these tools plus a teammate's `.mcp.json`". `builtin_tools=False`
+is a *separate* decision and is off by default, because it disables the
+CLI's own Read, Grep and Bash, and that is a statement about what the
+session can do at all rather than about MCP wiring. A flag named
+`strict_mcp_config` should not quietly make it.
+
+#### The schema is not translated
+
+`ToolSchema.parameters` goes out as MCP `inputSchema` unchanged — one
+`dict()` unwrap of the `FrozenDict` and nothing else. No key renaming,
+no shape massaging, no defaults filled in. That is what the
+`schema unchanged: True` line above is asserting, and the project's own
+test asserts it as *byte* equality rather than `==`, because two dicts
+can compare equal with different key order and the bytes are what the
+model is prompted with.
+
+Both sides are already JSON Schema, so a translation step would be a
+second description of one thing — and second descriptions drift. The
+drift is not cosmetic. It surfaces as the model being shown a schema
+the tool does not validate against: it writes a call that matches the
+documentation it was given, gets rejected, and has nothing to work with.
+
+This is also why the module builds a lowlevel MCP `Server` rather than
+a `FastMCP` one. `FastMCP` derives `inputSchema` from a Python
+signature via pydantic and validates arguments against that derived
+model *before* the handler runs. Both halves are wrong here: the schema
+already exists, and pydantic's rejection would replace
+`ToolArgumentError`'s message — which names the tool, the offending
+arguments and the accepted set — with a generic validation dump. The
+handler is registered `validate_input=False` for the same reason.
+agentkit's tools already check their own calls and their diagnosis is
+the better one.
+
+Two consequences worth knowing before they surprise you:
+
+- **A tool whose `schema` is `None` is dropped, not advertised.** The
+  `Tool` Protocol calls that loop-invisible, and MCP has no way to say
+  "callable but undescribed" — `inputSchema` is required. Inventing an
+  empty schema would advertise something the model would then call
+  blind.
+- **Tool names are sanitised, server names are not.** MCP's own
+  grammar would allow `run.check`, but the CLI addresses a served tool
+  as `mcp__engine__run.check` and callers then paste that into
+  `--allowed-tools`, shell arguments and log greps — so agentkit
+  applies a narrower rule than MCP's and replaces anything outside
+  `[A-Za-z0-9_-]` with `_`, keeping the qualified name one glob-free,
+  quote-free token. The model only ever sees the sanitised form, so the
+  rename is invisible to it; *you* write the qualified name into
+  `allowed_tools` by hand, which is why `spec.mcp_names` publishes the
+  mapping rather than leaving it implicit. The **server** name is
+  refused rather than rewritten, because you typed that one yourself
+  and are holding it in a string somewhere else. Two tool names that
+  collide after sanitising (`run.check` and `run check`) raise instead
+  of shadowing: `ToolRegistry` refuses a duplicate name for a reason,
+  and sanitising would otherwise re-open that hole one layer down.
+
+#### A bad call is a tool error, not a transport error
+
+This is the distinction the module exists to preserve, so it is worth
+being concrete about what the alternative costs.
+
+An exception raised out of an MCP request handler is a **transport**
+error. It ends the session — and the session is the whole registry. One
+tool raising `RuntimeError("the database is on fire")` would take every
+other tool down with it mid-run, and what reaches the model is "the
+tool system is broken", which is not something it can route around. A
+`ToolArgumentError` arriving that way is worse still: the model
+authored the bad call and is the only party that can fix it, and it
+never gets told what was wrong.
+
+So the dispatch handler never raises. Every failure comes back as an
+`isError` **result** on the call, which is reflected into the
+transcript:
+
+| what happened | what the model reads |
+|---|---|
+| `ToolArgumentError` | the message verbatim — tool, bad arguments, accepted set |
+| any other exception | `tool 'x' failed: RuntimeError: the database is on fire` |
+| no such tool | the name, plus the sorted list of ones that do exist |
+| the run was cancelled before dispatch | `the run was cancelled; 'x' was not run` |
+| the run was cancelled mid-call | `the run was cancelled while 'x' was running` |
+
+The two cancellation rows are not bookkeeping. `ctx.check_cancelled()`
+runs *before* the tool body, because the CLI knows nothing about
+agentkit's cancellation seam and will keep driving tools for a run
+somebody stopped — a side-effecting tool firing after someone pressed
+stop is the failure that check exists to prevent. And `Cancelled` gets
+its own clause because it subclasses `RuntimeError`: without one it
+would fall into the generic row above and be reported as an ordinary
+failure, which is an invitation to retry work that was deliberately
+abandoned.
+
+#### The declarations travel, so the Rule of Two still applies
+
+`side_effecting`, `requires_approval` and `caps` go out twice: once as
+MCP `ToolAnnotations`, and once verbatim in `_meta` under the
+`agentkit` key — `META_KEY` in `agentkit.integrations.mcp.serve`,
+namespaced because `_meta` is a shared bag and an unqualified `caps`
+would collide with whatever the next middleware wants to attach. Twice,
+because annotations are *hints*, and the MCP spec tells clients not to
+make decisions on hints from a server they do not trust. `_meta` is
+where a cooperating
+agentkit-side reader — a `RunPolicy` check, an audit trail — gets the
+declarations back without re-inferring them from three booleans that
+were lossy on the way out.
+
+`readOnlyHint` is `not (side_effecting or requires_approval)`, not the
+obvious `not side_effecting`. `readOnlyHint` is precisely the hint a
+client consults to decide it may run something *without asking*, so a
+read-only tool that nonetheless declares `requires_approval` — reading
+a customer record, say — must not advertise itself as free. That is the
+exact case where an approval requirement matters most and is least
+visible, which is why `deploy read-only: False` above is a computed
+answer rather than a copy.
+
+Because the tags survive the crossing, the lethal-trifecta check still
+sees the set it needs to see:
+
+```python
+"""The Rule-of-Two check still applies to tools that moved behind MCP."""
+
+import asyncio
+
+from agentkit.agents.control.safety import RunPolicy
+from agentkit.integrations.mcp import serve_registry, stdio_command
+from agentkit.testing import make_test_ctx
+from agentkit.tools import ToolRegistry, tool
+
+
+@tool(side_effecting=False, caps=("private_data",))
+def read_record(customer: str) -> str:
+    """Read one customer record out of the private store."""
+    return customer
+
+
+@tool(side_effecting=False, caps=("untrusted_content",))
+def fetch_page(url: str) -> str:
+    """Fetch a page of untrusted web content and return its text."""
+    return url
+
+
+@tool(side_effecting=True, caps=("egress",))
+def notify(channel: str, text: str) -> str:
+    """Post a message to the named chat channel — the egress leg."""
+    return f"sent to {channel}"
+
+
+async def main() -> None:
+    registry = ToolRegistry.from_tools([read_record, fetch_page, notify])
+    spec = serve_registry(
+        registry,
+        name="engine",
+        ctx=make_test_ctx(),
+        transport="stdio",
+        command=stdio_command("myapp.mcp_server"),
+    )
+    async with spec:
+        verdict = RunPolicy().check(registry.tools())
+        print("spec.caps:", spec.caps)
+        print("allowed:  ", verdict.allowed)
+        print("reason:   ", verdict.reason)
+
+
+asyncio.run(main())
+```
+
+```text
+spec.caps: ('egress', 'private_data', 'untrusted_content')
+allowed:   False
+reason:    lethal trifecta: this tool set combines private-data access, untrusted-content ingestion, and egress in one run — require a human gate or split the run
+```
+
+Be honest about where that check runs: on your side, before you start
+the CLI. Nothing on the wire enforces it, and `serve_registry` will
+serve a trifecta happily if you ask it to. What it guarantees is that
+the tags are still *there* to be checked — which is the part that used
+to vanish at the boundary, silently, exactly when the tools are
+furthest from the caller.
+
+`spec.requires_approval` and `spec.auto_approve` are the same
+declarations in the shape `allowed_tools` wants: qualified names, split
+by whether the tool asked for a human. Splatting `auto_approve` into
+`allowed_tools` is what actually makes the CLI prompt for the others —
+`requires_approval=True` is a statement the CLI reads, not a check this
+server performs.
+
+!!! warning "Loopback, and no authentication at all"
+    The HTTP transport binds `127.0.0.1` with **no authentication**.
+    Anything able to reach that port can call these tools — including
+    the ones marked `requires_approval`, because the server itself does
+    not gate on that. Loopback-only *is* the containment, which is why
+    `host` defaults to `127.0.0.1` and why nothing in the package
+    overrides it. Do not bind a routable address.
+
+    This is the same posture `ApprovalServer` carries, with a wider
+    blast radius: reaching that one lets you *answer* permission
+    prompts, reaching this one lets you *run the tools*.
+
+    The config file is written `0600` for the same reason. That is
+    tidiness, not a boundary — anything that can scan the port range
+    finds the server without reading the file — but there is no reason
+    to publish a loopback endpoint to every other account on a shared
+    build host.
+
+#### Which transport, and when
+
+`transport="http"` (the default) keeps the tools in **this** process.
+The spec reserves a loopback port, writes a config naming it, and
+`async with` starts a uvicorn listener. Your registry, its closures and
+its `ctx` are all right here, so a tool can hold a database handle, an
+open connection, a half-built object — anything that would not survive
+being reconstructed elsewhere.
+
+`transport="stdio"` is a different shape, and the difference is not
+cosmetic: the CLI **spawns** a stdio server itself. The tools are
+rebuilt in a fresh interpreter, and this process's registry, closures
+and `ctx` do not cross that boundary. So `command=` is required, and
+passing `transport="stdio"` without it raises immediately with that
+explanation rather than writing a config the CLI would fail on a minute
+later.
+
+```python
+"""transport="stdio": the parent half writes a config naming a command."""
+
+import asyncio
+import json
+
+from agentkit.integrations.mcp import serve_registry, stdio_command
+from agentkit.testing import make_test_ctx
+from agentkit.tools import tool
+
+
+@tool(side_effecting=False)
+def run_check(name: str) -> str:
+    """Run the named check and report whether it passed."""
+    return f"{name}:ok"
+
+
+async def main() -> None:
+    spec = serve_registry(
+        [run_check],                       # a bare sequence works; it is registered for you
+        name="engine",
+        ctx=make_test_ctx(),
+        transport="stdio",
+        command=stdio_command("myapp.mcp_server"),
+        env={"PYTHONPATH": "/srv/app"},
+    )
+    async with spec:
+        entry = json.loads(spec.config_path.read_text())["mcpServers"]["engine"]
+        print("type:", entry["type"])
+        print("args:", entry["args"], "(command is sys.executable)")
+        print("env: ", entry["env"])
+        print("url: ", spec.url)
+
+
+asyncio.run(main())
+```
+
+```text
+type: stdio
+args: ['-m', 'myapp.mcp_server'] (command is sys.executable)
+env:  {'PYTHONPATH': '/srv/app'}
+url:  None
+```
+
+The command's `main` is the other half, and it calls
+`serve_registry_stdio` — the same advertising, the same error contract,
+differing only in which pipe carries it:
+
+```python
+"""myapp/mcp_server.py — the child the CLI spawns."""
+
+import asyncio
+
+from agentkit.integrations.mcp import serve_registry_stdio
+from agentkit.testing import make_test_ctx
+from agentkit.tools import tool
+
+
+@tool(side_effecting=False)
+def run_check(name: str) -> str:
+    """Run the named check and report whether it passed."""
+    return f"{name}:ok"
+
+
+async def serve() -> None:
+    # Serves on this process's stdin/stdout until the peer closes it.
+    # A real child builds its own ctx; make_test_ctx keeps this runnable.
+    await serve_registry_stdio([run_check], name="engine", ctx=make_test_ctx())
+
+
+def main() -> None:
+    """What `python -m myapp.mcp_server` calls."""
+    asyncio.run(serve())
+```
+
+No config file is written on that side, and that is not an oversight: a
+process that will be *spawned by* the config cannot also be the process
+that authors it.
+
+`stdio_command("myapp.mcp_server")` builds `(sys.executable, "-m",
+"myapp.mcp_server")` rather than starting from `"python"`, because the
+CLI spawns the child with the *caller's* `PATH`, not the virtualenv's,
+and a bare `python` there is whatever the system ships — which will not
+have agentkit installed. `env=` is often the only way that fresh
+interpreter can import the package your tools live in.
+
+`spec.url` is `None` for stdio. There is no endpoint to have, and
+returning a plausible-looking one would be a lie a caller could paste
+somewhere.
+
+Reach for HTTP unless the tools genuinely have no in-process state.
+The process boundary is real work — everything the tools need has to be
+reachable from a fresh interpreter running under the CLI's environment
+— and it buys you nothing that loopback does not already give you.
+
+#### The lifecycle, and re-entering it
+
+`serve_registry` is synchronous on purpose. It reserves the port and
+writes the config file, so the returned spec is complete enough to
+build a `ClaudeCliCognition` *before* anything is serving.
+`async with spec` then starts the listener; leaving the block stops it
+and deletes the config.
+
+The port is reserved by binding a socket and **holding** it, not by
+asking the OS for a free port and closing it again. `--mcp-config`
+wants a URL written to a file before the CLI is spawned, so the port
+has to be known before anything serves on it, and the ask-then-rebind
+version leaves a window that a second agent on the same host wins often
+enough to matter. It also keeps uvicorn's own bind-failure path out of
+the picture, which is worth knowing about: that path is
+`logger.error(...); sys.exit(3)` raised *inside* the serve task, so a
+port collision propagates a `SystemExit` out of `asyncio.run` — a
+library taking down its host process over a busy port, while the
+awaiting caller gets a bare `CancelledError` with the port named
+nowhere. Binding early raises the real
+`OSError: [Errno 48] Address already in use` in your own frame, with
+the endpoint appended to the message.
+
+`start()` and `stop()` are both idempotent, and a spec is re-enterable
+— a retry loop can `async with spec` a second time. That took a fix to
+actually be true. `stop()` deletes the config file, and nothing used to
+put it back, so a second entry brought the listener up on the same port
+and left `cli_kwargs()` naming a path that no longer existed: a live
+server the CLI could not be pointed at, reported as success. `start()`
+now rewrites the document.
+
+Deleting the config on the way out is deliberate. A stale one outlives
+the port it names, and the next reader gets a URL pointing at nothing —
+or worse, at whatever bound that port next. Only a directory the spec
+created is removed; a `config_path=` you supplied is yours to keep.
+
+#### Two timeouts that do not read the same
+
+```python
+"""A tool's own TimeoutError is not this server's deadline firing."""
+
+import asyncio
+import logging
+
+from agentkit.integrations.mcp import MCPClient, StreamableHttpServer, serve_registry
+from agentkit.testing import make_test_ctx
+from agentkit.tools import tool
+
+logging.disable(logging.INFO)
+
+
+@tool(side_effecting=False)
+async def slow_build() -> str:
+    """Wait far past the server's deadline, so only the deadline can end it."""
+    await asyncio.sleep(3600)
+    return "never"
+
+
+@tool(side_effecting=False)
+def call_upstream(url: str) -> str:
+    """Read the named upstream, failing the way a real client fails."""
+    raise TimeoutError("upstream read timed out after 3s")
+
+
+async def main() -> None:
+    spec = serve_registry(
+        [slow_build, call_upstream], name="engine", ctx=make_test_ctx(), timeout_s=0.05
+    )
+    async with spec:
+        async with MCPClient(StreamableHttpServer(url=spec.url, timeout_s=10.0)) as client:
+            ours = await client.call_tool("slow_build", {})
+            theirs = await client.call_tool("call_upstream", {"url": "http://x"})
+    print("our deadline:", ours.content[0].text)
+    print("their error: ", theirs.content[0].text)
+
+
+asyncio.run(main())
+```
+
+```text
+our deadline: tool 'slow_build' did not return within 0.05s and was abandoned
+their error:  tool 'call_upstream' failed: TimeoutError: upstream read timed out after 3s
+```
+
+Those are deliberately different sentences, and the difference is a
+bug fix rather than a flourish. The handler used to use
+`asyncio.wait_for`, which collapses "our deadline fired" and "the tool
+raised a `TimeoutError` of its own" into one indistinguishable
+exception — so every one of them was reported as the deadline. With the
+default `timeout_s=None`, a tool whose upstream read timed out came
+back to the model as *"did not return within Nones and was
+abandoned"*: false twice over — nothing was abandoned, and there was no
+deadline — with the one message naming what actually failed thrown
+away. `asyncio.timeout` keeps them apart, because `deadline.expired()`
+is true only when that scope is what did the cancelling. A model cannot
+repair a call it has been lied to about.
+
 ## What bites people
 
 - **Every MCP tool is `side_effecting=True`.** MCP has no standard
@@ -594,10 +1176,24 @@ Leaving it unset (the default) keeps the old behaviour exactly.
 - **One session per context.** Servers that keep per-session state (open
   file handles, a DB transaction) lose it if you split calls across
   independent `MCPClient` contexts.
-- **`ApprovalServer` binds loopback with no authentication.** Anything
-  able to reach that port can answer permission prompts on the agent's
-  behalf. Loopback-only *is* the containment; do not bind it to a
-  routable address.
+- **Both servers bind loopback with no authentication.** Anything able
+  to reach `ApprovalServer`'s port can answer permission prompts on the
+  agent's behalf; anything able to reach a `serve_registry` port can
+  *run your tools*, `requires_approval` ones included — that flag is a
+  declaration the CLI reads, not a check the server performs.
+  Loopback-only *is* the containment; do not give `host=` a routable
+  address.
+- **`serve_registry(timeout_s=None)` is the default, and it means
+  forever.** A tool that never returns parks the CLI turn with no
+  signal anywhere: the CLI waits on the MCP call, agentkit waits on the
+  tool, nothing times out. A default deadline would be the worse
+  mistake — it would kill a legitimately slow tool, a long build or a
+  human-in-the-loop approval, and read as a flake — so the caller has
+  to say which of those they have.
+- **A served tool with no `schema` is silently absent.** It is dropped
+  rather than advertised with an invented empty `inputSchema`, so a
+  tool you registered can simply not be there. `spec.tool_names` is the
+  authoritative list of what the CLI will actually see.
 - **The `mcp` extra brings `pydantic`** (and, transitively, `uvicorn`
   and `starlette`, which is why `ApprovalServer` adds no new
   dependency). If your install was pydantic-free by design, the extra

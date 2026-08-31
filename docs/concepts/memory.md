@@ -503,6 +503,179 @@ whatever order matches your concerns.
 - **`CompactedMemory`** — shrinks each item's content through a
   `Compactor`, with an optional `max_items` cap. For when raw chunks
   would blow the prefix budget.
+- **`ReadOnlyMemory`** — refuses (or deliberately drops) writes to a
+  source that is read-only by policy rather than by backend.
+
+#### Read-only by policy
+
+Some sources an agent may read and must never extend: a curated
+knowledge base, a registry an operator maintains, a corpus of recorded
+facts. Nothing about the *backend* says so — the vector store behind a
+curated KB takes an upsert exactly like any other. Before this
+decorator the only thing protecting them was that nothing happened to
+call `write`, which is a property of the code as it currently stands
+rather than a rule. The first cognition taught to persist what it
+learned would have written into the registry, and nothing would have
+complained.
+
+`ReadOnlyMemory` constrains exactly one verb.
+
+```python
+import asyncio
+
+from agentkit.memory import CompositeMemory, MemoryItem, MemoryWriteRefused, ReadOnlyMemory
+from agentkit.memory.composite import CompositeWriteError
+from agentkit.testing import FakeLLM, FakeMemory, make_test_ctx
+
+registry = FakeMemory(
+    name="registry",
+    items=[MemoryItem(content="eu-west-1 is the GDPR-resident region.", source="registry")],
+)
+curated = ReadOnlyMemory(inner=registry)
+guess = [MemoryItem(content="I think it is eu-west-2.", source="agent")]
+
+
+async def main() -> None:
+    ctx = make_test_ctx(llm=FakeLLM())
+
+    print("name:", curated.name, "| accepts_writes:", curated.accepts_writes)
+    print("recall:", [(i.source, i.content) for i in await curated.query("region", k=1, ctx=ctx)])
+
+    try:
+        await curated.write(guess, ctx=ctx)
+    except MemoryWriteRefused as exc:
+        print("refused:", exc.source, "| items:", exc.n)
+
+    # Default policy inside a fan-out: the refusal is a failure.
+    strict = CompositeMemory(sources=[FakeMemory(name="notes"), curated])
+    try:
+        await strict.write(guess, ctx=ctx)
+    except CompositeWriteError as exc:
+        print("strict :", exc.accepted, exc.refused, list(exc.failed))
+
+    # "ignore": the writable member commits, the read-only one is bucketed apart.
+    lenient_kb = ReadOnlyMemory(inner=registry, on_write="ignore")
+    notes = FakeMemory(name="notes")
+    await CompositeMemory(sources=[notes, lenient_kb]).write(guess, ctx=ctx)
+    print("lenient: notes wrote", len(notes.writes), "| registry wrote", len(registry.writes))
+    print("         refused_writes =", lenient_kb.refused_writes)
+
+
+asyncio.run(main())
+```
+
+```text
+name: registry | accepts_writes: False
+recall: [('registry', 'eu-west-1 is the GDPR-resident region.')]
+refused: registry | items: 1
+strict : ['notes'] [] ['registry']
+lenient: notes wrote 1 | registry wrote 0
+         refused_writes = 1
+```
+
+Read the first two lines before the interesting part. `name` is
+`registry`, not `read-only`, and the item comes back stamped
+`source="registry"` as though the wrapper were not there: `query` is a
+total pass-through — same `k`, same `where`, same items, no filtering
+and no defensive copy. That is deliberate twice over. A read-only
+source is meant to participate in recall exactly like every other
+source, which is the whole reason to keep it around; and
+`MemoryItem.source` is stamped from `name`, which the
+[fan-out dedupe](#deduping-the-fan-out) treats as identity — a wrapper
+that renamed the source would make the same fact stop merging depending
+on whether it arrived through the wrapped path or the bare one.
+
+**`on_write="refuse"`** (the default) raises `MemoryWriteRefused`,
+carrying the source name and the item count. It subclasses
+`AgentkitError`, so a run boundary already catching the framework's
+taxonomy catches this too. `PermissionError` was the other candidate
+and was rejected: `ScopedMemory` raises that for a tenant-boundary
+violation, and "wrong tenant" and "right tenant, immutable source" want
+different fixes at the catch site.
+
+An empty write refuses as well — `write([])` reports `n=0` in the
+exception rather than passing. The policy is about the attempt, not
+about bytes moved: code that reaches `write` on a read-only source will
+carry items the moment its input is non-empty, and letting the empty
+call through moves the discovery from the first test run to production.
+Nothing pays for that strictness, because both `CompositeMemory.write`
+and `SequentialMemory.write` return on an empty list before reaching
+any source.
+
+**`on_write="ignore"`** exists because `CompositeMemory.write`
+broadcasts to *every* source, and the `strict` line above is what that
+costs under the default. The refusal is an exception like any other, so
+it lands in `CompositeWriteError.failed` and the entire broadcast
+raises — after `notes` has already committed, which is why it shows up
+in `accepted`. One read-only member makes every write through that
+composite an error, and that is a wrong report rather than a strict
+one: nothing is broken.
+
+Under `ignore` the source returns normally having written nothing, and
+the composite files it in a **third bucket**. `CompositeWriteError`
+carries `accepted`, `refused` and `failed`, and `refused` is not a
+slice of `accepted` — `accepted` is what an operator reads to decide
+which backends *not* to replay after a partial commit, and a source
+that never committed does not belong on that list. Note what the
+`lenient` line does **not** print: nothing failed, so no exception is
+raised at all. `refused` only becomes visible when some *other* member
+of the same fan-out fails, and then it appears in the message as
+`refused (read-only): [...]`.
+
+That is the honest cost of `ignore`: on the happy path the caller of
+`write` is told nothing. "Silently succeeded" is the failure mode this
+package keeps writing tests against, so the drop is accounted for three
+ways out of band —
+
+- `refused_writes` counts the turned-away calls on the instance (the
+  last line of the example),
+- a `memory.write_refused` observation lands on the run's timeline
+  carrying the source, the item count and the policy,
+- and `accepts_writes = False` is the marker the composite reads to
+  bucket it.
+
+`accepts_writes` is the one attribute these decorators agree on beyond
+the Protocol, and it is read as `getattr(source, "accepts_writes",
+True)` so every backend written before it existed keeps the permissive
+default. It is deliberately **not** on `MemorySource`: that Protocol is
+`@runtime_checkable`, and adding a non-method member would make
+`isinstance(x, MemorySource)` `False` for every backend that predates
+it. On `ReadOnlyMemory` it is a `ClassVar` rather than a field, so no
+caller can pass `accepts_writes=True` to a read-only source.
+
+It also survives nesting, which is what makes it worth having:
+
+| Wrapper | `accepts_writes` is |
+|---|---|
+| `ScopedMemory`, `CachedMemory`, `CompactedMemory` | the wrapped source's |
+| `CompositeMemory` | `any(...)` — true if at least one member can commit |
+| `SequentialMemory` | the **first** source's, the only one `write` touches |
+
+So `ScopedMemory(ReadOnlyMemory(kb))` inside a fan-out is still
+bucketed as refused rather than accepted, and an all-read-only
+`CompositeMemory` nested in an outer one reports `False` instead of
+laundering itself into the outer `accepted`. The `SequentialMemory` row
+is the sharp edge: a chain whose *cache tier* is read-only reports
+`False` even when the vector tier behind it is perfectly writable. That
+is correct — `SequentialMemory.write` only ever touches the first
+source — but it reads as wrong if you think of the marker as being
+about "the sources" rather than about the write target.
+
+One nicety falls out of the same marker: `ScopedMemory.write` skips its
+`memory.written` observation when the source beneath it does not accept
+writes, so an `ignore` stack does not put a write on the operator's
+timeline that never happened.
+
+`ReadOnlyMemory` is a `MemorySource` like the rest, so it nests in both
+directions and the order decides what you get.
+`ReadOnlyMemory(ScopedMemory(kb))` refuses before the tenant check runs
+— cheaper, and no `PermissionError` masking the real reason;
+`ScopedMemory(ReadOnlyMemory(kb))` checks the tenant first.
+Double-wrapping is harmless, since the outer refuses and the inner
+never runs. And a typo in `on_write` is a `ValueError` at construction
+rather than at the first write, because a policy that only surfaced
+when something tried to write would lie dormant for exactly as long as
+the bug this class replaces.
 
 ## Tenant scoping
 

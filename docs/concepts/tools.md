@@ -216,12 +216,197 @@ print(json.dumps(forecast.schema.parameters))
 ["city", "unit"]}
 ```
 
-### The docstring is mandatory, and there is a floor
+### The docstring is the description — all of it
 
-`@tool` refuses a callable whose description is shorter than **30
-characters** (`_MIN_DESCRIPTION_LEN` in `agentkit/tools/schema.py`).
-The description is the first line of the docstring, unless you pass an
-explicit `description=`, which wins.
+Plain version first: **everything you write in a tool's docstring is
+sent to the model.** Not the summary line, not the part above the first
+blank line — the whole text, verbatim, as part of the schema attached to
+every request. This is the same family of check as `*args` above: both
+are settled when you *define* the tool, not when it runs.
+
+That is worth stating outright because it used to be false, and the old
+rule was this framework's most expensive silent decision. The
+description used to be the docstring's **first line**. Everything below
+it was read by people editing the source and by nobody else, while still
+sitting in the docstring looking as though it had been delivered.
+
+It cost a real defect. agentkit's own `ask_human` tells the model *"Use
+this only when the information genuinely cannot be obtained any other
+way — a one-time code, a confirmation, a preference only they know."*
+That sentence is the entire difference between a tool the model reaches
+for when it is genuinely stuck and one it reaches for instead of
+thinking. It sits in the second paragraph. It never shipped.
+
+The rule also cut ORDINARY docstrings mid-clause, because a single
+paragraph wrapped over two source lines is two lines, not one. Measured,
+two tools in this repo's own test suite were advertised to the model as:
+
+```text
+"A tool, so the ReAct loop has something to run and a reason to"
+"Look up a Hit for query `q`. (Will return a malformed payload to"
+```
+
+Neither author wrote a bad docstring. The framework delivered half of a
+good one and said nothing.
+
+#### Why the fix wasn't "refuse the second paragraph"
+
+The tidy alternative was considered and rejected on evidence. `@tool`
+already refuses a missing `side_effecting=` and a thin docstring, so the
+consistent move would have been to refuse a multi-paragraph docstring
+too, and make the author say out loud which audience the tail was for.
+
+The measurement killed it. Across `agentkit/`, `tests/`, `examples/` and
+`docs/` there are **139 tools**. **Six** have a multi-paragraph
+docstring, and in **all six** the second paragraph is model-facing
+guidance — *"Use this whenever the user mentions an order number."* —
+not an implementation note. Refusing them would have rejected six tools
+whose authors had already written exactly the right thing, forced
+`ask_human` to delete the sentence this change exists to deliver, and
+still left the two truncations above in place, since those docstrings
+are single paragraphs.
+
+Taking everything costs **+7% description bytes repo-wide** (8307 → 8892
+characters across all 139 tools), and **zero** of the 139 change verdict
+against the 30-character floor. That is the whole trade, in numbers, and
+it is why the long form is the default rather than a flag.
+
+```python
+from agentkit.tools import tool
+
+
+@tool(side_effecting=False, idempotent=True)
+def order_status(order_id: str) -> str:
+    """Look up the current shipping status of a customer order.
+
+    Use this whenever the user mentions an order number, even in
+    passing. The status is the carrier's own wording, and it can be up
+    to an hour stale.
+    """
+    return "in transit"
+
+
+print(order_status.description)
+```
+
+```text
+Look up the current shipping status of a customer order.
+
+Use this whenever the user mentions an order number, even in
+passing. The status is the carrier's own wording, and it can be up
+to an hour stale.
+```
+
+#### The cost, stated plainly
+
+The whole docstring reaching the model means the notes you wrote for a
+human reach it too. `TODO: this is O(n^2)`, `see ticket #442`, `the
+vendor lies about 404s` — none of that was visible before, and all of it
+is now text inside the tool's instructions, competing for attention with
+the sentence that actually tells the model when to call.
+
+There is no length cap. Nothing in `agentkit/tools/schema.py` trims a
+long description or warns about one; what you write is what ships, on
+every request, for the whole run. Two escape hatches exist instead, and
+they are deliberately different sizes.
+
+**A `---` line ends the model-facing part.** A docstring line containing
+nothing but three hyphens is the cut: everything above it is the
+description, everything below it is for whoever is editing the source.
+
+```python
+from agentkit.tools import tool
+
+
+@tool(side_effecting=False, idempotent=True)
+def order_status(order_id: str) -> str:
+    """Look up the current shipping status of a customer order.
+
+    Use this whenever the user mentions an order number.
+
+    ---
+
+    Backed by the carrier's v2 endpoint, which lies about 404s.
+    See ticket #442 before touching the retry count.
+    """
+    return "in transit"
+
+
+print(order_status.description)
+```
+
+```text
+Look up the current shipping status of a customer order.
+
+Use this whenever the user mentions an order number.
+```
+
+That is an opt-**out**, and the direction was the decision. An opt-in —
+`long_description=True`, say — would have made all 139 existing tools do
+paperwork to keep prose their authors already meant for the model; the
+opt-out is one line for the few who need it, and its absence is the
+common case. It was also safe to switch on for a measured reason: across
+those 139 tools, not one already contained a bare `---` line, so turning
+it on changed no existing description by a single byte.
+
+**A developer note above the cut is refused at decoration time.** This
+is the other half of the whole-docstring decision. `TODO`, `FIXME`,
+`XXX` and `HACK` used to be invisible to the model; the moment they
+became shippable text they had to be either shipped deliberately or
+moved. The framework cannot tell which the author meant, so it asks —
+the same call it already makes for a missing `side_effecting=`.
+
+```python
+from agentkit.tools import ToolDefinitionError, tool
+
+try:
+    @tool(side_effecting=False)
+    def catalogue_search(q: str) -> str:
+        """Search the product catalogue for a free-text query.
+
+        Notes on behaviour:
+          - results are ranked by the vendor, not by us
+          - TODO: this is O(n^2), rewrite before the Q3 launch
+        """
+        return "ok"
+except ToolDefinitionError as exc:
+    print(exc)
+```
+
+```text
+tool 'catalogue_search' has a developer note (TODO) in the part of its docstring
+that is sent to the model, where it reads as an instruction; move it below a
+line containing only '---' (everything after that line is for humans) or pass an
+explicit description=
+```
+
+Note *where* that note was written, because the anchoring is the part
+that took a second attempt. The pattern matches at the **start of a
+line**, allowing for indentation and an optional list bullet. Column
+zero alone was not enough, and the gap was not hypothetical:
+`inspect.getdoc` dedents by the *common* leading whitespace, so a note
+written one level in keeps its extra indent all the way through — and
+the most ordinary way to write one is as a bullet under a heading,
+exactly as above. Both the indent and the `- ` would have stood between
+`TODO` and a column-zero anchor, the check would have stayed silent, and
+the note would have shipped as an instruction.
+
+What is deliberately *not* a note is the marker used as a word inside a
+sentence. A to-do-list tool may say "Append a TODO: item to the
+checklist" — there the marker is preceded by prose, and the pattern
+admits only whitespace and a bullet before it. A word boundary keeps
+"XXXL is a size" out of it as well.
+
+The check runs on the model-facing half only. A `TODO` *below* the `---`
+line is exactly what the marker is for, and is left alone.
+
+#### The 30-character floor, and what it now measures
+
+`@tool` still refuses a description shorter than **30 characters**
+(`_MIN_DESCRIPTION_LEN` in `agentkit/tools/schema.py`). What changed is
+the thing being measured: the floor applies to the **whole chosen
+text**, not to line one. The total is what the model is shown, so the
+total is what has to clear the bar.
 
 ```python
 from agentkit.tools import ToolDefinitionError, tool
@@ -241,13 +426,92 @@ model can understand it; got 11 chars: 'Look it up.'
 ```
 
 Thirty characters is not a style rule. The description **is** the spec:
-it is the only thing the model reads when deciding between your twelve
-tools, and `"Look it up."` does not distinguish a vector search from a
-DNS lookup. A tool the model cannot tell apart from its neighbour gets
-picked at random, and the failure shows up as a bad answer several turns
-later rather than as an error. The floor makes that a
-`ToolDefinitionError` at *decoration* time — at import, before a run
-starts, before any money is spent.
+it is what the model reads when deciding between your twelve tools, and
+`"Look it up."` does not distinguish a vector search from a DNS lookup.
+A tool the model cannot tell apart from its neighbour gets picked at
+random, and the failure shows up as a bad answer several turns later
+rather than as an error. The floor makes that a `ToolDefinitionError` at
+*decoration* time — at import, before a run starts, before any money is
+spent.
+
+Measuring the total only ever **widens** what passes: a docstring with a
+thin first line and a substantial body used to be rejected and now is
+not. Measured, 0 of this repo's 139 tools change verdict.
+
+It narrows in exactly one place, and the error names that place rather
+than leaving you to guess. An author who put everything below the `---`
+line has a docstring that looks generous and a description that is
+nearly empty:
+
+```python
+from agentkit.tools import ToolDefinitionError, tool
+
+try:
+    @tool(side_effecting=False)
+    def order_status(order_id: str) -> str:
+        """Look it up.
+
+        ---
+
+        Look up the current shipping status of a customer order. Use
+        this whenever the user mentions an order number.
+        """
+        return "in transit"
+except ToolDefinitionError as exc:
+    print(exc)
+```
+
+```text
+tool 'order_status' needs a docstring/description of at least 30 characters so
+the model can understand it; got 11 chars: 'Look it up.' (everything below the
+'---' line in its docstring is for humans and was not counted)
+```
+
+#### `description=` still wins outright
+
+An explicit `description=` replaces the docstring entirely, and it is
+passed through with nothing but a `strip()` — no marker hunt, no
+developer-note check. The asymmetry is the point. A docstring is text
+the framework *interprets*, addressed to two audiences at once, and
+every rule above is about splitting it. `description=` is text you
+handed the framework directly and meant every byte of; going looking for
+markers in it would be the framework second-guessing an explicit
+instruction. It still has to clear the 30-character floor.
+
+```python
+from agentkit.tools import tool
+
+
+@tool(
+    side_effecting=False,
+    description="Search the product catalogue and return matching SKUs.",
+)
+def catalogue_search(q: str) -> str:
+    """Search.
+
+    TODO: this is O(n^2), rewrite before the Q3 launch.
+    """
+    return "ok"
+
+
+print(catalogue_search.description)
+```
+
+```text
+Search the product catalogue and return matching SKUs.
+```
+
+A thin docstring and a developer note, and neither is an error — because
+neither is what the model was given.
+
+!!! note "Docstrings written on Windows"
+    `inspect.getdoc` dedents by finding common leading whitespace, and a
+    CRLF docstring defeats it completely — measured, the four-space
+    indent survives the dedent and a trailing carriage return rides
+    along. Under the first-line rule that never showed, because the
+    split threw the tail away. Now the whole text ships, so `schema.py`
+    normalises the line endings and re-runs the dedent the `\r` defeated
+    before anything reaches a provider.
 
 ### `side_effecting=` is required, and three subsystems read it
 
@@ -645,7 +909,7 @@ the tool path.
 
 | Error | Fires | Who can fix it |
 |---|---|---|
-| `ToolDefinitionError` | at **decoration/registration** time | **you** — missing `side_effecting=`, thin docstring |
+| `ToolDefinitionError` | at **decoration/registration** time | **you** — missing `side_effecting=`, thin description, `*args`, a developer note above the `---` cut |
 | `ToolArgumentError` | at **call** time, before the function runs | **the model** — it authored a bad call (missing, unexpected, or uncoercible argument) |
 | `ToolShapeError` | at **call** time, after the function returned | **the tool** — it produced a bad value |
 
@@ -835,12 +1099,12 @@ memory True False
     Tools go on the cognition: `ReActCognition(tools=[...])`. Passing
     `tools=` to `Agent(...)` raises `TypeError`.
 
-!!! warning "The docstring's *first line* is the description"
-    Only the first line of the docstring becomes the description, and
-    only that line is measured against the 30-character floor. A tool
-    with a one-word summary and three excellent paragraphs underneath
-    will still be refused — and the model would only have seen the one
-    word anyway.
+!!! warning "Your whole docstring is the model's instructions"
+    Everything above a `---` line goes to the model, implementation
+    notes included. `TODO`/`FIXME`/`XXX`/`HACK` are caught at decoration
+    time, but "see ticket #442" and "the vendor lies about 404s" are
+    not, and they will ship as guidance. Put a `---` line above the
+    human half, or pass `description=`.
 
 !!! tip "Give the model less than you have"
     A `schema` of `None` makes a tool **loop-invisible**: it stays

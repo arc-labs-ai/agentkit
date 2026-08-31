@@ -341,6 +341,164 @@ adapter — a legitimately cached `None` is a hit, not a miss. That was a
 real bug: a producer returning `None` re-ran on every call and
 single-flight silently stopped holding.
 
+#### The coordination half — `compare_and_set`, `increment`, `scan`
+
+The six methods above express "cache this" and "record that". They do
+not express *changing something that is already there*, and three
+completely ordinary shapes went around the port because of it.
+
+**`get_or_set` covers create-if-absent. It cannot express
+replace-only-if-unchanged**, which is what every read-modify-write
+needs. Allocating a monotonic ordinal is "read the max, write max+1",
+and two writers race it: both read `4`, both write `5`, and one ordinal
+is handed to two runs. `compare_and_set(key, expected, value)` writes
+only if the key still equals `expected`, and it **returns whether it
+applied rather than raising**. That is the load-bearing choice. Losing a
+CAS is the *expected* half of an optimistic loop, not a fault; raising
+would force every read-modify-write to wrap its own body in a
+`try/except` and then tell "someone beat me" apart from "the store is
+down" by exception type — precisely the distinction the `bool` already
+makes. Two details you will meet on the first loop you write:
+comparison is by **equality, never identity** (three of the four
+backends round-trip the value through JSON, so you never hold the object
+that was written), and an **absent key compares equal to
+`expected=None`**, so the first iteration behaves like every later one.
+
+**A counter with an expiry is the shape of every rate limit**, and the
+port could not express it at all. The observed consequence was an
+application writing a raw Lua script straight at Redis — putting its own
+limiter outside everything the framework can test, trace or meter.
+`increment(key, by=1, ttl=...)` is that shape as one atomic step:
+absent counts as `0`, the new total comes back, and `by` may be negative
+because refunds and released reservations are decrements and a
+counter that only went up would need a second key to track what came
+back.
+
+**`list(key)` reads back one appended log.** There was no way to
+enumerate keys under a prefix, so "everything recorded for this run" was
+answerable only if every writer also maintained an index by hand — the
+classic pair that drifts. `scan(prefix, limit=...)` yields the KV keys
+beginning with `prefix`: full keys, not values, in no promised order,
+and never the append-log namespace (`list` reads those, and a scan that
+surfaced log keys would hand you keys `get` answers `None` for). It is
+declared `def ... -> AsyncIterator[str]`, not `async def`, for the same
+reason as `LLMPort.stream` — an `async def` that yields is a *function
+returning an iterator*, not a coroutine — so you consume it with
+**`async for`**. `limit` is a cap on how many keys you are willing to
+receive, not a page cursor: with no ordering promised, *which* keys
+arrive under a cap is backend-defined. `0` is a real cap of zero and a
+negative limit raises `ValueError`, because collapsing the two would
+make `limit=remaining_budget` return the entire key space at exactly the
+moment the budget ran out.
+
+```python
+import asyncio
+
+from agentkit import StoreValueError
+from agentkit.adapters.store import InMemoryStore
+
+
+async def main() -> None:
+    store = InMemoryStore()
+
+    async def next_ordinal() -> int:
+        """Read-modify-write. A lost CAS is a `False` you loop on."""
+        while True:
+            current = await store.get("run-1:ordinal")
+            nxt = (current or 0) + 1
+            if await store.compare_and_set("run-1:ordinal", current, nxt):
+                return nxt
+
+    print(sorted(await asyncio.gather(*(next_ordinal() for _ in range(5)))))
+
+    # A counter with a window. `ttl` opens one; it never slides an open one.
+    for _ in range(3):
+        used = await store.increment("run-1:calls", 1, ttl=60)
+    print(used)                                      # 3
+
+    # `by` must be a non-bool int, on every backend.
+    try:
+        await store.increment("run-1:calls", 1.5)
+    except StoreValueError as exc:
+        print(str(exc).split(";")[0])
+
+    # `scan` is an AsyncIterator over KEYS — hence `async for`.
+    await store.append("run-1:audit", {"step": 1})   # a log: deliberately not scanned
+    print(sorted([k async for k in store.scan("run-1:")]))
+
+
+asyncio.run(main())
+```
+
+**`ttl` on these two is not portable, and the split is not the
+obvious one.** It is where the four backends genuinely differ, and a
+caller choosing one needs the matrix before writing the code, not
+after:
+
+| Adapter | `compare_and_set(..., ttl=)` | `increment(..., ttl=)` |
+| --- | --- | --- |
+| `InMemoryStore` | honoured | honoured, `EXPIRE NX` semantics |
+| `FileStore` | **ignored**, warns once per store | **ignored**, warns once per store |
+| `RedisStore` | honoured (`SET … EX`) | honoured (`EXPIRE … NX`, Redis 7.0+) |
+| `PostgresStore` | raises `NotImplementedError` | raises `NotImplementedError` |
+
+`scan` takes no `ttl` at all; on the backends that honour expiry it
+simply does not yield keys that have expired.
+
+Two semantics inside that table are worth reading twice. On
+`compare_and_set`, `ttl` applies only to the write that **lands** — a
+refused CAS leaves the existing expiry alone. On `increment`, `ttl`
+opens a window on a counter that has none and never slides one that is
+already open. The alternative — resetting the deadline on every hit —
+breaks the exact case the primitive exists for: under sustained traffic
+the counter is touched more often than the window is long, so it never
+expires, the limit never resets, and the rate limiter jams shut
+precisely under load. The counter and its window are set together,
+atomically, so a failure cannot leave a counter with no window (an
+immortal one) or a window with no counter.
+
+`FileStore` and `PostgresStore` disagreeing here is deliberate rather
+than an oversight in one of them. `FileStore` has no expiry sweeper, so
+it warns once and keeps the key forever; `PostgresStore` refuses the
+kwarg outright, matching its own `set`, on the grounds that a method
+quietly accepting a `ttl` its neighbours reject is worse than either
+policy alone — the caller would conclude the backend supports expiry.
+The practical consequence: **a windowed counter needs `RedisStore` or
+`InMemoryStore`.** On Postgres you carry the window yourself, in a
+second key or a column; on `FileStore` the counter is permanent and the
+warning is telling you so.
+
+**`by` must be a non-bool `int` on every backend, and that is newly
+enforced.** `increment` validated the value already in the key and
+never the amount being added, so each backend improvised, and all four
+improvised differently. Measured, on `increment(k, 1.5)`:
+
+- `InMemoryStore` and `FileStore` returned `1.5` — a `float` out of a
+  method annotated `-> int` — and left `1.5` in the key, which the
+  *next* increment then rejects as a non-counter. The counter is
+  poisoned by a call that reported success.
+- `RedisStore` returned `1` while the key held `1.5`: the `int()` around
+  INCRBY's reply truncates, so the number the caller acts on and the
+  number the store holds disagree.
+- `PostgresStore` failed inside the driver with a bare `ValueError`.
+
+`check_by` now rejects it before it reaches any backend, so it is one
+type and one message everywhere. `bool` is excluded even though
+`isinstance(True, int)` is `True` in Python: `True` would silently count
+as `1` in a dict and be rejected as JSON `true` by Redis and Postgres,
+which would make the offline reference store the one backend that
+accepted a value the durable ones refuse — and it is the one everybody
+tests against.
+
+That error, and the one for a key that holds a JSON document, a string
+or `null` instead of a counter, is the same `StoreValueError` on every
+backend; [Kernel › errors](kernel.md#errors-one-base-and-a-three-way-retry-verdict)
+covers why it is a separate type from `StoreUnavailable` and why it is
+never worth a retry. Note that `increment` treats a stored `null` as a
+non-integer rather than as absent — the one place it deliberately
+disagrees with `compare_and_set`, whose `expected` came out of a `get`
+that cannot tell null from absent and so has to accept both.
+
 ### `adapters.vector` — retrieval
 
 ```python
@@ -842,6 +1000,11 @@ the shared one.
     operation forever. `PostgresStore` raises `NotImplementedError`
     rather than accept a kwarg it cannot honour. Pick the backend for
     the key space, not the other way round.
+
+    The same split applies to `compare_and_set` and `increment`, with
+    one sharper consequence: a *windowed counter* cannot exist at all on
+    the two backends without expiry. See the matrix in
+    [the coordination half](#the-coordination-half-compare_and_set-increment-scan).
 
 !!! warning "Importing `adapters.llm.providers` requires the `http` extra"
 
