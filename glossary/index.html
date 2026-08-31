@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/getting-started/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/glossary/">
       
       
-        <link rel="prev" href="../why/">
+        <link rel="prev" href="../cheatsheet/">
       
       
-        <link rel="next" href="../cheatsheet/">
+        <link rel="next" href="../tutorial/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Getting started - agentkit</title>
+        <title>Glossary - agentkit</title>
       
     
     
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#getting-started" class="md-skip">
+        <a href="#glossary" class="md-skip">
           Skip to content
         </a>
       
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Getting started
+              Glossary
             
           </span>
         </div>
@@ -404,37 +404,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Getting started
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -450,92 +423,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Install
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#verify-the-install" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verify the install
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#your-first-agent-no-api-key" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Your first agent — no API key
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-same-agent-against-a-real-provider" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The same agent against a real provider
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-go-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Where to go next
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -571,10 +458,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../glossary/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -590,6 +504,678 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-main-pieces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The main pieces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The main pieces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cognition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#react" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ReAct
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skill
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-run-is-controlled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a run is controlled
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How a run is controlled">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runcontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RunContext
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budget
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quota
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#meter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Meter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scope-and-tenant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope and tenant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#autonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autonomy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suspend-and-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suspend and resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#elicitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Elicitation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cooperative-cancellation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cooperative cancellation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keeping state
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Keeping state">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint-checkpointer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpoint / Checkpointer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workingcontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkingContext
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compaction-compactor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compaction / Compactor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grounding-grounder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grounding / Grounder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-plumbing-fits-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the plumbing fits together
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the plumbing fits together">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seam
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#middleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Middleware
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invoker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invoker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frozen-immutable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frozen / immutable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watching-what-happened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watching what happened
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Watching what happened">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#observation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trace-span" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trace / span
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sampler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sampler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#words-that-show-up-in-passing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Words that show up in passing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Words that show up in passing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fan-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fan-out
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-concurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured concurrency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backpressure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotent-idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotent / idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memoize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memoize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Egress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#guardrail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guardrail
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evaluator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reranker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reranker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coercion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coercion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handoff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coordinator-and-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinator and Policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#termination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Termination
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-model-context-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP (Model Context Protocol)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2765,65 +3351,651 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#the-main-pieces" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Install
+        The main pieces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The main pieces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#cognition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Requirements
+        Cognition
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#verify-the-install" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#react" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Verify the install
+        ReAct
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#your-first-agent-no-api-key" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#tool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Your first agent — no API key
+        Tool
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#the-same-agent-against-a-real-provider" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The same agent against a real provider
+        Workflow
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-go-next" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#skill" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Where to go next
+        Skill
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-run-is-controlled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a run is controlled
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How a run is controlled">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runcontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RunContext
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budget
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quota
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#meter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Meter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scope-and-tenant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope and tenant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#autonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autonomy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suspend-and-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suspend and resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#elicitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Elicitation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cooperative-cancellation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cooperative cancellation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keeping state
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Keeping state">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#checkpoint-checkpointer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpoint / Checkpointer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workingcontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkingContext
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compaction-compactor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compaction / Compactor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grounding-grounder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grounding / Grounder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Token
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-plumbing-fits-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the plumbing fits together
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the plumbing fits together">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seam
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#middleware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Middleware
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invoker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invoker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frozen-immutable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frozen / immutable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watching-what-happened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watching what happened
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Watching what happened">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#observation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trace-span" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trace / span
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sampler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sampler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#words-that-show-up-in-passing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Words that show up in passing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Words that show up in passing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fan-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fan-out
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-concurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured concurrency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backpressure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotent-idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotent / idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memoize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memoize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Egress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#guardrail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guardrail
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evaluator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reranker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reranker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coercion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coercion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handoff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coordinator-and-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinator and Policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#termination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Termination
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-model-context-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP (Model Context Protocol)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
       
     </span>
   </a>
@@ -2850,298 +4022,309 @@
   
 
 
-<h1 id="getting-started">Getting started<a class="headerlink" href="#getting-started" title="Anchor link">&para;</a></h1>
-<p>By the end of this page you will have an agent that runs on your machine
-with no API key, and the same agent pointed at a real provider.</p>
-<p>It takes about five minutes. If you want the longer walk — a tool, a
-stream, a spend ceiling, a human approval gate — that is the
-<a href="../tutorial/">Tutorial</a>, which starts from the same script.</p>
-<div class="admonition tip">
-<p class="admonition-title">New to agent frameworks?</p>
-<p>These docs use a handful of words in specific ways — <em>cognition</em>,
-<em>port</em>, <em>middleware</em>, <em>grounding</em>. The
-<a href="../glossary/">glossary</a> defines each of them in a sentence of plain
-English, and you can read any entry without having read the others.
-It is the fastest way to make the rest of the docs make sense.</p>
-</div>
-<h2 id="install">Install<a class="headerlink" href="#install" title="Anchor link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>arc-agentkit
-</span></code></pre></div>
-<div class="admonition note">
-<p class="admonition-title">Distribution name vs import name</p>
-<p>On PyPI the distribution is <strong><code>arc-agentkit</code></strong> (the <code>agentkit</code> name
-on PyPI is owned by an unrelated project). The <strong>import name stays
-<code>agentkit</code></strong>, so all documentation and examples use <code>import
-agentkit</code> as-is. Same pattern as <code>pip install Django</code> → <code>import
-django</code>.</p>
-<p>Before the first release, install directly from Git:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit @ git+https://github.com/arc-labs-ai/agentkit&quot;</span>
-</span></code></pre></div>
-</div>
-<p>The core declares <strong>no runtime dependencies</strong> — <code>pip install
-arc-agentkit</code> pulls nothing else into your environment. Everything that
-needs a third-party library lives behind an opt-in extra, so you install
-only the seams you actually wire.</p>
-<table>
-<thead>
-<tr>
-<th>Extra</th>
-<th>Pulls in</th>
-<th>Install it when you want</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>http</code></td>
-<td><code>httpx[http2]</code></td>
-<td>The bundled provider adapters — <code>claude()</code>, <code>openai()</code>, <code>deepseek()</code>, <code>openrouter()</code>. This is the one most people need.</td>
-</tr>
-<tr>
-<td><code>postgres</code></td>
-<td><code>asyncpg</code>, <code>pgvector</code></td>
-<td><code>PostgresCheckpointStore</code> (durable resume), <code>PostgresStore</code>, <code>PgVectorStore</code>.</td>
-</tr>
-<tr>
-<td><code>redis</code></td>
-<td><code>redis</code></td>
-<td><code>RedisStore</code> — a Redis-backed <code>StorePort</code>.</td>
-</tr>
-<tr>
-<td><code>observability</code></td>
-<td><code>opentelemetry-api</code> / <code>-sdk</code> / OTLP HTTP exporter</td>
-<td><code>otel_tracer()</code>, <code>otel_meter()</code> and the OTLP exporters, so <code>tracing()</code> spans leave the process.</td>
-</tr>
-<tr>
-<td><code>mcp</code></td>
-<td><code>mcp</code></td>
-<td><code>MCPClient</code> plus <code>mcp_tools()</code> / <code>mcp_resources()</code> / <code>mcp_prompts()</code> for consuming Model Context Protocol servers.</td>
-</tr>
-<tr>
-<td><code>fast</code></td>
-<td><code>orjson</code></td>
-<td>A faster JSON codec. Pure speed — nothing changes in the API, and everything works without it.</td>
-</tr>
-</tbody>
-</table>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[http]&quot;</span><span class="w">            </span><span class="c1"># the usual starting point</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[http,postgres]&quot;</span><span class="w">   </span><span class="c1"># extras compose</span>
-</span></code></pre></div>
-<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Anchor link">&para;</a></h2>
+<h1 id="glossary">Glossary<a class="headerlink" href="#glossary" title="Anchor link">&para;</a></h1>
+<p>Every framework invents words. This page is the plain-English version of
+agentkit's, written for someone who has not read the rest of the docs
+yet.</p>
+<p>Each entry is a one-line answer first, then the detail, then a link to
+the page that goes deep. You should be able to read any entry without
+having read any other one.</p>
+<hr />
+<h2 id="the-main-pieces">The main pieces<a class="headerlink" href="#the-main-pieces" title="Anchor link">&para;</a></h2>
+<h3 id="agent">Agent<a class="headerlink" href="#agent" title="Anchor link">&para;</a></h3>
+<p><strong>A model, a prompt, and the things it is allowed to do — bundled into
+one object you can run.</strong></p>
+<p>You give an agent a task as a string, and it gives you back a result. In
+between it may call the model once, or many times, and it may use tools
+along the way. Everything else in agentkit exists to control what happens
+in that "in between".</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="cognition">Cognition<a class="headerlink" href="#cognition" title="Anchor link">&para;</a></h3>
+<p><strong>The part that decides how many times to call the model, and what to do
+between calls.</strong></p>
+<p>This is the piece most frameworks leave implicit. Asking a model one
+question and returning its answer is one strategy. Letting it request a
+tool, running that tool, handing back the result and asking again — over
+and over until it stops asking — is a different strategy. Coordinating a
+team of child agents is a third.</p>
+<p>In agentkit that strategy is a separate object, so you can swap it
+without touching your prompt, your tools, or anything downstream:</p>
 <ul>
-<li><strong>Python 3.12 or newer.</strong> The codebase uses 3.12 generics and is
-  typed under <code>mypy --strict</code>.</li>
-<li><strong>No API key</strong> for the first example below — it runs against the
-  <code>FakeLLM</code> test double that ships in the package.</li>
-<li>For a real run, either an API key for a provider (Anthropic, OpenAI,
-  DeepSeek and OpenRouter ship as presets), or the local <code>claude</code> CLI on
-  your <code>PATH</code>, which <code>ClaudeCliCognition</code> drives using the CLI's own
-  login — no server-side key.</li>
+<li><code>SingleCallCognition</code> — ask once, return the answer.</li>
+<li><code>ReActCognition</code> — the tool loop (see <strong>ReAct</strong> below).</li>
+<li><code>CoordinatorCognition</code> — drive several child agents.</li>
+<li><code>ClaudeCliCognition</code> — hand the whole job to a local <code>claude</code> CLI.</li>
 </ul>
-<h2 id="verify-the-install">Verify the install<a class="headerlink" href="#verify-the-install" title="Anchor link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import agentkit; print(agentkit.__version__)&quot;</span>
-</span></code></pre></div>
-<p>Prints the installed version (<code>0.1.0</code> today). If it errors, the wheel
-isn't on your Python path — check which interpreter your shell resolved.</p>
-<h2 id="your-first-agent-no-api-key">Your first agent — no API key<a class="headerlink" href="#your-first-agent-no-api-key" title="Anchor link">&para;</a></h2>
-<p>This runs as-is, offline, on a bare <code>pip install arc-agentkit</code>.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="c1"># The agent: identity, which model it is for, what it is told to do.</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;briefer&quot;</span><span class="p">,</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Answer in one short sentence.&quot;</span><span class="p">,</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="p">)</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="c1"># The run context: everything the run is allowed to touch, including</span>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="c1"># which LLM it talks to. Here that is a deterministic fake.</span>
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(</span><span class="s2">&quot;Octopuses solve mazes and use tools.&quot;</span><span class="p">))</span>
-</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
-</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;What do we know about octopus cognition?&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
-</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;cost: $</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>
-</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>
-</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Octopuses solve mazes and use tools.
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>cost: $0.0001
-</span></code></pre></div>
-<p>Three things to take from this, because they are the shape of every
-later example:</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="react">ReAct<a class="headerlink" href="#react" title="Anchor link">&para;</a></h3>
+<p><strong>Let the model use tools by looping: it asks for one, you run it, you
+tell it what happened, and it decides what to do next.</strong></p>
+<p>The name is from a 2022 research paper and stands for <em>Reason + Act</em>. The
+loop is simple: the model produces either a final answer or a request to
+call a tool. If it is a tool request, the framework runs the tool, appends
+the result to the conversation, and calls the model again. It repeats
+until the model answers or hits a limit you set.</p>
+<p>Almost every "AI agent" you have used works this way underneath.</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="tool">Tool<a class="headerlink" href="#tool" title="Anchor link">&para;</a></h3>
+<p><strong>A Python function the model is allowed to ask for by name.</strong></p>
+<p>The model cannot run code. It can only produce text — including text that
+says "please call <code>search</code> with <code>query='octopus cognition'</code>". A tool is
+the function that text refers to, plus a description of its arguments
+that gets sent to the model so it knows the function exists.</p>
+<p>→ <a href="../concepts/tools/">Tools</a></p>
+<h3 id="workflow">Workflow<a class="headerlink" href="#workflow" title="Anchor link">&para;</a></h3>
+<p><strong>A pipeline you write out step by step, instead of letting the model
+decide the order.</strong></p>
+<p>Use it when you already know the sequence — fetch, then summarise, then
+file a ticket — and you want the steps, their dependencies, and their
+failure behaviour to be explicit rather than up to the model.</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="skill">Skill<a class="headerlink" href="#skill" title="Anchor link">&para;</a></h3>
+<p><strong>A saved recipe for an agent, so you can stamp out copies of it.</strong></p>
+<p>Prompt, cognition, tools and memory bundled under a name. Useful when you
+need the same specialised agent in several places, or want to hand it to
+another agent as a tool.</p>
+<p>→ <a href="../concepts/skills/">Skills</a></p>
+<hr />
+<h2 id="how-a-run-is-controlled">How a run is controlled<a class="headerlink" href="#how-a-run-is-controlled" title="Anchor link">&para;</a></h2>
+<h3 id="runcontext">RunContext<a class="headerlink" href="#runcontext" title="Anchor link">&para;</a></h3>
+<p><strong>One object carrying everything that is true for this particular run.</strong></p>
+<p>Who it belongs to, what it may spend, how to cancel it, and which
+external services it can reach. It is passed to nearly every call, which
+is why those things can be enforced without any global state.</p>
+<p>→ <a href="../concepts/runtime/">Runtime</a></p>
+<h3 id="budget">Budget<a class="headerlink" href="#budget" title="Anchor link">&para;</a></h3>
+<p><strong>A spending limit for one run.</strong></p>
+<p>The thing that stops an agent looping forty times against a confused
+model and handing you a $217 bill. It tracks money and call counts, and
+either refuses further work or reports that it is out, depending on how
+you configure it.</p>
+<p>→ <a href="../concepts/runtime/">Runtime</a></p>
+<h3 id="quota">Quota<a class="headerlink" href="#quota" title="Anchor link">&para;</a></h3>
+<p><strong>A rate limit per customer, over a rolling time window.</strong></p>
+<p>Where a budget caps one run, a quota caps a tenant across many runs — so
+many requests per minute, so many tokens, so many dollars.</p>
+<p>→ <a href="../concepts/runtime/">Runtime</a></p>
+<h3 id="meter">Meter<a class="headerlink" href="#meter" title="Anchor link">&para;</a></h3>
+<p><strong>The thing that actually does the counting.</strong></p>
+<p>A budget or quota is the <em>limit</em>. A meter is what watches calls go past
+and charges them against it.</p>
+<p>→ <a href="../concepts/observability/">Observability</a></p>
+<h3 id="scope-and-tenant">Scope and tenant<a class="headerlink" href="#scope-and-tenant" title="Anchor link">&para;</a></h3>
+<p><strong>Which customer this run belongs to.</strong></p>
+<p>If your app serves more than one organisation, every cache key, memory
+lookup and stored record has to be tagged with whose data it is, or one
+customer's documents end up in another's answers. <code>Scope</code> is that tag,
+and it is threaded through everything that stores or retrieves anything.</p>
+<p>→ <a href="../concepts/context/">Context</a></p>
+<h3 id="autonomy">Autonomy<a class="headerlink" href="#autonomy" title="Anchor link">&para;</a></h3>
+<p><strong>How much the agent is allowed to do without asking a human.</strong></p>
+<p>Set it to <code>gated</code> and any tool marked as changing the world will pause
+the run and wait for a person to approve it.</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="suspend-and-resume">Suspend and resume<a class="headerlink" href="#suspend-and-resume" title="Anchor link">&para;</a></h3>
+<p><strong>Pausing a run to the point where the process can die, and picking it up
+later.</strong></p>
+<p>When an agent needs a human decision, it does not sit in memory holding a
+connection open. It writes down where it got to, ends, and returns a
+result that says "suspended". Later — possibly in a different process,
+possibly the next day — you hand back the answer and it continues.</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="elicitation">Elicitation<a class="headerlink" href="#elicitation" title="Anchor link">&para;</a></h3>
+<p><strong>Asking a person for a <em>value</em>, not just a yes or no.</strong></p>
+<p>Approval answers "may this run?". Elicitation answers "what is the code
+they just texted you?" — a typed request for information, with a deadline
+and a record of who answered.</p>
+<p>→ <a href="../recipes/elicit-a-value-from-a-human/">Recipe: elicit a value</a></p>
+<h3 id="cooperative-cancellation">Cooperative cancellation<a class="headerlink" href="#cooperative-cancellation" title="Anchor link">&para;</a></h3>
+<p><strong>Stopping a run by asking rather than by force.</strong></p>
+<p>The framework sets a flag; the agent checks it at safe points — between
+steps, between tool calls — and stops cleanly. This means cleanup still
+runs and nothing is left half-done. The cost is that a cancel is not
+instant: it takes effect at the next check.</p>
+<p>→ <a href="../concepts/runtime/">Runtime</a></p>
+<hr />
+<h2 id="keeping-state">Keeping state<a class="headerlink" href="#keeping-state" title="Anchor link">&para;</a></h2>
+<h3 id="checkpoint-checkpointer">Checkpoint / Checkpointer<a class="headerlink" href="#checkpoint-checkpointer" title="Anchor link">&para;</a></h3>
+<p><strong>A saved snapshot of a run, so a crash does not cost you everything.</strong></p>
+<p>If a twenty-minute research run dies at minute eighteen, you want to
+restart from minute eighteen, not from zero. A checkpointer writes that
+snapshot to durable storage after each successful step.</p>
+<p>→ <a href="../concepts/capabilities/">Capabilities</a></p>
+<h3 id="workingcontext">WorkingContext<a class="headerlink" href="#workingcontext" title="Anchor link">&para;</a></h3>
+<p><strong>What the agent knows right now</strong> — the conversation so far, plus any
+notes it has taken.</p>
+<p>→ <a href="../concepts/context/">Context</a></p>
+<h3 id="compaction-compactor">Compaction / Compactor<a class="headerlink" href="#compaction-compactor" title="Anchor link">&para;</a></h3>
+<p><strong>Shrinking the conversation when it gets too long to send.</strong></p>
+<p>Models accept a limited amount of text. Once a conversation outgrows it
+you must drop or summarise something. A compactor is the policy that
+decides what goes: keep the last N turns, summarise the middle, drop the
+least important.</p>
+<p>→ <a href="../concepts/capabilities/">Capabilities</a></p>
+<h3 id="memory">Memory<a class="headerlink" href="#memory" title="Anchor link">&para;</a></h3>
+<p><strong>Things the agent looks up before it answers.</strong></p>
+<p>Your documents, past conversations, anything the model was not trained
+on. Usually backed by a search index.</p>
+<p>→ <a href="../concepts/memory/">Memory</a></p>
+<h3 id="grounding-grounder">Grounding / Grounder<a class="headerlink" href="#grounding-grounder" title="Anchor link">&para;</a></h3>
+<p><strong>Fetching relevant material and putting it in the prompt before the
+model sees the question.</strong></p>
+<p>The difference between asking a model "what is our refund policy?" and
+asking it the same question with your actual refund policy pasted above.</p>
+<p>→ <a href="../concepts/capabilities/">Capabilities</a></p>
+<h3 id="token">Token<a class="headerlink" href="#token" title="Anchor link">&para;</a></h3>
+<p><strong>The unit models read, write and bill in — roughly ¾ of a word.</strong></p>
+<p>Every limit you will meet is counted in these: context windows, rate
+limits, and your invoice.</p>
+<hr />
+<h2 id="how-the-plumbing-fits-together">How the plumbing fits together<a class="headerlink" href="#how-the-plumbing-fits-together" title="Anchor link">&para;</a></h2>
+<h3 id="port">Port<a class="headerlink" href="#port" title="Anchor link">&para;</a></h3>
+<p><strong>A description of something agentkit needs but cannot provide itself.</strong></p>
+<p>A model, a database, a vector index, the clock. agentkit says what shape
+that thing must have — which methods, taking what — and stays out of the
+business of implementing it.</p>
+<p>→ <a href="../concepts/adapters/">Adapters</a></p>
+<h3 id="adapter">Adapter<a class="headerlink" href="#adapter" title="Anchor link">&para;</a></h3>
+<p><strong>An actual implementation of a port.</strong></p>
+<p>The port says "a store must be able to get and set keys". The adapter is
+the one backed by Postgres, or by a dict in memory, or by Redis. Your
+application code talks to the port, so swapping the adapter changes one
+line at startup and nothing else.</p>
+<p>→ <a href="../concepts/adapters/">Adapters</a></p>
+<h3 id="seam">Seam<a class="headerlink" href="#seam" title="Anchor link">&para;</a></h3>
+<p><strong>A deliberate place where one piece can be swapped for another.</strong></p>
+<p>Used throughout these docs as shorthand for "this is a boundary you are
+meant to be able to cut at". Every port is a seam.</p>
+<h3 id="protocol">Protocol<a class="headerlink" href="#protocol" title="Anchor link">&para;</a></h3>
+<p><strong>Python's way of saying "anything with these methods counts".</strong></p>
+<p>From <code>typing</code>. Your class does not inherit from anything or register
+anywhere — if it has the right methods, it fits. This is why you can hand
+agentkit an object it has never heard of.</p>
+<h3 id="middleware">Middleware<a class="headerlink" href="#middleware" title="Anchor link">&para;</a></h3>
+<p><strong>A wrapper that adds one concern to every call, without you editing the
+call sites.</strong></p>
+<p>Retry, caching, cost tracking, tracing, a safety check. Each is written
+once and layered on. They nest like an onion: the outermost sees the call
+first and the response last.</p>
+<p>→ <a href="../concepts/middlewares/">Middlewares</a></p>
+<h3 id="invoker">Invoker<a class="headerlink" href="#invoker" title="Anchor link">&para;</a></h3>
+<p><strong>The thing that actually makes the call, after walking the middleware
+chain.</strong></p>
+<p>You rarely construct one directly; the agent does it for you.</p>
+<p>→ <a href="../concepts/runtime/">Runtime</a></p>
+<h3 id="frozen-immutable">Frozen / immutable<a class="headerlink" href="#frozen-immutable" title="Anchor link">&para;</a></h3>
+<p><strong>A value that cannot be changed after it is created.</strong></p>
+<p>agentkit freezes the things that get recorded — tool arguments, audit
+records, results — so that what you read in a log is what actually
+happened, and not something a later line of code edited.</p>
+<p>→ <a href="../concepts/kernel/">Kernel</a></p>
+<h3 id="kernel">Kernel<a class="headerlink" href="#kernel" title="Anchor link">&para;</a></h3>
+<p><strong>The shared vocabulary — the data shapes every other part passes
+around.</strong></p>
+<p>What a message is, what a result is, what a cost is. Deliberately tiny,
+and deliberately importing nothing, so everything above it can be
+swapped.</p>
+<p>→ <a href="../concepts/kernel/">Kernel</a></p>
+<hr />
+<h2 id="watching-what-happened">Watching what happened<a class="headerlink" href="#watching-what-happened" title="Anchor link">&para;</a></h2>
+<h3 id="observation">Observation<a class="headerlink" href="#observation" title="Anchor link">&para;</a></h3>
+<p><strong>A human-meaningful event you can show a user</strong> — "searching the
+handbook", "waiting for approval".</p>
+<p>→ <a href="../concepts/observability/">Observability</a></p>
+<h3 id="trace-span">Trace / span<a class="headerlink" href="#trace-span" title="Anchor link">&para;</a></h3>
+<p><strong>The engineer-facing timeline of a run.</strong></p>
+<p>A span is one timed segment — one model call, one tool execution — with
+timing and metadata attached. Nested spans form a trace, which is what
+you look at to find out why something took nine seconds. This is the
+OpenTelemetry vocabulary, and agentkit uses it as-is.</p>
+<p>→ <a href="../concepts/observability/">Observability</a></p>
+<h3 id="replay">Replay<a class="headerlink" href="#replay" title="Anchor link">&para;</a></h3>
+<p><strong>Storing the full request and response payloads somewhere other than the
+trace</strong>, because traces have size limits and prompts are large.</p>
+<p>→ <a href="../concepts/observability/">Observability</a></p>
+<h3 id="sampler">Sampler<a class="headerlink" href="#sampler" title="Anchor link">&para;</a></h3>
+<p><strong>The rule that decides which runs get traced.</strong></p>
+<p>Recording every span of every run is expensive at volume, so you record
+a fraction. The sampler is what picks. It only ever drops <em>traces</em> —
+your cost and usage numbers are always counted in full.</p>
+<p>→ <a href="../concepts/observability/">Observability</a></p>
+<h3 id="delta">Delta<a class="headerlink" href="#delta" title="Anchor link">&para;</a></h3>
+<p><strong>One small piece of a streaming answer.</strong></p>
+<p>Models emit their reply gradually rather than all at once. Each fragment
+that arrives is a delta; joined together in order, they are the complete
+response. This is what lets a UI show text appearing as it is written.</p>
+<p>→ <a href="../concepts/kernel/">Kernel</a></p>
+<hr />
+<h2 id="words-that-show-up-in-passing">Words that show up in passing<a class="headerlink" href="#words-that-show-up-in-passing" title="Anchor link">&para;</a></h2>
+<h3 id="fan-out">Fan-out<a class="headerlink" href="#fan-out" title="Anchor link">&para;</a></h3>
+<p><strong>Starting many pieces of work at once instead of one after another.</strong></p>
+<h3 id="structured-concurrency">Structured concurrency<a class="headerlink" href="#structured-concurrency" title="Anchor link">&para;</a></h3>
+<p><strong>Running things in parallel with a rule: no task outlives the block that
+started it.</strong> If one fails, its siblings are cancelled rather than left
+running unattended.</p>
+<p>→ <a href="../concepts/runtime/">Runtime</a></p>
+<h3 id="backpressure">Backpressure<a class="headerlink" href="#backpressure" title="Anchor link">&para;</a></h3>
+<p><strong>Making a fast producer wait for a slow consumer</strong>, instead of letting
+work pile up until you run out of memory.</p>
+<h3 id="idempotent-idempotency">Idempotent / idempotency<a class="headerlink" href="#idempotent-idempotency" title="Anchor link">&para;</a></h3>
+<p><strong>Safe to run twice.</strong> Reading a file is idempotent. Charging a card is
+not — so if a retry happens, the framework needs a key that lets it
+recognise "I already did this one".</p>
+<h3 id="memoize">Memoize<a class="headerlink" href="#memoize" title="Anchor link">&para;</a></h3>
+<p><strong>Cache the answer so an identical call does not run twice.</strong></p>
+<p>→ <a href="../concepts/middlewares/">Middlewares</a></p>
+<h3 id="egress">Egress<a class="headerlink" href="#egress" title="Anchor link">&para;</a></h3>
+<p><strong>Outbound network access from a tool</strong> — and the check that decides
+whether a given URL is allowed.</p>
+<h3 id="guardrail">Guardrail<a class="headerlink" href="#guardrail" title="Anchor link">&para;</a></h3>
+<p><strong>A check that can veto</strong> — refusing a URL, blocking an output.</p>
+<h3 id="evaluator">Evaluator<a class="headerlink" href="#evaluator" title="Anchor link">&para;</a></h3>
+<p><strong>Something that scores an answer</strong>, so "did this get better?" has a
+number behind it rather than an opinion. Can be plain deterministic
+checks, a second model asked to judge, or both.</p>
+<p>→ <a href="../concepts/capabilities/">Capabilities</a></p>
+<h3 id="reranker">Reranker<a class="headerlink" href="#reranker" title="Anchor link">&para;</a></h3>
+<p><strong>A second pass that re-sorts search results before they reach the
+prompt.</strong></p>
+<p>The first pass is fast and approximate; it fetches more candidates than
+you need. The reranker orders them properly and keeps the best few, so
+the model reads the most relevant material rather than merely the
+closest match.</p>
+<p>→ <a href="../concepts/memory/">Memory</a></p>
+<h3 id="schema">Schema<a class="headerlink" href="#schema" title="Anchor link">&para;</a></h3>
+<p><strong>A machine-readable description of a data shape.</strong></p>
+<p>Sent to the model so it knows what arguments a tool takes, and used on
+the way back to confirm what it produced matches what you asked for.</p>
+<h3 id="coercion">Coercion<a class="headerlink" href="#coercion" title="Anchor link">&para;</a></h3>
+<p><strong>Turning the model's JSON into the actual Python object you annotated.</strong></p>
+<p>Without it, a parameter you declared as an <code>Enum</code> arrives as a plain
+string and your code breaks on <code>.value</code>.</p>
+<p>→ <a href="../concepts/tools/">Tools</a></p>
+<h3 id="handoff">Handoff<a class="headerlink" href="#handoff" title="Anchor link">&para;</a></h3>
+<p><strong>One agent passing the task to a peer</strong>, rather than answering itself.</p>
+<h3 id="coordinator-and-policy">Coordinator and Policy<a class="headerlink" href="#coordinator-and-policy" title="Anchor link">&para;</a></h3>
+<p><strong>A coordinator runs several child agents. A policy decides whose turn it
+is</strong> — round-robin, a model picking the next speaker, or a plan written
+up front.</p>
+<p>→ <a href="../concepts/agents/">Agents</a></p>
+<h3 id="termination">Termination<a class="headerlink" href="#termination" title="Anchor link">&para;</a></h3>
+<p><strong>The rule for when a loop has gone on long enough</strong> — a turn cap, a
+deadline, or a condition you write.</p>
+<h3 id="mcp-model-context-protocol">MCP (Model Context Protocol)<a class="headerlink" href="#mcp-model-context-protocol" title="Anchor link">&para;</a></h3>
+<p><strong>A standard way for a program to publish tools, documents and prompts so
+any AI application can use them.</strong></p>
+<p>There are thousands of published MCP servers. Speaking the protocol once
+means you can use all of them, rather than writing an adapter per
+service.</p>
+<p>→ <a href="../concepts/integrations/">Integrations</a></p>
+<hr />
+<h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong><code>Agent</code> is a plain dataclass.</strong> Name, model, prompt. It holds no
-  connection and no state. You never subclass it.</li>
-<li><strong>The LLM is not on the agent — it is on the context.</strong> <code>agent.run</code>
-  reaches the model through <code>ctx</code>, so the same <code>Agent</code> value runs
-  against a fake in a test and a real provider in production with no
-  edit.</li>
-<li><strong><code>FakeLLM</code> is not a stub you have to write.</strong> It ships in
-  <code>agentkit.testing</code>, it is the same double the framework's own test
-  suite uses, and it charges a scripted <code>Usage</code> on every call — so cost,
-  budget and metering code paths are exercised offline. It lives under
-  <code>agentkit.testing</code> rather than the top-level package on purpose: a
-  <code>from agentkit import FakeLLM</code> shape would let production code pin a
-  test double by accident.</li>
-</ul>
-<p><code>make_test_ctx(...)</code> is the one-line context factory — it builds a real
-<code>RunContext</code> with a real <code>Invoker</code>, and no-op tracing/observation
-defaults. In application code you build <code>RunContext</code> and <code>Services</code>
-yourself, which is what the next section shows.</p>
-<h2 id="the-same-agent-against-a-real-provider">The same agent against a real provider<a class="headerlink" href="#the-same-agent-against-a-real-provider" title="Anchor link">&para;</a></h2>
-<p>Same <code>Agent</code>. Only the wiring of <code>ctx</code> changes.</p>
-<div class="admonition warning">
-<p class="admonition-title">These snippets bill you</p>
-<p>Each tab below makes a real request. The first two need an API key
-in your environment; the third needs the <code>claude</code> CLI installed and
-logged in. Nothing on this page before this point costs money.</p>
-</div>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Anthropic</label><label for="__tabbed_1_2">OpenAI</label><label for="__tabbed_1_3">Local claude CLI (no key)</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<p>Needs <code>pip install "arc-agentkit[http]"</code> and <code>ANTHROPIC_API_KEY</code>.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">providers</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.middlewares</span><span class="w"> </span><span class="kn">import</span> <span class="n">meter</span><span class="p">,</span> <span class="n">retry</span><span class="p">,</span> <span class="n">tracing</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">providers</span><span class="o">.</span><span class="n">claude</span><span class="p">(</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>        <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ANTHROPIC_API_KEY&quot;</span><span class="p">],</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="p">)</span>
-</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
-</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        <span class="n">invoker</span><span class="o">=</span><span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span> <span class="n">chat_middleware</span><span class="o">=</span><span class="p">[</span><span class="n">tracing</span><span class="p">(),</span> <span class="n">meter</span><span class="p">(),</span> <span class="n">retry</span><span class="p">()]),</span>
-</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="p">)</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">services</span><span class="p">)</span>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;briefer&quot;</span><span class="p">,</span>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Answer in one short sentence.&quot;</span><span class="p">,</span>
-</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>    <span class="p">)</span>
-</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;What do we know about octopus cognition?&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
-</span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;cost: $</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>
-</span><span id="__span-6-29"><a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a>
-</span><span id="__span-6-30"><a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-6-31"><a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</span></code></pre></div>
-</div>
-<div class="tabbed-block">
-<p>Needs <code>pip install "arc-agentkit[http]"</code> and <code>OPENAI_API_KEY</code>. The
-only lines that differ are the preset and the model name.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">providers</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.middlewares</span><span class="w"> </span><span class="kn">import</span> <span class="n">meter</span><span class="p">,</span> <span class="n">retry</span><span class="p">,</span> <span class="n">tracing</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">providers</span><span class="o">.</span><span class="n">openai</span><span class="p">(</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>        <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">],</span>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="p">)</span>
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>        <span class="n">invoker</span><span class="o">=</span><span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span> <span class="n">chat_middleware</span><span class="o">=</span><span class="p">[</span><span class="n">tracing</span><span class="p">(),</span> <span class="n">meter</span><span class="p">(),</span> <span class="n">retry</span><span class="p">()]),</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="p">)</span>
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">services</span><span class="p">)</span>
-</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
-</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;briefer&quot;</span><span class="p">,</span>
-</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
-</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Answer in one short sentence.&quot;</span><span class="p">,</span>
-</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>    <span class="p">)</span>
-</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;What do we know about octopus cognition?&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
-</span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;cost: $</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>
-</span><span id="__span-7-29"><a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>
-</span><span id="__span-7-30"><a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-7-31"><a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</span></code></pre></div>
-</div>
-<div class="tabbed-block">
-<p>Needs the <a href="https://docs.claude.com/en/docs/claude-code"><code>claude</code> CLI</a>
-on <code>PATH</code> and one prior <code>claude login</code>. agentkit holds no key; the
-CLI's own auth is used.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span><span class="p">,</span> <span class="n">Scope</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClaudeCliCognition</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Services</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;briefer&quot;</span><span class="p">,</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>        <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;Answer in one short sentence.&quot;</span><span class="p">,</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>        <span class="n">cognition</span><span class="o">=</span><span class="n">ClaudeCliCognition</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">),</span>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="p">)</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span><span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(),</span> <span class="n">services</span><span class="o">=</span><span class="n">Services</span><span class="p">())</span>
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>
-</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;What do we know about octopus cognition?&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
-</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;cost estimate: $</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">usage</span><span class="o">.</span><span class="n">cost_usd</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
-</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>
-</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
-</span></code></pre></div>
-<p><code>ClaudeCliCognition</code> subprocesses the CLI once per <code>agent.run(...)</code>
-and maps its stream-JSON output onto agentkit <code>StreamEvent</code>s. The
-cost is the CLI's own estimate from published per-token prices, not
-a billed figure — hence "cost estimate".</p>
-</div>
-</div>
-</div>
-<p>Two details worth noticing in the first two tabs:</p>
-<ul>
-<li><strong><code>providers.claude(...)</code> returns an <code>LLMPort</code>, not a client you
-  call.</strong> It goes into an <code>Invoker</code>, and the <code>Invoker</code> is what walks the
-  middleware chain on the way to it. <code>tracing()</code>, <code>meter()</code> and
-  <code>retry()</code> are a plain Python list — reorder it by editing the line.</li>
-<li><strong><code>meter()</code> is what makes a <code>Budget</code> real.</strong> A <code>Budget</code> on the
-  <code>RunContext</code> with no <code>meter()</code> in the chain is never charged and never
-  halts anything. <code>make_test_ctx</code> and the presets in <code>agentkit.client</code>
-  wire it for you; hand-built <code>Invoker</code>s do not.</li>
-</ul>
-<h2 id="where-to-go-next">Where to go next<a class="headerlink" href="#where-to-go-next" title="Anchor link">&para;</a></h2>
-<p>Pick by what you are trying to do.</p>
-<ul>
-<li><strong>"Show me the whole thing, one step at a time."</strong> →
-  <a href="../tutorial/">Tutorial</a>. Six steps, each a complete script, each
-  motivated by a problem the previous step left open. The first five
-  need no API key.</li>
-<li><strong>"I know what I want, just give me the invocation."</strong> →
-  <a href="../cheatsheet/">Cheatsheet</a>.</li>
-<li><strong>"How do I cap spend / pause for a human / survive a crash / wire
-  OpenTelemetry / consume MCP?"</strong> → <a href="../recipes/">Recipes</a>.</li>
-<li><strong>"What are the pieces actually called?"</strong> →
-  <a href="../concepts/kernel/">Concepts</a>, starting with
-  <a href="../concepts/runtime/">Runtime</a> for <code>RunContext</code> / <code>Budget</code> and
-  <a href="../concepts/agents/">Agents</a> for <code>Cognition</code> / <code>Autonomy</code>.</li>
-<li><strong>"Why is it built like this?"</strong> → <a href="../why/">Why agentkit</a>.</li>
-<li><strong>"I have working code and I am about to deploy it."</strong> →
-  <a href="../anti-patterns/">Anti-patterns</a>. Read it once; it is the list of
-  traps that cost other people money.</li>
-<li><strong>"I am coming from something else."</strong> →
-  <a href="../migrating/from-langchain/">From LangChain</a> or
-  <a href="../migrating/from-vanilla-asyncio/">From vanilla asyncio</a>.</li>
+<li><a href="../why/">Why agentkit</a> — the case for the design these words describe.</li>
+<li><a href="../getting-started/">Getting started</a> — install and run something.</li>
+<li><a href="../cheatsheet/">Cheatsheet</a> — the same vocabulary as code.</li>
 </ul>
 
 
@@ -3201,7 +4384,7 @@ a billed figure — hence "cost estimate".</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../why/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Why">
+          <a href="../cheatsheet/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Cheatsheet">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3211,20 +4394,20 @@ a billed figure — hence "cost estimate".</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Why
+                Cheatsheet
               </div>
             </div>
           </a>
         
         
           
-          <a href="../cheatsheet/" class="md-footer__link md-footer__link--next" aria-label="Next: Cheatsheet">
+          <a href="../tutorial/" class="md-footer__link md-footer__link--next" aria-label="Next: Tutorial">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Cheatsheet
+                Tutorial
               </div>
             </div>
             <div class="md-footer__button md-icon">

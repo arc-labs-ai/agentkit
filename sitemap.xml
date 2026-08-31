@@ -2,246 +2,250 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/PUBLISHING/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/anti-patterns/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/cheatsheet/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/contributing/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/examples/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/getting-started/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/glossary/</loc>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/tutorial/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/why/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/adapters/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/agents/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/capabilities/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/context/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/kernel/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/memory/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/middlewares/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/prompts/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/runtime/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/skills/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/testing/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/api-reference/tools/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/adapters/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/agents/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/capabilities/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/context/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/integrations/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/kernel/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/memory/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/middlewares/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/observability/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/prompts/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/runtime/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/skills/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/testing/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/concepts/tools/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/mental-models/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/mental-models/01-multi-tenant-chat-with-docs/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/mental-models/02-autonomous-devops-investigator/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/mental-models/03-long-running-data-enrichment/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/mental-models/04-multi-agent-coordinated-research/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/migrating/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/migrating/from-langchain/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/migrating/from-vanilla-asyncio/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/claude-cli-fastapi-code-gen/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/compact-a-long-conversation/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/custom-middleware/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/define-a-tool/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/elicit-a-value-from-a-human/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/ground-with-memory/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/hitl-tool-approval/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/mcp-tools/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/multi-agent-coordination/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/otel-tracing-and-metrics/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/parallel-agents-with-cancellation/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/provider-from-env/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/resume-after-crash/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/spend-budget-and-quota/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/stream-typed-output/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/test-an-agentkit-app/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/recipes/workflow-graph/</loc>
-         <lastmod>2026-08-23</lastmod>
+         <lastmod>2026-08-31</lastmod>
     </url>
 </urlset>
