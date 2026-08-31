@@ -152,6 +152,7 @@ nav:
           - Define and register a tool: recipes/define-a-tool.md
           - Ground an agent in memory: recipes/ground-with-memory.md
           - Consume MCP tools from an agent: recipes/mcp-tools.md
+          - Serve your tools to the Claude CLI: recipes/serve-tools-to-the-claude-cli.md
           - Stream a typed object: recipes/stream-typed-output.md
       - Structuring the work:
           - Author a workflow graph: recipes/workflow-graph.md

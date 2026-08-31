@@ -7,9 +7,249 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Two batches of work in this cycle: five gaps reported from production use, and
-a follow-up sweep for other major issues. Everything is additive except the
-concurrency-bound change called out below.
+Three batches of work in this cycle: five gaps reported from production use, a
+follow-up sweep for other major issues, and a thirteen-item programme closing
+the seams a CLI-driven application needs.
+
+Everything is additive except three behaviour changes, each called out at its
+own entry: the concurrency-bound change below, a tool's model-facing
+description now being its whole docstring rather than its first line, and both
+MCP servers now requiring a bearer token by default.
+
+### Added — give the Claude CLI your own tools, approvals, hooks and sub-agents
+
+`ClaudeCliCognition` hands the whole loop to the `claude` binary, which means
+anything your application knows has to reach it as CONFIGURATION before the run
+starts. Every knob for that existed and nothing could fill it: `mcp_config`
+took a path no agentkit code produced, `permission_prompt_tool` named an MCP
+tool that did not exist, `settings` took a file nobody generated, `agents` took
+definitions you restated by hand.
+
+- **`serve_registry(registry, name=, ctx=)`** serves a `ToolRegistry` to the
+  CLI over MCP. `ToolSchema.parameters` goes out as `inputSchema` unchanged — a
+  translation step would be a second description of one thing and would drift —
+  and `side_effecting`, `caps` and `requires_approval` travel with it, so
+  `RunPolicy`'s Rule-of-Two check keeps applying once tools move behind MCP,
+  which is exactly when it matters most. A `ToolArgumentError` comes back as a
+  TOOL error rather than a transport error: a bad call is reflected to the
+  model, which is the only party that can fix it.
+
+- **`hook_settings(middleware=, ctx=, tools=)`** generates Claude Code
+  `PreToolUse` hooks so the tool-middleware chain reaches the CLI's OWN tools.
+  It fails closed — a payload it cannot parse is a deny, because emitting `{}`
+  means "no opinion" and under `bypassPermissions` that runs the tool. The
+  matcher is anchored (`^(Write|Edit)$`), since unanchored an `Edit` guard also
+  fires for `NotebookEdit`. And the CLI's own hook timeout is deliberately the
+  loosest of three deadlines, because a hook the CLI times out is a
+  NON-blocking error: it prints and then runs the tool anyway.
+
+- **`as_cli_agents([skill, ...])`** projects a `Skill` into a CLI sub-agent
+  definition. A skill's tool restriction survives the projection — a reviewer
+  that is read-only because of its tool list must not arrive holding the
+  parent's tools — and a cognition that cannot be expressed as a sub-agent
+  raises `SkillNotProjectable` by name rather than being projected into
+  something that looks similar and behaves differently.
+
+- **`FakeClaudeCli`** and the `spawn=` seam make the CLI path testable offline.
+  Every other double in `agentkit.testing` fakes a PORT, and none helped here
+  because the CLI is a subprocess emitting stream-json. This one sits at the
+  spawn seam, so a test still exercises the real parsing, budget charging and
+  event mapping — a double returning finished `AgentResult`s would test none of
+  the places bugs have actually lived. `replay(path)` for a recorded session,
+  `script([...])` for one nobody has recorded. Exhaustion raises, matching
+  `FakeLLM`'s reasoning.
+
+### Added — `ApprovalDecision`: an approval is a record, not a count
+
+`ApprovalServer.prompts_seen` was an integer, so a run could not reconstruct
+its own approvals from any source. A permission prompt is the point at which a
+person took responsibility for something the machine would not do alone, and a
+count is the one summary that answers none of the questions worth asking: not
+what was allowed, not whether anybody actually looked, not which approval
+preceded the write you are staring at.
+
+`approvals.decisions` mirrors `HookSettings.decisions` deliberately — same
+name, same oldest-first ordering — so a caller consuming both consumes one
+shape. Each record carries the tool, the arguments, the verdict, the reason,
+an ISO-8601 stamp from the run's clock, and two fields that exist because a
+boolean cannot hold them:
+
+`source` is a closed set (`asker` · `auto_allow` · `autonomy` · `timeout` ·
+`error`). *Allowed because a person said so* and *allowed because the tier does
+not gate* are the two facts an auditor most needs apart, and a `timeout` that
+degraded to a deny must not read afterwards as a human who refused.
+
+`asked` is separate from `source == "asker"`, because a prompt can reach a
+human and then expire. Whether somebody was interrupted is a fact about what
+the run cost a person and is not recoverable from the verdict.
+
+Recording never fails the decision: the in-memory append happens before the
+best-effort `gate.check` emit, and the emit is bounded — an observer that
+raises was already covered, one that HANGS would otherwise park the CLI's
+permission answer forever.
+
+Nothing here is redacted, deliberately. `reason` is unredacted text from
+outside the library and IS broadcast, unlike `arguments`. A library that
+half-redacted would hand you an audit trail nobody can trust to be complete, so
+retention is the caller's policy and the docs say so.
+
+### Changed — both MCP servers now require a generated bearer token
+
+**Behaviour change.** `ApprovalServer` and `serve_registry` previously bound
+`127.0.0.1` with no authentication and documented loopback as the containment.
+That argument holds exactly as long as nothing untrusted shares the host, and
+it is the wrong assumption for the case this integration exists to serve: the
+point of `ClaudeCliCognition` is that the CLI runs `Bash` — a build, a package
+install, a script out of a repository the agent was pointed at — inside the
+same network namespace as the server holding the agent's own tools. The trust
+boundary loopback assumes is precisely the boundary the tool set crosses.
+
+Enforced as a 401 at the shared transport so neither server can forget it,
+compared with `secrets.compare_digest`, generated and never accepted from a
+caller — one a caller can set is one that ends up a constant in somebody's
+config file. A credential in a URL query string is refused even when correct,
+because URLs get logged. `cli_kwargs()` carries the header; `spec.auth_headers`
+is the same credential for a non-CLI client.
+
+`auth="none"` restores the previous behaviour and is still supported — now
+something a caller asks for by name rather than gets by default.
+
+The config file is `0600`, `stop()` removes it together with the listener since
+it is a live credential now, and a symlink already sitting at `config_path` is
+refused rather than followed (`O_NOFOLLOW`) — without which the token was
+written through to wherever the link pointed, at that file's mode.
+
+The Unix-socket transport was considered and deliberately not built. Verified
+against `claude` 2.1.251: the CLI's `--transport` takes only stdio/sse/http,
+`unixSocket` is not an MCP config key, and agentkit's own `MCPClient` cannot
+address a UDS either — so it would have been a fence around a field nobody can
+stand in. The reasoning is in `_transport.py` so it does not get re-litigated.
+
+### Added — the coordination half of `StorePort`
+
+`get · set · get_or_set · delete · append · list` is a good minimal key-value
+surface missing the three operations anything coordinating across processes
+needs. All four adapters could already do all three natively, so leaving them
+out did not remove the need — it relocated it into every application, once
+each, untested each time.
+
+- **`compare_and_set(key, expected, value)`** — `get_or_set` covers create-if-
+  absent, not replace-only-if-unchanged, which is what every read-modify-write
+  needs. It returns whether it APPLIED rather than raising: a lost race is an
+  ordinary outcome a caller retries, not an error.
+- **`increment(key, by=1, *, ttl=None)`** — a counter with an expiry is the
+  shape of every rate limit and could not be expressed at all, so an
+  application needing one wrote a Lua script against Redis and put its limiter
+  outside everything the framework can test, trace or meter.
+- **`scan(prefix, *, limit=None)`** — `list(key)` reads back one appended log.
+  "Everything recorded for this run" was answerable only if every writer also
+  maintained an index by hand, which is the classic pair that drifts.
+
+`ttl` genuinely differs by backend — memory and Redis honour it, File ignores
+it and warns once, Postgres raises rather than silently dropping expiry — so
+the docs state the matrix once and name the consequence: a windowed counter is
+only expressible on two of the four. `by` must be a non-bool int on every
+backend, which is newly enforced: before it, memory and File returned a float
+from a method annotated `-> int` and Redis reported `1` for
+`increment(k, 1.5)`.
+
+### Added — memory identity, read-only sources, and typed grounding
+
+- **`MemoryItem.id` and `CompositeMemory(dedupe=...)`.** The merge was
+  concatenation and could not have been anything else, because a `MemoryItem`
+  had no identity. Two sources holding one fact returned it twice and it
+  occupied two of the `k` slots the model reads — worst in exactly the
+  composition the class exists for, since the journal a vector index was built
+  from returns the same rows the index does. Identity is the union of two
+  relations, id and content digest, so a source with ids and one without can
+  still agree. On a collision the higher score survives and the merged item is
+  stamped with every backend that agreed, which is signal a reranker can use.
+  A falsy `id` is not an identity and content blank-after-strip carries none —
+  both were ways to delete a fact rather than merge one.
+
+- **`ReadOnlyMemory` and `MemoryWriteRefused`.** Every application has a source
+  that is read-only by POLICY rather than by backend, and the only protection
+  was that nothing happened to call `write` — a property of the code as it
+  stands rather than a rule. `on_write="ignore"` exists because a refusal
+  inside a `CompositeMemory` fan-out raises AFTER a writable member has already
+  committed, so one read-only member should not make the whole composite
+  unwritable.
+
+- **`GroundingSource`, `render` and `admit` on `RequestBuilder`.** A `Grounder`
+  returns text, so by the time retrieved material reached the prompt, which
+  source it came from and what score it had were gone. That made one rule
+  unenforceable at the only place it could be enforced: *a memory a model wrote
+  is not evidence.* The typed seam returns items instead — inspectable before
+  rendering, rendered by a policy rather than a fixed join, and recordable
+  beside the prefix so a run can say afterwards what it grounded on. The
+  callable seam is unchanged and un-deprecated; passing both is refused at
+  construction rather than silently resolved.
+
+### Added — `Workflow.map` and `attempt_until_stuck`
+
+- **`Workflow.map(name, over=, each=)`** is a node whose fan-out width is
+  decided at runtime. Every other node kind is authored, so the graph is a fact
+  about the source; an application whose graph depends on data it computed a
+  moment ago had to choose between a model that could not size itself and one
+  that could not express the rest of the structure. Resume is the hard part and
+  the reason it belongs in the framework: the expansion is recorded, not only
+  its results, so a resumed run knows which elements finished, and a changed
+  collection raises `MapExpansionChanged` rather than threading outputs into
+  the wrong slots. `bounded_by` narrows and never widens — elements take a
+  permit from the level pool AND the cap, so the effective width is
+  `min(bounded_by, max_concurrency)`.
+
+- **`attempt_until_stuck(fn, fingerprint=, on_repeat=)`** retries on a
+  SEMANTIC failure — an attempt that completed, produced an answer, and did not
+  achieve the goal — where `run_with_resilience` retries a call that failed to
+  complete. The bound is recurrence rather than a count, and the difference is
+  the whole point: three attempts producing three different failures is
+  progress, and two producing the same one is not. A count cannot tell those
+  apart. The history is every signature seen rather than the previous one,
+  because an A,B,A,B oscillation is a cycle and comparing only against the last
+  attempt reads it as progress forever.
+
+### Changed — a tool's description is its whole docstring
+
+**Behaviour change.** The model-facing description was the first line and
+nothing else, while the rest sat in the docstring looking as though it had been
+delivered. That cost a real defect: the sentence a model most needed — *your
+own reading of the code is not a substitute for this call* — was in
+`ask_human`'s second paragraph and never shipped. It also cut ordinary
+docstrings mid-clause, because a single paragraph wrapped over two source lines
+is not one line.
+
+The alternative was refusing a multi-paragraph docstring at decoration time.
+The choice was made by counting rather than taste: six tools in this repository
+have one, and in all six the second paragraph is model-facing, so refusing them
+would have rejected six tools whose authors had already written the right
+thing.
+
+The cost is real and stated in the docs: implementation notes written for
+humans now reach the model as instructions. An explicit `description=` still
+wins over the docstring entirely.
+
+### Added — the CLI middleware-bypass warning, and capability tags
+
+agentkit says it in its own source, in `_charge_meters`: the CLI bypasses the
+`Invoker`, so `meter()` never sees the usage and every meter stays at zero —
+*"that is how a documented safety mechanism ends up doing nothing."* Metering
+was patched by hand for exactly that reason and nothing else was, so `egress`,
+`guard`, `audit`, `memoize` and `Guardrail.check_url` all silently stopped
+applying to the CLI's native tool calls.
+
+`ClaudeCliCognition` now warns when a `ctx` carrying tool middleware is used
+with native tools enabled, and the warning NAMES the middlewares that will not
+apply. It latches per instance: per-drive would be noise, and noise is what
+teaches people to add a `filterwarnings` line, which is how the next silent
+misconfiguration gets through.
+
+It also declares capabilities, so `RunPolicy`'s lethal-trifecta check can see a
+CLI session — it could not before, because the cognition declared none. Two
+results are worth knowing: `WebFetch` supplies two legs on its own, so
+`Read` + `WebFetch` is the full trifecta with no `Bash` present; and `Task` and
+`SlashCommand` count as the whole trifecta by themselves, because they are
+indirections to the full tool set.
 
 ### Fixed — the MCP HTTP transport migration, and Pydantic serialization aliases
 

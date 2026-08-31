@@ -61,6 +61,16 @@ these recipes use in a sentence of plain English.
 
     [:octicons-arrow-right-24: Use MCP tools](mcp-tools.md)
 
+-   __Serve your tools to the Claude CLI__
+
+    ---
+
+    The CLI owns its loop, so you hand it a server rather than a
+    function. `serve_registry` builds one from a `ToolRegistry` you
+    already have — and the calls come back through your middleware.
+
+    [:octicons-arrow-right-24: Serve a registry](serve-tools-to-the-claude-cli.md)
+
 </div>
 
 ## Structuring the work
