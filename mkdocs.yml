@@ -136,6 +136,7 @@ nav:
       - Middlewares: concepts/middlewares.md
       - Adapters: concepts/adapters.md
       - Integrations (MCP): concepts/integrations.md
+      - The Claude CLI: concepts/claude-cli.md
       - Observability: concepts/observability.md
       - Testing: concepts/testing.md
   - Mental models:
