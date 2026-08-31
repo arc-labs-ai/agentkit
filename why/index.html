@@ -594,6 +594,50 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#13-delegating-the-loop-to-the-claude-cli-no-longer-delegates-the-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Delegating the loop to the Claude CLI no longer delegates the controls
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-an-approval-leaves-a-record-not-a-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. An approval leaves a record, not a count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-the-cli-path-is-testable-offline-and-the-test-exercises-the-real-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. The CLI path is testable offline, and the test exercises the real code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-the-servers-agentkit-stands-up-are-authenticated-by-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. The servers agentkit stands up are authenticated by default
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1747,6 +1791,34 @@
     
   
     Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recipes/serve-tools-to-the-claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serve your tools to the Claude CLI
   
 
     
@@ -3168,6 +3240,50 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#13-delegating-the-loop-to-the-claude-cli-no-longer-delegates-the-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Delegating the loop to the Claude CLI no longer delegates the controls
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-an-approval-leaves-a-record-not-a-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. An approval leaves a record, not a count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-the-cli-path-is-testable-offline-and-the-test-exercises-the-real-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. The CLI path is testable offline, and the test exercises the real code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-the-servers-agentkit-stands-up-are-authenticated-by-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. The servers agentkit stands up are authenticated by default
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3322,7 +3438,7 @@
 
 <h1 id="why-agentkit">Why agentkit<a class="headerlink" href="#why-agentkit" title="Anchor link">&para;</a></h1>
 <p>Every agent framework makes a bet. This page states agentkit's bet plainly,
-lists the twelve concrete guarantees you get if you take it, and compares
+lists the sixteen concrete guarantees you get if you take it, and compares
 the bet against the alternatives so you can pick the tool whose bet
 matches the code you're actually about to write.</p>
 <p>It is the long version, for a reader who is already interested. If you
@@ -3377,7 +3493,7 @@ and capabilities (<code>RequestBuilder</code>, <code>Compactor</code>, <code>Gua
 <code>LLMPort</code> you write — are <strong>plug-ins</strong>, not the point. They fill the LLM
 slot in a composition; the composition is what agentkit is about.</p>
 <h2 id="what-you-get">What you get<a class="headerlink" href="#what-you-get" title="Anchor link">&para;</a></h2>
-<p>Twelve concrete guarantees, each a capability the framework hands you and
+<p>Sixteen concrete guarantees, each a capability the framework hands you and
 competitors mostly don't.</p>
 <h3 id="1-a-run-has-an-explicit-ceiling-that-halts-it-not-a-dashboard-that-warns-you">1. A run has an explicit ceiling that halts it, not a dashboard that warns you<a class="headerlink" href="#1-a-run-has-an-explicit-ceiling-that-halts-it-not-a-dashboard-that-warns-you" title="Anchor link">&para;</a></h3>
 <p><code>Budget(max_cost_usd=..., max_calls=..., max_depth=...)</code> on the
@@ -3473,15 +3589,104 @@ adapters: <code>mcp_tools(client)</code> returns objects satisfying agentkit's
 for grounding. <code>mcp_prompts(client)</code> returns
 <code>dict[str, Prompt]</code> for server-authored versioned prompts. One
 network to consume every MCP server ever written.</p>
+<p>The wire runs both ways. <code>serve_registry(registry, name=..., ctx=...)</code>
+publishes a <code>ToolRegistry</code> you already have as an MCP server, and
+<code>ToolSchema.parameters</code> goes out as <code>inputSchema</code> <strong>unchanged</strong> — no
+translation step, because a translation step is a second description of
+one thing and second descriptions drift into a model being shown a
+schema the tool does not validate against.</p>
 <h3 id="12-a-first-class-testing-kit-that-avoids-double-implementation">12. A first-class testing kit that avoids double-implementation<a class="headerlink" href="#12-a-first-class-testing-kit-that-avoids-double-implementation" title="Anchor link">&para;</a></h3>
 <p><code>FakeLLM</code>, <code>FakeFetch</code>, <code>FakeSearch</code>, <code>FakeMemory</code>, <code>FakeTool</code>,
-<code>FakeCompactor</code>, <code>FakeGrounder</code>, <code>FakeClock</code>, <code>RecordingTracer</code>,
+<code>FakeCompactor</code>, <code>FakeGrounder</code>, <code>FakeClock</code>, <code>FakeClaudeCli</code>,
+<code>RecordingTracer</code>,
 <code>FakeCtx</code>, and <code>make_test_ctx(...)</code> — the same doubles the framework's
 own suite uses. Zero API keys required to unit-test your agents end
 to end. Test doubles live under <code>agentkit.testing.*</code> and are
 <strong>deliberately</strong> not re-exported from the top-level package: a
 <code>from agentkit import FakeLLM</code> shape would let production code accidentally
 pin a test double. The boundary is enforced.</p>
+<h3 id="13-delegating-the-loop-to-the-claude-cli-no-longer-delegates-the-controls">13. Delegating the loop to the Claude CLI no longer delegates the controls<a class="headerlink" href="#13-delegating-the-loop-to-the-claude-cli-no-longer-delegates-the-controls" title="Anchor link">&para;</a></h3>
+<p><code>ClaudeCliCognition</code> gives the whole loop to a subprocess, and the
+subprocess does not walk your <code>Invoker</code>. So a service that wired
+<code>egress</code>, <code>audit</code> and <code>guard</code>, then reached for the CLI, got a session
+where <strong>none of them applied</strong> and nothing said so. <code>WebFetch</code> reached
+anywhere. There were no audit records.</p>
+<p>Three things close that now, and they are guarantees rather than
+features because each one changes what you can promise about a run.
+The cognition <strong>warns and names the middlewares that stopped applying</strong>,
+once per instance — not a vague caution that trains you to add a
+<code>filterwarnings</code> line. <code>hook_settings(middleware=..., ctx=...,
+tools=...)</code> regenerates the same chain as a <code>PreToolUse</code> hook, so it
+reaches <code>Write</code>, <code>Edit</code> and <code>Bash</code>; it <strong>fails closed</strong> on a payload it
+cannot parse and anchors its matcher (<code>^(Write|Edit)$</code>, so an <code>Edit</code>
+rule does not also fire for <code>NotebookEdit</code>). And <code>RunPolicy</code> can now see
+the session at all: <code>ClaudeCliCognition</code> declares capability tags
+derived from <code>tools=</code>, so the lethal-trifecta check refuses
+<code>("Read", "WebFetch")</code> — <code>WebFetch</code> supplies two legs by itself — and
+refuses the default <code>tools=None</code>, which means every built-in tool and
+is therefore the whole trifecta.</p>
+<p>Two honest costs. The hook runs in a <em>separate process</em>, so it cannot
+hold your live <code>ctx</code>; middlewares that need one are refused at
+generation time rather than accepted and silently skipped, and the
+refusal is the point. And the CLI's own hook timeout is a <strong>fail-open</strong>
+— a hook it times out prints an error and then runs the tool — so the
+inner deadlines have to fire first.</p>
+<h3 id="14-an-approval-leaves-a-record-not-a-count">14. An approval leaves a record, not a count<a class="headerlink" href="#14-an-approval-leaves-a-record-not-a-count" title="Anchor link">&para;</a></h3>
+<p><code>ApprovalServer(asker=...)</code> answers the CLI's <code>--permission-prompt-tool</code>
+with your existing <code>Asker</code>, so the CLI's permissions stop being a choice
+between <code>bypassPermissions</code> (anything, unattended) and <code>dontAsk</code> (the
+run just fails). What it hands back afterwards is the guarantee:
+<code>.decisions</code> is a list of <code>ApprovalDecision</code> — <code>tool</code>, <code>arguments</code>,
+<code>allowed</code>, <code>reason</code>, <code>source</code>, <code>at</code>, <code>asked</code>.</p>
+<p>A counter cannot answer the questions an incident asks. <em>Allowed because
+a person said so</em> and <em>allowed because the run's autonomy tier does not
+gate this call</em> are the two facts an auditor most needs kept apart, and
+a boolean collapses them; <code>source</code> is a closed set (<code>asker</code>,
+<code>auto_allow</code>, <code>autonomy</code>, <code>timeout</code>, <code>error</code>) that keeps them apart. A
+<code>timeout</code> deny must never read afterwards as a human who said no.
+<code>asked</code> is tracked separately from <code>source == "asker"</code> because a prompt
+can reach a person and then expire — whether somebody was interrupted is
+a fact about what the run cost a human, and it is not recoverable from
+the verdict.</p>
+<p>The default is deny, and <code>timeout_s</code> is enforced by the server rather
+than trusted to the <code>Asker</code>, because the <code>Asker</code> protocol permits
+waiting forever and a queue worker holding a CLI subprocess open
+indefinitely is a resource leak with a model attached.</p>
+<h3 id="15-the-cli-path-is-testable-offline-and-the-test-exercises-the-real-code">15. The CLI path is testable offline, and the test exercises the real code<a class="headerlink" href="#15-the-cli-path-is-testable-offline-and-the-test-exercises-the-real-code" title="Anchor link">&para;</a></h3>
+<p>Testing anything that went through <code>ClaudeCliCognition</code> used to need a
+real <code>claude</code> binary, real auth and real money — so in practice it was
+tested by hand, or not at all, which is how a path that spawns processes
+and parses a stream ends up the least-covered code in a service.</p>
+<p><code>FakeClaudeCli.script([...])</code> handed to <code>ClaudeCliCognition(spawn=...)</code>
+sits at the <strong>spawn seam</strong>, not in front of the cognition. That
+placement is the guarantee: the test still runs the real stream-json
+parsing, the real budget charging and the real <code>StreamEvent</code> mapping,
+which is where every bug on this path has actually lived. It earned that
+claim on its first hostile input — a line that is not valid UTF-8 raised
+<code>UnicodeDecodeError</code>, which is not a <code>JSONDecodeError</code>, so it escaped
+the parser's handler; the reader stopped before the <code>result</code> payload and
+a completed run was charged $0.00.</p>
+<h3 id="16-the-servers-agentkit-stands-up-are-authenticated-by-default">16. The servers agentkit stands up are authenticated by default<a class="headerlink" href="#16-the-servers-agentkit-stands-up-are-authenticated-by-default" title="Anchor link">&para;</a></h3>
+<p><code>serve_registry</code> and <code>ApprovalServer</code> both bind loopback and both
+<strong>require a generated bearer token</strong>. <code>cli_kwargs()</code> carries it in the
+config document's headers; <code>auth_headers</code> is the same credential for a
+non-CLI client. Nothing accepts a caller-supplied token, because a token
+a caller can set is a token that ends up a constant in somebody's config
+file.</p>
+<p>Loopback alone used to be the containment, and that argument holds
+exactly as long as nothing untrusted shares the host — which is the
+wrong assumption for the case these servers exist to serve. The point of
+<code>ClaudeCliCognition</code> is that the CLI runs <code>Bash</code>: a build, a package
+install, a script out of a repository the agent was pointed at, inside
+the same network namespace as the server holding your tools and your
+approval gate.</p>
+<p>The honest version is that a token is a weaker fence than a <code>0700</code>
+directory: it turns <em>anything on the host</em> into <em>anything that can read
+this process's temp directory</em>. That is why the config file is <code>0600</code>
+and why <code>stop()</code> removes it along with the listener — the file is a live
+credential now, so a stale one outliving its server would be worse than
+untidy. <code>auth="none"</code> restores the old behaviour, as something you ask
+for by name rather than something you get by default.</p>
 <h2 id="when-agentkit-is-the-fit">When agentkit is the fit<a class="headerlink" href="#when-agentkit-is-the-fit" title="Anchor link">&para;</a></h2>
 <p>If you tick most of these, agentkit is likely the right pick:</p>
 <ul>
@@ -3731,6 +3936,31 @@ backend.</p>
 <td>No coercion in the loop</td>
 <td><code>Agent(output=MyPydanticModel)</code> + <code>output_coerce</code> middleware</td>
 </tr>
+<tr>
+<td>CLI session's <code>WebFetch</code> ignored the egress allowlist</td>
+<td>Native CLI tools never reach the <code>Invoker</code></td>
+<td><code>hook_settings(...)</code> → <code>ClaudeCliCognition(settings=...)</code></td>
+</tr>
+<tr>
+<td>"Who approved that?" answered with a number</td>
+<td>A counter, not a record</td>
+<td><code>ApprovalServer(asker=...)</code> → <code>.decisions</code></td>
+</tr>
+<tr>
+<td>The CLI path was only ever tested by hand</td>
+<td>No double at the spawn seam</td>
+<td><code>FakeClaudeCli.script([...])</code> + <code>ClaudeCliCognition(spawn=...)</code></td>
+</tr>
+<tr>
+<td>One fact took two of the top-<code>k</code> slots the model reads</td>
+<td>Fan-out merged its sources blindly</td>
+<td><code>CompositeMemory(sources, dedupe="id")</code></td>
+</tr>
+<tr>
+<td>Retry re-ran an attempt that kept failing the same way</td>
+<td>A count cannot tell progress from a loop</td>
+<td><code>attempt_until_stuck(fn, fingerprint=...)</code> → <code>Stuck</code></td>
+</tr>
 </tbody>
 </table>
 <h2 id="the-bet-restated">The bet, restated<a class="headerlink" href="#the-bet-restated" title="Anchor link">&para;</a></h2>
@@ -3755,6 +3985,9 @@ read.</p>
   I X?".</li>
 <li><strong><a href="../anti-patterns/">Anti-patterns</a></strong> — the fifteen traps every
   first-time user falls into.</li>
+<li><strong><a href="../concepts/claude-cli/">Concepts › The Claude CLI</a></strong> — guarantees
+  13 to 16 in full: the one loop you don't own, what stops applying
+  when you take it, and the seams that reach back in.</li>
 <li><strong><a href="../mental-models/">Mental models</a></strong> — four worked product
   scenarios that show these guarantees composing under load, and what
   breaks when one of them slips.</li>
@@ -3783,7 +4016,7 @@ read.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 30, 2026 23:00:00 UTC">August 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 05:18:50 UTC">August 31, 2026</span>
   </span>
 
     

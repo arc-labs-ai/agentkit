@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/otel-tracing-and-metrics/">
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/recipes/serve-tools-to-the-claude-cli/">
       
       
-        <link rel="prev" href="../resume-after-crash/">
+        <link rel="prev" href="../mcp-tools/">
       
       
-        <link rel="next" href="../test-an-agentkit-app/">
+        <link rel="next" href="../stream-typed-output/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Wire OpenTelemetry - agentkit</title>
+        <title>Serve your tools to the Claude CLI - agentkit</title>
       
     
     
@@ -146,7 +146,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-do-i-wire-opentelemetry" class="md-skip">
+        <a href="#how-do-i-give-the-claude-cli-my-own-tools" class="md-skip">
           Skip to content
         </a>
       
@@ -204,7 +204,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Wire OpenTelemetry
+              Serve your tools to the Claude CLI
             
           </span>
         </div>
@@ -1299,6 +1299,8 @@
                 
   
   
+    
+  
   
   
     
@@ -1308,11 +1310,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10_2" checked>
         
           
           <label class="md-nav__link" for="__nav_10_2" id="__nav_10_2_label" tabindex="0">
@@ -1333,7 +1335,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_10_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_10_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_10_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1432,10 +1434,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../serve-tools-to-the-claude-cli/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serve your tools to the Claude CLI
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1451,6 +1480,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#when-youd-want-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When you'd want this
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#working-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Working code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pointing-the-real-cli-at-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pointing the real CLI at it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-travels-with-a-tool-and-why-it-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What travels with a tool, and why it matters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-bites-people" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What bites people
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1919,8 +2034,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1930,11 +2043,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10_6" >
         
           
           <label class="md-nav__link" for="__nav_10_6" id="__nav_10_6_label" tabindex="0">
@@ -1955,7 +2068,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_10_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_10_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_10_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1998,37 +2111,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Wire OpenTelemetry
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../otel-tracing-and-metrics/" class="md-nav__link">
         
   
   
@@ -2044,92 +2130,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#when-youd-want-this" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When you'd want this
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-code" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working code
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#production-wire-up" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Production wire-up
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How it works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-bites-people" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What bites people
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#related" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Related
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2847,10 +2847,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#production-wire-up" class="md-nav__link">
+  <a href="#pointing-the-real-cli-at-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Production wire-up
+        Pointing the real CLI at it
       
     </span>
   </a>
@@ -2858,10 +2858,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#what-travels-with-a-tool-and-why-it-matters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it works
+        What travels with a tool, and why it matters
       
     </span>
   </a>
@@ -2910,158 +2910,171 @@
   
 
 
-<h1 id="how-do-i-wire-opentelemetry">How do I wire OpenTelemetry?<a class="headerlink" href="#how-do-i-wire-opentelemetry" title="Anchor link">&para;</a></h1>
-<p>You want to see what a run actually did — and what all your runs are
-doing in aggregate — in the monitoring tool your team already uses.</p>
+<h1 id="how-do-i-give-the-claude-cli-my-own-tools">How do I give the Claude CLI my own tools?<a class="headerlink" href="#how-do-i-give-the-claude-cli-my-own-tools" title="Anchor link">&para;</a></h1>
+<p>The CLI owns its loop, so you cannot hand it a Python function. You hand
+it a <strong>server</strong> — and <code>serve_registry</code> builds one from a <code>ToolRegistry</code>
+you already have.</p>
 <h2 id="when-youd-want-this">When you'd want this<a class="headerlink" href="#when-youd-want-this" title="Anchor link">&para;</a></h2>
-<p>You want traces (per-request narrative) and metrics (rolled-up
-time-series) in a real backend — Tempo, Jaeger, Datadog, Honeycomb,
-whatever speaks OTLP. agentkit's <code>TracePort</code> and <code>MetricsPort</code> are
-plain Protocols; the <code>observability</code> extra ships one adapter each that
-bridges them to the OpenTelemetry SDK.</p>
-<p>Traces answer "what did <em>this</em> run do?". Metrics answer "what is the
-p99 first-token latency doing?". You almost always want both.</p>
-<div class="admonition note">
-<p class="admonition-title">Assumes <code>ANTHROPIC_API_KEY</code> in the environment</p>
-<p>The demo wires <code>providers.claude(...)</code> behind the tracing
-middleware so the spans are populated by a real chat call. Swap
-for <code>providers.openai</code> (and set <code>OPENAI_API_KEY</code>) — the tracer
-wiring is provider-neutral. Install the extra first:
-<code>pip install "arc-agentkit[observability]"</code>.</p>
-<p>To run it with <strong>no key at all</strong>, replace the <code>providers.claude(...)</code>
-call with <code>FakeLLM("a short answer")</code> from <code>agentkit.testing</code>. Every
-other line is identical — that substitution is how this snippet is
-verified.</p>
-</div>
+<p><code>ClaudeCliCognition</code> delegates the whole agent loop to the <code>claude</code>
+binary, which is good at editing code and knows nothing about your
+application. The moment the task needs something only your process can do
+— close a ticket, look up a customer, record a build verdict — the CLI
+has no way to call it.</p>
+<p>Its seam for that is <code>--mcp-config</code>, which <code>ClaudeCliCognition</code> has
+always accepted and nothing in agentkit could produce. Everything needed
+to describe a tool was already correct: <code>FunctionTool</code> derives a
+<code>ToolSchema</code> from your signature and docstring, <code>ToolRegistry</code> holds
+them, <code>ToolArgumentError</code> refuses a bad call. Only the transport was
+missing.</p>
+<p>Reach for this when:</p>
+<ul>
+<li>the CLI needs a capability that lives in your process, not on disk;</li>
+<li>you want your tool middleware to apply to it, which it does, because
+  the call comes back through agentkit code (see
+  <a href="../../concepts/claude-cli/#the-thing-to-understand-first-the-chain-does-not-apply">the bypass warning</a>
+  for what happens with the CLI's <em>own</em> tools);</li>
+<li>you want <code>tools=("",)</code> — every tool the session has is one you wrote.</li>
+</ul>
+<p>Needs the <code>mcp</code> extra:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[mcp]&quot;</span>
+</span></code></pre></div>
 <h2 id="working-code">Working code<a class="headerlink" href="#working-code" title="Anchor link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Requires ANTHROPIC_API_KEY in the environment and</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="sd">`pip install &quot;arc-agentkit[observability]&quot;`.&quot;&quot;&quot;</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">TracerProvider</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.trace.export</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleSpanProcessor</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.trace.export.in_memory_span_exporter</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemorySpanExporter</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChatRequest</span><span class="p">,</span> <span class="n">Message</span><span class="p">,</span> <span class="n">RunContext</span><span class="p">,</span> <span class="n">Scope</span><span class="p">,</span> <span class="n">Services</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">providers</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.observability</span><span class="w"> </span><span class="kn">import</span> <span class="n">otel_tracer</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.middlewares</span><span class="w"> </span><span class="kn">import</span> <span class="n">meter</span><span class="p">,</span> <span class="n">tracing</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Invoker</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="c1"># Build our own tracer provider so the demo is hermetic — production</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="c1"># usually calls otel_exporter_otlp_http() at startup and lets the SDK&#39;s</span>
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="c1"># global provider be picked up automatically.</span>
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="n">provider</span> <span class="o">=</span> <span class="n">TracerProvider</span><span class="p">()</span>
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="n">exporter</span> <span class="o">=</span> <span class="n">InMemorySpanExporter</span><span class="p">()</span>
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">provider</span><span class="o">.</span><span class="n">add_span_processor</span><span class="p">(</span><span class="n">SimpleSpanProcessor</span><span class="p">(</span><span class="n">exporter</span><span class="p">))</span>
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    <span class="n">llm</span> <span class="o">=</span> <span class="n">providers</span><span class="o">.</span><span class="n">claude</span><span class="p">(</span>
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="n">api_key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ANTHROPIC_API_KEY&quot;</span><span class="p">],</span>
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    <span class="p">)</span>
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="n">invoker</span><span class="o">=</span><span class="n">Invoker</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">llm</span><span class="p">,</span> <span class="n">chat_middleware</span><span class="o">=</span><span class="p">[</span><span class="n">tracing</span><span class="p">(),</span> <span class="n">meter</span><span class="p">()]),</span>
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="n">trace</span><span class="o">=</span><span class="n">otel_tracer</span><span class="p">(</span><span class="n">provider</span><span class="p">),</span>
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="c1"># metrics=otel_meter(meter_provider) would light up histograms too.</span>
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="p">)</span>
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">RunContext</span><span class="p">(</span>
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">correlation_id</span><span class="o">=</span><span class="s2">&quot;run-otel-demo&quot;</span><span class="p">,</span>
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="s2">&quot;acme&quot;</span><span class="p">),</span>
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>        <span class="n">services</span><span class="o">=</span><span class="n">services</span><span class="p">,</span>
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    <span class="p">)</span>
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">req</span> <span class="o">=</span> <span class="n">ChatRequest</span><span class="p">(</span>
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>        <span class="n">messages</span><span class="o">=</span><span class="p">[</span><span class="n">Message</span><span class="p">(</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;One short sentence about octopus cognition.&quot;</span><span class="p">)],</span>
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="p">)</span>
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">invoker</span><span class="o">.</span><span class="n">chat</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">exporter</span><span class="o">.</span><span class="n">get_finished_spans</span><span class="p">():</span>
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        <span class="n">gen_ai</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="n">span</span><span class="o">.</span><span class="n">attributes</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;gen_ai&quot;</span><span class="p">)}</span>
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[span] </span><span class="si">{</span><span class="n">span</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">gen_ai</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="sd">&quot;&quot;&quot;Serve a ToolRegistry to an MCP client. No API key, no `claude` binary.</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="sd">The client here is agentkit&#39;s own `MCPClient`, standing in for the CLI so</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="sd">the whole thing runs offline. Pointing the real CLI at it is one line —</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="sd">`ClaudeCliCognition(**spec.cli_kwargs())` — and is shown below.</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">MCPClient</span><span class="p">,</span> <span class="n">StreamableHttpServer</span><span class="p">,</span> <span class="n">serve_registry</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolRegistry</span><span class="p">,</span> <span class="n">tool</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">close_slice</span><span class="p">(</span><span class="n">slice_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">verdict</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Record a slice of work as finished with the given verdict.</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="sd">    Only the deterministic runner may call this — it is the call the whole</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="sd">    build gate rests on, so it is marked side-effecting and travels to the</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="sd">    CLI with that flag intact.</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">slice_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">verdict</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">()</span>
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    <span class="n">registry</span> <span class="o">=</span> <span class="n">ToolRegistry</span><span class="o">.</span><span class="n">from_tools</span><span class="p">([</span><span class="n">close_slice</span><span class="p">])</span>
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span><span class="n">registry</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;tool names the CLI sees:&quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">tool_names</span><span class="p">)</span>
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span>
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>            <span class="n">StreamableHttpServer</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">auth_headers</span><span class="p">)</span>
+</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>        <span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+</span><span id="__span-1-37"><a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a>            <span class="n">served</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()</span>
+</span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;advertised:&quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">served</span><span class="p">])</span>
+</span><span id="__span-1-39"><a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a>
+</span><span id="__span-1-40"><a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a>            <span class="n">ok</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span>
+</span><span id="__span-1-41"><a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a>                <span class="s2">&quot;close_slice&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;slice_id&quot;</span><span class="p">:</span> <span class="s2">&quot;s-1&quot;</span><span class="p">,</span> <span class="s2">&quot;verdict&quot;</span><span class="p">:</span> <span class="s2">&quot;pass&quot;</span><span class="p">}</span>
+</span><span id="__span-1-42"><a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a>            <span class="p">)</span>
+</span><span id="__span-1-43"><a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;result:  &quot;</span><span class="p">,</span> <span class="n">ok</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-1-44"><a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a>
+</span><span id="__span-1-45"><a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a>            <span class="n">bad</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;close_slice&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;slice_id&quot;</span><span class="p">:</span> <span class="s2">&quot;s-1&quot;</span><span class="p">})</span>
+</span><span id="__span-1-46"><a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;bad call:&quot;</span><span class="p">,</span> <span class="n">bad</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">[:</span><span class="mi">60</span><span class="p">],</span> <span class="s2">&quot;...&quot;</span><span class="p">)</span>
+</span><span id="__span-1-47"><a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;session survived:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">())</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+</span><span id="__span-1-48"><a id="__codelineno-1-48" name="__codelineno-1-48" href="#__codelineno-1-48"></a>
+</span><span id="__span-1-49"><a id="__codelineno-1-49" name="__codelineno-1-49" href="#__codelineno-1-49"></a>
+</span><span id="__span-1-50"><a id="__codelineno-1-50" name="__codelineno-1-50" href="#__codelineno-1-50"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<h2 id="production-wire-up">Production wire-up<a class="headerlink" href="#production-wire-up" title="Anchor link">&para;</a></h2>
-<p>At process startup:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.observability</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">otel_exporter_otlp_http</span><span class="p">,</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">otel_meter</span><span class="p">,</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">otel_metrics_exporter_otlp_http</span><span class="p">,</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">otel_tracer</span><span class="p">,</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Services</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># One-call SDK setup. Reads OTEL_EXPORTER_OTLP_ENDPOINT etc. from env.</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">otel_exporter_otlp_http</span><span class="p">()</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">otel_metrics_exporter_otlp_http</span><span class="p">(</span><span class="n">interval_ms</span><span class="o">=</span><span class="mi">15_000</span><span class="p">)</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">services</span> <span class="o">=</span> <span class="n">Services</span><span class="p">(</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">trace</span><span class="o">=</span><span class="n">otel_tracer</span><span class="p">(),</span>        <span class="c1"># pulls the global tracer provider</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">metrics</span><span class="o">=</span><span class="n">otel_meter</span><span class="p">(),</span>       <span class="c1"># pulls the global meter provider</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">invoker</span><span class="o">=</span><span class="n">my_invoker</span><span class="p">,</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="p">)</span>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tool names the CLI sees: (&#39;mcp__engine__close_slice&#39;,)
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>advertised: [&#39;close_slice&#39;]
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>result:   s-1: pass
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>bad call: tool &#39;close_slice&#39; call rejected: missing required argument( ...
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>session survived: True
 </span></code></pre></div>
-<p>Install the extra first:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;arc-agentkit[observability]&quot;</span>
+<p>Those last two lines are the part worth keeping. A call the model got
+wrong comes back as a <strong>tool error it can read and retry</strong>, not as a
+transport failure that kills the session — because the model is the only
+party that can fix a bad call, and a dead session gives it no chance to.</p>
+<h2 id="pointing-the-real-cli-at-it">Pointing the real CLI at it<a class="headerlink" href="#pointing-the-real-cli-at-it" title="Anchor link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">cognition</span> <span class="o">=</span> <span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="o">**</span><span class="n">spec</span><span class="o">.</span><span class="n">cli_kwargs</span><span class="p">(),</span>   <span class="c1"># mcp_config + strict_mcp_config, credential included</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">tools</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,),</span>           <span class="c1"># no built-in tools; everything comes from your server</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">)</span>
 </span></code></pre></div>
-<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Anchor link">&para;</a></h2>
-<p><strong><code>TracePort</code></strong> is a plain Protocol: <code>span(name, kind, **attrs)</code>
-returns a context manager yielding a span with <code>.set(k, v)</code> and
-<code>.add_event(name, **fields)</code>. <code>NoopTrace</code> is the default so a
-zero-config <code>RunContext</code> still works. <code>otel_tracer(provider)</code> returns
-<code>OtelTracePort</code>, which translates <code>span(...)</code> into
-<code>tracer.start_as_current_span(...)</code>, maps our <code>"client"</code> /
-<code>"server"</code> / <code>"internal"</code> kind strings to <code>SpanKind</code>, and coerces
-attribute values into the OTel-accepted set.</p>
-<p><strong><code>MetricsPort</code></strong> is separate on purpose. Spans and metrics have
-different cardinality budgets — a trace backend groans on high-cardinality
-tags (<code>user_id</code>, <code>trace_id</code>); a metrics backend can't tell you why one
-specific run failed. <code>MetricsPort</code> exposes <code>add_counter</code> and
-<code>record_histogram</code> and gets injected the same way — <code>Services(metrics=otel_meter())</code>.</p>
-<p><strong>The <code>tracing</code> middleware</strong> owns span lifecycle for every chat and
-tool call, so individual patterns never open spans by hand. Span names
-align with the OTel GenAI v1.41 taxonomy (<code>chat</code>, <code>execute_tool</code>) —
-the kernel itself stays OTel-free; only the names and attribute keys
-match, so any adapter can lift them.</p>
-<p><strong>Sampling</strong> is a kernel-level seam. Head sampling happens in
-<code>ctx.sampler</code>; <code>otel_sampler(ratio)</code> builds one at any ratio between 0
-and 1. When <code>sampler.should_sample</code> returns False, the span (and its
-replay write) is skipped — but the underlying handler still runs.</p>
+<p><code>cli_kwargs()</code> exists so you never assemble the config document or its
+<code>Authorization</code> header by hand. <code>strict_mcp_config=True</code> means the
+session gets your server and nothing else — no user-level MCP config
+leaking in from the developer's machine.</p>
+<p><code>tools=("",)</code> is the other half of that, and worth understanding: it
+disables the CLI's built-in tools entirely, so every call in the session
+comes back through your middleware chain. That is the strongest version
+of this recipe and it costs you the CLI's own <code>Edit</code>, which is good. Most
+applications want some of both.</p>
+<h2 id="what-travels-with-a-tool-and-why-it-matters">What travels with a tool, and why it matters<a class="headerlink" href="#what-travels-with-a-tool-and-why-it-matters" title="Anchor link">&para;</a></h2>
+<p>The schema is <code>ToolSchema.parameters</code> <strong>byte-for-byte</strong> — no translation
+step, because a translation step is a second description of one thing and
+will drift.</p>
+<p>Three flags travel with it, and the reason is <code>RunPolicy</code>:</p>
+<table>
+<thead>
+<tr>
+<th>declaration</th>
+<th>why the CLI side needs it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>side_effecting</code></td>
+<td>the approval gate and idempotency both read it</td>
+</tr>
+<tr>
+<td><code>caps</code></td>
+<td><code>RunPolicy</code>'s Rule-of-Two check</td>
+</tr>
+<tr>
+<td><code>requires_approval</code></td>
+<td>maps to the MCP annotation, so the tool still pauses</td>
+</tr>
+</tbody>
+</table>
+<p>Without those, moving your tools behind MCP would silently switch off the
+capability check — at exactly the moment it matters most, because a
+served registry is reachable by anything that can reach the port.</p>
 <h2 id="what-bites-people">What bites people<a class="headerlink" href="#what-bites-people" title="Anchor link">&para;</a></h2>
 <ul>
-<li><strong>Don't set global providers more than once.</strong> OTel forbids
-  overriding <code>set_tracer_provider</code> after it's been set — sharing a
-  global across tests gives stale-provider failures. In tests, pass an
-  explicit <code>tracer_provider=</code> to <code>otel_tracer(...)</code>.</li>
-<li><strong>Metric writes are best-effort.</strong> <code>OtelMetricsPort</code> swallows any
-  exception from the exporter — a bad instrument name won't crash the
-  run, it'll just drop the metric.</li>
-<li><strong>Attribute cardinality matters.</strong> Anything you <code>span.set(k, v)</code>
-  becomes a tag on the trace backend; anything you pass to
-  <code>add_counter</code> / <code>record_histogram</code> becomes a tag on the metrics
-  backend. Keep tags to low-cardinality axes (<code>model</code>, <code>provider</code>,
-  <code>agent_name</code>, <code>status</code>) — never <code>user_id</code> or <code>run_id</code> on metrics.</li>
-<li><strong><code>ObserverPort</code> is not <code>TracePort</code>.</strong> <code>ObserverPort</code> is the
-  product-facing observation channel (<code>progress</code>, <code>partial_result</code>,
-  <code>interrupt</code>); <code>TracePort</code> is the operational one. Both are wired
-  independently on <code>Services</code>.</li>
+<li><strong><code>timeout_s=None</code> is the default and it means forever.</strong> A tool that
+  never returns parks the CLI turn with no signal anywhere: the CLI waits
+  on the MCP call, agentkit waits on the tool. A default deadline would
+  be the worse mistake — it would kill a legitimately slow build or a
+  human-in-the-loop approval and read as a flake — so the caller says
+  which of those they have.</li>
+<li><strong>A tool with no <code>schema</code> is silently absent.</strong> It is dropped rather
+  than advertised with an invented empty <code>inputSchema</code>, so a tool you
+  registered can simply not be there. <code>spec.tool_names</code> is the
+  authoritative list of what the CLI will actually see — assert on it.</li>
+<li><strong><code>transport="stdio"</code> rebuilds your tools in a fresh process.</strong> The
+  registry's closures and the live <code>ctx</code> do not survive that boundary, so
+  any tool that closes over run state has to use the HTTP transport.
+  <code>serve_registry</code> refuses rather than letting you find out at runtime.</li>
+<li><strong>The server is authenticated but still loopback.</strong> The token narrows
+  who can call; it does not narrow who can reach. Do not give <code>host=</code> a
+  routable address.</li>
 </ul>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Anchor link">&para;</a></h2>
 <ul>
-<li><a href="../../concepts/middlewares/">Concepts · Middlewares</a> — where
-  <code>tracing()</code> sits in the chain.</li>
-<li><code>agentkit.adapters.observability</code> — the full public surface
-  (<code>otel_tracer</code>, <code>otel_meter</code>, <code>otel_sampler</code>, one-call exporter
-  setups).</li>
-<li><code>agentkit.kernel.observation</code> module docstring — the split between
-  observations (product-facing) and traces (operational).</li>
+<li><a href="../../concepts/claude-cli/">The Claude CLI</a> — all five seams, and the
+  middleware bypass this one avoids.</li>
+<li><a href="../../concepts/integrations/">Integrations (MCP)</a> — the server in full,
+  including the auth surface and both transports.</li>
+<li><a href="../hitl-tool-approval/">Human-in-the-loop tool approval</a> — the
+  companion server, for permission prompts rather than tools.</li>
+<li><a href="../claude-cli-fastapi-code-gen/">Plug the claude CLI into FastAPI code-gen</a>
+  — the same wiring inside a real worker.</li>
 </ul>
 
 
@@ -3083,7 +3096,7 @@ replay write) is skipped — but the underlying handler still runs.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 30, 2026 23:00:00 UTC">August 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 05:08:45 UTC">August 31, 2026</span>
   </span>
 
     
@@ -3121,7 +3134,7 @@ replay write) is skipped — but the underlying handler still runs.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../resume-after-crash/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Resume from a checkpoint after a crash">
+          <a href="../mcp-tools/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Consume MCP tools from an agent">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3131,20 +3144,20 @@ replay write) is skipped — but the underlying handler still runs.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Resume from a checkpoint after a crash
+                Consume MCP tools from an agent
               </div>
             </div>
           </a>
         
         
           
-          <a href="../test-an-agentkit-app/" class="md-footer__link md-footer__link--next" aria-label="Next: Test an agentkit app">
+          <a href="../stream-typed-output/" class="md-footer__link md-footer__link--next" aria-label="Next: Stream a typed object">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Test an agentkit app
+                Stream a typed object
               </div>
             </div>
             <div class="md-footer__button md-icon">

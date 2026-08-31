@@ -478,6 +478,67 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What you&#39;ll actually use">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decide-the-next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decide the next step
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keep-the-run-inside-its-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep the run inside its limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reach-outside-the-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reach outside the process
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#give-it-something-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Give it something to know
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prove-it-works-without-spending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prove it works without spending
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1561,6 +1622,34 @@
     
   
     Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="recipes/serve-tools-to-the-claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serve your tools to the Claude CLI
   
 
     
@@ -2856,6 +2945,67 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What you&#39;ll actually use">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decide-the-next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decide the next step
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keep-the-run-inside-its-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep the run inside its limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reach-outside-the-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reach outside the process
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#give-it-something-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Give it something to know
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prove-it-works-without-spending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prove it works without spending
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3010,6 +3160,10 @@ middleware chain are all unaware of which provider is underneath.
 <p>The map from "what I want to do" to "which primitive fills that slot".
 Every row is a slot in the same composition — the right-hand column is
 how you fill it, not what agentkit forces on you.</p>
+<p>It is five short tables rather than one long one. A single list of
+twenty rows is a list nobody reads past the eighth, and the row you
+needed is always further down than that.</p>
+<h3 id="decide-the-next-step">Decide the next step<a class="headerlink" href="#decide-the-next-step" title="Anchor link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3039,13 +3193,24 @@ how you fill it, not what agentkit forces on you.</p>
 <td><code>Workflow</code></td>
 </tr>
 <tr>
+<td>One pipeline step whose width you only learn at runtime</td>
+<td><code>Workflow.map(name, over=..., each=...)</code></td>
+</tr>
+<tr>
 <td>Package prompt + cognition + tools + memory as one unit</td>
 <td><code>Skill</code> (<code>.as_agent()</code> / <code>.as_tool()</code>)</td>
 </tr>
+</tbody>
+</table>
+<h3 id="keep-the-run-inside-its-limits">Keep the run inside its limits<a class="headerlink" href="#keep-the-run-inside-its-limits" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
 <tr>
-<td>Consume an MCP server's tools</td>
-<td><code>MCPClient</code> + <code>mcp_tools()</code></td>
+<th>You want to&nbsp;…</th>
+<th>Reach for&nbsp;…</th>
 </tr>
+</thead>
+<tbody>
 <tr>
 <td>Pause a tool for human approval</td>
 <td><code>Autonomy.GATED</code> on the <code>RunContext</code> + <code>Suspended</code> / <code>Agent.resume()</code></td>
@@ -3059,11 +3224,86 @@ how you fill it, not what agentkit forces on you.</p>
 <td><code>Checkpointer(port=...)</code></td>
 </tr>
 <tr>
+<td>Stop retrying a step that keeps failing the same way</td>
+<td><code>attempt_until_stuck(fn, fingerprint=...)</code> → <code>Stuck</code></td>
+</tr>
+<tr>
 <td>Add a cross-cutting concern (tracing, retry, guardrail)</td>
 <td>Middleware in the <code>chain([...])</code> on the <code>Invoker</code></td>
 </tr>
 </tbody>
 </table>
+<h3 id="reach-outside-the-process">Reach outside the process<a class="headerlink" href="#reach-outside-the-process" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>You want to&nbsp;…</th>
+<th>Reach for&nbsp;…</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Consume an MCP server's tools</td>
+<td><code>MCPClient</code> + <code>mcp_tools()</code></td>
+</tr>
+<tr>
+<td>Let the <code>claude</code> CLI call the tools you already wrote</td>
+<td><code>serve_registry(registry, name=..., ctx=...)</code> → <code>spec.cli_kwargs()</code></td>
+</tr>
+<tr>
+<td>Send the CLI's permission prompts to your reviewer, and keep what they decided</td>
+<td><code>ApprovalServer(asker=...)</code> → <code>.cli_kwargs()</code> / <code>.decisions</code></td>
+</tr>
+<tr>
+<td>Make your tool middleware reach the CLI's own <code>Write</code> / <code>Bash</code></td>
+<td><code>hook_settings(middleware=..., ctx=..., tools=...)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="give-it-something-to-know">Give it something to know<a class="headerlink" href="#give-it-something-to-know" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>You want to&nbsp;…</th>
+<th>Reach for&nbsp;…</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ground an answer in retrieved facts</td>
+<td>A <code>MemorySource</code> (<code>VectorMemory</code> / <code>FileMemory</code> / …) + <code>as_grounder()</code></td>
+</tr>
+<tr>
+<td>Ask several sources at once without reading one fact twice</td>
+<td><code>CompositeMemory(sources, dedupe="id")</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="prove-it-works-without-spending">Prove it works without spending<a class="headerlink" href="#prove-it-works-without-spending" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>You want to&nbsp;…</th>
+<th>Reach for&nbsp;…</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unit-test an agent end to end with no API key</td>
+<td><code>agentkit.testing</code> — <code>FakeLLM</code> + <code>make_test_ctx(...)</code></td>
+</tr>
+<tr>
+<td>Do the same for the <code>claude</code> CLI path, offline and free</td>
+<td><code>FakeClaudeCli.script([...])</code> + <code>ClaudeCliCognition(spawn=...)</code></td>
+</tr>
+</tbody>
+</table>
+<p>Three rows in "reach outside the process" are one story. The CLI owns
+its loop, so anything you want it to respect — your tools, your
+reviewer, your guardrails — has to reach it as configuration before it
+starts. <a href="concepts/claude-cli/">The Claude CLI</a> walks those seams;
+<a href="concepts/integrations/">Integrations</a> has the two MCP servers in
+full.</p>
 <h2 id="the-run-in-one-picture">The run in one picture<a class="headerlink" href="#the-run-in-one-picture" title="Anchor link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart TB
     A[Agent] --&gt;|drives| B[Cognition]
@@ -3076,9 +3316,19 @@ how you fill it, not what agentkit forces on you.</p>
     B --&gt;|StreamEvent| A
     F[RunContext] -.-&gt;|budget · cancel · autonomy| B
     F -.-&gt;|budget · cancel · autonomy| C
-    F -.-&gt;|budget · cancel · autonomy| D</code></pre>
-<p>Nothing in the picture is optional. Nothing in the picture is a class
-you can't rewrite.</p>
+    F -.-&gt;|budget · cancel · autonomy| D
+    B -.-&gt;|ClaudeCliCognition — around the chain| G[claude CLI subprocess]</code></pre>
+<p>Nothing on the solid path is optional. Nothing on it is a class you
+can't rewrite.</p>
+<p>The dashed edge on the right is the one exception, and it is worth
+knowing before you take it. <code>ClaudeCliCognition</code> hands the loop to a
+subprocess, so when the CLI runs one of its <em>own</em> tools — <code>Write</code>,
+<code>Bash</code>, <code>WebFetch</code> — the call never walks your <code>Invoker</code>. Budget
+charging is patched onto that path by hand; nothing else in the chain
+is, so an <code>egress</code> guard you wired and documented does not run. The
+cognition warns and names the middlewares that stopped applying, and
+<a href="concepts/claude-cli/">The Claude CLI</a> covers the three ways to close
+the gap — including <code>hook_settings</code>, which makes the chain apply again.</p>
 <h2 id="what-agentkit-deliberately-does-not-do">What agentkit deliberately does not do<a class="headerlink" href="#what-agentkit-deliberately-does-not-do" title="Anchor link">&para;</a></h2>
 <p>Frameworks make different bets, and the honest way to pick one is to
 know what it refuses.</p>
@@ -3096,7 +3346,7 @@ know what it refuses.</p>
   budgets and checkpointing cost you ceremony up front and only repay
   it when the code has to keep running under real load.</li>
 </ul>
-<p><a href="why/">Why agentkit</a> makes the positive case in full: twelve concrete
+<p><a href="why/">Why agentkit</a> makes the positive case in full: sixteen concrete
 guarantees and a side-by-side against the alternatives.</p>
 <h2 id="where-to-go-next">Where to go next<a class="headerlink" href="#where-to-go-next" title="Anchor link">&para;</a></h2>
 <div class="grid cards">
@@ -3138,6 +3388,15 @@ when you know what you want and just need the invocation.</p>
 human, survive a crash, wire OpenTelemetry, consume MCP, use the
 local <code>claude</code> CLI.</p>
 <p><a href="recipes/">:octicons-arrow-right-24: Browse the recipes</a></p>
+</li>
+<li>
+<p><strong>The Claude CLI</strong></p>
+<hr />
+<p>The one loop your code does not own. What <code>ClaudeCliCognition</code>
+gives away, which of your middlewares stop applying when it does,
+and the five seams — MCP tools, approvals, hooks, sub-agents, a
+test double — that reach back into it.</p>
+<p><a href="concepts/claude-cli/">:octicons-arrow-right-24: Delegate to the CLI safely</a></p>
 </li>
 <li>
 <p><strong>Worked scenarios</strong></p>
@@ -3188,7 +3447,7 @@ what a good change looks like here.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 30, 2026 23:00:00 UTC">August 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 05:18:50 UTC">August 31, 2026</span>
   </span>
 
     
