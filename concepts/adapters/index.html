@@ -1023,6 +1023,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="adapters.store — the one KV seam">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-coordination-half-compare_and_set-increment-scan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The coordination half — compare_and_set, increment, scan
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1192,6 +1209,34 @@
     
   
     Integrations (MCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Claude CLI
   
 
     
@@ -3075,6 +3120,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="adapters.store — the one KV seam">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-coordination-half-compare_and_set-increment-scan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The coordination half — compare_and_set, increment, scan
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3632,33 +3694,202 @@ checkpoint and audit. The contract is small and precise:</p>
 adapter — a legitimately cached <code>None</code> is a hit, not a miss. That was a
 real bug: a producer returning <code>None</code> re-ran on every call and
 single-flight silently stopped holding.</p>
-<h3 id="adaptersvector-retrieval"><code>adapters.vector</code> — retrieval<a class="headerlink" href="#adaptersvector-retrieval" title="Anchor link">&para;</a></h3>
+<h4 id="the-coordination-half-compare_and_set-increment-scan">The coordination half — <code>compare_and_set</code>, <code>increment</code>, <code>scan</code><a class="headerlink" href="#the-coordination-half-compare_and_set-increment-scan" title="Anchor link">&para;</a></h4>
+<p>The six methods above express "cache this" and "record that". They do
+not express <em>changing something that is already there</em>, and three
+completely ordinary shapes went around the port because of it.</p>
+<p><strong><code>get_or_set</code> covers create-if-absent. It cannot express
+replace-only-if-unchanged</strong>, which is what every read-modify-write
+needs. Allocating a monotonic ordinal is "read the max, write max+1",
+and two writers race it: both read <code>4</code>, both write <code>5</code>, and one ordinal
+is handed to two runs. <code>compare_and_set(key, expected, value)</code> writes
+only if the key still equals <code>expected</code>, and it <strong>returns whether it
+applied rather than raising</strong>. That is the load-bearing choice. Losing a
+CAS is the <em>expected</em> half of an optimistic loop, not a fault; raising
+would force every read-modify-write to wrap its own body in a
+<code>try/except</code> and then tell "someone beat me" apart from "the store is
+down" by exception type — precisely the distinction the <code>bool</code> already
+makes. Two details you will meet on the first loop you write:
+comparison is by <strong>equality, never identity</strong> (three of the four
+backends round-trip the value through JSON, so you never hold the object
+that was written), and an <strong>absent key compares equal to
+<code>expected=None</code></strong>, so the first iteration behaves like every later one.</p>
+<p><strong>A counter with an expiry is the shape of every rate limit</strong>, and the
+port could not express it at all. The observed consequence was an
+application writing a raw Lua script straight at Redis — putting its own
+limiter outside everything the framework can test, trace or meter.
+<code>increment(key, by=1, ttl=...)</code> is that shape as one atomic step:
+absent counts as <code>0</code>, the new total comes back, and <code>by</code> may be negative
+because refunds and released reservations are decrements and a
+counter that only went up would need a second key to track what came
+back.</p>
+<p><strong><code>list(key)</code> reads back one appended log.</strong> There was no way to
+enumerate keys under a prefix, so "everything recorded for this run" was
+answerable only if every writer also maintained an index by hand — the
+classic pair that drifts. <code>scan(prefix, limit=...)</code> yields the KV keys
+beginning with <code>prefix</code>: full keys, not values, in no promised order,
+and never the append-log namespace (<code>list</code> reads those, and a scan that
+surfaced log keys would hand you keys <code>get</code> answers <code>None</code> for). It is
+declared <code>def ... -&gt; AsyncIterator[str]</code>, not <code>async def</code>, for the same
+reason as <code>LLMPort.stream</code> — an <code>async def</code> that yields is a <em>function
+returning an iterator</em>, not a coroutine — so you consume it with
+<strong><code>async for</code></strong>. <code>limit</code> is a cap on how many keys you are willing to
+receive, not a page cursor: with no ordering promised, <em>which</em> keys
+arrive under a cap is backend-defined. <code>0</code> is a real cap of zero and a
+negative limit raises <code>ValueError</code>, because collapsing the two would
+make <code>limit=remaining_budget</code> return the entire key space at exactly the
+moment the budget ran out.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.vector</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryVector</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chunk</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">StoreValueError</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.store</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryStore</span>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
 </span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">vec</span> <span class="o">=</span> <span class="n">InMemoryVector</span><span class="p">()</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">tenant_a</span> <span class="o">=</span> <span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="n">tenant_a</span><span class="p">,</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        <span class="p">[</span><span class="n">Chunk</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;the TLS certificate expired&quot;</span><span class="p">,</span> <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;doc&quot;</span><span class="p">:</span> <span class="s2">&quot;runbook&quot;</span><span class="p">})],</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="p">)</span>
-</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>    <span class="k">for</span> <span class="n">score</span><span class="p">,</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">tenant_a</span><span class="p">,</span> <span class="s2">&quot;certificate&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">chunk</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>          <span class="c1"># 0.5 1</span>
-</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
-</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>    <span class="c1"># Scope is the isolation boundary, not a filter callers may forget.</span>
-</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;certificate&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">))</span>    <span class="c1"># []</span>
-</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>
-</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>    <span class="c1"># `where` filters on chunk metadata.</span>
-</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">tenant_a</span><span class="p">,</span> <span class="s2">&quot;certificate&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;doc&quot;</span><span class="p">:</span> <span class="s2">&quot;other&quot;</span><span class="p">})))</span>  <span class="c1"># 0</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">store</span> <span class="o">=</span> <span class="n">InMemoryStore</span><span class="p">()</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">next_ordinal</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Read-modify-write. A lost CAS is a `False` you loop on.&quot;&quot;&quot;</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>            <span class="n">current</span> <span class="o">=</span> <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;run-1:ordinal&quot;</span><span class="p">)</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>            <span class="n">nxt</span> <span class="o">=</span> <span class="p">(</span><span class="n">current</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>            <span class="k">if</span> <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">compare_and_set</span><span class="p">(</span><span class="s2">&quot;run-1:ordinal&quot;</span><span class="p">,</span> <span class="n">current</span><span class="p">,</span> <span class="n">nxt</span><span class="p">):</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>                <span class="k">return</span> <span class="n">nxt</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">next_ordinal</span><span class="p">()</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">)))))</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="c1"># A counter with a window. `ttl` opens one; it never slides an open one.</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>        <span class="n">used</span> <span class="o">=</span> <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;run-1:calls&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">used</span><span class="p">)</span>                                      <span class="c1"># 3</span>
 </span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>
-</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>
-</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>    <span class="c1"># `by` must be a non-bool int, on every backend.</span>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>        <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;run-1:calls&quot;</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">)</span>
+</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>    <span class="k">except</span> <span class="n">StoreValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>        <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;;&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>
+</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>    <span class="c1"># `scan` is an AsyncIterator over KEYS — hence `async for`.</span>
+</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>    <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;run-1:audit&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;step&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>   <span class="c1"># a log: deliberately not scanned</span>
+</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">([</span><span class="n">k</span> <span class="k">async</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">scan</span><span class="p">(</span><span class="s2">&quot;run-1:&quot;</span><span class="p">)]))</span>
+</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>
+</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>
+</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<p><strong><code>ttl</code> on these two is not portable, and the split is not the
+obvious one.</strong> It is where the four backends genuinely differ, and a
+caller choosing one needs the matrix before writing the code, not
+after:</p>
+<table>
+<thead>
+<tr>
+<th>Adapter</th>
+<th><code>compare_and_set(..., ttl=)</code></th>
+<th><code>increment(..., ttl=)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>InMemoryStore</code></td>
+<td>honoured</td>
+<td>honoured, <code>EXPIRE NX</code> semantics</td>
+</tr>
+<tr>
+<td><code>FileStore</code></td>
+<td><strong>ignored</strong>, warns once per store</td>
+<td><strong>ignored</strong>, warns once per store</td>
+</tr>
+<tr>
+<td><code>RedisStore</code></td>
+<td>honoured (<code>SET … EX</code>)</td>
+<td>honoured (<code>EXPIRE … NX</code>, Redis 7.0+)</td>
+</tr>
+<tr>
+<td><code>PostgresStore</code></td>
+<td>raises <code>NotImplementedError</code></td>
+<td>raises <code>NotImplementedError</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>scan</code> takes no <code>ttl</code> at all; on the backends that honour expiry it
+simply does not yield keys that have expired.</p>
+<p>Two semantics inside that table are worth reading twice. On
+<code>compare_and_set</code>, <code>ttl</code> applies only to the write that <strong>lands</strong> — a
+refused CAS leaves the existing expiry alone. On <code>increment</code>, <code>ttl</code>
+opens a window on a counter that has none and never slides one that is
+already open. The alternative — resetting the deadline on every hit —
+breaks the exact case the primitive exists for: under sustained traffic
+the counter is touched more often than the window is long, so it never
+expires, the limit never resets, and the rate limiter jams shut
+precisely under load. The counter and its window are set together,
+atomically, so a failure cannot leave a counter with no window (an
+immortal one) or a window with no counter.</p>
+<p><code>FileStore</code> and <code>PostgresStore</code> disagreeing here is deliberate rather
+than an oversight in one of them. <code>FileStore</code> has no expiry sweeper, so
+it warns once and keeps the key forever; <code>PostgresStore</code> refuses the
+kwarg outright, matching its own <code>set</code>, on the grounds that a method
+quietly accepting a <code>ttl</code> its neighbours reject is worse than either
+policy alone — the caller would conclude the backend supports expiry.
+The practical consequence: <strong>a windowed counter needs <code>RedisStore</code> or
+<code>InMemoryStore</code>.</strong> On Postgres you carry the window yourself, in a
+second key or a column; on <code>FileStore</code> the counter is permanent and the
+warning is telling you so.</p>
+<p><strong><code>by</code> must be a non-bool <code>int</code> on every backend, and that is newly
+enforced.</strong> <code>increment</code> validated the value already in the key and
+never the amount being added, so each backend improvised, and all four
+improvised differently. Measured, on <code>increment(k, 1.5)</code>:</p>
+<ul>
+<li><code>InMemoryStore</code> and <code>FileStore</code> returned <code>1.5</code> — a <code>float</code> out of a
+  method annotated <code>-&gt; int</code> — and left <code>1.5</code> in the key, which the
+  <em>next</em> increment then rejects as a non-counter. The counter is
+  poisoned by a call that reported success.</li>
+<li><code>RedisStore</code> returned <code>1</code> while the key held <code>1.5</code>: the <code>int()</code> around
+  INCRBY's reply truncates, so the number the caller acts on and the
+  number the store holds disagree.</li>
+<li><code>PostgresStore</code> failed inside the driver with a bare <code>ValueError</code>.</li>
+</ul>
+<p><code>check_by</code> now rejects it before it reaches any backend, so it is one
+type and one message everywhere. <code>bool</code> is excluded even though
+<code>isinstance(True, int)</code> is <code>True</code> in Python: <code>True</code> would silently count
+as <code>1</code> in a dict and be rejected as JSON <code>true</code> by Redis and Postgres,
+which would make the offline reference store the one backend that
+accepted a value the durable ones refuse — and it is the one everybody
+tests against.</p>
+<p>That error, and the one for a key that holds a JSON document, a string
+or <code>null</code> instead of a counter, is the same <code>StoreValueError</code> on every
+backend; <a href="../kernel/#errors-one-base-and-a-three-way-retry-verdict">Kernel › errors</a>
+covers why it is a separate type from <code>StoreUnavailable</code> and why it is
+never worth a retry. Note that <code>increment</code> treats a stored <code>null</code> as a
+non-integer rather than as absent — the one place it deliberately
+disagrees with <code>compare_and_set</code>, whose <code>expected</code> came out of a <code>get</code>
+that cannot tell null from absent and so has to accept both.</p>
+<h3 id="adaptersvector-retrieval"><code>adapters.vector</code> — retrieval<a class="headerlink" href="#adaptersvector-retrieval" title="Anchor link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.vector</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryVector</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chunk</span><span class="p">,</span> <span class="n">Scope</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">vec</span> <span class="o">=</span> <span class="n">InMemoryVector</span><span class="p">()</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">tenant_a</span> <span class="o">=</span> <span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        <span class="n">tenant_a</span><span class="p">,</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="p">[</span><span class="n">Chunk</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;the TLS certificate expired&quot;</span><span class="p">,</span> <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;doc&quot;</span><span class="p">:</span> <span class="s2">&quot;runbook&quot;</span><span class="p">})],</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="p">)</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="k">for</span> <span class="n">score</span><span class="p">,</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">tenant_a</span><span class="p">,</span> <span class="s2">&quot;certificate&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>        <span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">chunk</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>          <span class="c1"># 0.5 1</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>    <span class="c1"># Scope is the isolation boundary, not a filter callers may forget.</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;certificate&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">))</span>    <span class="c1"># []</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>    <span class="c1"># `where` filters on chunk metadata.</span>
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="k">await</span> <span class="n">vec</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">tenant_a</span><span class="p">,</span> <span class="s2">&quot;certificate&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;doc&quot;</span><span class="p">:</span> <span class="s2">&quot;other&quot;</span><span class="p">})))</span>  <span class="c1"># 0</span>
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <p><code>search</code> returns <code>(score, chunk)</code> pairs rather than bare chunks so a
 caller can threshold: RAG ignores the score, the semantic-cache
@@ -3674,35 +3905,35 @@ middleware uses it.</p>
   overriding <code>_embed</code>; the schema and queries are unchanged.</li>
 </ul>
 <h3 id="adapterscheckpoint-durable-run-state"><code>adapters.checkpoint</code> — durable run state<a class="headerlink" href="#adapterscheckpoint-durable-run-state" title="Anchor link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.ports</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpoint</span><span class="p">,</span> <span class="n">CheckpointStatus</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">store</span> <span class="o">=</span> <span class="n">InMemoryCheckpointStore</span><span class="p">()</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">Checkpoint</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;turn&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span> <span class="mf">1.7e9</span><span class="p">,</span> <span class="n">CheckpointStatus</span><span class="o">.</span><span class="n">RUNNING</span><span class="p">))</span>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">Checkpoint</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;turn&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span> <span class="mf">1.7e9</span><span class="p">,</span> <span class="n">CheckpointStatus</span><span class="o">.</span><span class="n">SUSPENDED</span><span class="p">))</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">latest</span> <span class="o">=</span> <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">latest</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">)</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">latest</span><span class="o">.</span><span class="n">version</span><span class="p">,</span> <span class="n">latest</span><span class="o">.</span><span class="n">status</span><span class="p">,</span> <span class="n">latest</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">is_terminal</span><span class="p">())</span>   <span class="c1"># 2 suspended False</span>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">list_versions</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">))</span>                          <span class="c1"># [1, 2]</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>
-</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    <span class="c1"># `state` is genuinely frozen — not just the field reference.</span>
-</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>        <span class="n">latest</span><span class="o">.</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;turn&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span>
-</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>    <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
-</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>
-</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>    <span class="c1"># ...and still serialises like the dict it is.</span>
-</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">latest</span><span class="o">.</span><span class="n">state</span><span class="p">),</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">latest</span><span class="o">.</span><span class="n">state</span><span class="p">,</span> <span class="nb">dict</span><span class="p">))</span>    <span class="c1"># {&quot;turn&quot;: 2} True</span>
-</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">dataclasses</span><span class="o">.</span><span class="n">asdict</span><span class="p">(</span><span class="n">latest</span><span class="p">)[</span><span class="s2">&quot;state&quot;</span><span class="p">])</span>                        <span class="c1"># {&#39;turn&#39;: 2}</span>
-</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>
-</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>
-</span><span id="__span-5-29"><a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryCheckpointStore</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.ports</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpoint</span><span class="p">,</span> <span class="n">CheckpointStatus</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">store</span> <span class="o">=</span> <span class="n">InMemoryCheckpointStore</span><span class="p">()</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>    <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">Checkpoint</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;turn&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span> <span class="mf">1.7e9</span><span class="p">,</span> <span class="n">CheckpointStatus</span><span class="o">.</span><span class="n">RUNNING</span><span class="p">))</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">Checkpoint</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;turn&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span> <span class="mf">1.7e9</span><span class="p">,</span> <span class="n">CheckpointStatus</span><span class="o">.</span><span class="n">SUSPENDED</span><span class="p">))</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="n">latest</span> <span class="o">=</span> <span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">latest</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">)</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">latest</span><span class="o">.</span><span class="n">version</span><span class="p">,</span> <span class="n">latest</span><span class="o">.</span><span class="n">status</span><span class="p">,</span> <span class="n">latest</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">is_terminal</span><span class="p">())</span>   <span class="c1"># 2 suspended False</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">store</span><span class="o">.</span><span class="n">list_versions</span><span class="p">(</span><span class="s2">&quot;run-1&quot;</span><span class="p">))</span>                          <span class="c1"># [1, 2]</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>    <span class="c1"># `state` is genuinely frozen — not just the field reference.</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>        <span class="n">latest</span><span class="o">.</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;turn&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span>
+</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>    <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>        <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>
+</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>    <span class="c1"># ...and still serialises like the dict it is.</span>
+</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">latest</span><span class="o">.</span><span class="n">state</span><span class="p">),</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">latest</span><span class="o">.</span><span class="n">state</span><span class="p">,</span> <span class="nb">dict</span><span class="p">))</span>    <span class="c1"># {&quot;turn&quot;: 2} True</span>
+</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">dataclasses</span><span class="o">.</span><span class="n">asdict</span><span class="p">(</span><span class="n">latest</span><span class="p">)[</span><span class="s2">&quot;state&quot;</span><span class="p">])</span>                        <span class="c1"># {&#39;turn&#39;: 2}</span>
+</span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>
+</span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>
+</span><span id="__span-6-29"><a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <p>That last part is the design decision worth understanding, because it
 constrains every checkpoint adapter. <code>Checkpoint</code> is
@@ -3765,29 +3996,29 @@ persisting a human-gate wait <strong>must</strong> use <code>SUSPENDED</code>, n
 </ul>
 <h3 id="adaptersobserver-the-observation-channel"><code>adapters.observer</code> — the observation channel<a class="headerlink" href="#adaptersobserver-the-observation-channel" title="Anchor link">&para;</a></h3>
 <p>Terminal sinks and cadence wrappers, composable in any order:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.observer</span><span class="w"> </span><span class="kn">import</span> <span class="n">CollectingObserver</span><span class="p">,</span> <span class="n">Hooks</span><span class="p">,</span> <span class="n">PolicyObserver</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">sink</span> <span class="o">=</span> <span class="n">CollectingObserver</span><span class="p">()</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">seen</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">observer</span> <span class="o">=</span> <span class="n">Hooks</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">PolicyObserver</span><span class="o">.</span><span class="n">result_only</span><span class="p">(</span><span class="n">sink</span><span class="p">))</span><span class="o">.</span><span class="n">on</span><span class="p">(</span>
-</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="s2">&quot;*&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">obs</span><span class="p">:</span> <span class="n">seen</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">kind</span><span class="p">)</span>
-</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>    <span class="p">)</span>
-</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
-</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">observer</span><span class="o">=</span><span class="n">observer</span><span class="p">)</span>
-</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;step&quot;</span><span class="p">,</span> <span class="s2">&quot;planning&quot;</span><span class="p">,</span> <span class="n">agent</span><span class="o">=</span><span class="s2">&quot;analyst&quot;</span><span class="p">)</span>
-</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;result&quot;</span><span class="p">,</span> <span class="s2">&quot;done&quot;</span><span class="p">,</span> <span class="n">payload</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;ok&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span> <span class="n">agent</span><span class="o">=</span><span class="s2">&quot;analyst&quot;</span><span class="p">)</span>
-</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="k">await</span> <span class="n">observer</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
-</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">seen</span><span class="p">)</span>                              <span class="c1"># [&#39;step&#39;, &#39;result&#39;]</span>
-</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>    <span class="nb">print</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">kind</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">sink</span><span class="o">.</span><span class="n">items</span><span class="p">])</span>      <span class="c1"># [&#39;result&#39;]</span>
-</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>
-</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>
-</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.observer</span><span class="w"> </span><span class="kn">import</span> <span class="n">CollectingObserver</span><span class="p">,</span> <span class="n">Hooks</span><span class="p">,</span> <span class="n">PolicyObserver</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">sink</span> <span class="o">=</span> <span class="n">CollectingObserver</span><span class="p">()</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">seen</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">observer</span> <span class="o">=</span> <span class="n">Hooks</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">PolicyObserver</span><span class="o">.</span><span class="n">result_only</span><span class="p">(</span><span class="n">sink</span><span class="p">))</span><span class="o">.</span><span class="n">on</span><span class="p">(</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>        <span class="s2">&quot;*&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">obs</span><span class="p">:</span> <span class="n">seen</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">kind</span><span class="p">)</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="p">)</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">observer</span><span class="o">=</span><span class="n">observer</span><span class="p">)</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;step&quot;</span><span class="p">,</span> <span class="s2">&quot;planning&quot;</span><span class="p">,</span> <span class="n">agent</span><span class="o">=</span><span class="s2">&quot;analyst&quot;</span><span class="p">)</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="k">await</span> <span class="n">ctx</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;result&quot;</span><span class="p">,</span> <span class="s2">&quot;done&quot;</span><span class="p">,</span> <span class="n">payload</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;ok&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span> <span class="n">agent</span><span class="o">=</span><span class="s2">&quot;analyst&quot;</span><span class="p">)</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="k">await</span> <span class="n">observer</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">seen</span><span class="p">)</span>                              <span class="c1"># [&#39;step&#39;, &#39;result&#39;]</span>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    <span class="nb">print</span><span class="p">([</span><span class="n">o</span><span class="o">.</span><span class="n">kind</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">sink</span><span class="o">.</span><span class="n">items</span><span class="p">])</span>      <span class="c1"># [&#39;result&#39;]</span>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <ul>
 <li><code>CollectingObserver</code> — every observation into <code>.items</code>, no
@@ -3868,35 +4099,35 @@ carries the provider that serves it and the capabilities it declares; a
 <code>ProviderEntry</code> carries the environment variable and a lazily-imported
 factory. Resolution and capability checking read the same rows.</p>
 <h3 id="capability-is-three-valued-and-the-third-value-is-the-point">Capability is three-valued, and the third value is the point<a class="headerlink" href="#capability-is-three-valued-and-the-third-value-is-the-point" title="Anchor link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">Capability</span><span class="p">,</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">ModelCapabilities</span><span class="p">,</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">ModelEntry</span><span class="p">,</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">default_registry</span><span class="p">,</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">normalize_model_name</span><span class="p">,</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="p">)</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">default_registry</span><span class="p">()</span>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>     <span class="c1"># yes   (Capability.YES)</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;deepseek-reasoner&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>     <span class="c1"># no    (Capability.NO)</span>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>           <span class="c1"># unknown</span>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">all_unknown</span><span class="p">)</span>     <span class="c1"># True</span>
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="c1"># A dated release id from a provider response resolves to the family row.</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">normalize_model_name</span><span class="p">(</span><span class="s2">&quot;anthropic/claude-sonnet-4-6-20250101&quot;</span><span class="p">))</span>
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6-20250101&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">context_window</span><span class="p">)</span>   <span class="c1"># 200000</span>
-</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
-</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="n">reg</span><span class="o">.</span><span class="n">register_model</span><span class="p">(</span>
-</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="n">ModelEntry</span><span class="p">(</span>
-</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span>
-</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>        <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span>
-</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>        <span class="n">capabilities</span><span class="o">=</span><span class="n">ModelCapabilities</span><span class="p">(</span>
-</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>            <span class="n">tools</span><span class="o">=</span><span class="n">Capability</span><span class="o">.</span><span class="n">YES</span><span class="p">,</span> <span class="n">streaming</span><span class="o">=</span><span class="n">Capability</span><span class="o">.</span><span class="n">YES</span><span class="p">,</span> <span class="n">context_window</span><span class="o">=</span><span class="mi">32_000</span>
-</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>        <span class="p">),</span>
-</span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>    <span class="p">)</span>
-</span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="p">)</span>
-</span><span id="__span-7-29"><a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>           <span class="c1"># yes</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">Capability</span><span class="p">,</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">ModelCapabilities</span><span class="p">,</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">ModelEntry</span><span class="p">,</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">default_registry</span><span class="p">,</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">normalize_model_name</span><span class="p">,</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="p">)</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">default_registry</span><span class="p">()</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>     <span class="c1"># yes   (Capability.YES)</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;deepseek-reasoner&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>     <span class="c1"># no    (Capability.NO)</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>           <span class="c1"># unknown</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">all_unknown</span><span class="p">)</span>     <span class="c1"># True</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="c1"># A dated release id from a provider response resolves to the family row.</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">normalize_model_name</span><span class="p">(</span><span class="s2">&quot;anthropic/claude-sonnet-4-6-20250101&quot;</span><span class="p">))</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6-20250101&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">context_window</span><span class="p">)</span>   <span class="c1"># 200000</span>
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="n">reg</span><span class="o">.</span><span class="n">register_model</span><span class="p">(</span>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>    <span class="n">ModelEntry</span><span class="p">(</span>
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span>
+</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>        <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span>
+</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>        <span class="n">capabilities</span><span class="o">=</span><span class="n">ModelCapabilities</span><span class="p">(</span>
+</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>            <span class="n">tools</span><span class="o">=</span><span class="n">Capability</span><span class="o">.</span><span class="n">YES</span><span class="p">,</span> <span class="n">streaming</span><span class="o">=</span><span class="n">Capability</span><span class="o">.</span><span class="n">YES</span><span class="p">,</span> <span class="n">context_window</span><span class="o">=</span><span class="mi">32_000</span>
+</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>        <span class="p">),</span>
+</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>    <span class="p">)</span>
+</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="p">)</span>
+</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">capabilities</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tools</span><span class="p">)</span>           <span class="c1"># yes</span>
 </span></code></pre></div>
 <p><code>Capability</code> is a three-valued <code>StrEnum</code> — <code>YES</code>, <code>NO</code>, <code>UNKNOWN</code> —
 because two-state is what causes the bug:</p>
@@ -3930,35 +4161,35 @@ twice:</p>
 in <code>requires=</code> is a programming error, not something that should degrade
 into <code>UNKNOWN</code> and silently never check anything.</p>
 <h3 id="refusing-a-mismatch-before-any-spend">Refusing a mismatch before any spend<a class="headerlink" href="#refusing-a-mismatch-before-any-spend" title="Anchor link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">CapabilityMismatch</span><span class="p">,</span> <span class="n">default_registry</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">default_registry</span><span class="p">()</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># A declared NO is fatal, always.</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">try</span><span class="p">:</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">reg</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;deepseek-reasoner&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,),</span> <span class="n">subject</span><span class="o">=</span><span class="s2">&quot;sre-agent&quot;</span><span class="p">)</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="k">except</span> <span class="n">CapabilityMismatch</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
-</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>
-</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="c1"># UNKNOWN is policy. Default: warn and continue.</span>
-</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">(</span><span class="n">record</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">caught</span><span class="p">:</span>
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>    <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">&quot;always&quot;</span><span class="p">)</span>
-</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>    <span class="n">reg</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,),</span> <span class="n">subject</span><span class="o">=</span><span class="s2">&quot;sre-agent&quot;</span><span class="p">)</span>
-</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">caught</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">category</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>          <span class="c1"># UserWarning</span>
-</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>
-</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="c1"># A service that pins its models makes &quot;we don&#39;t know&quot; a deployment-time stop.</span>
-</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="k">try</span><span class="p">:</span>
-</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>    <span class="n">default_registry</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,),</span> <span class="n">on_unknown</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">)</span>
-</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="k">except</span> <span class="n">CapabilityMismatch</span><span class="p">:</span>
-</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;refused&quot;</span><span class="p">)</span>
-</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>
-</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="c1"># A DERIVED requirement stays quiet on UNKNOWN.</span>
-</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">(</span><span class="n">record</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">caught</span><span class="p">:</span>
-</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>    <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">&quot;always&quot;</span><span class="p">)</span>
-</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>    <span class="n">default_registry</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span> <span class="n">derived</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,))</span>
-</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">caught</span><span class="p">))</span>                          <span class="c1"># 0</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">CapabilityMismatch</span><span class="p">,</span> <span class="n">default_registry</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">default_registry</span><span class="p">()</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># A declared NO is fatal, always.</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="n">reg</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;deepseek-reasoner&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,),</span> <span class="n">subject</span><span class="o">=</span><span class="s2">&quot;sre-agent&quot;</span><span class="p">)</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="k">except</span> <span class="n">CapabilityMismatch</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="c1"># UNKNOWN is policy. Default: warn and continue.</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">(</span><span class="n">record</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">caught</span><span class="p">:</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">&quot;always&quot;</span><span class="p">)</span>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="n">reg</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,),</span> <span class="n">subject</span><span class="o">=</span><span class="s2">&quot;sre-agent&quot;</span><span class="p">)</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">caught</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">category</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>          <span class="c1"># UserWarning</span>
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="c1"># A service that pins its models makes &quot;we don&#39;t know&quot; a deployment-time stop.</span>
+</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>    <span class="n">default_registry</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,),</span> <span class="n">on_unknown</span><span class="o">=</span><span class="s2">&quot;refuse&quot;</span><span class="p">)</span>
+</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="k">except</span> <span class="n">CapabilityMismatch</span><span class="p">:</span>
+</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;refused&quot;</span><span class="p">)</span>
+</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>
+</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="c1"># A DERIVED requirement stays quiet on UNKNOWN.</span>
+</span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">(</span><span class="n">record</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">caught</span><span class="p">:</span>
+</span><span id="__span-9-27"><a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>    <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">&quot;always&quot;</span><span class="p">)</span>
+</span><span id="__span-9-28"><a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>    <span class="n">default_registry</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">,</span> <span class="n">derived</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;tools&quot;</span><span class="p">,))</span>
+</span><span id="__span-9-29"><a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">caught</span><span class="p">))</span>                          <span class="c1"># 0</span>
 </span></code></pre></div>
 <p><code>deepseek-reasoner</code> is the canonical example: it does not accept tools,
 that is real and checkable today, and without a declaration you bind it
@@ -3975,26 +4206,26 @@ filter the category out, at which point the real warnings go unread too.</p>
 working), <code>"refuse"</code> (the right setting for a production service that
 pins its models), or <code>"allow"</code> (verified out of band).</p>
 <h3 id="resolving-a-provider-from-the-environment">Resolving a provider from the environment<a class="headerlink" href="#resolving-a-provider-from-the-environment" title="Anchor link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProviderNotConfigured</span><span class="p">,</span> <span class="n">default_registry</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">default_registry</span><span class="p">()</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">))</span>         <span class="c1"># anthropic</span>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">))</span>               <span class="c1"># openai</span>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;meta-llama/llama-4&quot;</span><span class="p">))</span>        <span class="c1"># openrouter</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;anthropic/claude-sonnet-9&quot;</span><span class="p">))</span> <span class="c1"># anthropic</span>
-</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">))</span>               <span class="c1"># None</span>
-</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
-</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="c1"># Credentials come from the environment; `env` is injectable so a test</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># never touches os.environ.</span>
-</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="k">try</span><span class="p">:</span>
-</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="n">reg</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="p">{})</span>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="k">except</span> <span class="n">ProviderNotConfigured</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span>
-</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
-</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="c1"># Your own naming convention, without forking a prefix table.</span>
-</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="n">reg</span><span class="o">.</span><span class="n">register_rule</span><span class="p">(</span><span class="k">lambda</span> <span class="n">name</span><span class="p">:</span> <span class="s2">&quot;openai&quot;</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;acme-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
-</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">))</span>               <span class="c1"># openai</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.llm</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProviderNotConfigured</span><span class="p">,</span> <span class="n">default_registry</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">default_registry</span><span class="p">()</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">))</span>         <span class="c1"># anthropic</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">))</span>               <span class="c1"># openai</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;meta-llama/llama-4&quot;</span><span class="p">))</span>        <span class="c1"># openrouter</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;anthropic/claude-sonnet-9&quot;</span><span class="p">))</span> <span class="c1"># anthropic</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">))</span>               <span class="c1"># None</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="c1"># Credentials come from the environment; `env` is injectable so a test</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1"># never touches os.environ.</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    <span class="n">reg</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="p">{})</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="k">except</span> <span class="n">ProviderNotConfigured</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="c1"># Your own naming convention, without forking a prefix table.</span>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="n">reg</span><span class="o">.</span><span class="n">register_rule</span><span class="p">(</span><span class="k">lambda</span> <span class="n">name</span><span class="p">:</span> <span class="s2">&quot;openai&quot;</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;acme-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">provider_for</span><span class="p">(</span><span class="s2">&quot;acme-llm-v3&quot;</span><span class="p">))</span>               <span class="c1"># openai</span>
 </span></code></pre></div>
 <p>Lookup order: a registered <code>ModelEntry</code> always wins over any rule, and
 rules run most-recently-registered first — each rule sees <em>every</em>
@@ -4111,6 +4342,10 @@ that never expires dedupes a legitimate retry of the same
 operation forever. <code>PostgresStore</code> raises <code>NotImplementedError</code>
 rather than accept a kwarg it cannot honour. Pick the backend for
 the key space, not the other way round.</p>
+<p>The same split applies to <code>compare_and_set</code> and <code>increment</code>, with
+one sharper consequence: a <em>windowed counter</em> cannot exist at all on
+the two backends without expiry. See the matrix in
+<a href="#the-coordination-half-compare_and_set-increment-scan">the coordination half</a>.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Importing <code>adapters.llm.providers</code> requires the <code>http</code> extra</p>
@@ -4175,7 +4410,7 @@ before you conclude retrieval quality is bad.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 00:02:31 UTC">August 31, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 02:37:46 UTC">August 31, 2026</span>
   </span>
 
     

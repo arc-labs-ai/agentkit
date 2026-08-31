@@ -16,7 +16,7 @@
         <link rel="prev" href="../adapters/">
       
       
-        <link rel="next" href="../observability/">
+        <link rel="next" href="../claude-cli/">
       
       
         
@@ -1081,6 +1081,89 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#serving-your-own-tools-serve_registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serving your own tools: serve_registry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serving your own tools: serve_registry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-schema-is-not-translated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The schema is not translated
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-bad-call-is-a-tool-error-not-a-transport-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A bad call is a tool error, not a transport error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-declarations-travel-so-the-rule-of-two-still-applies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The declarations travel, so the Rule of Two still applies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-transport-and-when" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which transport, and when
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-lifecycle-and-re-entering-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The lifecycle, and re-entering it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#two-timeouts-that-do-not-read-the-same" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two timeouts that do not read the same
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1112,6 +1195,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Claude CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3017,6 +3128,89 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#serving-your-own-tools-serve_registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serving your own tools: serve_registry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serving your own tools: serve_registry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-schema-is-not-translated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The schema is not translated
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-bad-call-is-a-tool-error-not-a-transport-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A bad call is a tool error, not a transport error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-declarations-travel-so-the-rule-of-two-still-applies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The declarations travel, so the Rule of Two still applies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-transport-and-when" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which transport, and when
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-lifecycle-and-re-entering-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The lifecycle, and re-entering it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#two-timeouts-that-do-not-read-the-same" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two timeouts that do not read the same
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3066,7 +3260,8 @@
 
 <h1 id="integrations">Integrations<a class="headerlink" href="#integrations" title="Anchor link">&para;</a></h1>
 <p>An integration lets an agent use software that was never written for
-agentkit — and, in one case, lets other software use agentkit.</p>
+agentkit — and, where the arrow reverses, lets other software use
+agentkit.</p>
 <p>Today there is exactly one: the <strong>Model Context Protocol</strong> (MCP), under
 <code>agentkit.integrations.mcp</code>.</p>
 <div class="admonition tip">
@@ -3092,7 +3287,7 @@ an adapter per server: a schema by hand, an argument-marshalling layer,
 an error path, a test. That work does not compose and it does not stop.
 With a protocol, one adapter serves all of them.</p>
 <p>So <code>agentkit.integrations.mcp</code> is a translation layer with three
-directions and one reversal:</p>
+directions and two reversals:</p>
 <table>
 <thead>
 <tr>
@@ -3118,9 +3313,14 @@ directions and one reversal:</p>
 <td><code>mcp_prompts(client)</code></td>
 </tr>
 <tr>
-<td><em>(the reversal)</em></td>
-<td>agentkit <strong>is</strong> the server</td>
+<td><em>(reversed)</em> your <code>Asker</code></td>
+<td>an MCP <strong>server</strong> that answers permission prompts</td>
 <td><code>ApprovalServer</code></td>
+</tr>
+<tr>
+<td><em>(reversed)</em> your <code>ToolRegistry</code></td>
+<td>an MCP <strong>server</strong> that runs your tools</td>
+<td><code>serve_registry</code></td>
 </tr>
 </tbody>
 </table>
@@ -3430,10 +3630,43 @@ sinking the whole batch.</p>
 </span></code></pre></div>
 <p>The warning on the first line is the drop, working as designed.</p>
 <h2 id="the-other-direction-agentkit-as-an-mcp-server">The other direction: agentkit as an MCP server<a class="headerlink" href="#the-other-direction-agentkit-as-an-mcp-server" title="Anchor link">&para;</a></h2>
-<p><code>ApprovalServer</code> is the one place the arrow points the other way.</p>
-<p>The problem it solves is specific. <code>ClaudeCliCognition</code> delegates the
-whole agent loop to the Claude CLI, and the CLI owns its own
-permissions. That left a service two options, both bad:
+<p>Two things here are servers, and both exist for one reason.
+<code>ClaudeCliCognition</code> hands the whole agent loop to the Claude CLI, and
+the CLI owns that loop: you cannot step into it, wrap a tool call, or
+answer a prompt from inside. Anything you want it to do differently has
+to be handed to it on the way in — and the seams it offers are MCP
+servers.</p>
+<table>
+<thead>
+<tr>
+<th>what you want</th>
+<th>the CLI's seam</th>
+<th>agentkit's server</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a human to approve each action</td>
+<td><code>--permission-prompt-tool</code></td>
+<td><code>ApprovalServer</code></td>
+</tr>
+<tr>
+<td>the loop to call <em>your</em> tools</td>
+<td><code>--mcp-config</code></td>
+<td><code>serve_registry</code></td>
+</tr>
+</tbody>
+</table>
+<p>Both run on the same <code>LoopbackMcpTransport</code>: one bind-and-wait loop,
+one shutdown that genuinely releases the port, one
+<code>mcp__&lt;server&gt;__&lt;tool&gt;</code> spelling. That is worth a sentence because the
+second server was written when the first already had all of it, and two
+copies of a bind-and-wait loop is two places to fix "handed the CLI a
+URL that was not listening yet" — only one of which would have been
+fixed.</p>
+<p><code>ApprovalServer</code> is the narrower of the two, and it came first.</p>
+<p>The problem it solves is specific. The CLI owns its own permissions,
+which left a service two options, both bad:
 <code>bypassPermissions</code> (the agent may do anything, unattended) or
 <code>dontAsk</code> (anything not pre-approved is denied outright and the run just
 fails). agentkit already had the missing middle — <code>Asker</code>, the injected
@@ -3476,28 +3709,85 @@ from the same protocol.</p>
 </span><span id="__span-9-27"><a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;cli_kwargs:&quot;</span><span class="p">,</span> <span class="n">approvals</span><span class="o">.</span><span class="n">cli_kwargs</span><span class="p">())</span>
 </span><span id="__span-9-28"><a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>
 </span><span id="__span-9-29"><a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>        <span class="c1"># Ask it the questions the CLI would ask.</span>
-</span><span id="__span-9-30"><a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span><span class="n">StreamableHttpServer</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">approvals</span><span class="o">.</span><span class="n">url</span><span class="p">))</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
-</span><span id="__span-9-31"><a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;tools:     &quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()])</span>
-</span><span id="__span-9-32"><a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>            <span class="k">for</span> <span class="n">args</span> <span class="ow">in</span> <span class="p">(</span>
-</span><span id="__span-9-33"><a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a>                <span class="p">{</span><span class="s2">&quot;tool_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/etc/passwd&quot;</span><span class="p">}},</span>
-</span><span id="__span-9-34"><a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a>                <span class="p">{</span><span class="s2">&quot;tool_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Write&quot;</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/etc/passwd&quot;</span><span class="p">}},</span>
-</span><span id="__span-9-35"><a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>                <span class="p">{</span><span class="s2">&quot;tool_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Write&quot;</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;out.txt&quot;</span><span class="p">}},</span>
-</span><span id="__span-9-36"><a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a>            <span class="p">):</span>
-</span><span id="__span-9-37"><a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a>                <span class="n">res</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;approve&quot;</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
-</span><span id="__span-9-38"><a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a>                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">args</span><span class="p">[</span><span class="s1">&#39;tool_name&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">6</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">res</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="__span-9-39"><a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;prompts_seen:&quot;</span><span class="p">,</span> <span class="n">approvals</span><span class="o">.</span><span class="n">prompts_seen</span><span class="p">)</span>
-</span><span id="__span-9-40"><a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a>
-</span><span id="__span-9-41"><a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a>
-</span><span id="__span-9-42"><a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span><span id="__span-9-30"><a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span>
+</span><span id="__span-9-31"><a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>            <span class="n">StreamableHttpServer</span><span class="p">(</span><span class="n">url</span><span class="o">=</span><span class="n">approvals</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">approvals</span><span class="o">.</span><span class="n">auth_headers</span><span class="p">)</span>
+</span><span id="__span-9-32"><a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>        <span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+</span><span id="__span-9-33"><a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;tools:     &quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()])</span>
+</span><span id="__span-9-34"><a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a>            <span class="k">for</span> <span class="n">args</span> <span class="ow">in</span> <span class="p">(</span>
+</span><span id="__span-9-35"><a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>                <span class="p">{</span><span class="s2">&quot;tool_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Read&quot;</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/etc/passwd&quot;</span><span class="p">}},</span>
+</span><span id="__span-9-36"><a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a>                <span class="p">{</span><span class="s2">&quot;tool_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Write&quot;</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/etc/passwd&quot;</span><span class="p">}},</span>
+</span><span id="__span-9-37"><a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a>                <span class="p">{</span><span class="s2">&quot;tool_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Write&quot;</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;file_path&quot;</span><span class="p">:</span> <span class="s2">&quot;out.txt&quot;</span><span class="p">}},</span>
+</span><span id="__span-9-38"><a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a>            <span class="p">):</span>
+</span><span id="__span-9-39"><a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a>                <span class="n">res</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;approve&quot;</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+</span><span id="__span-9-40"><a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a>                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">args</span><span class="p">[</span><span class="s1">&#39;tool_name&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">6</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">res</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-9-41"><a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;prompts_seen:&quot;</span><span class="p">,</span> <span class="n">approvals</span><span class="o">.</span><span class="n">prompts_seen</span><span class="p">)</span>
+</span><span id="__span-9-42"><a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a>        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">approvals</span><span class="o">.</span><span class="n">decisions</span><span class="p">:</span>
+</span><span id="__span-9-43"><a id="__codelineno-9-43" name="__codelineno-9-43" href="#__codelineno-9-43"></a>            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">tool</span><span class="si">:</span><span class="s2">6</span><span class="si">}</span><span class="s2"> allowed=</span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">allowed</span><span class="si">!s:</span><span class="s2">5</span><span class="si">}</span><span class="s2"> &quot;</span>
+</span><span id="__span-9-44"><a id="__codelineno-9-44" name="__codelineno-9-44" href="#__codelineno-9-44"></a>                  <span class="sa">f</span><span class="s2">&quot;source=</span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">source</span><span class="si">:</span><span class="s2">10</span><span class="si">}</span><span class="s2"> asked=</span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">asked</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-9-45"><a id="__codelineno-9-45" name="__codelineno-9-45" href="#__codelineno-9-45"></a>
+</span><span id="__span-9-46"><a id="__codelineno-9-46" name="__codelineno-9-46" href="#__codelineno-9-46"></a>
+</span><span id="__span-9-47"><a id="__codelineno-9-47" name="__codelineno-9-47" href="#__codelineno-9-47"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>tool_name:  mcp__agentkit_approvals__approve
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>cli_kwargs: {&#39;mcp_config&#39;: (&#39;{&quot;mcpServers&quot;: {&quot;agentkit_approvals&quot;: {&quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;http://127.0.0.1:64619/mcp&quot;}}}&#39;,), &#39;strict_mcp_config&#39;: True, &#39;permission_prompt_tool&#39;: &#39;mcp__agentkit_approvals__approve&#39;}
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>cli_kwargs: {&#39;mcp_config&#39;: (&#39;{&quot;mcpServers&quot;: {&quot;agentkit_approvals&quot;: {&quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;http://127.0.0.1:65162/mcp&quot;, &quot;headers&quot;: {&quot;Authorization&quot;: &quot;Bearer &lt;43-char token&gt;&quot;}}}}&#39;,), &#39;strict_mcp_config&#39;: True, &#39;permission_prompt_tool&#39;: &#39;mcp__agentkit_approvals__approve&#39;}
 </span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>tools:      [&#39;approve&#39;]
 </span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  Read   -&gt; {&quot;behavior&quot;: &quot;allow&quot;, &quot;updatedInput&quot;: {&quot;file_path&quot;: &quot;/etc/passwd&quot;}}
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>  Write  -&gt; {&quot;behavior&quot;: &quot;deny&quot;, &quot;message&quot;: &quot;/etc is out of scope&quot;}
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>  Write  -&gt; {&quot;behavior&quot;: &quot;allow&quot;, &quot;updatedInput&quot;: {&quot;file_path&quot;: &quot;out.txt&quot;}}
 </span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>prompts_seen: 3
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>  Read   allowed=True  source=auto_allow asked=False
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>  Write  allowed=False source=asker      asked=True
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>  Write  allowed=True  source=asker      asked=True
 </span></code></pre></div>
+<p>Those last three lines are the point of <code>decisions</code>, and they are the
+reason a count could not do the job. The <code>Read</code> was allowed because it
+was on <code>auto_allow</code> — nobody was consulted, <code>asked=False</code>. The two
+<code>Write</code>s reached the reviewer. <code>prompts_seen</code> is <code>3</code> for all of them
+and says which is which about none of them.</p>
+<p><code>source</code> is a closed set for the same reason:</p>
+<table>
+<thead>
+<tr>
+<th><code>source</code></th>
+<th>what happened</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>asker</code></td>
+<td>a person was consulted and answered</td>
+</tr>
+<tr>
+<td><code>auto_allow</code></td>
+<td>the tool was pre-approved; no <code>Asker</code> was invoked</td>
+</tr>
+<tr>
+<td><code>autonomy</code></td>
+<td>the run's tier did not gate this call</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>nobody answered in time — denied, and <strong>not</strong> a refusal</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>the <code>Asker</code> raised; denied, and <strong>not</strong> a policy decision</td>
+</tr>
+</tbody>
+</table>
+<p>The two that matter most are the ones a boolean collapses. <em>Allowed
+because a person said so</em> and <em>allowed because the tier does not gate</em>
+are the facts an auditor most needs apart. And a <code>timeout</code> that degraded
+to a deny must not read afterwards as a human who said no.</p>
+<p><code>asked</code> is separate from <code>source == "asker"</code> on purpose: a prompt can
+reach a human and then expire. Whether somebody was interrupted is a
+fact about what the run cost a person, and it is not recoverable from
+the verdict.</p>
+<p>Every decision is also emitted on <code>ctx.emit</code> as <code>gate.check</code> as it
+happens, best-effort — the in-memory append comes first, because a
+refusal that happened matters more than a record of it that did not.
+<code>arguments</code> is held on the record but deliberately kept off the
+broadcast.</p>
 <p>The port is ephemeral — <code>ApprovalServer</code> asks the OS for a free loopback
 port at <code>start()</code>, so you will see a different one. Picking a fixed port
 collides the moment two agents run on one host.</p>
@@ -3620,6 +3910,549 @@ when a tool is <em>mostly</em> safe:</p>
   filter costs a prompt, not an approval.</li>
 </ul>
 <p>Leaving it unset (the default) keeps the old behaviour exactly.</p>
+<h3 id="serving-your-own-tools-serve_registry">Serving your own tools: <code>serve_registry</code><a class="headerlink" href="#serving-your-own-tools-serve_registry" title="Anchor link">&para;</a></h3>
+<p><code>ApprovalServer</code> answers questions about what the CLI wants to do.
+<code>serve_registry</code> gives it something to do that it did not ship with.</p>
+<p>The gap here was narrow and total. Everything needed to <em>describe</em> an
+agentkit tool to a model was already present and already correct:
+<code>FunctionTool</code> derives a <code>ToolSchema</code> from a signature and a docstring,
+<code>ToolRegistry</code> holds them and refuses a duplicate name, and
+<code>ToolArgumentError</code> refuses a bad call with a message naming the tool,
+the offending arguments and the accepted set. <code>ClaudeCliCognition</code>
+already accepted <code>mcp_config</code>. Only the wire was missing — nothing in
+agentkit could produce the document that flag reads. So a service that
+wanted the CLI to run its own <code>deploy()</code> wrote MCP JSON by hand, stood
+a server up beside it, and then owned the job of keeping a hand-written
+schema in step with the Python signature it claimed to describe.</p>
+<p><code>serve_registry</code> takes the registry you already have and hands back an
+<code>McpServerSpec</code>: the config file, the qualified tool names, the safety
+declarations, and — for the HTTP transport — the listener.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="sd">&quot;&quot;&quot;agentkit as the MCP server: a ToolRegistry the Claude CLI can call.</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="sd">Driven here by agentkit&#39;s own MCP client over a real loopback socket,</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="sd">because that is the only way to show the error contract holding.</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">MCPClient</span><span class="p">,</span> <span class="n">StreamableHttpServer</span><span class="p">,</span> <span class="n">serve_registry</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolRegistry</span><span class="p">,</span> <span class="n">tool</span>
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="n">logging</span><span class="o">.</span><span class="n">disable</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_check</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">strict</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the named check and report whether it passed.&quot;&quot;&quot;</span>
+</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="s1">&#39;strict&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">strict</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;lax&#39;</span><span class="si">}</span><span class="s2">:ok&quot;</span>
+</span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>
+</span><span id="__span-14-23"><a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a>
+</span><span id="__span-14-24"><a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">requires_approval</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">caps</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;egress&quot;</span><span class="p">,))</span>
+</span><span id="__span-14-25"><a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a><span class="k">def</span><span class="w"> </span><span class="nf">deploy</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-14-26"><a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Deploy the current build to the named target environment.&quot;&quot;&quot;</span>
+</span><span id="__span-14-27"><a id="__codelineno-14-27" name="__codelineno-14-27" href="#__codelineno-14-27"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;deployed to </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-14-28"><a id="__codelineno-14-28" name="__codelineno-14-28" href="#__codelineno-14-28"></a>
+</span><span id="__span-14-29"><a id="__codelineno-14-29" name="__codelineno-14-29" href="#__codelineno-14-29"></a>
+</span><span id="__span-14-30"><a id="__codelineno-14-30" name="__codelineno-14-30" href="#__codelineno-14-30"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-14-31"><a id="__codelineno-14-31" name="__codelineno-14-31" href="#__codelineno-14-31"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">()</span>
+</span><span id="__span-14-32"><a id="__codelineno-14-32" name="__codelineno-14-32" href="#__codelineno-14-32"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span><span class="n">ToolRegistry</span><span class="o">.</span><span class="n">from_tools</span><span class="p">([</span><span class="n">run_check</span><span class="p">,</span> <span class="n">deploy</span><span class="p">]),</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-14-33"><a id="__codelineno-14-33" name="__codelineno-14-33" href="#__codelineno-14-33"></a>
+</span><span id="__span-14-34"><a id="__codelineno-14-34" name="__codelineno-14-34" href="#__codelineno-14-34"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;tool_names:       &quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">tool_names</span><span class="p">)</span>
+</span><span id="__span-14-35"><a id="__codelineno-14-35" name="__codelineno-14-35" href="#__codelineno-14-35"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;requires_approval:&quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">requires_approval</span><span class="p">)</span>
+</span><span id="__span-14-36"><a id="__codelineno-14-36" name="__codelineno-14-36" href="#__codelineno-14-36"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;auto_approve:     &quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">auto_approve</span><span class="p">)</span>
+</span><span id="__span-14-37"><a id="__codelineno-14-37" name="__codelineno-14-37" href="#__codelineno-14-37"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;caps:             &quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">caps</span><span class="p">)</span>
+</span><span id="__span-14-38"><a id="__codelineno-14-38" name="__codelineno-14-38" href="#__codelineno-14-38"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;cli_kwargs keys:  &quot;</span><span class="p">,</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">cli_kwargs</span><span class="p">()))</span>
+</span><span id="__span-14-39"><a id="__codelineno-14-39" name="__codelineno-14-39" href="#__codelineno-14-39"></a>
+</span><span id="__span-14-40"><a id="__codelineno-14-40" name="__codelineno-14-40" href="#__codelineno-14-40"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-14-41"><a id="__codelineno-14-41" name="__codelineno-14-41" href="#__codelineno-14-41"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span>
+</span><span id="__span-14-42"><a id="__codelineno-14-42" name="__codelineno-14-42" href="#__codelineno-14-42"></a>        <span class="n">StreamableHttpServer</span><span class="p">(</span>
+</span><span id="__span-14-43"><a id="__codelineno-14-43" name="__codelineno-14-43" href="#__codelineno-14-43"></a>            <span class="n">url</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">auth_headers</span><span class="p">,</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">10.0</span>
+</span><span id="__span-14-44"><a id="__codelineno-14-44" name="__codelineno-14-44" href="#__codelineno-14-44"></a>        <span class="p">)</span>
+</span><span id="__span-14-45"><a id="__codelineno-14-45" name="__codelineno-14-45" href="#__codelineno-14-45"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+</span><span id="__span-14-46"><a id="__codelineno-14-46" name="__codelineno-14-46" href="#__codelineno-14-46"></a>            <span class="n">listed</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()}</span>
+</span><span id="__span-14-47"><a id="__codelineno-14-47" name="__codelineno-14-47" href="#__codelineno-14-47"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;advertised:       &quot;</span><span class="p">,</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">))</span>
+</span><span id="__span-14-48"><a id="__codelineno-14-48" name="__codelineno-14-48" href="#__codelineno-14-48"></a>            <span class="k">assert</span> <span class="n">run_check</span><span class="o">.</span><span class="n">schema</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</span><span id="__span-14-49"><a id="__codelineno-14-49" name="__codelineno-14-49" href="#__codelineno-14-49"></a>            <span class="nb">print</span><span class="p">(</span>
+</span><span id="__span-14-50"><a id="__codelineno-14-50" name="__codelineno-14-50" href="#__codelineno-14-50"></a>                <span class="s2">&quot;schema unchanged: &quot;</span><span class="p">,</span>
+</span><span id="__span-14-51"><a id="__codelineno-14-51" name="__codelineno-14-51" href="#__codelineno-14-51"></a>                <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">listed</span><span class="p">[</span><span class="s2">&quot;run_check&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">inputSchema</span><span class="p">)</span>
+</span><span id="__span-14-52"><a id="__codelineno-14-52" name="__codelineno-14-52" href="#__codelineno-14-52"></a>                <span class="o">==</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">run_check</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">parameters</span><span class="p">)),</span>
+</span><span id="__span-14-53"><a id="__codelineno-14-53" name="__codelineno-14-53" href="#__codelineno-14-53"></a>            <span class="p">)</span>
+</span><span id="__span-14-54"><a id="__codelineno-14-54" name="__codelineno-14-54" href="#__codelineno-14-54"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;deploy _meta:     &quot;</span><span class="p">,</span> <span class="n">listed</span><span class="p">[</span><span class="s2">&quot;deploy&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">meta</span><span class="p">[</span><span class="s2">&quot;agentkit&quot;</span><span class="p">])</span>
+</span><span id="__span-14-55"><a id="__codelineno-14-55" name="__codelineno-14-55" href="#__codelineno-14-55"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;deploy read-only: &quot;</span><span class="p">,</span> <span class="n">listed</span><span class="p">[</span><span class="s2">&quot;deploy&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">readOnlyHint</span><span class="p">)</span>
+</span><span id="__span-14-56"><a id="__codelineno-14-56" name="__codelineno-14-56" href="#__codelineno-14-56"></a>
+</span><span id="__span-14-57"><a id="__codelineno-14-57" name="__codelineno-14-57" href="#__codelineno-14-57"></a>            <span class="n">ok</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;run_check&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;lint&quot;</span><span class="p">})</span>
+</span><span id="__span-14-58"><a id="__codelineno-14-58" name="__codelineno-14-58" href="#__codelineno-14-58"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ok:               &quot;</span><span class="p">,</span> <span class="n">ok</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-14-59"><a id="__codelineno-14-59" name="__codelineno-14-59" href="#__codelineno-14-59"></a>
+</span><span id="__span-14-60"><a id="__codelineno-14-60" name="__codelineno-14-60" href="#__codelineno-14-60"></a>            <span class="n">bad</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;run_check&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;lint&quot;</span><span class="p">,</span> <span class="s2">&quot;verbose&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">})</span>
+</span><span id="__span-14-61"><a id="__codelineno-14-61" name="__codelineno-14-61" href="#__codelineno-14-61"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;bad isError:      &quot;</span><span class="p">,</span> <span class="n">bad</span><span class="o">.</span><span class="n">isError</span><span class="p">)</span>
+</span><span id="__span-14-62"><a id="__codelineno-14-62" name="__codelineno-14-62" href="#__codelineno-14-62"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;bad text:         &quot;</span><span class="p">,</span> <span class="n">bad</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-14-63"><a id="__codelineno-14-63" name="__codelineno-14-63" href="#__codelineno-14-63"></a>
+</span><span id="__span-14-64"><a id="__codelineno-14-64" name="__codelineno-14-64" href="#__codelineno-14-64"></a>            <span class="n">after</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;run_check&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;after&quot;</span><span class="p">})</span>
+</span><span id="__span-14-65"><a id="__codelineno-14-65" name="__codelineno-14-65" href="#__codelineno-14-65"></a>            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;session survived: &quot;</span><span class="p">,</span> <span class="n">after</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-14-66"><a id="__codelineno-14-66" name="__codelineno-14-66" href="#__codelineno-14-66"></a>
+</span><span id="__span-14-67"><a id="__codelineno-14-67" name="__codelineno-14-67" href="#__codelineno-14-67"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;calls_seen:       &quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">calls_seen</span><span class="p">)</span>
+</span><span id="__span-14-68"><a id="__codelineno-14-68" name="__codelineno-14-68" href="#__codelineno-14-68"></a>
+</span><span id="__span-14-69"><a id="__codelineno-14-69" name="__codelineno-14-69" href="#__codelineno-14-69"></a>
+</span><span id="__span-14-70"><a id="__codelineno-14-70" name="__codelineno-14-70" href="#__codelineno-14-70"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>tool_names:        (&#39;mcp__engine__deploy&#39;, &#39;mcp__engine__run_check&#39;)
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>requires_approval: (&#39;mcp__engine__deploy&#39;,)
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>auto_approve:      (&#39;mcp__engine__run_check&#39;,)
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>caps:              (&#39;egress&#39;,)
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>cli_kwargs keys:   [&#39;mcp_config&#39;, &#39;strict_mcp_config&#39;]
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>advertised:        [&#39;deploy&#39;, &#39;run_check&#39;]
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>schema unchanged:  True
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>deploy _meta:      {&#39;side_effecting&#39;: True, &#39;requires_approval&#39;: True, &#39;caps&#39;: [&#39;egress&#39;]}
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>deploy read-only:  False
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>ok:                lint:lax:ok
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>bad isError:       True
+</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>bad text:          tool &#39;run_check&#39; call rejected: unexpected argument(s) [&#39;verbose&#39;]. Accepted arguments: [&#39;name&#39;, &#39;strict&#39;]
+</span><span id="__span-15-13"><a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>session survived:  after:lax:ok
+</span><span id="__span-15-14"><a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>calls_seen:        3
+</span></code></pre></div>
+<p>Three lines in that output are the whole design, and each has its own
+subsection below: <code>schema unchanged: True</code>, the pair
+<code>bad isError: True</code> / <code>session survived</code>, and <code>deploy _meta</code>. The last
+line is the humbler one — <code>calls_seen</code> exists because a session that
+reports zero either never called a tool or never <em>reached</em> the server,
+and those are different bugs to go looking for.</p>
+<div class="admonition note">
+<p class="admonition-title">What this example does and does not prove</p>
+<p>Every line above ran: a real loopback listener, a real MCP session
+over a real socket, three real tool calls. What it does <strong>not</strong>
+exercise is the Claude CLI — the binary that would normally be the
+client. The config file and <code>cli_kwargs()</code> are the real values it
+is handed; that it accepts them, connects, and runs the tool body
+back in this process is covered by this project's own tests against
+the binary, not by this snippet.</p>
+</div>
+<p>In real use you never call the tools yourself. You hand <code>cli_kwargs()</code>
+to the cognition, exactly as with <code>ApprovalServer</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="sd">&quot;&quot;&quot;The shape a real caller writes.&quot;&quot;&quot;</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Agent</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition.claude_cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClaudeCliCognition</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">serve_registry</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="n">registry</span><span class="p">,</span> <span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">):</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span><span class="n">registry</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">,</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">120.0</span><span class="p">)</span>
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        <span class="n">cognition</span> <span class="o">=</span> <span class="n">ClaudeCliCognition</span><span class="p">(</span>
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>            <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-sonnet-4-6&quot;</span><span class="p">,</span>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>            <span class="n">allowed_tools</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">auto_approve</span><span class="p">,</span>        <span class="c1"># the rest still prompt</span>
+</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>            <span class="o">**</span><span class="n">spec</span><span class="o">.</span><span class="n">cli_kwargs</span><span class="p">(</span><span class="n">builtin_tools</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>  <span class="c1"># only OUR tools</span>
+</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>        <span class="p">)</span>
+</span><span id="__span-16-16"><a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">Agent</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;dev&quot;</span><span class="p">,</span> <span class="n">cognition</span><span class="o">=</span><span class="n">cognition</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+</span></code></pre></div>
+<p><code>strict_mcp_config=True</code> is always in there. Without it the CLI also
+loads whatever MCP servers the working directory or the user's home
+configuration happen to define — the difference between "these tools"
+and "these tools plus a teammate's <code>.mcp.json</code>". <code>builtin_tools=False</code>
+is a <em>separate</em> decision and is off by default, because it disables the
+CLI's own Read, Grep and Bash, and that is a statement about what the
+session can do at all rather than about MCP wiring. A flag named
+<code>strict_mcp_config</code> should not quietly make it.</p>
+<h4 id="the-schema-is-not-translated">The schema is not translated<a class="headerlink" href="#the-schema-is-not-translated" title="Anchor link">&para;</a></h4>
+<p><code>ToolSchema.parameters</code> goes out as MCP <code>inputSchema</code> unchanged — one
+<code>dict()</code> unwrap of the <code>FrozenDict</code> and nothing else. No key renaming,
+no shape massaging, no defaults filled in. That is what the
+<code>schema unchanged: True</code> line above is asserting, and the project's own
+test asserts it as <em>byte</em> equality rather than <code>==</code>, because two dicts
+can compare equal with different key order and the bytes are what the
+model is prompted with.</p>
+<p>Both sides are already JSON Schema, so a translation step would be a
+second description of one thing — and second descriptions drift. The
+drift is not cosmetic. It surfaces as the model being shown a schema
+the tool does not validate against: it writes a call that matches the
+documentation it was given, gets rejected, and has nothing to work with.</p>
+<p>This is also why the module builds a lowlevel MCP <code>Server</code> rather than
+a <code>FastMCP</code> one. <code>FastMCP</code> derives <code>inputSchema</code> from a Python
+signature via pydantic and validates arguments against that derived
+model <em>before</em> the handler runs. Both halves are wrong here: the schema
+already exists, and pydantic's rejection would replace
+<code>ToolArgumentError</code>'s message — which names the tool, the offending
+arguments and the accepted set — with a generic validation dump. The
+handler is registered <code>validate_input=False</code> for the same reason.
+agentkit's tools already check their own calls and their diagnosis is
+the better one.</p>
+<p>Two consequences worth knowing before they surprise you:</p>
+<ul>
+<li><strong>A tool whose <code>schema</code> is <code>None</code> is dropped, not advertised.</strong> The
+  <code>Tool</code> Protocol calls that loop-invisible, and MCP has no way to say
+  "callable but undescribed" — <code>inputSchema</code> is required. Inventing an
+  empty schema would advertise something the model would then call
+  blind.</li>
+<li><strong>Tool names are sanitised, server names are not.</strong> MCP's own
+  grammar would allow <code>run.check</code>, but the CLI addresses a served tool
+  as <code>mcp__engine__run.check</code> and callers then paste that into
+  <code>--allowed-tools</code>, shell arguments and log greps — so agentkit
+  applies a narrower rule than MCP's and replaces anything outside
+  <code>[A-Za-z0-9_-]</code> with <code>_</code>, keeping the qualified name one glob-free,
+  quote-free token. The model only ever sees the sanitised form, so the
+  rename is invisible to it; <em>you</em> write the qualified name into
+  <code>allowed_tools</code> by hand, which is why <code>spec.mcp_names</code> publishes the
+  mapping rather than leaving it implicit. The <strong>server</strong> name is
+  refused rather than rewritten, because you typed that one yourself
+  and are holding it in a string somewhere else. Two tool names that
+  collide after sanitising (<code>run.check</code> and <code>run check</code>) raise instead
+  of shadowing: <code>ToolRegistry</code> refuses a duplicate name for a reason,
+  and sanitising would otherwise re-open that hole one layer down.</li>
+</ul>
+<h4 id="a-bad-call-is-a-tool-error-not-a-transport-error">A bad call is a tool error, not a transport error<a class="headerlink" href="#a-bad-call-is-a-tool-error-not-a-transport-error" title="Anchor link">&para;</a></h4>
+<p>This is the distinction the module exists to preserve, so it is worth
+being concrete about what the alternative costs.</p>
+<p>An exception raised out of an MCP request handler is a <strong>transport</strong>
+error. It ends the session — and the session is the whole registry. One
+tool raising <code>RuntimeError("the database is on fire")</code> would take every
+other tool down with it mid-run, and what reaches the model is "the
+tool system is broken", which is not something it can route around. A
+<code>ToolArgumentError</code> arriving that way is worse still: the model
+authored the bad call and is the only party that can fix it, and it
+never gets told what was wrong.</p>
+<p>So the dispatch handler never raises. Every failure comes back as an
+<code>isError</code> <strong>result</strong> on the call, which is reflected into the
+transcript:</p>
+<table>
+<thead>
+<tr>
+<th>what happened</th>
+<th>what the model reads</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ToolArgumentError</code></td>
+<td>the message verbatim — tool, bad arguments, accepted set</td>
+</tr>
+<tr>
+<td>any other exception</td>
+<td><code>tool 'x' failed: RuntimeError: the database is on fire</code></td>
+</tr>
+<tr>
+<td>no such tool</td>
+<td>the name, plus the sorted list of ones that do exist</td>
+</tr>
+<tr>
+<td>the run was cancelled before dispatch</td>
+<td><code>the run was cancelled; 'x' was not run</code></td>
+</tr>
+<tr>
+<td>the run was cancelled mid-call</td>
+<td><code>the run was cancelled while 'x' was running</code></td>
+</tr>
+</tbody>
+</table>
+<p>The two cancellation rows are not bookkeeping. <code>ctx.check_cancelled()</code>
+runs <em>before</em> the tool body, because the CLI knows nothing about
+agentkit's cancellation seam and will keep driving tools for a run
+somebody stopped — a side-effecting tool firing after someone pressed
+stop is the failure that check exists to prevent. And <code>Cancelled</code> gets
+its own clause because it subclasses <code>RuntimeError</code>: without one it
+would fall into the generic row above and be reported as an ordinary
+failure, which is an invitation to retry work that was deliberately
+abandoned.</p>
+<h4 id="the-declarations-travel-so-the-rule-of-two-still-applies">The declarations travel, so the Rule of Two still applies<a class="headerlink" href="#the-declarations-travel-so-the-rule-of-two-still-applies" title="Anchor link">&para;</a></h4>
+<p><code>side_effecting</code>, <code>requires_approval</code> and <code>caps</code> go out twice: once as
+MCP <code>ToolAnnotations</code>, and once verbatim in <code>_meta</code> under the
+<code>agentkit</code> key — <code>META_KEY</code> in <code>agentkit.integrations.mcp.serve</code>,
+namespaced because <code>_meta</code> is a shared bag and an unqualified <code>caps</code>
+would collide with whatever the next middleware wants to attach. Twice,
+because annotations are <em>hints</em>, and the MCP spec tells clients not to
+make decisions on hints from a server they do not trust. <code>_meta</code> is
+where a cooperating
+agentkit-side reader — a <code>RunPolicy</code> check, an audit trail — gets the
+declarations back without re-inferring them from three booleans that
+were lossy on the way out.</p>
+<p><code>readOnlyHint</code> is <code>not (side_effecting or requires_approval)</code>, not the
+obvious <code>not side_effecting</code>. <code>readOnlyHint</code> is precisely the hint a
+client consults to decide it may run something <em>without asking</em>, so a
+read-only tool that nonetheless declares <code>requires_approval</code> — reading
+a customer record, say — must not advertise itself as free. That is the
+exact case where an approval requirement matters most and is least
+visible, which is why <code>deploy read-only: False</code> above is a computed
+answer rather than a copy.</p>
+<p>Because the tags survive the crossing, the lethal-trifecta check still
+sees the set it needs to see:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="sd">&quot;&quot;&quot;The Rule-of-Two check still applies to tools that moved behind MCP.&quot;&quot;&quot;</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.control.safety</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunPolicy</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">serve_registry</span><span class="p">,</span> <span class="n">stdio_command</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolRegistry</span><span class="p">,</span> <span class="n">tool</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">caps</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;private_data&quot;</span><span class="p">,))</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">read_record</span><span class="p">(</span><span class="n">customer</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Read one customer record out of the private store.&quot;&quot;&quot;</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="k">return</span> <span class="n">customer</span>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>
+</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">caps</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;untrusted_content&quot;</span><span class="p">,))</span>
+</span><span id="__span-17-18"><a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_page</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-17-19"><a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Fetch a page of untrusted web content and return its text.&quot;&quot;&quot;</span>
+</span><span id="__span-17-20"><a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>    <span class="k">return</span> <span class="n">url</span>
+</span><span id="__span-17-21"><a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>
+</span><span id="__span-17-22"><a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>
+</span><span id="__span-17-23"><a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">caps</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;egress&quot;</span><span class="p">,))</span>
+</span><span id="__span-17-24"><a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a><span class="k">def</span><span class="w"> </span><span class="nf">notify</span><span class="p">(</span><span class="n">channel</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-17-25"><a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Post a message to the named chat channel — the egress leg.&quot;&quot;&quot;</span>
+</span><span id="__span-17-26"><a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;sent to </span><span class="si">{</span><span class="n">channel</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-17-27"><a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a>
+</span><span id="__span-17-28"><a id="__codelineno-17-28" name="__codelineno-17-28" href="#__codelineno-17-28"></a>
+</span><span id="__span-17-29"><a id="__codelineno-17-29" name="__codelineno-17-29" href="#__codelineno-17-29"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-17-30"><a id="__codelineno-17-30" name="__codelineno-17-30" href="#__codelineno-17-30"></a>    <span class="n">registry</span> <span class="o">=</span> <span class="n">ToolRegistry</span><span class="o">.</span><span class="n">from_tools</span><span class="p">([</span><span class="n">read_record</span><span class="p">,</span> <span class="n">fetch_page</span><span class="p">,</span> <span class="n">notify</span><span class="p">])</span>
+</span><span id="__span-17-31"><a id="__codelineno-17-31" name="__codelineno-17-31" href="#__codelineno-17-31"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span>
+</span><span id="__span-17-32"><a id="__codelineno-17-32" name="__codelineno-17-32" href="#__codelineno-17-32"></a>        <span class="n">registry</span><span class="p">,</span>
+</span><span id="__span-17-33"><a id="__codelineno-17-33" name="__codelineno-17-33" href="#__codelineno-17-33"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span>
+</span><span id="__span-17-34"><a id="__codelineno-17-34" name="__codelineno-17-34" href="#__codelineno-17-34"></a>        <span class="n">ctx</span><span class="o">=</span><span class="n">make_test_ctx</span><span class="p">(),</span>
+</span><span id="__span-17-35"><a id="__codelineno-17-35" name="__codelineno-17-35" href="#__codelineno-17-35"></a>        <span class="n">transport</span><span class="o">=</span><span class="s2">&quot;stdio&quot;</span><span class="p">,</span>
+</span><span id="__span-17-36"><a id="__codelineno-17-36" name="__codelineno-17-36" href="#__codelineno-17-36"></a>        <span class="n">command</span><span class="o">=</span><span class="n">stdio_command</span><span class="p">(</span><span class="s2">&quot;myapp.mcp_server&quot;</span><span class="p">),</span>
+</span><span id="__span-17-37"><a id="__codelineno-17-37" name="__codelineno-17-37" href="#__codelineno-17-37"></a>    <span class="p">)</span>
+</span><span id="__span-17-38"><a id="__codelineno-17-38" name="__codelineno-17-38" href="#__codelineno-17-38"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-17-39"><a id="__codelineno-17-39" name="__codelineno-17-39" href="#__codelineno-17-39"></a>        <span class="n">verdict</span> <span class="o">=</span> <span class="n">RunPolicy</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">registry</span><span class="o">.</span><span class="n">tools</span><span class="p">())</span>
+</span><span id="__span-17-40"><a id="__codelineno-17-40" name="__codelineno-17-40" href="#__codelineno-17-40"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;spec.caps:&quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">caps</span><span class="p">)</span>
+</span><span id="__span-17-41"><a id="__codelineno-17-41" name="__codelineno-17-41" href="#__codelineno-17-41"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;allowed:  &quot;</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">allowed</span><span class="p">)</span>
+</span><span id="__span-17-42"><a id="__codelineno-17-42" name="__codelineno-17-42" href="#__codelineno-17-42"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;reason:   &quot;</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reason</span><span class="p">)</span>
+</span><span id="__span-17-43"><a id="__codelineno-17-43" name="__codelineno-17-43" href="#__codelineno-17-43"></a>
+</span><span id="__span-17-44"><a id="__codelineno-17-44" name="__codelineno-17-44" href="#__codelineno-17-44"></a>
+</span><span id="__span-17-45"><a id="__codelineno-17-45" name="__codelineno-17-45" href="#__codelineno-17-45"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>spec.caps: (&#39;egress&#39;, &#39;private_data&#39;, &#39;untrusted_content&#39;)
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>allowed:   False
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>reason:    lethal trifecta: this tool set combines private-data access, untrusted-content ingestion, and egress in one run — require a human gate or split the run
+</span></code></pre></div>
+<p>Be honest about where that check runs: on your side, before you start
+the CLI. Nothing on the wire enforces it, and <code>serve_registry</code> will
+serve a trifecta happily if you ask it to. What it guarantees is that
+the tags are still <em>there</em> to be checked — which is the part that used
+to vanish at the boundary, silently, exactly when the tools are
+furthest from the caller.</p>
+<p><code>spec.requires_approval</code> and <code>spec.auto_approve</code> are the same
+declarations in the shape <code>allowed_tools</code> wants: qualified names, split
+by whether the tool asked for a human. Splatting <code>auto_approve</code> into
+<code>allowed_tools</code> is what actually makes the CLI prompt for the others —
+<code>requires_approval=True</code> is a statement the CLI reads, not a check this
+server performs.</p>
+<div class="admonition warning">
+<p class="admonition-title">Loopback, plus a generated bearer token</p>
+<p>The HTTP transport binds <code>127.0.0.1</code> and, by default, <strong>requires a
+bearer token</strong> that the listener generates. <code>cli_kwargs()</code> puts it
+in the config document's <code>headers</code>; <code>spec.auth_headers</code> is the same
+credential for a non-CLI client. Nothing accepts a caller-supplied
+token — one that a caller can set is one that ends up a constant in
+somebody's config file.</p>
+<p>Loopback alone used to <em>be</em> the containment, and that argument holds
+exactly as long as nothing untrusted shares the host. It is the
+wrong assumption for the case this exists to serve: the point of
+<code>ClaudeCliCognition</code> is that the CLI runs <code>Bash</code> — a build, a
+package install, a script out of a repository the agent was pointed
+at — inside the same network namespace as the server holding the
+agent's own tools. The trust boundary loopback assumes is precisely
+the boundary the tool set is designed to cross.</p>
+<p>A token is a weaker fence than a <code>0700</code> directory, and the honest
+statement is that it turns <em>anything on the host</em> into <em>anything
+that can read this process's temp directory</em>. That is why the config
+file is <code>0600</code> and why <code>stop()</code> removes it together with the
+listener — the file is now a live credential, so a stale one
+outliving its server would be worse than untidy.</p>
+<p><code>auth="none"</code> restores the old unauthenticated behaviour. It is
+still supported, and now something a caller asks for by name rather
+than gets by default.</p>
+</div>
+<h4 id="which-transport-and-when">Which transport, and when<a class="headerlink" href="#which-transport-and-when" title="Anchor link">&para;</a></h4>
+<p><code>transport="http"</code> (the default) keeps the tools in <strong>this</strong> process.
+The spec reserves a loopback port, writes a config naming it, and
+<code>async with</code> starts a uvicorn listener. Your registry, its closures and
+its <code>ctx</code> are all right here, so a tool can hold a database handle, an
+open connection, a half-built object — anything that would not survive
+being reconstructed elsewhere.</p>
+<p><code>transport="stdio"</code> is a different shape, and the difference is not
+cosmetic: the CLI <strong>spawns</strong> a stdio server itself. The tools are
+rebuilt in a fresh interpreter, and this process's registry, closures
+and <code>ctx</code> do not cross that boundary. So <code>command=</code> is required, and
+passing <code>transport="stdio"</code> without it raises immediately with that
+explanation rather than writing a config the CLI would fail on a minute
+later.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="sd">&quot;&quot;&quot;transport=&quot;stdio&quot;: the parent half writes a config naming a command.&quot;&quot;&quot;</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">serve_registry</span><span class="p">,</span> <span class="n">stdio_command</span>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_check</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the named check and report whether it passed.&quot;&quot;&quot;</span>
+</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:ok&quot;</span>
+</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>
+</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>
+</span><span id="__span-19-17"><a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-19-18"><a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span>
+</span><span id="__span-19-19"><a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a>        <span class="p">[</span><span class="n">run_check</span><span class="p">],</span>                       <span class="c1"># a bare sequence works; it is registered for you</span>
+</span><span id="__span-19-20"><a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span>
+</span><span id="__span-19-21"><a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a>        <span class="n">ctx</span><span class="o">=</span><span class="n">make_test_ctx</span><span class="p">(),</span>
+</span><span id="__span-19-22"><a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a>        <span class="n">transport</span><span class="o">=</span><span class="s2">&quot;stdio&quot;</span><span class="p">,</span>
+</span><span id="__span-19-23"><a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a>        <span class="n">command</span><span class="o">=</span><span class="n">stdio_command</span><span class="p">(</span><span class="s2">&quot;myapp.mcp_server&quot;</span><span class="p">),</span>
+</span><span id="__span-19-24"><a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a>        <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;PYTHONPATH&quot;</span><span class="p">:</span> <span class="s2">&quot;/srv/app&quot;</span><span class="p">},</span>
+</span><span id="__span-19-25"><a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a>    <span class="p">)</span>
+</span><span id="__span-19-26"><a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-19-27"><a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a>        <span class="n">entry</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">config_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">())[</span><span class="s2">&quot;mcpServers&quot;</span><span class="p">][</span><span class="s2">&quot;engine&quot;</span><span class="p">]</span>
+</span><span id="__span-19-28"><a id="__codelineno-19-28" name="__codelineno-19-28" href="#__codelineno-19-28"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;type:&quot;</span><span class="p">,</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">])</span>
+</span><span id="__span-19-29"><a id="__codelineno-19-29" name="__codelineno-19-29" href="#__codelineno-19-29"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;args:&quot;</span><span class="p">,</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;args&quot;</span><span class="p">],</span> <span class="s2">&quot;(command is sys.executable)&quot;</span><span class="p">)</span>
+</span><span id="__span-19-30"><a id="__codelineno-19-30" name="__codelineno-19-30" href="#__codelineno-19-30"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;env: &quot;</span><span class="p">,</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;env&quot;</span><span class="p">])</span>
+</span><span id="__span-19-31"><a id="__codelineno-19-31" name="__codelineno-19-31" href="#__codelineno-19-31"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;url: &quot;</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
+</span><span id="__span-19-32"><a id="__codelineno-19-32" name="__codelineno-19-32" href="#__codelineno-19-32"></a>
+</span><span id="__span-19-33"><a id="__codelineno-19-33" name="__codelineno-19-33" href="#__codelineno-19-33"></a>
+</span><span id="__span-19-34"><a id="__codelineno-19-34" name="__codelineno-19-34" href="#__codelineno-19-34"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>type: stdio
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>args: [&#39;-m&#39;, &#39;myapp.mcp_server&#39;] (command is sys.executable)
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>env:  {&#39;PYTHONPATH&#39;: &#39;/srv/app&#39;}
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>url:  None
+</span></code></pre></div>
+<p>The command's <code>main</code> is the other half, and it calls
+<code>serve_registry_stdio</code> — the same advertising, the same error contract,
+differing only in which pipe carries it:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="sd">&quot;&quot;&quot;myapp/mcp_server.py — the child the CLI spawns.&quot;&quot;&quot;</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">serve_registry_stdio</span>
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-21-11"><a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_check</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-21-12"><a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the named check and report whether it passed.&quot;&quot;&quot;</span>
+</span><span id="__span-21-13"><a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">:ok&quot;</span>
+</span><span id="__span-21-14"><a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a>
+</span><span id="__span-21-15"><a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a>
+</span><span id="__span-21-16"><a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">serve</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-21-17"><a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>    <span class="c1"># Serves on this process&#39;s stdin/stdout until the peer closes it.</span>
+</span><span id="__span-21-18"><a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a>    <span class="c1"># A real child builds its own ctx; make_test_ctx keeps this runnable.</span>
+</span><span id="__span-21-19"><a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a>    <span class="k">await</span> <span class="n">serve_registry_stdio</span><span class="p">([</span><span class="n">run_check</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">make_test_ctx</span><span class="p">())</span>
+</span><span id="__span-21-20"><a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a>
+</span><span id="__span-21-21"><a id="__codelineno-21-21" name="__codelineno-21-21" href="#__codelineno-21-21"></a>
+</span><span id="__span-21-22"><a id="__codelineno-21-22" name="__codelineno-21-22" href="#__codelineno-21-22"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-21-23"><a id="__codelineno-21-23" name="__codelineno-21-23" href="#__codelineno-21-23"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;What `python -m myapp.mcp_server` calls.&quot;&quot;&quot;</span>
+</span><span id="__span-21-24"><a id="__codelineno-21-24" name="__codelineno-21-24" href="#__codelineno-21-24"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">serve</span><span class="p">())</span>
+</span></code></pre></div>
+<p>No config file is written on that side, and that is not an oversight: a
+process that will be <em>spawned by</em> the config cannot also be the process
+that authors it.</p>
+<p><code>stdio_command("myapp.mcp_server")</code> builds <code>(sys.executable, "-m",
+"myapp.mcp_server")</code> rather than starting from <code>"python"</code>, because the
+CLI spawns the child with the <em>caller's</em> <code>PATH</code>, not the virtualenv's,
+and a bare <code>python</code> there is whatever the system ships — which will not
+have agentkit installed. <code>env=</code> is often the only way that fresh
+interpreter can import the package your tools live in.</p>
+<p><code>spec.url</code> is <code>None</code> for stdio. There is no endpoint to have, and
+returning a plausible-looking one would be a lie a caller could paste
+somewhere.</p>
+<p>Reach for HTTP unless the tools genuinely have no in-process state.
+The process boundary is real work — everything the tools need has to be
+reachable from a fresh interpreter running under the CLI's environment
+— and it buys you nothing that loopback does not already give you.</p>
+<h4 id="the-lifecycle-and-re-entering-it">The lifecycle, and re-entering it<a class="headerlink" href="#the-lifecycle-and-re-entering-it" title="Anchor link">&para;</a></h4>
+<p><code>serve_registry</code> is synchronous on purpose. It reserves the port and
+writes the config file, so the returned spec is complete enough to
+build a <code>ClaudeCliCognition</code> <em>before</em> anything is serving.
+<code>async with spec</code> then starts the listener; leaving the block stops it
+and deletes the config.</p>
+<p>The port is reserved by binding a socket and <strong>holding</strong> it, not by
+asking the OS for a free port and closing it again. <code>--mcp-config</code>
+wants a URL written to a file before the CLI is spawned, so the port
+has to be known before anything serves on it, and the ask-then-rebind
+version leaves a window that a second agent on the same host wins often
+enough to matter. It also keeps uvicorn's own bind-failure path out of
+the picture, which is worth knowing about: that path is
+<code>logger.error(...); sys.exit(3)</code> raised <em>inside</em> the serve task, so a
+port collision propagates a <code>SystemExit</code> out of <code>asyncio.run</code> — a
+library taking down its host process over a busy port, while the
+awaiting caller gets a bare <code>CancelledError</code> with the port named
+nowhere. Binding early raises the real
+<code>OSError: [Errno 48] Address already in use</code> in your own frame, with
+the endpoint appended to the message.</p>
+<p><code>start()</code> and <code>stop()</code> are both idempotent, and a spec is re-enterable
+— a retry loop can <code>async with spec</code> a second time. That took a fix to
+actually be true. <code>stop()</code> deletes the config file, and nothing used to
+put it back, so a second entry brought the listener up on the same port
+and left <code>cli_kwargs()</code> naming a path that no longer existed: a live
+server the CLI could not be pointed at, reported as success. <code>start()</code>
+now rewrites the document.</p>
+<p>Deleting the config on the way out is deliberate. A stale one outlives
+the port it names, and the next reader gets a URL pointing at nothing —
+or worse, at whatever bound that port next. Only a directory the spec
+created is removed; a <code>config_path=</code> you supplied is yours to keep.</p>
+<h4 id="two-timeouts-that-do-not-read-the-same">Two timeouts that do not read the same<a class="headerlink" href="#two-timeouts-that-do-not-read-the-same" title="Anchor link">&para;</a></h4>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="sd">&quot;&quot;&quot;A tool&#39;s own TimeoutError is not this server&#39;s deadline firing.&quot;&quot;&quot;</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">MCPClient</span><span class="p">,</span> <span class="n">StreamableHttpServer</span><span class="p">,</span> <span class="n">serve_registry</span>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
+</span><span id="__span-22-9"><a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>
+</span><span id="__span-22-10"><a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="n">logging</span><span class="o">.</span><span class="n">disable</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+</span><span id="__span-22-11"><a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>
+</span><span id="__span-22-12"><a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
+</span><span id="__span-22-13"><a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-22-14"><a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">slow_build</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-22-15"><a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait far past the server&#39;s deadline, so only the deadline can end it.&quot;&quot;&quot;</span>
+</span><span id="__span-22-16"><a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3600</span><span class="p">)</span>
+</span><span id="__span-22-17"><a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a>    <span class="k">return</span> <span class="s2">&quot;never&quot;</span>
+</span><span id="__span-22-18"><a id="__codelineno-22-18" name="__codelineno-22-18" href="#__codelineno-22-18"></a>
+</span><span id="__span-22-19"><a id="__codelineno-22-19" name="__codelineno-22-19" href="#__codelineno-22-19"></a>
+</span><span id="__span-22-20"><a id="__codelineno-22-20" name="__codelineno-22-20" href="#__codelineno-22-20"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-22-21"><a id="__codelineno-22-21" name="__codelineno-22-21" href="#__codelineno-22-21"></a><span class="k">def</span><span class="w"> </span><span class="nf">call_upstream</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-22-22"><a id="__codelineno-22-22" name="__codelineno-22-22" href="#__codelineno-22-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Read the named upstream, failing the way a real client fails.&quot;&quot;&quot;</span>
+</span><span id="__span-22-23"><a id="__codelineno-22-23" name="__codelineno-22-23" href="#__codelineno-22-23"></a>    <span class="k">raise</span> <span class="ne">TimeoutError</span><span class="p">(</span><span class="s2">&quot;upstream read timed out after 3s&quot;</span><span class="p">)</span>
+</span><span id="__span-22-24"><a id="__codelineno-22-24" name="__codelineno-22-24" href="#__codelineno-22-24"></a>
+</span><span id="__span-22-25"><a id="__codelineno-22-25" name="__codelineno-22-25" href="#__codelineno-22-25"></a>
+</span><span id="__span-22-26"><a id="__codelineno-22-26" name="__codelineno-22-26" href="#__codelineno-22-26"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-22-27"><a id="__codelineno-22-27" name="__codelineno-22-27" href="#__codelineno-22-27"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span>
+</span><span id="__span-22-28"><a id="__codelineno-22-28" name="__codelineno-22-28" href="#__codelineno-22-28"></a>        <span class="p">[</span><span class="n">slow_build</span><span class="p">,</span> <span class="n">call_upstream</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">make_test_ctx</span><span class="p">(),</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">0.05</span>
+</span><span id="__span-22-29"><a id="__codelineno-22-29" name="__codelineno-22-29" href="#__codelineno-22-29"></a>    <span class="p">)</span>
+</span><span id="__span-22-30"><a id="__codelineno-22-30" name="__codelineno-22-30" href="#__codelineno-22-30"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-22-31"><a id="__codelineno-22-31" name="__codelineno-22-31" href="#__codelineno-22-31"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span>
+</span><span id="__span-22-32"><a id="__codelineno-22-32" name="__codelineno-22-32" href="#__codelineno-22-32"></a>        <span class="n">StreamableHttpServer</span><span class="p">(</span>
+</span><span id="__span-22-33"><a id="__codelineno-22-33" name="__codelineno-22-33" href="#__codelineno-22-33"></a>            <span class="n">url</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">auth_headers</span><span class="p">,</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">10.0</span>
+</span><span id="__span-22-34"><a id="__codelineno-22-34" name="__codelineno-22-34" href="#__codelineno-22-34"></a>        <span class="p">)</span>
+</span><span id="__span-22-35"><a id="__codelineno-22-35" name="__codelineno-22-35" href="#__codelineno-22-35"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+</span><span id="__span-22-36"><a id="__codelineno-22-36" name="__codelineno-22-36" href="#__codelineno-22-36"></a>            <span class="n">ours</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;slow_build&quot;</span><span class="p">,</span> <span class="p">{})</span>
+</span><span id="__span-22-37"><a id="__codelineno-22-37" name="__codelineno-22-37" href="#__codelineno-22-37"></a>            <span class="n">theirs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;call_upstream&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;http://x&quot;</span><span class="p">})</span>
+</span><span id="__span-22-38"><a id="__codelineno-22-38" name="__codelineno-22-38" href="#__codelineno-22-38"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;our deadline:&quot;</span><span class="p">,</span> <span class="n">ours</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-22-39"><a id="__codelineno-22-39" name="__codelineno-22-39" href="#__codelineno-22-39"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;their error: &quot;</span><span class="p">,</span> <span class="n">theirs</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-22-40"><a id="__codelineno-22-40" name="__codelineno-22-40" href="#__codelineno-22-40"></a>
+</span><span id="__span-22-41"><a id="__codelineno-22-41" name="__codelineno-22-41" href="#__codelineno-22-41"></a>
+</span><span id="__span-22-42"><a id="__codelineno-22-42" name="__codelineno-22-42" href="#__codelineno-22-42"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>our deadline: tool &#39;slow_build&#39; did not return within 0.05s and was abandoned
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>their error:  tool &#39;call_upstream&#39; failed: TimeoutError: upstream read timed out after 3s
+</span></code></pre></div>
+<p>Those are deliberately different sentences, and the difference is a
+bug fix rather than a flourish. The handler used to use
+<code>asyncio.wait_for</code>, which collapses "our deadline fired" and "the tool
+raised a <code>TimeoutError</code> of its own" into one indistinguishable
+exception — so every one of them was reported as the deadline. With the
+default <code>timeout_s=None</code>, a tool whose upstream read timed out came
+back to the model as <em>"did not return within Nones and was
+abandoned"</em>: false twice over — nothing was abandoned, and there was no
+deadline — with the one message naming what actually failed thrown
+away. <code>asyncio.timeout</code> keeps them apart, because <code>deadline.expired()</code>
+is true only when that scope is what did the cancelling. A model cannot
+repair a call it has been lied to about.</p>
 <h2 id="what-bites-people">What bites people<a class="headerlink" href="#what-bites-people" title="Anchor link">&para;</a></h2>
 <ul>
 <li><strong>Every MCP tool is <code>side_effecting=True</code>.</strong> MCP has no standard
@@ -3652,10 +4485,32 @@ when a tool is <em>mostly</em> safe:</p>
 <li><strong>One session per context.</strong> Servers that keep per-session state (open
   file handles, a DB transaction) lose it if you split calls across
   independent <code>MCPClient</code> contexts.</li>
-<li><strong><code>ApprovalServer</code> binds loopback with no authentication.</strong> Anything
-  able to reach that port can answer permission prompts on the agent's
-  behalf. Loopback-only <em>is</em> the containment; do not bind it to a
-  routable address.</li>
+<li><strong>Both servers require a generated bearer token, and the token is
+  the fence rather than loopback.</strong> Without it, anything able to reach
+  <code>ApprovalServer</code>'s port could answer permission prompts on the
+  agent's behalf, and anything able to reach a <code>serve_registry</code> port
+  could <em>run your tools</em>, <code>requires_approval</code> ones included — that flag
+  is a declaration the CLI reads, not a check the server performs. The
+  credential is checked on HTTP requests and every other ASGI scope is
+  refused outright. Still do not give <code>host=</code> a routable address:
+  the token narrows who can call, not who can reach.</li>
+<li><strong><code>ApprovalDecision.reason</code> is unredacted text from outside this
+  library</strong> — a reviewer's free-text note, or the message of an
+  exception raised by your own <code>Asker</code> — and unlike <code>arguments</code> it IS
+  broadcast on <code>ctx.emit</code>. Plan retention for it. Nothing here redacts
+  anything, deliberately: a library that half-redacted would hand you
+  an audit trail nobody can trust to be complete.</li>
+<li><strong><code>serve_registry(timeout_s=None)</code> is the default, and it means
+  forever.</strong> A tool that never returns parks the CLI turn with no
+  signal anywhere: the CLI waits on the MCP call, agentkit waits on the
+  tool, nothing times out. A default deadline would be the worse
+  mistake — it would kill a legitimately slow tool, a long build or a
+  human-in-the-loop approval, and read as a flake — so the caller has
+  to say which of those they have.</li>
+<li><strong>A served tool with no <code>schema</code> is silently absent.</strong> It is dropped
+  rather than advertised with an invented empty <code>inputSchema</code>, so a
+  tool you registered can simply not be there. <code>spec.tool_names</code> is the
+  authoritative list of what the CLI will actually see.</li>
 <li><strong>The <code>mcp</code> extra brings <code>pydantic</code></strong> (and, transitively, <code>uvicorn</code>
   and <code>starlette</code>, which is why <code>ApprovalServer</code> adds no new
   dependency). If your install was pydantic-free by design, the extra
@@ -3696,7 +4551,7 @@ when a tool is <em>mostly</em> safe:</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 01:34:18 UTC">August 31, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 04:44:02 UTC">August 31, 2026</span>
   </span>
 
     
@@ -3751,13 +4606,13 @@ when a tool is <em>mostly</em> safe:</p>
         
         
           
-          <a href="../observability/" class="md-footer__link md-footer__link--next" aria-label="Next: Observability">
+          <a href="../claude-cli/" class="md-footer__link md-footer__link--next" aria-label="Next: The Claude CLI">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Observability
+                The Claude CLI
               </div>
             </div>
             <div class="md-footer__button md-icon">

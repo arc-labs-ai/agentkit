@@ -922,6 +922,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The decorators">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-only-by-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only by policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1109,6 +1126,34 @@
     
   
     Integrations (MCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Claude CLI
   
 
     
@@ -3003,6 +3048,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The decorators">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-only-by-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only by policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -3541,7 +3603,179 @@ whatever order matches your concerns.</p>
 <li><strong><code>CompactedMemory</code></strong> — shrinks each item's content through a
   <code>Compactor</code>, with an optional <code>max_items</code> cap. For when raw chunks
   would blow the prefix budget.</li>
+<li><strong><code>ReadOnlyMemory</code></strong> — refuses (or deliberately drops) writes to a
+  source that is read-only by policy rather than by backend.</li>
 </ul>
+<h4 id="read-only-by-policy">Read-only by policy<a class="headerlink" href="#read-only-by-policy" title="Anchor link">&para;</a></h4>
+<p>Some sources an agent may read and must never extend: a curated
+knowledge base, a registry an operator maintains, a corpus of recorded
+facts. Nothing about the <em>backend</em> says so — the vector store behind a
+curated KB takes an upsert exactly like any other. Before this
+decorator the only thing protecting them was that nothing happened to
+call <code>write</code>, which is a property of the code as it currently stands
+rather than a rule. The first cognition taught to persist what it
+learned would have written into the registry, and nothing would have
+complained.</p>
+<p><code>ReadOnlyMemory</code> constrains exactly one verb.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompositeMemory</span><span class="p">,</span> <span class="n">MemoryItem</span><span class="p">,</span> <span class="n">MemoryWriteRefused</span><span class="p">,</span> <span class="n">ReadOnlyMemory</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory.composite</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompositeWriteError</span>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">FakeMemory</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">registry</span> <span class="o">=</span> <span class="n">FakeMemory</span><span class="p">(</span>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;registry&quot;</span><span class="p">,</span>
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="n">items</span><span class="o">=</span><span class="p">[</span><span class="n">MemoryItem</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;eu-west-1 is the GDPR-resident region.&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;registry&quot;</span><span class="p">)],</span>
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="p">)</span>
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="n">curated</span> <span class="o">=</span> <span class="n">ReadOnlyMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">registry</span><span class="p">)</span>
+</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="n">guess</span> <span class="o">=</span> <span class="p">[</span><span class="n">MemoryItem</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;I think it is eu-west-2.&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;agent&quot;</span><span class="p">)]</span>
+</span><span id="__span-15-13"><a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>
+</span><span id="__span-15-14"><a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>
+</span><span id="__span-15-15"><a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-15-16"><a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">())</span>
+</span><span id="__span-15-17"><a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a>
+</span><span id="__span-15-18"><a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;name:&quot;</span><span class="p">,</span> <span class="n">curated</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="s2">&quot;| accepts_writes:&quot;</span><span class="p">,</span> <span class="n">curated</span><span class="o">.</span><span class="n">accepts_writes</span><span class="p">)</span>
+</span><span id="__span-15-19"><a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;recall:&quot;</span><span class="p">,</span> <span class="p">[(</span><span class="n">i</span><span class="o">.</span><span class="n">source</span><span class="p">,</span> <span class="n">i</span><span class="o">.</span><span class="n">content</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">curated</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;region&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)])</span>
+</span><span id="__span-15-20"><a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>
+</span><span id="__span-15-21"><a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-15-22"><a id="__codelineno-15-22" name="__codelineno-15-22" href="#__codelineno-15-22"></a>        <span class="k">await</span> <span class="n">curated</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">guess</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-15-23"><a id="__codelineno-15-23" name="__codelineno-15-23" href="#__codelineno-15-23"></a>    <span class="k">except</span> <span class="n">MemoryWriteRefused</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-15-24"><a id="__codelineno-15-24" name="__codelineno-15-24" href="#__codelineno-15-24"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;refused:&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">source</span><span class="p">,</span> <span class="s2">&quot;| items:&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+</span><span id="__span-15-25"><a id="__codelineno-15-25" name="__codelineno-15-25" href="#__codelineno-15-25"></a>
+</span><span id="__span-15-26"><a id="__codelineno-15-26" name="__codelineno-15-26" href="#__codelineno-15-26"></a>    <span class="c1"># Default policy inside a fan-out: the refusal is a failure.</span>
+</span><span id="__span-15-27"><a id="__codelineno-15-27" name="__codelineno-15-27" href="#__codelineno-15-27"></a>    <span class="n">strict</span> <span class="o">=</span> <span class="n">CompositeMemory</span><span class="p">(</span><span class="n">sources</span><span class="o">=</span><span class="p">[</span><span class="n">FakeMemory</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;notes&quot;</span><span class="p">),</span> <span class="n">curated</span><span class="p">])</span>
+</span><span id="__span-15-28"><a id="__codelineno-15-28" name="__codelineno-15-28" href="#__codelineno-15-28"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-15-29"><a id="__codelineno-15-29" name="__codelineno-15-29" href="#__codelineno-15-29"></a>        <span class="k">await</span> <span class="n">strict</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">guess</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-15-30"><a id="__codelineno-15-30" name="__codelineno-15-30" href="#__codelineno-15-30"></a>    <span class="k">except</span> <span class="n">CompositeWriteError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-15-31"><a id="__codelineno-15-31" name="__codelineno-15-31" href="#__codelineno-15-31"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;strict :&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">accepted</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">refused</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">exc</span><span class="o">.</span><span class="n">failed</span><span class="p">))</span>
+</span><span id="__span-15-32"><a id="__codelineno-15-32" name="__codelineno-15-32" href="#__codelineno-15-32"></a>
+</span><span id="__span-15-33"><a id="__codelineno-15-33" name="__codelineno-15-33" href="#__codelineno-15-33"></a>    <span class="c1"># &quot;ignore&quot;: the writable member commits, the read-only one is bucketed apart.</span>
+</span><span id="__span-15-34"><a id="__codelineno-15-34" name="__codelineno-15-34" href="#__codelineno-15-34"></a>    <span class="n">lenient_kb</span> <span class="o">=</span> <span class="n">ReadOnlyMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">registry</span><span class="p">,</span> <span class="n">on_write</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+</span><span id="__span-15-35"><a id="__codelineno-15-35" name="__codelineno-15-35" href="#__codelineno-15-35"></a>    <span class="n">notes</span> <span class="o">=</span> <span class="n">FakeMemory</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;notes&quot;</span><span class="p">)</span>
+</span><span id="__span-15-36"><a id="__codelineno-15-36" name="__codelineno-15-36" href="#__codelineno-15-36"></a>    <span class="k">await</span> <span class="n">CompositeMemory</span><span class="p">(</span><span class="n">sources</span><span class="o">=</span><span class="p">[</span><span class="n">notes</span><span class="p">,</span> <span class="n">lenient_kb</span><span class="p">])</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">guess</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-15-37"><a id="__codelineno-15-37" name="__codelineno-15-37" href="#__codelineno-15-37"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;lenient: notes wrote&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">notes</span><span class="o">.</span><span class="n">writes</span><span class="p">),</span> <span class="s2">&quot;| registry wrote&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">registry</span><span class="o">.</span><span class="n">writes</span><span class="p">))</span>
+</span><span id="__span-15-38"><a id="__codelineno-15-38" name="__codelineno-15-38" href="#__codelineno-15-38"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;         refused_writes =&quot;</span><span class="p">,</span> <span class="n">lenient_kb</span><span class="o">.</span><span class="n">refused_writes</span><span class="p">)</span>
+</span><span id="__span-15-39"><a id="__codelineno-15-39" name="__codelineno-15-39" href="#__codelineno-15-39"></a>
+</span><span id="__span-15-40"><a id="__codelineno-15-40" name="__codelineno-15-40" href="#__codelineno-15-40"></a>
+</span><span id="__span-15-41"><a id="__codelineno-15-41" name="__codelineno-15-41" href="#__codelineno-15-41"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>name: registry | accepts_writes: False
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>recall: [(&#39;registry&#39;, &#39;eu-west-1 is the GDPR-resident region.&#39;)]
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>refused: registry | items: 1
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>strict : [&#39;notes&#39;] [] [&#39;registry&#39;]
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>lenient: notes wrote 1 | registry wrote 0
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>         refused_writes = 1
+</span></code></pre></div>
+<p>Read the first two lines before the interesting part. <code>name</code> is
+<code>registry</code>, not <code>read-only</code>, and the item comes back stamped
+<code>source="registry"</code> as though the wrapper were not there: <code>query</code> is a
+total pass-through — same <code>k</code>, same <code>where</code>, same items, no filtering
+and no defensive copy. That is deliberate twice over. A read-only
+source is meant to participate in recall exactly like every other
+source, which is the whole reason to keep it around; and
+<code>MemoryItem.source</code> is stamped from <code>name</code>, which the
+<a href="#deduping-the-fan-out">fan-out dedupe</a> treats as identity — a wrapper
+that renamed the source would make the same fact stop merging depending
+on whether it arrived through the wrapped path or the bare one.</p>
+<p><strong><code>on_write="refuse"</code></strong> (the default) raises <code>MemoryWriteRefused</code>,
+carrying the source name and the item count. It subclasses
+<code>AgentkitError</code>, so a run boundary already catching the framework's
+taxonomy catches this too. <code>PermissionError</code> was the other candidate
+and was rejected: <code>ScopedMemory</code> raises that for a tenant-boundary
+violation, and "wrong tenant" and "right tenant, immutable source" want
+different fixes at the catch site.</p>
+<p>An empty write refuses as well — <code>write([])</code> reports <code>n=0</code> in the
+exception rather than passing. The policy is about the attempt, not
+about bytes moved: code that reaches <code>write</code> on a read-only source will
+carry items the moment its input is non-empty, and letting the empty
+call through moves the discovery from the first test run to production.
+Nothing pays for that strictness, because both <code>CompositeMemory.write</code>
+and <code>SequentialMemory.write</code> return on an empty list before reaching
+any source.</p>
+<p><strong><code>on_write="ignore"</code></strong> exists because <code>CompositeMemory.write</code>
+broadcasts to <em>every</em> source, and the <code>strict</code> line above is what that
+costs under the default. The refusal is an exception like any other, so
+it lands in <code>CompositeWriteError.failed</code> and the entire broadcast
+raises — after <code>notes</code> has already committed, which is why it shows up
+in <code>accepted</code>. One read-only member makes every write through that
+composite an error, and that is a wrong report rather than a strict
+one: nothing is broken.</p>
+<p>Under <code>ignore</code> the source returns normally having written nothing, and
+the composite files it in a <strong>third bucket</strong>. <code>CompositeWriteError</code>
+carries <code>accepted</code>, <code>refused</code> and <code>failed</code>, and <code>refused</code> is not a
+slice of <code>accepted</code> — <code>accepted</code> is what an operator reads to decide
+which backends <em>not</em> to replay after a partial commit, and a source
+that never committed does not belong on that list. Note what the
+<code>lenient</code> line does <strong>not</strong> print: nothing failed, so no exception is
+raised at all. <code>refused</code> only becomes visible when some <em>other</em> member
+of the same fan-out fails, and then it appears in the message as
+<code>refused (read-only): [...]</code>.</p>
+<p>That is the honest cost of <code>ignore</code>: on the happy path the caller of
+<code>write</code> is told nothing. "Silently succeeded" is the failure mode this
+package keeps writing tests against, so the drop is accounted for three
+ways out of band —</p>
+<ul>
+<li><code>refused_writes</code> counts the turned-away calls on the instance (the
+  last line of the example),</li>
+<li>a <code>memory.write_refused</code> observation lands on the run's timeline
+  carrying the source, the item count and the policy,</li>
+<li>and <code>accepts_writes = False</code> is the marker the composite reads to
+  bucket it.</li>
+</ul>
+<p><code>accepts_writes</code> is the one attribute these decorators agree on beyond
+the Protocol, and it is read as <code>getattr(source, "accepts_writes",
+True)</code> so every backend written before it existed keeps the permissive
+default. It is deliberately <strong>not</strong> on <code>MemorySource</code>: that Protocol is
+<code>@runtime_checkable</code>, and adding a non-method member would make
+<code>isinstance(x, MemorySource)</code> <code>False</code> for every backend that predates
+it. On <code>ReadOnlyMemory</code> it is a <code>ClassVar</code> rather than a field, so no
+caller can pass <code>accepts_writes=True</code> to a read-only source.</p>
+<p>It also survives nesting, which is what makes it worth having:</p>
+<table>
+<thead>
+<tr>
+<th>Wrapper</th>
+<th><code>accepts_writes</code> is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ScopedMemory</code>, <code>CachedMemory</code>, <code>CompactedMemory</code></td>
+<td>the wrapped source's</td>
+</tr>
+<tr>
+<td><code>CompositeMemory</code></td>
+<td><code>any(...)</code> — true if at least one member can commit</td>
+</tr>
+<tr>
+<td><code>SequentialMemory</code></td>
+<td>the <strong>first</strong> source's, the only one <code>write</code> touches</td>
+</tr>
+</tbody>
+</table>
+<p>So <code>ScopedMemory(ReadOnlyMemory(kb))</code> inside a fan-out is still
+bucketed as refused rather than accepted, and an all-read-only
+<code>CompositeMemory</code> nested in an outer one reports <code>False</code> instead of
+laundering itself into the outer <code>accepted</code>. The <code>SequentialMemory</code> row
+is the sharp edge: a chain whose <em>cache tier</em> is read-only reports
+<code>False</code> even when the vector tier behind it is perfectly writable. That
+is correct — <code>SequentialMemory.write</code> only ever touches the first
+source — but it reads as wrong if you think of the marker as being
+about "the sources" rather than about the write target.</p>
+<p>One nicety falls out of the same marker: <code>ScopedMemory.write</code> skips its
+<code>memory.written</code> observation when the source beneath it does not accept
+writes, so an <code>ignore</code> stack does not put a write on the operator's
+timeline that never happened.</p>
+<p><code>ReadOnlyMemory</code> is a <code>MemorySource</code> like the rest, so it nests in both
+directions and the order decides what you get.
+<code>ReadOnlyMemory(ScopedMemory(kb))</code> refuses before the tenant check runs
+— cheaper, and no <code>PermissionError</code> masking the real reason;
+<code>ScopedMemory(ReadOnlyMemory(kb))</code> checks the tenant first.
+Double-wrapping is harmless, since the outer refuses and the inner
+never runs. And a typo in <code>on_write</code> is a <code>ValueError</code> at construction
+rather than at the first write, because a policy that only surfaced
+when something tried to write would lie dormant for exactly as long as
+the bug this class replaces.</p>
 <h2 id="tenant-scoping">Tenant scoping<a class="headerlink" href="#tenant-scoping" title="Anchor link">&para;</a></h2>
 <p>Multi-tenant isolation happens on two levels, and you want both.</p>
 <p><strong>At the backend.</strong> <code>VectorMemory</code> passes <code>ctx.scope</code> straight through to
@@ -3552,38 +3786,38 @@ source at all unless the scope is populated. The default policy requires
 <strong>both</strong> <code>org_id</code> and <code>domain_id</code> to be set — checked with explicit
 <code>is not None</code>, because a valid tenant id may be <code>0</code> (the <code>root</code> org, the
 <code>default</code> domain) and <code>bool(0)</code> would misclassify it as unscoped.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.vector.in_memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryVector</span>
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
-</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryItem</span><span class="p">,</span> <span class="n">ScopedMemory</span><span class="p">,</span> <span class="n">VectorMemory</span>
-</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
-</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">guarded</span> <span class="o">=</span> <span class="n">ScopedMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">VectorMemory</span><span class="p">(</span><span class="n">vector</span><span class="o">=</span><span class="n">InMemoryVector</span><span class="p">(),</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;handbook&quot;</span><span class="p">))</span>
-</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>
-</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>
-</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>    <span class="n">tenant</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(),</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-</span><span id="__span-15-13"><a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>    <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">write</span><span class="p">([</span><span class="n">MemoryItem</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Tenant 1 policy.&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)],</span> <span class="n">ctx</span><span class="o">=</span><span class="n">tenant</span><span class="p">)</span>
-</span><span id="__span-15-14"><a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;in-tenant:   &quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">i</span><span class="o">.</span><span class="n">content</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">tenant</span><span class="p">)])</span>
-</span><span id="__span-15-15"><a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>
-</span><span id="__span-15-16"><a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>    <span class="n">other</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(),</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-</span><span id="__span-15-17"><a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;other tenant:&quot;</span><span class="p">,</span> <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">other</span><span class="p">))</span>
-</span><span id="__span-15-18"><a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;guard name:  &quot;</span><span class="p">,</span> <span class="n">guarded</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-</span><span id="__span-15-19"><a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>
-</span><span id="__span-15-20"><a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>    <span class="n">unscoped</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">())</span>  <span class="c1"># Scope() — no org_id, no domain_id</span>
-</span><span id="__span-15-21"><a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-15-22"><a id="__codelineno-15-22" name="__codelineno-15-22" href="#__codelineno-15-22"></a>        <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">unscoped</span><span class="p">)</span>
-</span><span id="__span-15-23"><a id="__codelineno-15-23" name="__codelineno-15-23" href="#__codelineno-15-23"></a>    <span class="k">except</span> <span class="ne">PermissionError</span><span class="p">:</span>
-</span><span id="__span-15-24"><a id="__codelineno-15-24" name="__codelineno-15-24" href="#__codelineno-15-24"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;refused: unscoped run&quot;</span><span class="p">)</span>
-</span><span id="__span-15-25"><a id="__codelineno-15-25" name="__codelineno-15-25" href="#__codelineno-15-25"></a>
-</span><span id="__span-15-26"><a id="__codelineno-15-26" name="__codelineno-15-26" href="#__codelineno-15-26"></a>
-</span><span id="__span-15-27"><a id="__codelineno-15-27" name="__codelineno-15-27" href="#__codelineno-15-27"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.adapters.vector.in_memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryVector</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">MemoryItem</span><span class="p">,</span> <span class="n">ScopedMemory</span><span class="p">,</span> <span class="n">VectorMemory</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="n">guarded</span> <span class="o">=</span> <span class="n">ScopedMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">VectorMemory</span><span class="p">(</span><span class="n">vector</span><span class="o">=</span><span class="n">InMemoryVector</span><span class="p">(),</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;handbook&quot;</span><span class="p">))</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>    <span class="n">tenant</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(),</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">write</span><span class="p">([</span><span class="n">MemoryItem</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Tenant 1 policy.&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)],</span> <span class="n">ctx</span><span class="o">=</span><span class="n">tenant</span><span class="p">)</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;in-tenant:   &quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">i</span><span class="o">.</span><span class="n">content</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">tenant</span><span class="p">)])</span>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>    <span class="n">other</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(),</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;other tenant:&quot;</span><span class="p">,</span> <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">other</span><span class="p">))</span>
+</span><span id="__span-17-18"><a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;guard name:  &quot;</span><span class="p">,</span> <span class="n">guarded</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+</span><span id="__span-17-19"><a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>
+</span><span id="__span-17-20"><a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>    <span class="n">unscoped</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">())</span>  <span class="c1"># Scope() — no org_id, no domain_id</span>
+</span><span id="__span-17-21"><a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-17-22"><a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>        <span class="k">await</span> <span class="n">guarded</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">unscoped</span><span class="p">)</span>
+</span><span id="__span-17-23"><a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a>    <span class="k">except</span> <span class="ne">PermissionError</span><span class="p">:</span>
+</span><span id="__span-17-24"><a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;refused: unscoped run&quot;</span><span class="p">)</span>
+</span><span id="__span-17-25"><a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a>
+</span><span id="__span-17-26"><a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a>
+</span><span id="__span-17-27"><a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>in-tenant:    [&#39;Tenant 1 policy.&#39;]
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>other tenant: []
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>guard name:   handbook
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>refused: unscoped run
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>in-tenant:    [&#39;Tenant 1 policy.&#39;]
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>other tenant: []
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>guard name:   handbook
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>refused: unscoped run
 </span></code></pre></div>
 <p>A falsy return from <code>enforce</code> <strong>or</strong> any exception raised inside it both
 become <code>PermissionError</code>, and the inner source is never touched. Pass
@@ -3602,63 +3836,63 @@ it, stacking <code>ScopedMemory(CachedMemory(inner))</code> would pass tenant B'
 serialised as canonical JSON rather than a <code>frozenset</code> of its items,
 because <code>where={"tags": ["security", "finance"]}</code> breaks the set
 fallback — lists are not hashable.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
-</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">CachedMemory</span><span class="p">,</span> <span class="n">MemoryItem</span><span class="p">,</span> <span class="n">ScopedMemory</span>
-</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">FakeMemory</span><span class="p">,</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
-</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="n">slow</span> <span class="o">=</span> <span class="n">FakeMemory</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;handbook&quot;</span><span class="p">,</span> <span class="n">items</span><span class="o">=</span><span class="p">[</span><span class="n">MemoryItem</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Refunds take 5 days.&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)])</span>
-</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">ScopedMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">CachedMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">slow</span><span class="p">,</span> <span class="n">ttl_seconds</span><span class="o">=</span><span class="mf">30.0</span><span class="p">))</span>
-</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>
-</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>
-</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(),</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="k">await</span> <span class="n">memory</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;refunds&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="k">await</span> <span class="n">memory</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;refunds&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
-</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;backend calls:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">slow</span><span class="o">.</span><span class="n">queries</span><span class="p">))</span>
-</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>
-</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>
-</span><span id="__span-17-18"><a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.kernel.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scope</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">CachedMemory</span><span class="p">,</span> <span class="n">MemoryItem</span><span class="p">,</span> <span class="n">ScopedMemory</span>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">FakeMemory</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="n">slow</span> <span class="o">=</span> <span class="n">FakeMemory</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;handbook&quot;</span><span class="p">,</span> <span class="n">items</span><span class="o">=</span><span class="p">[</span><span class="n">MemoryItem</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="s2">&quot;Refunds take 5 days.&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)])</span>
+</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="n">memory</span> <span class="o">=</span> <span class="n">ScopedMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">CachedMemory</span><span class="p">(</span><span class="n">inner</span><span class="o">=</span><span class="n">slow</span><span class="p">,</span> <span class="n">ttl_seconds</span><span class="o">=</span><span class="mf">30.0</span><span class="p">))</span>
+</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>
+</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>
+</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">(),</span> <span class="n">scope</span><span class="o">=</span><span class="n">Scope</span><span class="p">(</span><span class="n">org_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">domain_id</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>    <span class="k">await</span> <span class="n">memory</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;refunds&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="k">await</span> <span class="n">memory</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;refunds&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>
+</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;backend calls:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">slow</span><span class="o">.</span><span class="n">queries</span><span class="p">))</span>
+</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>
+</span><span id="__span-19-17"><a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a>
+</span><span id="__span-19-18"><a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>backend calls: 1
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>backend calls: 1
 </span></code></pre></div>
 <h2 id="tool-backed-memory">Tool-backed memory<a class="headerlink" href="#tool-backed-memory" title="Anchor link">&para;</a></h2>
 <p><code>ToolMemory</code> adapts any <code>Tool</code> into a <code>MemorySource</code>. The tool is called
 with <code>{query_arg: query, "limit": k, **(where or {})}</code> — <code>where</code> keys
 merge in last, so a caller-supplied <code>limit</code> overrides <code>k</code>, which is the
 intuitive precedence.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolMemory</span>
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
-</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
-</span><span id="__span-19-7"><a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
-</span><span id="__span-19-8"><a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">idempotent</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="__span-19-9"><a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">search_docs</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
-</span><span id="__span-19-10"><a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Search the internal engineering handbook and return matching passages.&quot;&quot;&quot;</span>
-</span><span id="__span-19-11"><a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>    <span class="n">corpus</span> <span class="o">=</span> <span class="p">[</span>
-</span><span id="__span-19-12"><a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>        <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Deploys freeze on Fridays.&quot;</span><span class="p">,</span> <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;/handbook/deploys&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">},</span>
-</span><span id="__span-19-13"><a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>        <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Rollbacks need two approvers.&quot;</span><span class="p">,</span> <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;/handbook/rollback&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">},</span>
-</span><span id="__span-19-14"><a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="p">]</span>
-</span><span id="__span-19-15"><a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>    <span class="k">return</span> <span class="n">corpus</span><span class="p">[:</span><span class="n">limit</span><span class="p">]</span>
-</span><span id="__span-19-16"><a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>
-</span><span id="__span-19-17"><a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a>
-</span><span id="__span-19-18"><a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="n">probe</span> <span class="o">=</span> <span class="n">ToolMemory</span><span class="p">(</span><span class="n">tool</span><span class="o">=</span><span class="n">search_docs</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;handbook&quot;</span><span class="p">)</span>
-</span><span id="__span-19-19"><a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a>
-</span><span id="__span-19-20"><a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a>
-</span><span id="__span-19-21"><a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-19-22"><a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">())</span>
-</span><span id="__span-19-23"><a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">probe</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;deploy policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">):</span>
-</span><span id="__span-19-24"><a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">source</span><span class="p">,</span> <span class="n">item</span><span class="o">.</span><span class="n">score</span><span class="p">,</span> <span class="n">item</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">&quot;|&quot;</span><span class="p">,</span> <span class="n">item</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
-</span><span id="__span-19-25"><a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a>    <span class="k">await</span> <span class="n">probe</span><span class="o">.</span><span class="n">write</span><span class="p">([],</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>  <span class="c1"># no-op by contract</span>
-</span><span id="__span-19-26"><a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a>
-</span><span id="__span-19-27"><a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a>
-</span><span id="__span-19-28"><a id="__codelineno-19-28" name="__codelineno-19-28" href="#__codelineno-19-28"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.memory</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolMemory</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FakeLLM</span><span class="p">,</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">idempotent</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">search_docs</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Search the internal engineering handbook and return matching passages.&quot;&quot;&quot;</span>
+</span><span id="__span-21-11"><a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a>    <span class="n">corpus</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-21-12"><a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a>        <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Deploys freeze on Fridays.&quot;</span><span class="p">,</span> <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;/handbook/deploys&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">},</span>
+</span><span id="__span-21-13"><a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a>        <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Rollbacks need two approvers.&quot;</span><span class="p">,</span> <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;/handbook/rollback&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">},</span>
+</span><span id="__span-21-14"><a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a>    <span class="p">]</span>
+</span><span id="__span-21-15"><a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a>    <span class="k">return</span> <span class="n">corpus</span><span class="p">[:</span><span class="n">limit</span><span class="p">]</span>
+</span><span id="__span-21-16"><a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a>
+</span><span id="__span-21-17"><a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>
+</span><span id="__span-21-18"><a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a><span class="n">probe</span> <span class="o">=</span> <span class="n">ToolMemory</span><span class="p">(</span><span class="n">tool</span><span class="o">=</span><span class="n">search_docs</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;handbook&quot;</span><span class="p">)</span>
+</span><span id="__span-21-19"><a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a>
+</span><span id="__span-21-20"><a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a>
+</span><span id="__span-21-21"><a id="__codelineno-21-21" name="__codelineno-21-21" href="#__codelineno-21-21"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-21-22"><a id="__codelineno-21-22" name="__codelineno-21-22" href="#__codelineno-21-22"></a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">make_test_ctx</span><span class="p">(</span><span class="n">llm</span><span class="o">=</span><span class="n">FakeLLM</span><span class="p">())</span>
+</span><span id="__span-21-23"><a id="__codelineno-21-23" name="__codelineno-21-23" href="#__codelineno-21-23"></a>    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">probe</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;deploy policy&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">):</span>
+</span><span id="__span-21-24"><a id="__codelineno-21-24" name="__codelineno-21-24" href="#__codelineno-21-24"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">source</span><span class="p">,</span> <span class="n">item</span><span class="o">.</span><span class="n">score</span><span class="p">,</span> <span class="n">item</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">&quot;|&quot;</span><span class="p">,</span> <span class="n">item</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+</span><span id="__span-21-25"><a id="__codelineno-21-25" name="__codelineno-21-25" href="#__codelineno-21-25"></a>    <span class="k">await</span> <span class="n">probe</span><span class="o">.</span><span class="n">write</span><span class="p">([],</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">)</span>  <span class="c1"># no-op by contract</span>
+</span><span id="__span-21-26"><a id="__codelineno-21-26" name="__codelineno-21-26" href="#__codelineno-21-26"></a>
+</span><span id="__span-21-27"><a id="__codelineno-21-27" name="__codelineno-21-27" href="#__codelineno-21-27"></a>
+</span><span id="__span-21-28"><a id="__codelineno-21-28" name="__codelineno-21-28" href="#__codelineno-21-28"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>handbook 0.9 {&#39;url&#39;: &#39;/handbook/deploys&#39;} | Deploys freeze on Fridays.
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>handbook 0.7 {&#39;url&#39;: &#39;/handbook/rollback&#39;} | Rollbacks need two approvers.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>handbook 0.9 {&#39;url&#39;: &#39;/handbook/deploys&#39;} | Deploys freeze on Fridays.
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>handbook 0.7 {&#39;url&#39;: &#39;/handbook/rollback&#39;} | Rollbacks need two approvers.
 </span></code></pre></div>
 <p><code>default_parse</code> handles four shapes and refuses to be clever about
 anything else:</p>
@@ -3761,7 +3995,7 @@ too.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 30, 2026 23:57:18 UTC">August 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 02:37:46 UTC">August 31, 2026</span>
   </span>
 
     
