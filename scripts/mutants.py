@@ -203,6 +203,7 @@ APPROVAL_AUTONOMY_TESTS = ("tests/integrations/mcp/test_approvals.py",)
 READONLY_TESTS = ("tests/memory/test_read_only_memory.py", "tests/memory/test_composite_memory_dedupe.py")
 TOOLDESC_TESTS = ("tests/tools/test_tool_description_resolution.py", "tests/tools/test_function_tool.py")
 CLIAGENT_TESTS = ("tests/integrations/claude_cli/",)
+HOOKS_TESTS = ("tests/integrations/claude_cli/test_hooks.py",)
 GROUNDING_TESTS = ("tests/capabilities/test_request_builder_grounding.py",)
 STORE_PRIM_TESTS = (
     "tests/adapters/test_store_primitives.py",
@@ -3246,6 +3247,54 @@ MUTANTS: tuple[Mutant, ...] = (
         before="            prefix = entry.split(\"*\", 1)[0]",
         after="            prefix = entry",
         tests=CLIAGENT_TESTS,
+    ),
+    Mutant(
+        tag="clihooks",
+        why="The fix I landed, inverted. An unreadable payload becoming a PASS is the exact fail-open I found in the as-shipped code: `{}` on stdout is 'no opinion', so the CLI's normal flow decides and under bypassPermissions the tool runs with the chain having inspected nothing. Invisible to every deny test \u2014 only a test that feeds a MALFORMED payload and asserts a deny catches it, and there was none.",
+        path="agentkit/integrations/claude_cli/hooks.py",
+        before="            body = _deny(reason)",
+        after="            body = _pass()",
+        tests=HOOKS_TESTS,
+    ),
+    Mutant(
+        tag="clihooks",
+        why="The tool name is the only identity the two processes agree on, and `if ctx.request.name == \"Bash\"` is how most real guards are written \u2014 so dropping it on the floor makes every name-keyed guard inert while the hook still answers, still records decisions, and still denies in the one test that uses a name-blind middleware. Every pre-existing shell-out test used `_PathAllowlist`, which never reads the name; this mutant survived the shipped suite untouched.",
+        path="agentkit/integrations/claude_cli/hooks.py",
+        before="body = await self._decide(tool_name, arguments)",
+        after="body = await self._decide(\"\", arguments)",
+        tests=HOOKS_TESTS,
+    ),
+    Mutant(
+        tag="clihooks",
+        why="The matcher is a regex a DIFFERENT process compiles, and the anchors are the difference between guarding `Write` and guarding everything whose name contains `Write`. The shipped assertion (`\"SomeNewTool\" in matcher`) is a substring check, which is true with or without anchors \u2014 so the one property the anchors exist for was never tested. Unanchored, a `Read` matcher also fires for `ReadWrite` and an `Edit` matcher for `NotebookEdit`: a guard applying where nobody chose, with the deny reason naming a tool the caller never listed.",
+        path="agentkit/integrations/claude_cli/hooks.py",
+        before="\"matcher\": f\"^({'|'.join(names)})$\",",
+        after="\"matcher\": f\"({'|'.join(names)})\",",
+        tests=HOOKS_TESTS,
+    ),
+    Mutant(
+        tag="clihooks",
+        why="The single most consequential number in the generated file, and the module docstring is explicit about why: a hook the CLI times out is a NON-blocking error, so the CLI prints it and RUNS the tool. Inverting the order means a chain that is merely slow \u2014 not refusing, just slow \u2014 turns into the fail-open the whole layered-deadline design exists to close. It is two integers in two generated files, so nothing in-process can notice; every behavioural test still passes because the tests never let the CLI's deadline be the one that fires.",
+        path="agentkit/integrations/claude_cli/hooks.py",
+        before="cli_timeout = int(timeout_s + 4.0) + 1",
+        after="cli_timeout = max(1, int(timeout_s))",
+        tests=HOOKS_TESTS,
+    ),
+    Mutant(
+        tag="clihooks",
+        why="`_NATIVE_TOOLS`'s fallback is a policy decision the code comments on ('a middleware keyed on that flag should treat a tool it has never heard of as the dangerous kind') and nothing asserted. It only bites through `allow_unknown_tools=True` \u2014 i.e. the escape hatch for a CLI that grew a tool \u2014 which is precisely when you least want the new tool silently reclassified as read-only and waved past a side-effect guard.",
+        path="agentkit/integrations/claude_cli/hooks.py",
+        before="_NATIVE_TOOLS.get(tool_name, (True, None))",
+        after="_NATIVE_TOOLS.get(tool_name, (False, None))",
+        tests=HOOKS_TESTS,
+    ),
+    Mutant(
+        tag="clihooks",
+        why="The script is the guard's entire presence on disk and the CLI executes whatever is in it, so its mode is a security control, not housekeeping. The suite asserted the 0700 directory and never the file \u2014 and the directory alone is not the argument the docstring makes (it claims mkdtemp's mode AND an owner-only script). A one-character regression here is invisible to every behavioural test, because a world-writable script still works perfectly.",
+        path="agentkit/integrations/claude_cli/hooks.py",
+        before="script_path.chmod(0o600)",
+        after="script_path.chmod(0o666)",
+        tests=HOOKS_TESTS,
     ),
 )
 
