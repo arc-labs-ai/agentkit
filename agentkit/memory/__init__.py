@@ -15,6 +15,8 @@ adapters land alongside as they're written:
 - ``ScopedMemory``   — Decorator enforcing ``ctx.scope`` at the boundary.
 - ``CompactedMemory``— Decorator summarising results via a ``Compactor``.
 - ``CachedMemory``   — Decorator caching hot queries with a TTL.
+- ``ReadOnlyMemory`` — Decorator refusing (or dropping) writes, for a
+  source that is read-only by policy rather than by backend.
 """
 
 from agentkit.memory.base import (
@@ -37,7 +39,19 @@ from agentkit.memory.composite import (
     DedupeMode,
     SequentialMemory,
 )
-from agentkit.memory.decorators import CachedMemory, CompactedMemory, ScopedMemory
+
+# ``MemoryWriteRefused`` rides alongside ``ReadOnlyMemory`` for the same
+# reason ``CompositeWriteError`` rides alongside ``CompositeMemory``: the
+# error a caller has to catch must not live at a deeper import path than
+# the class that raises it.
+from agentkit.memory.decorators import (
+    CachedMemory,
+    CompactedMemory,
+    MemoryWriteRefused,
+    OnWritePolicy,
+    ReadOnlyMemory,
+    ScopedMemory,
+)
 from agentkit.memory.file import FileMemory
 from agentkit.memory.grounder import as_grounder, as_grounding_source
 from agentkit.memory.journal import JournalMemory
@@ -61,6 +75,9 @@ __all__ = [
     "JournalMemory",
     "MemoryItem",
     "MemorySource",
+    "MemoryWriteRefused",
+    "OnWritePolicy",
+    "ReadOnlyMemory",
     "Reranker",
     "ScopedMemory",
     "ScratchpadMemory",

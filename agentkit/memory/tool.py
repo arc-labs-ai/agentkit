@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from agentkit.kernel.protocols import Ctx
 from agentkit.memory.base import MemoryItem
@@ -162,6 +162,16 @@ class ToolMemory:
     query_arg: str = "query"
     result_to_items: Callable[[Any, str], list[MemoryItem]] | None = None
     name: str = field(default="tool")
+
+    # The structural marker ``CompositeMemory.write`` reads (see
+    # ``memory/decorators.py``). Without it the no-op ``write`` below is
+    # indistinguishable from a successful commit, and a fan-out that
+    # partially failed would list this source under
+    # ``CompositeWriteError.accepted`` — telling an operator not to
+    # replay a write that never happened. ``ClassVar`` so it stays out of
+    # the generated ``__init__``: read-only is a fact about the adapter,
+    # not a knob.
+    accepts_writes: ClassVar[bool] = False
 
     async def query(
         self,

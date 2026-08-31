@@ -199,6 +199,10 @@ MEM_DEDUPE_TESTS = (
 MEM_VECTOR_TESTS = ("tests/memory/test_vector_memory.py",)
 WORKFLOW_MAP_TESTS = ("tests/agents/test_workflow_map.py",)
 RECURRENCE_TESTS = ("tests/kernel/test_attempt_until_stuck.py",)
+APPROVAL_AUTONOMY_TESTS = ("tests/integrations/mcp/test_approvals.py",)
+READONLY_TESTS = ("tests/memory/test_read_only_memory.py", "tests/memory/test_composite_memory_dedupe.py")
+TOOLDESC_TESTS = ("tests/tools/test_tool_description_resolution.py", "tests/tools/test_function_tool.py")
+CLIAGENT_TESTS = ("tests/integrations/claude_cli/",)
 GROUNDING_TESTS = ("tests/capabilities/test_request_builder_grounding.py",)
 STORE_PRIM_TESTS = (
     "tests/adapters/test_store_primitives.py",
@@ -265,16 +269,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="approvals",
         why="auto_allow_when can BROADEN instead of only narrowing, becoming a second way in",
         path="agentkit/integrations/mcp/approvals.py",
-        before=(
-            "        if tool_name in self.auto_allow and self._arguments_are_auto_allowed(\n"
-            "            tool_name, arguments\n"
-            "        ):"
-        ),
-        after=(
-            "        if tool_name in self.auto_allow or self._arguments_are_auto_allowed(\n"
-            "            tool_name, arguments\n"
-            "        ):"
-        ),
+        before="            tier != Autonomy.MANUAL\n            and tool_name in self.auto_allow\n            and self._arguments_are_auto_allowed(tool_name, arguments)",
+        after="            tier != Autonomy.MANUAL\n            and tool_name in self.auto_allow\n            or self._arguments_are_auto_allowed(tool_name, arguments)",
         tests=APPROVAL_TESTS,
     ),
     Mutant(
@@ -1275,23 +1271,23 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="approvals",
         why="an expired prompt allows, so a slow reviewer becomes a yes",
         path="agentkit/integrations/mcp/approvals.py",
-        before='            return Decision(kind="expired", note=f"no answer within {self.timeout_s}s")',
-        after='            return Decision(kind="approve", note="timed out")',
+        before="            return Decision(kind=\"expired\", note=f\"no answer within {timeout}s\")",
+        after="            return Decision(kind=\"approve\", note=\"timed out\")",
         tests=APPROVAL_TESTS,
     ),
     Mutant(
         tag="approvals",
         why="the timeout is not enforced, so a turn can park forever",
         path="agentkit/integrations/mcp/approvals.py",
-        before="        if self.timeout_s is None:\n            return await self.asker.ask(request)",
-        after="        if True:\n            return await self.asker.ask(request)",
+        before="        if timeout is None:\n            return await asker.ask(request)",
+        after="        if True:\n            return await asker.ask(request)",
         tests=APPROVAL_TESTS,
     ),
     Mutant(
         tag="approvals",
         why="a modify decision is treated as a plain approval, discarding the reviewer's edits",
         path="agentkit/integrations/mcp/approvals.py",
-        before='        if decision.kind == "modify" and isinstance(decision.value, dict):',
+        before="        if decision.kind == \"modify\":",
         after="        if False:",
         tests=APPROVAL_TESTS,
     ),
@@ -1307,12 +1303,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="approvals",
         why="auto_allow is ignored, so every read prompts and habituates the reviewer",
         path="agentkit/integrations/mcp/approvals.py",
-        before=(
-            "        if tool_name in self.auto_allow and self._arguments_are_auto_allowed(\n"
-            "            tool_name, arguments\n"
-            "        ):"
-        ),
-        after="        if False:",
+        before="            tier != Autonomy.MANUAL\n            and tool_name in self.auto_allow\n            and self._arguments_are_auto_allowed(tool_name, arguments)",
+        after="            False",
         tests=APPROVAL_TESTS,
     ),
     Mutant(
@@ -3046,6 +3038,214 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        \"metadata\": dict(item.metadata),\n",
         after="        \"metadata\": {},\n",
         tests=GROUNDING_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="A `value` decision counted as CONSENT. `_render` allowed on `kind in (\"approve\", \"value\")` while `Decision.approved` \u2014 the predicate `ReActCognition` gates on \u2014 is `kind in (\"approve\", \"modify\")`. Same Asker, same Decision: a refusal on agentkit's own tool loop, an approval here. Observed: `Decision(kind=\"value\", value=\"no, absolutely not\")` returned `{\"behavior\": \"allow\"}`. This is exactly the divergence class F2 routed `autonomy` through `should_gate` to prevent, and it was unpinned in either direction. FIXED by gating on `decision.approved`; the mutant reverts it.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        if not decision.approved:",
+        after="        if decision.kind not in (\"approve\", \"modify\", \"value\"):",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="`auto_allow=\"Read\"` \u2014 the missing comma \u2014 auto-allowed every SUBSTRING of itself, approving those calls with the reviewer never consulted. Observed against the shipped code: with `auto_allow=\"Read\"`, tool `\"R\"` -> allow and tool `\"ea\"` -> allow, asker never called. The constructor already refused three misconfigurations; this fourth one fails OPEN and was unguarded. FIXED with a construction-time refusal; the mutant removes it.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        if isinstance(self.auto_allow, str):",
+        after="        if False:",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="`_decide`'s stated never-raises contract was violated on all three ALLOW paths. `_allow()`'s `json.dumps` sat outside every `try`, so an unencodable argument escaped as `TypeError` \u2014 which the CLI reports as a BROKEN PERMISSION SYSTEM, not a denial, leaving the model to retry a call nobody approved. Observed: `RAISED TypeError` on the AUTO branch and the auto_allow branch. The catch-all on the reviewer path did fire but mislabelled it, emitting the self-contradictory `\"the reviewer's answer was not a Decision (Decision: TypeError: ...)\"`. FIXED by guarding serialisation inside `_allow` (also `allow_nan=False`, since bare `NaN` is not JSON and the CLI's parser rejects it).",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="    except (TypeError, ValueError) as exc:",
+        after="    except ValueError as exc:",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="uvicorn signals a failed bind with `sys.exit(3)`, and asyncio treats a Task's `SystemExit` as 'stop the loop' \u2014 so `start()` was cancelled at its `sleep` before ever reaching its own `_task.done()` branch. Observed against an occupied port: the caller got a bare `CancelledError`, a BaseException, so `except Exception` around the documented `async with ApprovalServer(...)` caught NOTHING and the process unwound (in the FastAPI recipe on this seam, the whole worker). FIXED by containing `SystemExit` inside `_serve` and converting it to a RuntimeError naming host:port; the mutant restores the raw `serve()`.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        self._task = asyncio.create_task(self._serve(self._server))",
+        after="        self._task = asyncio.create_task(self._server.serve())",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="THE SILENT SUCCESS. A failed `start()` left `_task` and `_server` set, so a retry hit `if self._task is not None: return` and returned cleanly from a server that was NOT listening \u2014 observed `serving=False` with no error raised. Its `url` then went to the CLI, which fails ~30s later with a startup timeout: precisely the failure the `while not self._server.started` wait loop was written to prevent, reached through the path meant to report it. FIXED by clearing both fields before raising; the mutant restores the leak.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        task, where = self._task, f\"{self.host}:{self.port}\"\n        self._task = None\n        self._server = None",
+        after="        task, where = self._task, f\"{self.host}:{self.port}\"",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="`timeout_s` re-assigned to 0 after construction denied EVERY prompt with the Asker never scheduled \u2014 `dontAsk`, the exact failure the module exists to remove \u2014 and did so under the message 'no answer within 0s', which blames a reviewer who was never asked and sends the operator to debug the transport. Observed: deny, `asker.seen == []`. The implementer built belt-and-braces for the other mutable field (`autonomy` -> `_tier()` fails closed) but not for this one. FIXED with the symmetric re-check in `_ask`; it still denies (closed direction) but now names the misconfiguration.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        if timeout <= 0:",
+        after="        if False:",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="SURVIVED THE SHIPPED SUITE \u2014 a genuine coverage gap, not a bug. `prompts_seen` was never asserted under `autonomy=\"auto\"`, which is the one tier where there is no Asker, no reviewer and no elicitation, so the count is the ONLY evidence the server saw a tool call and allowed it. A regression stopping the AUTO increment was invisible. Test added, no source change needed.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="        self._seen += 1\n",
+        after="        self._seen += 0 if self.autonomy == 'auto' else 1\n",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="approvals",
+        why="SURVIVED THE SHIPPED SUITE \u2014 the second coverage gap. Nothing asserted that `deadline_s` reaches the `Elicitation`. `timeout_s` is enforced server-side either way, so losing it is invisible to the CLI and very visible to the human: their pending card shows no deadline, they answer at their own pace, and the answer is discarded by a timeout they were never shown. Test added (both the 30.0 case and that None stays None), no source change needed.",
+        path="agentkit/integrations/mcp/approvals.py",
+        before="            deadline_s=self.timeout_s,",
+        after="            deadline_s=None,",
+        tests=APPROVAL_AUTONOMY_TESTS,
+    ),
+    Mutant(
+        tag="readonly",
+        why="The headline gap. `ToolMemory.accepts_writes = False` was scope the implementing agent chose to take on, and it shipped with ZERO assertions anywhere in the repo \u2014 flipping it back to True left the entire suite green, restoring the exact silent-no-op-reported-as-a-commit lie the change was written to close. Verified: `before` occurs exactly once in tool.py, mutated file ast.parses, SURVIVED the shipped suite and is now KILLED.",
+        path="agentkit/memory/tool.py",
+        before="    accepts_writes: ClassVar[bool] = False",
+        after="    accepts_writes: ClassVar[bool] = True",
+        tests=READONLY_TESTS,
+    ),
+    Mutant(
+        tag="readonly",
+        why="`CompactedMemory` was the one decorator whose marker mirroring nothing asserted \u2014 test_accepts_writes_propagates_through_the_other_decorators covers ScopedMemory and CachedMemory but skips it. Hardcoding the property to True means a CompactedMemory(ReadOnlyMemory(...)) member of a fan-out gets filed as accepted. Verified: `before` occurs exactly once, parses, SURVIVED the shipped suite, now KILLED.",
+        path="agentkit/memory/decorators.py",
+        before="        \"\"\"Compaction is a read-side concern; ``write`` is a straight\n        pass-through, so the marker is the wrapped source's.\"\"\"\n        return bool(getattr(self.inner, \"accepts_writes\", True))",
+        after="        \"\"\"MUTANT\"\"\"\n        return True",
+        tests=READONLY_TESTS,
+    ),
+    Mutant(
+        tag="readonly",
+        why="Turns the drop COUNTER into a flag. The shipped suite only ever asserted `refused_writes == 1` after a single write, so an assignment was indistinguishable from an increment \u2014 a decorator that reported '1' forever regardless of how many writes it turned away would have looked correct. The counter is explicitly one of the three accountability mechanisms the design leans on, so it has to actually count. Verified: `before` occurs exactly once, parses, SURVIVED the shipped suite, now KILLED.",
+        path="agentkit/memory/decorators.py",
+        before="        self.refused_writes += 1",
+        after="        self.refused_writes = 1",
+        tests=READONLY_TESTS,
+    ),
+    Mutant(
+        tag="readonly",
+        why="Guards the fix for the real defect. Hardcoding the fan-out's marker to True reinstates the nesting bug exactly: an all-read-only CompositeMemory nested in an outer composite is reported as `accepted`. Verified: `before` occurs exactly once in composite.py, parses, KILLED.",
+        path="agentkit/memory/composite.py",
+        before="        return any(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
+        after="        return True",
+        tests=READONLY_TESTS,
+    ),
+    Mutant(
+        tag="readonly",
+        why="Pins the any-vs-all choice, which is the subtle half of the fix. With `all`, a MIXED composite holding one writable and one read-only member would declare itself non-accepting and an outer fan-out would refuse to credit a commit that genuinely happened \u2014 the inverse lie, equally wrong for an operator deciding what to replay. Verified: `before` occurs exactly once, parses, KILLED.",
+        path="agentkit/memory/composite.py",
+        before="        return any(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
+        after="        return all(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
+        tests=READONLY_TESTS,
+    ),
+    Mutant(
+        tag="readonly",
+        why="Pins that SequentialMemory mirrors the source it actually WRITES to. `sources[-1]` is the plausible wrong choice: the chain writes to sources[0] only, so keying the marker off the last source reports a read-only cache tier as writable whenever the fallback tier happens to be writable. Verified: `before` occurs exactly once, parses, KILLED.",
+        path="agentkit/memory/composite.py",
+        before="        return bool(getattr(self.sources[0], \"accepts_writes\", True))",
+        after="        return bool(getattr(self.sources[-1], \"accepts_writes\", True))",
+        tests=READONLY_TESTS,
+    ),
+    Mutant(
+        tag="tooldesc",
+        why="THE BUG. `inspect.getdoc` dedents by the COMMON leading whitespace, so a developer note written one level in keeps its extra indent through the dedent and a column-0 anchor never sees it. Reverting to column-0-only lets `Notes on behaviour:` / `  - TODO: rewrite before Q3` ship to the model verbatim \u2014 the exact failure mode the check exists to prevent, arriving by the route authors actually take. Verified: `before` occurs exactly once, mutated source parses (ast.parse OK).",
+        path="agentkit/tools/schema.py",
+        before="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
+        after="_DEV_NOTE_RE = re.compile(r\"^(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
+        tests=TOOLDESC_TESTS,
+    ),
+    Mutant(
+        tag="tooldesc",
+        why="The bullet allowance specifically. A note is most often written as one list item among real ones, where the `- ` sits between the marker and the line start. Dropping only this clause still catches a plainly-indented note but silently passes the commonest form. Verified: `before` occurs exactly once, mutated source parses.",
+        path="agentkit/tools/schema.py",
+        before="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
+        after="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
+        tests=TOOLDESC_TESTS,
+    ),
+    Mutant(
+        tag="tooldesc",
+        why="`\\b` is the only thing keeping the guard from firing on ordinary prose that merely BEGINS with a marker. Without it, a docstring line reading `XXXL is a size, not a note.` or `HACKS are documented below.` becomes a hard ToolDefinitionError at import in somebody else's application \u2014 a false positive on a decoration-time refusal, which is the most expensive kind. The shipped suite did not pin this: its mid-sentence test is saved by the `^` anchor, not by `\\b`, so it passes with `\\b` removed. Verified: `before` occurs exactly once, mutated source parses.",
+        path="agentkit/tools/schema.py",
+        before="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
+        after="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\", re.MULTILINE)",
+        tests=TOOLDESC_TESTS,
+    ),
+    Mutant(
+        tag="tooldesc",
+        why="The second `.replace` handles a bare `\\r`, which is what a classic-Mac docstring uses throughout and what a `\\r\\r` paragraph break degrades to. The author's CRLF test only exercises the first replace, so this half was unpinned \u2014 and since the whole docstring now ships, an un-normalised `\\r` goes straight into the JSON handed to the provider. Observed with the mutant applied: the description came back as 'Do the documented thing properly.\\r\\r    And the second paragraph.' with the phantom indent intact. Verified: `before` occurs exactly once, mutated source parses.",
+        path="agentkit/tools/schema.py",
+        before="        doc = inspect.cleandoc(doc.replace(\"\\r\\n\", \"\\n\").replace(\"\\r\", \"\\n\"))",
+        after="        doc = inspect.cleandoc(doc.replace(\"\\r\\n\", \"\\n\"))",
+        tests=TOOLDESC_TESTS,
+    ),
+    Mutant(
+        tag="tooldesc",
+        why="The conditional clause the author added to the floor error so that a docstring emptied by its own `---` line reports something fixable instead of \"got 0 chars: ''\". The shipped suite exercises that scenario but asserts only on the generic half of the message, so the entire clause could be deleted with the suite still green \u2014 the explanatory feature was untested. Verified: `before` occurs exactly once, mutated source parses.",
+        path="agentkit/tools/schema.py",
+        before="            if description is None and tail_cut\n            else \"\"",
+        after="            if False\n            else \"\"",
+        tests=TOOLDESC_TESTS,
+    ),
+    Mutant(
+        tag="tooldesc",
+        why="The per-line `rstrip()` is load-bearing, not tidying, and nothing pinned it. Measured directly: `inspect.cleandoc`/`getdoc` dedent and trim blank lines at the ends but do NOT rstrip interior lines, so trailing whitespace an editor left behind survives into the description and now \u2014 with whole docstrings shipping \u2014 rides to the provider verbatim. Verified: `before` occurs exactly once, mutated source parses.",
+        path="agentkit/tools/schema.py",
+        before="    return \"\\n\".join(line.rstrip() for line in lines).strip(), cut",
+        after="    return \"\\n\".join(lines).strip(), cut",
+        tests=TOOLDESC_TESTS,
+    ),
+    Mutant(
+        tag="cliagents",
+        why="REVERTS MY FIX 1. Non-bare `disallowed_tools` entries stop being detected, so a skill that wrote `disallowed_tools=('mcp__*',)` \u2014 the spelling ClaudeCliCognition's own __post_init__ error message recommends \u2014 projects a sub-agent still holding every mcp__ tool. A widening past the skill, invisible in the output JSON. This was the SHIPPED behaviour; I observed it projecting tools ['Read','mcp__db__query','mcp__fs__write'].",
+        path="agentkit/integrations/claude_cli/agents.py",
+        before="        lost = _unsubtractable(tools, cognition.disallowed_tools)",
+        after="        lost = []",
+        tests=CLIAGENT_TESTS,
+    ),
+    Mutant(
+        tag="cliagents",
+        why="REVERTS MY FIX 2. An unrecognised ReActCognition registry is read as 'no tools' again, so a skill carrying real tools projects `tools: []` with no refusal, and the F1-seam MCP refusal below silently stops guarding. Observed on the shipped code with both a plain list and an arbitrary object.",
+        path="agentkit/integrations/claude_cli/agents.py",
+        before="        if not callable(names_of):",
+        after="        if False and not callable(names_of):",
+        tests=CLIAGENT_TESTS,
+    ),
+    Mutant(
+        tag="cliagents",
+        why="SURVIVED THE SHIPPED SUITE. The sub-agent name check stops being anchored at the right-hand end, so `reviewer_v2`, `reviewer!` and `reviewer ` all become valid CLI sub-agent names. The shipped suite's only invalid-name test used 'Code_Reviewer', which fails at position 0 and so is rejected by match() too \u2014 the anchoring was never pinned.",
+        path="agentkit/integrations/claude_cli/agents.py",
+        before="if not _CLI_AGENT_NAME.fullmatch(name):",
+        after="if not _CLI_AGENT_NAME.match(name):",
+        tests=CLIAGENT_TESTS,
+    ),
+    Mutant(
+        tag="cliagents",
+        why="SURVIVED THE SHIPPED SUITE. A whitespace-only description projects instead of being refused, producing a sub-agent the CLI can never route delegation to. The shipped suite tested description='' (falsy either way) but not '   ', so the .strip() was unpinned \u2014 note the asymmetry: they DID test the whitespace case for prompt.",
+        path="agentkit/integrations/claude_cli/agents.py",
+        before="description = skill.description.strip()",
+        after="description = skill.description",
+        tests=CLIAGENT_TESTS,
+    ),
+    Mutant(
+        tag="cliagents",
+        why="Narrows my new guard to wildcards only, so the within-tool specifier `Bash(rm:*)` is silently dropped again and the sub-agent gets unrestricted Bash. Checks that the two halves of _unsubtractable are independently pinned.",
+        path="agentkit/integrations/claude_cli/agents.py",
+        before="        if \"(\" in entry:",
+        after="        if False:",
+        tests=CLIAGENT_TESTS,
+    ),
+    Mutant(
+        tag="cliagents",
+        why="The wildcard prefix is taken as the whole entry, so `mcp__*` never matches any projected tool and the guard silently passes everything. A guard that is present but never fires.",
+        path="agentkit/integrations/claude_cli/agents.py",
+        before="            prefix = entry.split(\"*\", 1)[0]",
+        after="            prefix = entry",
+        tests=CLIAGENT_TESTS,
     ),
 )
 

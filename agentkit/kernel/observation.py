@@ -33,6 +33,12 @@ ObservationKind = Literal[
     "signal.emitted",
     "gate.check",
     "memory.written",
+    # A ``ReadOnlyMemory`` under ``on_write="ignore"`` dropped a write.
+    # It is a distinct kind rather than a flag on ``memory.written``
+    # because the two are opposites on an operator's timeline: one says
+    # items landed, the other says they did not. Folding them together
+    # would make "did this source persist anything?" a payload question.
+    "memory.write_refused",
 ]
 
 # Kinds that must never be dropped under backpressure (vs progress/summary, which may be coalesced).

@@ -12,6 +12,7 @@ import collections.abc as _abc
 import contextlib
 import enum
 import inspect
+import re
 import types as _types
 from collections.abc import Callable
 from typing import Any, Literal, Union, get_args, get_origin, get_type_hints, is_typeddict
@@ -90,6 +91,38 @@ _ARRAY_ANNOTATIONS: tuple[Any, ...] = (
 _OBJECT_ANNOTATIONS: tuple[Any, ...] = (dict, _abc.Mapping, _abc.MutableMapping)
 _CTX_PARAMS = ("ctx", "context")  # injected with the RunContext, not advertised to the model
 _MIN_DESCRIPTION_LEN = 30  # the floor below which the model can't reliably understand the tool
+
+# A docstring line that is exactly ``---`` ends the model-facing part; everything
+# below it is for whoever is editing the source. This is the escape hatch that makes
+# "the whole docstring ships" safe to turn on under existing code: an author with a
+# human-only tail keeps it, and says so in one line rather than restructuring the
+# tool. Measured across ``agentkit/``, ``tests/``, ``examples/`` and ``docs/``: 139
+# tools, and not one of them already contains a bare ``---`` line, so switching this
+# on changed no existing description by a single byte.
+_HUMAN_TAIL_MARKER = "---"
+
+# Notes addressed to a developer, recognised where a note is actually written: at the
+# start of a line, allowing for indentation and an optional list bullet.
+#
+# Column 0 alone is NOT enough, and the gap is not hypothetical. ``inspect.getdoc``
+# dedents by the COMMON leading whitespace, so a note written one level in keeps its
+# extra indent all the way through the dedent — and the most ordinary way to write one
+# is as a bullet under a heading:
+#
+#     Notes on behaviour:
+#       - returns the vendor's status verbatim
+#       - TODO: this is O(n^2), rewrite before the Q3 launch
+#
+# Under a column-0-only pattern both the indent and the ``- `` stand between the marker
+# and the anchor, the check stays silent, and the note ships to the model as an
+# instruction. That is precisely the failure this check exists to stop, arriving by the
+# route authors actually take.
+#
+# What is still deliberately NOT a note is a marker used as a word inside a sentence, so
+# a to-do-list tool can say "Append a TODO: item to the checklist" — there the marker is
+# preceded by prose, and the pattern admits only whitespace and a bullet. ``\b`` keeps
+# "XXXL is a size" and "HACKS are documented below" out of it as well.
+_DEV_NOTE_RE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?(TODO|FIXME|XXX|HACK)\b", re.MULTILINE)
 
 
 def _is_ctx_param(p: inspect.Parameter) -> bool:
@@ -317,21 +350,126 @@ def _json_type(ann: Any) -> dict[str, Any]:
     return {"type": "string"}  # unknown / unannotated → string
 
 
+def _model_facing_docstring(func: Callable[..., Any]) -> tuple[str, bool]:
+    """``func``'s docstring as the model will actually see it, plus whether a human-only
+    tail was cut off it.
+
+    The whole docstring, not its first line. The first-line rule was the framework's
+    single most expensive silent decision: everything below line one was read by people
+    editing the source and by nobody else, while still sitting in the docstring looking
+    as though it had been delivered. It cost a real defect — the sentence a model most
+    needed, *use this only when the information genuinely cannot be obtained any other
+    way*, was in ``ask_human``'s second paragraph and never shipped — and it also cut
+    ORDINARY docstrings mid-clause, because a single paragraph wrapped over two source
+    lines is two lines. Two tools in this repo's own suite were advertised to the model
+    as ``"A tool, so the ReAct loop has something to run and a reason to"`` and
+    ``"Look up a Hit for query `q`. (Will return a malformed payload to"``.
+
+    The alternative considered was refusing a multi-paragraph docstring at decoration
+    time so the author had to choose out loud, which is how this module treats a missing
+    ``side_effecting=`` and a thin docstring. The measurement killed it. Across
+    ``agentkit/``, ``tests/``, ``examples/`` and ``docs/`` there are 139 tools; 6 have a
+    multi-paragraph docstring and in ALL SIX the second paragraph is model-facing
+    guidance ("Use this whenever the user mentions an order number."), not an
+    implementation note. Refusing them would have forced agentkit's own ``ask_human`` to
+    delete the exact sentence this change exists to deliver, and would still have left
+    the two mid-clause truncations in place, since those docstrings are single
+    paragraphs. Taking everything costs +7% description bytes repo-wide (8307 -> 8892
+    chars over all 139 tools) and 0 of them flip across the 30-char floor.
+
+    That leaves one real risk, and it is downstream rather than here: an author who did
+    write notes for humans now has them read as instructions by a model. ``---`` on a
+    line of its own is the answer, and it is deliberately an opt-OUT rather than the
+    opt-in it is tempting to reach for (``long_description=True``, say). An opt-in would
+    make all 139 tools do paperwork to keep prose they already meant for the model; the
+    opt-out is one line for the few who need it, and its absence is the common case.
+    ``description=`` remains available for authors who would rather say it all at the
+    decorator, and unlike an opt-in flag it duplicates nothing.
+
+    Returns ``(text, tail_was_cut)``; the caller needs the second value only to explain
+    an empty result.
+
+    The CRLF re-clean is not defensive tidying, it is load-bearing. ``inspect.getdoc``
+    dedents by finding common leading whitespace, and a ``\\r\\n`` docstring defeats it
+    completely: measured, ``"Do the thing.\\r\\n\\r\\n    Indented second paragraph.\\r\\n"``
+    comes back out of ``getdoc`` with its four-space indent intact and a trailing
+    ``\\r``. Under the first-line rule that never showed, because the split threw the
+    tail away. Now the whole text ships, so a docstring authored on Windows would put
+    raw ``\\r`` bytes and phantom indentation into the JSON we hand the provider."""
+    doc = inspect.getdoc(func) or ""
+    if "\r" in doc:
+        # Normalise, then re-run the dedent that the \r defeated the first time.
+        # cleandoc on already-clean text is a no-op, so this costs nothing on the
+        # overwhelmingly common path — which is why it is guarded by the `in` test.
+        doc = inspect.cleandoc(doc.replace("\r\n", "\n").replace("\r", "\n"))
+    lines = doc.split("\n")
+    cut = False
+    for i, line in enumerate(lines):
+        if line.strip() == _HUMAN_TAIL_MARKER:
+            lines = lines[:i]
+            cut = True
+            break
+    # rstrip per line so trailing whitespace an editor left behind does not ride to
+    # the provider; the overall strip drops the blank line the marker was sitting on.
+    return "\n".join(line.rstrip() for line in lines).strip(), cut
+
+
 def _resolved_description(func: Callable[..., Any], description: str | None) -> str:
-    """Pick the description for `func`: explicit `description=` wins, else the first line of the docstring.
-    Validates the chosen text meets the framework's tool-writing floor (>=30 chars after strip) and
-    raises `ToolDefinitionError` otherwise — the model needs enough text to understand the tool."""
+    """Pick the description for `func`: explicit `description=` wins, else the WHOLE
+    docstring down to a ``---`` line (see :func:`_model_facing_docstring` for why the
+    whole thing, and for the measurement behind it).
+
+    Explicit ``description=`` is passed through with nothing but a ``strip()`` — no
+    marker hunt, no developer-note check. That asymmetry is the point: a docstring is
+    text this module INTERPRETS, addressed to two audiences at once, and the rules here
+    are about splitting it. ``description=`` is text the author handed the framework
+    directly and meant every byte of; going looking for markers in it would be the
+    framework second-guessing an explicit instruction.
+
+    Two decoration-time refusals, both free to fix where they fire and neither of them
+    reachable at call time:
+
+    - The >=30-char floor, unchanged in spirit, but now measured on the whole chosen
+      text rather than on line one. The total is what the model is shown, so the total
+      is what has to clear the bar. This only ever widens what passes (a docstring whose
+      first line is thin but whose body is substantial used to be rejected); measured,
+      0 of this repo's 139 tools change verdict.
+    - A developer note above the ``---`` line. This one is genuinely new and it is the
+      other half of the whole-docstring decision: ``TODO: this is O(n^2)`` used to be
+      invisible to the model and is now an instruction to it, so the moment it becomes
+      shippable text it has to be either shipped deliberately or moved. Refusing is the
+      same call the module already makes for a missing ``side_effecting=`` — the author
+      knows which audience they were writing for and the framework cannot.
+
+    Both messages name the tool and state the remedy, because a ``ToolDefinitionError``
+    that fires at import in someone else's application is only useful if it can be acted
+    on without reading this file."""
     if description is not None:
         desc = description.strip()
     else:
-        doc = inspect.getdoc(func) or ""
-        desc = doc.strip().split("\n", 1)[0].strip()
+        desc, tail_cut = _model_facing_docstring(func)
+        if (note := _DEV_NOTE_RE.search(desc)) is not None:
+            name = getattr(func, "__name__", "tool")
+            raise ToolDefinitionError(
+                f"tool {name!r} has a developer note ({note.group(1)}) in the part of its "
+                f"docstring that is sent to the model, where it reads as an instruction; "
+                f"move it below a line containing only {_HUMAN_TAIL_MARKER!r} (everything "
+                f"after that line is for humans) or pass an explicit description="
+            )
     if len(desc) < _MIN_DESCRIPTION_LEN:
         name = getattr(func, "__name__", "tool")
+        # Naming the cut is the difference between "got 0 chars" and a fixable report:
+        # the author put the whole docstring on the human side of the marker.
+        cut_note = (
+            f" (everything below the {_HUMAN_TAIL_MARKER!r} line in its docstring is for"
+            " humans and was not counted)"
+            if description is None and tail_cut
+            else ""
+        )
         raise ToolDefinitionError(
             f"tool {name!r} needs a docstring/description of at least "
             f"{_MIN_DESCRIPTION_LEN} characters so the model can understand it; "
-            f"got {len(desc)} chars: {desc!r}"
+            f"got {len(desc)} chars: {desc!r}{cut_note}"
         )
     return desc
 

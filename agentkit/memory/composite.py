@@ -16,7 +16,10 @@ a ``CompositeMemory`` of two ``SequentialMemory`` chains is a valid
 Write semantics: ``CompositeMemory.write`` broadcasts to every source;
 ``SequentialMemory.write`` writes to the FIRST source (writes happen at
 the cache tier in the typical setup). Backends that are read-only
-(``ToolMemory``) ignore writes via a default no-op.
+(``ToolMemory``, or any source wrapped in ``ReadOnlyMemory`` with
+``on_write="ignore"``) ignore writes via a no-op and declare it by
+setting ``accepts_writes = False``, which is what keeps the fan-out's
+report honest — see the ``refused`` bucket below.
 
 Partial-write failures surface a :class:`CompositeWriteError` naming
 which backends accepted the write and which failed. A naive
@@ -269,21 +272,46 @@ class CompositeWriteError(RuntimeError):
     discard everything else and postmortems would lose the information
     about which backends DID commit.
 
+    ``refused`` is a THIRD bucket, not a slice of ``accepted``. A source
+    that declares ``accepts_writes = False`` (``ReadOnlyMemory`` with
+    ``on_write="ignore"``) returns from ``write`` without raising and
+    without storing anything, so the two-bucket split had exactly one
+    place to put it and that place was a lie: ``accepted`` is what an
+    operator reads to decide which backends NOT to replay after a partial
+    commit, and replaying is skipped for a source that never committed.
+    Keyword-only with a default so the constructor stays
+    backward-compatible for callers that build the error themselves.
+
     Attributes:
         accepted: list of source names whose ``write`` succeeded.
+        refused: list of source names that declared themselves read-only
+            and dropped the write. Not an error — the fan-out still
+            succeeds when nothing failed — but never conflated with
+            ``accepted``.
         failed: dict mapping source name → BaseException raised by that
             source.
     """
 
-    def __init__(self, *, accepted: list[str], failed: dict[str, BaseException]) -> None:
+    def __init__(
+        self,
+        *,
+        accepted: list[str],
+        failed: dict[str, BaseException],
+        refused: list[str] | None = None,
+    ) -> None:
         self.accepted = accepted
+        self.refused = list(refused or [])
         self.failed = failed
         failed_summary = ", ".join(
             f"{name}: {type(exc).__name__}: {exc}" for name, exc in failed.items()
         )
+        # ``refused`` only reaches the message when non-empty — the
+        # common split is two buckets and an operator should not have to
+        # read past "refused: []" to find the failures.
+        refused_summary = f"; refused (read-only): {self.refused}" if self.refused else ""
         super().__init__(
             f"CompositeMemory.write partial failure — "
-            f"accepted: {accepted or '(none)'}; failed: {failed_summary}"
+            f"accepted: {accepted or '(none)'}{refused_summary}; failed: {failed_summary}"
         )
 
 
@@ -339,6 +367,23 @@ class CompositeMemory:
     name: str = field(default="composite")
     dedupe: DedupeMode | None = "id"
 
+    @property
+    def accepts_writes(self) -> bool:
+        """True when at least one member can actually commit.
+
+        A composite is itself a ``MemorySource`` and composites nest, so
+        without this the marker dies at the first composite boundary: an
+        all-read-only ``CompositeMemory`` nested in an outer fan-out
+        returns normally from ``write`` having stored nothing, and the
+        outer split files it under ``accepted`` — the exact lie the
+        ``refused`` bucket exists to prevent, one level up.
+
+        ``any`` rather than ``all`` because the bucket asks "did anything
+        land here?", and a composite with one writable member did commit.
+        An empty composite commits nothing, and ``any(())`` is ``False``,
+        which is the honest answer."""
+        return any(bool(getattr(s, "accepts_writes", True)) for s in self.sources)
+
     async def query(
         self, query: str, *, k: int, ctx: Ctx, where: dict[str, Any] | None = None
     ) -> list[MemoryItem]:
@@ -358,13 +403,16 @@ class CompositeMemory:
 
     async def write(self, items: Iterable[MemoryItem], *, ctx: Ctx) -> None:
         """Broadcast writes to every source. A backend that can't accept
-        writes implements ``write`` as a no-op (see ``ToolMemory``).
+        writes implements ``write`` as a no-op (see ``ToolMemory``) and
+        sets ``accepts_writes = False`` so the split can tell it apart
+        from a backend that committed.
 
         Partial failures surface as :class:`CompositeWriteError` with a
-        per-source accepted/failed split. Without ``return_exceptions=True``
-        the first child exception would propagate and the rest would be
-        discarded, so a caller seeing a failure would have no way to know
-        which backends had already committed."""
+        per-source accepted/refused/failed split. Without
+        ``return_exceptions=True`` the first child exception would
+        propagate and the rest would be discarded, so a caller seeing a
+        failure would have no way to know which backends had already
+        committed."""
         materialised = list(items)
         if not materialised:
             return
@@ -377,15 +425,23 @@ class CompositeMemory:
             return_exceptions=True,
         )
         accepted: list[str] = []
+        refused: list[str] = []
         failed: dict[str, BaseException] = {}
         for source, outcome in zip(self.sources, outcomes, strict=True):
             name = getattr(source, "name", source.__class__.__name__)
             if isinstance(outcome, BaseException):
                 failed[name] = outcome
+            elif not getattr(source, "accepts_writes", True):
+                # A source that returned normally having stored nothing —
+                # ``ReadOnlyMemory(..., on_write="ignore")``, or any
+                # backend that sets the marker. ``getattr`` with a
+                # permissive default so every source written before the
+                # marker existed keeps behaving exactly as it did.
+                refused.append(name)
             else:
                 accepted.append(name)
         if failed:
-            raise CompositeWriteError(accepted=accepted, failed=failed)
+            raise CompositeWriteError(accepted=accepted, failed=failed, refused=refused)
 
 
 @dataclass(slots=True)
@@ -416,6 +472,18 @@ class SequentialMemory:
 
     sources: list[MemorySource]
     name: str = field(default="sequential")
+
+    @property
+    def accepts_writes(self) -> bool:
+        """Mirrors the FIRST source, because that is the only one
+        ``write`` ever touches — downstream sources are read-only from
+        this composite's point of view. A ``SequentialMemory`` whose
+        cache tier is a ``ReadOnlyMemory`` stores nothing on write, and
+        an enclosing fan-out must not report that as a commit. No
+        sources means no write target, hence ``False``."""
+        if not self.sources:
+            return False
+        return bool(getattr(self.sources[0], "accepts_writes", True))
 
     async def query(
         self, query: str, *, k: int, ctx: Ctx, where: dict[str, Any] | None = None
