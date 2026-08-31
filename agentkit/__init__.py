@@ -85,9 +85,6 @@ from agentkit.agents import (
     ask_human_tool,
     elicit,
 )
-
-# Batteries-included client. Safe to import on the zero-dep core: client.py pulls only kernel/runtime/
-# middlewares; the httpx provider is imported lazily when a preset is *called*, not here.
 from agentkit.capabilities import (
     Checkpointer,
     Compactor,
@@ -104,6 +101,15 @@ from agentkit.capabilities.output_schema import (
     OutputCoercionError,
     SchemaAdapter,
     adapt,
+)
+
+# Batteries-included client. Safe to import on the zero-dep core: client.py pulls only kernel/runtime/
+# middlewares; the httpx provider is imported lazily when a preset is *called*, not here.
+from agentkit.capabilities.request_builder import (
+    GroundingAdmit,
+    GroundingRender,
+    GroundingSource,
+    render_grounding,
 )
 from agentkit.client import Chat, claude, deepseek, openai, openrouter
 from agentkit.context import (
@@ -169,6 +175,7 @@ from agentkit.kernel.ports import (
     ToolPort,
     VectorPort,
 )
+from agentkit.kernel.recurrence import Stuck, attempt_until_stuck
 from agentkit.kernel.replay import NoopReplayStore, ReplayRecord, ReplayStore
 from agentkit.kernel.resilience import (
     CircuitBreaker,
@@ -286,6 +293,12 @@ __all__ = [
     "CircuitOpen",
     "idempotency_key",
     "run_with_resilience",
+    "Stuck",
+    "attempt_until_stuck",
+    "GroundingSource",
+    "GroundingRender",
+    "GroundingAdmit",
+    "render_grounding",
     "Failure",
     "compose_failures",
     "AgentkitError",

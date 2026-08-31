@@ -201,6 +201,59 @@ judgement of its own about what is "too big"; that policy is yours.
 `(ctx, task) -> str`. Returning an empty string means "no grounding for
 this task" and produces no grounding message.
 
+#### Keeping the provenance — `GroundingSource`
+
+A `Grounder` returns **text**, which means that by the time retrieved
+material reaches the prompt, everything about where it came from is gone.
+Which source, what score, whether it was a recorded fact or a summary a
+model wrote in an earlier run — all flattened at exactly the boundary
+where it starts to matter.
+
+That makes one rule unenforceable at the only place it could be
+enforced: **a memory a model wrote is not evidence.** Once a summary of a
+past run is a string in the prefix, nothing downstream can tell it from a
+recorded fact, and any claim built on it inherits an authority it never
+had.
+
+So there is a typed seam beside the callable one:
+
+```python
+RequestBuilder(
+    grounding=source,                                             # -> Sequence[MemoryItem]
+    render=lambda items: "\n\n".join(i.content for i in items),   # the default
+    admit=lambda item: item.metadata.get("tier") != "inferred",   # optional veto
+)
+```
+
+Three things follow, each worth having alone. The **items are inspectable
+before rendering**, so an application can refuse one. The **rendering is
+a policy** rather than a fixed join. And the items can be **recorded
+beside the prefix**, so a run can say afterwards what it grounded on
+rather than only what it said.
+
+`grounder=` is unchanged and un-deprecated — every existing caller keeps
+working. Passing **both** is refused at construction rather than silently
+resolved, because two sources of truth for one slot is the bug this
+framework avoids everywhere else.
+
+`admit` runs before `render`, so a rejected item never reaches the
+prompt at all.
+
+The three seams have names you can annotate against — `GroundingSource`
+for the retrieval callable, `GroundingAdmit` for the predicate, and
+`GroundingRender` for the formatter. `render_grounding` is the default
+renderer, exported so a custom one can fall back to it for the items it
+does not want to treat specially.
+
+!!! note "The record is encoded, not stored live"
+
+    `record_grounding=True` writes the admitted items to the scratchpad —
+    and the scratchpad is copied verbatim into every checkpoint. Storing
+    live `MemoryItem` objects there worked in memory and raised
+    `TypeError: Object of type MemoryItem is not JSON serializable` on
+    any durable store, which is to say the audit trail broke on exactly
+    the runs long enough to need one. They are encoded on the way in.
+
 It is a callable rather than a memory object plus `k`/`where` knobs
 because those knobs are retrieval mechanics, not prompt-assembly
 concerns. The builder should not know the text came from a vector store

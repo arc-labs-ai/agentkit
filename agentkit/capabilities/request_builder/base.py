@@ -47,13 +47,22 @@ from typing import Any
 
 from agentkit.capabilities.compaction import Compactor
 from agentkit.capabilities.output_schema import SchemaAdapter
-from agentkit.capabilities.request_builder.grounder import _GROUNDING_NAME, Grounder
+from agentkit.capabilities.request_builder.grounder import (
+    _GROUNDING_NAME,
+    GROUNDING_RECORD_KEY,
+    Grounder,
+    GroundingAdmit,
+    GroundingRender,
+    GroundingSource,
+    render_grounding,
+)
 from agentkit.context import PrefixContext, WorkingContext
 from agentkit.context.tokens import estimate_message_tokens
 from agentkit.kernel._frozen import deep_freeze
 from agentkit.kernel._json import dumps as _json_dumps
 from agentkit.kernel.protocols import Ctx
 from agentkit.kernel.types import Message
+from agentkit.memory.base import MemoryItem
 from agentkit.prompts.prompt import Prompt
 
 BudgetCheck = Callable[[int], None]
@@ -164,6 +173,31 @@ class RequestBuilder:
             invoked at the end of `build()`. Raise to abort — the
             RequestBuilder surfaces no judgement of its own about what's
             "too big," that policy lives entirely with the caller.
+        grounding: the TYPED alternative to ``grounder`` — an async
+            callable ``(ctx, task) -> Sequence[MemoryItem]``. Same seam,
+            same place in the turn, same landing spot in the prefix; the
+            difference is that the items arrive intact, so ``admit`` can
+            refuse one and ``render`` can see its source and score.
+            Mutually exclusive with ``grounder`` (see ``__post_init__``).
+        admit: optional per-item predicate applied to what ``grounding``
+            returned, BEFORE ``render``. A rejected item does not reach
+            the prompt at all. The rule worth having it for is
+            ``lambda i: i.metadata.get("tier") != "inferred"`` — a memory
+            a model wrote is not evidence, and this is the only point in
+            the pipeline where that is still checkable.
+        render: optional ``Sequence[MemoryItem] -> str`` deciding how the
+            admitted items become the grounding block. Defaults to
+            ``render_grounding`` (``[source] content`` lines), which is
+            byte-identical to what ``as_grounder`` produced.
+        record_grounding: when True, the admitted items are stored on
+            ``wc.scratchpad[GROUNDING_RECORD_KEY]`` so a finished run can
+            report what it grounded ON, not only what it said. Off by
+            default — an audit trail nobody reads is still a write into
+            the caller's blackboard on every turn. Recorded as a tuple of
+            JSON-safe ``{"content", "source", "score", "metadata"}`` dicts,
+            not as live ``MemoryItem``s, because the scratchpad is durable
+            state — see ``_record``. Rewritten (not appended to) on every
+            re-ground, so it always describes the prefix as it stands.
     """
 
     prompt: Prompt
@@ -171,6 +205,58 @@ class RequestBuilder:
     compactor: Compactor | None = None
     reground_every_turn: bool = False
     budget_check: BudgetCheck | None = None
+    # Appended AFTER ``budget_check`` rather than slotted next to ``grounder``
+    # where they read better: the fields above are positional for anyone who
+    # built a ``RequestBuilder(prompt, grounder, compactor)`` without keywords,
+    # and re-ordering them would silently rebind those arguments.
+    grounding: GroundingSource | None = None
+    admit: GroundingAdmit | None = None
+    render: GroundingRender | None = None
+    record_grounding: bool = False
+
+    def __post_init__(self) -> None:
+        """Refuse the wirings that would silently do nothing.
+
+        Two sources of truth for one slot is the failure this repo avoids
+        everywhere, and grounding is the slot where it is least visible: both
+        keywords produce a plausible prefix, so a run wired with both would
+        look right while half the configuration was ignored. Refusing at
+        CONSTRUCTION rather than resolving by precedence is deliberate — a
+        precedence rule makes the ignored keyword invisible, and ``build()``
+        is too late because by then a run is already in flight.
+
+        ``admit`` / ``render`` / ``record_grounding`` are refused without
+        ``grounding`` for the sharper version of the same reason. They are
+        policies over ITEMS, and the string grounder has none; accepting them
+        beside ``grounder=`` would mean an application believes it is refusing
+        model-authored memories while every one of them reaches the prompt.
+        That is not a cosmetic no-op, it is the exact failure ``admit`` exists
+        to prevent, so it is worth a hard error rather than a warning.
+        """
+        if self.grounder is not None and self.grounding is not None:
+            raise ValueError(
+                "RequestBuilder got both grounder= and grounding= — they fill the same "
+                "slot and would resolve silently. Pass the typed grounding= source (its "
+                "items can be admitted, rendered and recorded), or the flattened "
+                "grounder= callable, not both."
+            )
+        if self.grounding is None:
+            dangling = [
+                name
+                for name, wired in (
+                    ("admit", self.admit is not None),
+                    ("render", self.render is not None),
+                    ("record_grounding", self.record_grounding),
+                )
+                if wired
+            ]
+            if dangling:
+                raise ValueError(
+                    f"RequestBuilder got {', '.join(f'{n}=' for n in dangling)} without "
+                    "grounding= — these are policies over MemoryItems and there are none "
+                    "to apply them to. A grounder= callable has already flattened its "
+                    "items to text; pass grounding= instead."
+                )
 
     async def build(
         self,
@@ -213,17 +299,7 @@ class RequestBuilder:
                 # appending to ``wc.messages`` is the cache discipline
                 # — the prefix is frozen after this point, so the
                 # provider's KV cache stays valid across turns.
-                grounding_msgs: tuple[Message, ...] = ()
-                if self.grounder is not None:
-                    block = await self.grounder(ctx, task)
-                    if block:
-                        grounding_msgs = (
-                            Message(
-                                "system",
-                                f"Relevant context:\n{block}",
-                                name=_GROUNDING_NAME,
-                            ),
-                        )
+                grounding_msgs, admitted = await self._ground(ctx, task)
                 schema_block = (
                     _render_schema_block(output_adapter) if output_adapter is not None else None
                 )
@@ -232,9 +308,12 @@ class RequestBuilder:
                     grounding=grounding_msgs,
                     schema_block=schema_block,
                 )
+                self._record(wc, admitted)
                 wc.append(Message("user", task))
             else:
-                if self.reground_every_turn and self.grounder is not None:
+                if self.reground_every_turn and (
+                    self.grounder is not None or self.grounding is not None
+                ):
                     # Re-render the prefix in place: same system
                     # prompt, fresh grounding block (or none). The
                     # stale block is dropped because the whole
@@ -252,23 +331,17 @@ class RequestBuilder:
                     # turns of claude-sonnet-4-6). Callers who want
                     # the cache keep the default False and accept
                     # turn-1 evidence for the whole conversation.
-                    block = await self.grounder(ctx, task)
-                    grounding_msgs = (
-                        (
-                            Message(
-                                "system",
-                                f"Relevant context:\n{block}",
-                                name=_GROUNDING_NAME,
-                            ),
-                        )
-                        if block
-                        else ()
-                    )
+                    grounding_msgs, admitted = await self._ground(ctx, task)
                     wc.prefix = PrefixContext(
                         system_prompt=wc.prefix.system_prompt or self.prompt.render(),
                         grounding=grounding_msgs,
                         schema_block=wc.prefix.schema_block,
                     )
+                    # The record tracks the PREFIX, so it is overwritten rather
+                    # than appended: the prefix now holds this turn's evidence
+                    # only, and a record that accumulated would claim the run
+                    # grounded on blocks that are no longer in the prompt.
+                    self._record(wc, admitted)
                 if task:
                     wc.append(Message("user", task))
 
@@ -291,6 +364,147 @@ class RequestBuilder:
             prompt_version=self.prompt.version,
             approx_tokens=approx,
         )
+
+    async def _ground(
+        self, ctx: Ctx, task: str
+    ) -> tuple[tuple[Message, ...], tuple[MemoryItem, ...] | None]:
+        """Run whichever grounding seam is wired and return the prefix messages
+        it produced, plus the admitted items when there were any to keep.
+
+        One helper for both call sites (first turn, and every turn under
+        ``reground_every_turn``) because the two used to be near-duplicate
+        blocks that had already drifted once — the re-ground branch grew the
+        "rebuild, don't append" comment while the first-turn branch did not.
+        A second copy of the admit/render ordering is exactly the kind of drift
+        that would let a rejected item into the prompt on turn 3 only.
+
+        The second element is ``None`` — not ``()`` — when the flattened
+        ``grounder`` ran: it means "nothing typed passed through here", which a
+        caller must be able to tell from "the typed source admitted nothing".
+        Only the latter is worth recording.
+
+        The both-seams refusal is repeated here rather than left to
+        ``__post_init__`` because ``RequestBuilder`` is a plain mutable
+        dataclass: assigning ``builder.grounding = ...`` onto a builder wired
+        with ``grounder=`` re-creates exactly the state the constructor refuses,
+        and the branch below would have resolved it silently in the grounder's
+        favour — dropping an ``admit`` predicate the caller believes is keeping
+        model-authored memories out of the prompt. Constructor-time-only is not
+        an invariant, it is a hope.
+        """
+        if self.grounder is not None and self.grounding is not None:
+            raise ValueError(
+                "RequestBuilder has both grounder= and grounding= set at build time — "
+                "they fill the same slot and one would be resolved away silently. This "
+                "state is refused at construction, so it can only come from assigning "
+                "onto the builder afterwards; assign None to the one you do not want."
+            )
+        if self.grounder is not None:
+            return self._as_messages(await self.grounder(ctx, task)), None
+        if self.grounding is None:
+            return (), None
+
+        retrieved = await self.grounding(ctx, task)
+        # ``admit`` is applied here, to ITEMS, and never to the rendered
+        # string: once joined, nothing identifies which span came from which
+        # item, so a text-level filter cannot enforce a per-item rule at all.
+        # A predicate that raises propagates — failing OPEN would admit the
+        # item, and the item this seam exists to refuse is a model-authored
+        # memory being passed off as evidence.
+        admitted = (
+            tuple(retrieved)
+            if self.admit is None
+            else tuple(item for item in retrieved if self.admit(item))
+        )
+        if not admitted:
+            # No admitted items means no grounding message — not an empty one,
+            # and ``render`` is not consulted. A renderer that emits a fixed
+            # "Relevant context:" header would otherwise pin a block asserting
+            # evidence that does not exist, which is the authority inflation
+            # this seam is here to stop. It also collapses three causes —
+            # empty index, everything rejected, source returned [] — onto the
+            # one behaviour the string grounder already had for an empty block.
+            return (), admitted
+        renderer = self.render if self.render is not None else render_grounding
+        block = renderer(admitted)
+        if not isinstance(block, str):
+            # ``Message.content`` is annotated ``str`` and checked by nothing at
+            # runtime, so a renderer returning a list would land in the frozen
+            # prefix and surface as a serialisation error inside the provider
+            # adapter — several layers and one await away from the callable
+            # that caused it. One isinstance per turn buys the traceback.
+            raise TypeError(
+                f"RequestBuilder.render returned {type(block).__name__}, expected str — "
+                "the grounding block is written straight into a system Message."
+            )
+        return self._as_messages(block), admitted
+
+    @staticmethod
+    def _as_messages(block: str) -> tuple[Message, ...]:
+        """A non-empty block becomes exactly one pinned system message; an empty
+        one becomes no message at all.
+
+        Empty-means-absent is the contract both seams share, and it is why the
+        typed path can short-circuit before ``render``: a caller reading a
+        transcript never has to distinguish "grounded on nothing" from
+        "grounding was not wired"."""
+        if not block:
+            return ()
+        return (Message("system", f"Relevant context:\n{block}", name=_GROUNDING_NAME),)
+
+    def _record(self, wc: WorkingContext, admitted: tuple[MemoryItem, ...] | None) -> None:
+        """Stamp the admitted items onto the scratchpad, when asked.
+
+        Gated on ``record_grounding`` so it is not mandatory work: a run that
+        does not want an audit trail pays one attribute read, and nothing
+        appears in the caller's blackboard that they did not ask for.
+
+        ``admitted is None`` (the flattened ``grounder`` path) writes nothing
+        even when the flag is set — but that combination is already refused in
+        ``__post_init__``, so this is belt-and-braces against someone assigning
+        ``builder.grounder = ...`` after construction rather than a reachable
+        branch.
+
+        Written as JSON-safe dicts, not as the live ``MemoryItem``s, because
+        ``WorkingContext.scratchpad`` is durable state: ``ReActCognition._save``
+        copies it verbatim into the checkpoint blob and
+        ``PostgresCheckpointStore.save`` ``json.dumps`` that blob. Recording the
+        dataclass tested green on ``InMemoryCheckpointStore`` and raised
+        ``TypeError: Object of type MemoryItem is not JSON serializable`` on the
+        Postgres one — the same failure ``PlanPolicy`` shipped once with ``Step``
+        (see "Durable state is encoded, not stored raw" in the agents guide).
+        Encoding is also what makes the record survive the resume it exists for:
+        an audit trail that cannot cross a checkpoint is not an audit trail.
+
+        ``metadata`` is passed through as the caller's own mapping rather than
+        coerced. Whatever a backend put in there is governed by the same
+        scratchpad rule as any other value the caller notes; what this method
+        owes is that the FRAMEWORK's own shape is not the thing that breaks."""
+        if not self.record_grounding or admitted is None:
+            return
+        # Recorded even when empty: "this run grounded on nothing" is a fact a
+        # postmortem needs, and an absent key would be indistinguishable from
+        # recording having been switched off.
+        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))
+
+
+def _encode_item(item: MemoryItem) -> dict[str, Any]:
+    """One admitted ``MemoryItem`` as the JSON-safe record of it.
+
+    Every field the typed seam exists to preserve is here — ``content``,
+    ``source``, ``score``, ``metadata`` — so nothing about the provenance is
+    lost by encoding; only the class is. ``dict(...)`` on the metadata un-aliases
+    the item's frozen mapping so the recorded snapshot cannot be re-frozen or
+    re-annotated through the record, and so the value that lands in the
+    checkpoint blob is a plain ``dict`` rather than a ``FrozenDict`` subclass a
+    decoder would have to know about.
+    """
+    return {
+        "content": item.content,
+        "source": item.source,
+        "score": item.score,
+        "metadata": dict(item.metadata),
+    }
 
 
 def _approx_tokens(messages: list[Message]) -> int:

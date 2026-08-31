@@ -11,14 +11,27 @@ from agentkit.capabilities.compaction import (
 from agentkit.capabilities.eval import Evaluator
 from agentkit.capabilities.guardrails import Guardrail
 from agentkit.capabilities.output_schema import OutputCoercionError, SchemaAdapter, adapt
-from agentkit.capabilities.request_builder import BuiltRequest, Grounder, RequestBuilder
+from agentkit.capabilities.request_builder import (
+    GROUNDING_RECORD_KEY,
+    BuiltRequest,
+    Grounder,
+    GroundingAdmit,
+    GroundingRender,
+    GroundingSource,
+    RequestBuilder,
+    render_grounding,
+)
 
 __all__ = [
+    "GROUNDING_RECORD_KEY",
     "BuiltRequest",
     "Checkpointer",
     "Compactor",
     "Evaluator",
     "Grounder",
+    "GroundingAdmit",
+    "GroundingRender",
+    "GroundingSource",
     "Guardrail",
     "ImportanceFilteringCompactor",
     "OutputCoercionError",
@@ -28,4 +41,5 @@ __all__ = [
     "SummarizationCompactor",
     "TruncationCompactor",
     "adapt",
+    "render_grounding",
 ]

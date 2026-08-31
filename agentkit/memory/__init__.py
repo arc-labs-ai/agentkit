@@ -39,7 +39,7 @@ from agentkit.memory.composite import (
 )
 from agentkit.memory.decorators import CachedMemory, CompactedMemory, ScopedMemory
 from agentkit.memory.file import FileMemory
-from agentkit.memory.grounder import as_grounder
+from agentkit.memory.grounder import as_grounder, as_grounding_source
 from agentkit.memory.journal import JournalMemory
 from agentkit.memory.scratchpad import ScratchpadMemory
 from agentkit.memory.tool import ToolMemory, default_parse
@@ -68,6 +68,7 @@ __all__ = [
     "ToolMemory",
     "VectorMemory",
     "as_grounder",
+    "as_grounding_source",
     "default_parse",
     "score_sort_rerank",
 ]

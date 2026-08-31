@@ -517,6 +517,54 @@ purpose: an unrecognised failure retried is a bill with no upside.
 Measured — `classify(TimeoutError(...))` is `transient`,
 `classify(ValueError(...))` is `unknown`.
 
+## Retrying when the problem is not flakiness
+
+`run_with_resilience` retries a call that *failed to complete* — a timeout, a
+502, a dropped connection. Classify, back off, trip a breaker. That is the
+right shape for a flaky call and the wrong shape for a **semantic** one: an
+attempt that completed, produced an answer, and did not achieve the goal.
+
+`attempt_until_stuck` is the other half.
+
+```python
+from agentkit import attempt_until_stuck
+
+result = await attempt_until_stuck(
+    lambda: run_one(),
+    fingerprint=lambda outcome: outcome.failure_signature,
+    on_repeat="escalate",       # or "stop"
+    max_attempts=4,             # a backstop, not the bound
+)
+```
+
+The bound is **recurrence, not a count**, and the difference matters more than
+it sounds. Three attempts producing three different failures is progress. Two
+producing the same failure is not. A retry count cannot tell those apart, so it
+is either too tight for the first case or too loose for the second.
+
+So each attempt is fingerprinted, and the run stops when a signature it has
+already seen comes back. That is why the history is every signature seen rather
+than just the previous one: an A, B, A, B oscillation is a cycle, and comparing
+only against the last attempt reads it as progress forever.
+
+`on_repeat="escalate"` raises `Stuck`, carrying the `Failure` for the attempt
+that repeated. `on_repeat="stop"` returns instead. `max_attempts` is the
+backstop for the case where signatures keep genuinely differing.
+
+!!! note "Why a signature is confirmed by equality, not by its hash"
+
+    Signatures are compared through `stable_hash`, because a fingerprint may be
+    an unhashable dict or list. But `stable_hash` was built for **cache keys**,
+    where its lossiest branch is fail-safe: two values it cannot introspect
+    collide, and the cost is a cache miss that should have been a hit.
+
+    Here the identical collision is fail-*dangerous* — it is a permanent,
+    non-retriable "you are going in circles" verdict on two attempts that were
+    genuinely different. Measured: three distinct `__slots__` signatures all
+    hashed to `b5e4d8ee180594ea` and the run stopped at attempt 2. So a shared
+    hash only nominates a candidate; the repeat is not declared until equality
+    confirms it.
+
 ## Two helpers worth knowing
 
 `collect_one(stream)` reduces a one-item stream to its single value —

@@ -45,6 +45,7 @@ from agentkit.kernel.ports import (
     ToolPort,
     VectorPort,
 )
+from agentkit.kernel.recurrence import OnRepeat, Stuck, attempt_until_stuck
 from agentkit.kernel.replay import ReplayRecord, ReplayStore
 from agentkit.kernel.resilience import (
     CircuitBreaker,
@@ -133,6 +134,11 @@ __all__ = [
     "CircuitOpen",
     "idempotency_key",
     "run_with_resilience",
+    # recurrence — the semantic companion to run_with_resilience: bounded by a
+    # repeated OUTCOME rather than by an attempt count
+    "attempt_until_stuck",
+    "Stuck",
+    "OnRepeat",
     # concurrency
     "gather_bounded",
     "gather_best_effort",

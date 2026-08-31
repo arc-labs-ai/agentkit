@@ -1,20 +1,28 @@
-"""Adapter: ``MemorySource`` → ``Grounder``.
+"""Adapters: ``MemorySource`` → the two grounding seams.
 
-The framework's ``RequestBuilder`` accepts a ``Grounder`` — an async
-callable ``(ctx, task) -> str`` that returns grounding text injected
-into the prefix on the first turn (or every turn if
-``reground_every_turn``). This module bridges the two abstractions:
-give it a ``MemorySource`` and it returns a Grounder closure.
+``RequestBuilder`` accepts either an async ``(ctx, task) -> str``
+(``Grounder``) or an async ``(ctx, task) -> Sequence[MemoryItem]``
+(``GroundingSource``). This module bridges a ``MemorySource`` to both:
 
-The retrieval policy (``k``, ``where``, formatting) is baked into
-the closure at wiring time. RequestBuilder stays oblivious to where
-grounding came from — vector store, file system, tool-wrapped probe,
-or a composite of all three.
+- ``as_grounder(memory)``        — queries and FLATTENS to text.
+- ``as_grounding_source(memory)``— queries and hands the items over intact.
+
+The retrieval policy (``k``, ``where``) is baked into the returned closure at
+wiring time either way. RequestBuilder stays oblivious to where grounding came
+from — vector store, file system, tool-wrapped probe, or a composite of all
+three.
+
+Which to reach for: ``as_grounding_source`` whenever the application has a
+rule about WHICH retrieved items may be used, because the flattening in
+``as_grounder`` destroys the ``source`` / ``score`` / ``metadata`` such a rule
+would read — most sharply the rule that a memory a model wrote is not
+evidence. ``as_grounder`` stays right when the grounding is a corpus with no
+provenance worth preserving and the prompt just wants the text.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from agentkit.kernel.protocols import Ctx
@@ -60,4 +68,39 @@ def as_grounder(
     return grounder
 
 
-__all__ = ["as_grounder"]
+def as_grounding_source(
+    memory: MemorySource,
+    *,
+    k: int = 5,
+    where: dict[str, Any] | None = None,
+) -> Callable[[Ctx, str], Awaitable[Sequence[MemoryItem]]]:
+    """Adapt a ``MemorySource`` into a ``RequestBuilder.GroundingSource``.
+
+    The same closure ``as_grounder`` builds, minus the flattening step — which
+    is the whole implementation and also the whole point. There is no
+    ``format=`` here because rendering has moved to where it can see what it
+    is rendering: ``RequestBuilder(render=...)``, downstream of
+    ``RequestBuilder(admit=...)``. Keeping a formatter on this side too would
+    give two places to decide the same thing, and the one on this side runs
+    BEFORE admission, so a rule like "drop model-authored memories" would be
+    applied to text that had already been joined.
+
+    ``k`` and ``where`` are baked in at wiring time exactly as before, and the
+    query is still the user task verbatim — for query rewriting (HyDE,
+    decomposition) wrap the ``MemorySource`` rather than reaching inside this
+    closure.
+
+    Note the return annotation is the structural ``Callable[...]`` rather than
+    ``GroundingSource``: ``agentkit.memory`` must not import
+    ``agentkit.capabilities`` (the capabilities side imports ``MemoryItem``
+    from here, and the pair would cycle). ``as_grounder`` above spells its
+    return type out for the same reason.
+    """
+
+    async def grounding_source(ctx: Ctx, task: str) -> Sequence[MemoryItem]:
+        return await memory.query(task, k=k, ctx=ctx, where=where)
+
+    return grounding_source
+
+
+__all__ = ["as_grounder", "as_grounding_source"]

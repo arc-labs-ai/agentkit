@@ -198,6 +198,8 @@ MEM_DEDUPE_TESTS = (
 )
 MEM_VECTOR_TESTS = ("tests/memory/test_vector_memory.py",)
 WORKFLOW_MAP_TESTS = ("tests/agents/test_workflow_map.py",)
+RECURRENCE_TESTS = ("tests/kernel/test_attempt_until_stuck.py",)
+GROUNDING_TESTS = ("tests/capabilities/test_request_builder_grounding.py",)
 STORE_PRIM_TESTS = (
     "tests/adapters/test_store_primitives.py",
     "tests/adapters/test_stores.py",
@@ -2948,6 +2950,102 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        if total is None:\n            # The guard excluded the row, so something non-integer is there.\n            # Re-read it to name the type in the error \u2014 but OUTSIDE the\n            # ``acquire`` above, because ``self.get`` takes a connection of its\n            # own. Asking the pool for a second connection while still holding\n            # the first deadlocks outright on ``max_size=1`` (measured: the\n            # call hangs forever), and on any pool size it doubles the\n            # connections a concurrent burst of bad increments needs, so N\n            # workers each holding one and waiting for another is a deadlock at\n            # every size. The error path must not be the expensive one.\n            raise not_a_counter(key, await self.get(key))",
         after="            if total is None:\n                # The guard excluded the row, so something non-integer is there.\n                # Re-read it to name the type in the error \u2014 but OUTSIDE the\n                # ``acquire`` above, because ``self.get`` takes a connection of its\n                # own. Asking the pool for a second connection while still holding\n                # the first deadlocks outright on ``max_size=1`` (measured: the\n                # call hangs forever), and on any pool size it doubles the\n                # connections a concurrent burst of bad increments needs, so N\n                # workers each holding one and waiting for another is a deadlock at\n                # every size. The error path must not be the expensive one.\n                raise not_a_counter(key, await self.get(key))",
         tests=STORE_PRIM_TESTS,
+    ),
+    Mutant(
+        tag="recurrence",
+        why="The `is None` success check must be read AFTER the fingerprint is awaited. Moved before, it sees a coroutine \u2014 never None \u2014 so an async fingerprint can never report success: the run loops, repeats, and is declared PERMANENTLY stuck on a SUCCESSFUL outcome, leaving an un-awaited coroutine each turn. THIS MUTANT SURVIVED THE SHIPPED 21-TEST SUITE (their test_an_async_fingerprint_is_awaited only exercises a non-None async signature); the test below is new and kills it.",
+        path="agentkit/kernel/recurrence.py",
+        before="        if inspect.isawaitable(signature):\n            # The signature is frequently itself a model call (\"does this answer the goal?\"), so\n            # it has to be allowed to be async. Same duck-typed treatment ``LedgerPolicy`` gives\n            # its assessor and planner \u2014 a sync lambda stays a sync lambda.\n            signature = await signature\n        if signature is None:\n            return outcome",
+        after="        if signature is None:\n            return outcome\n        if inspect.isawaitable(signature):\n            signature = await signature",
+        tests=RECURRENCE_TESTS,
+    ),
+    Mutant(
+        tag="recurrence",
+        why="A shared stable_hash key must be CONFIRMED by equality before a repeat is declared. Trusting the hash alone restores the shipped bug: stable_hash's last-resort branch describes an opaque value by bare type name, so distinct signatures collide and a run making real progress is killed with a PERMANENT/non-retriable verdict it never proved.",
+        path="agentkit/kernel/recurrence.py",
+        before="        first_seen = next((earlier for earlier, prior in bucket if _same_signature(prior, signature)), None)",
+        after="        first_seen = next((earlier for earlier, _prior in bucket), None)",
+        tests=RECURRENCE_TESTS,
+    ),
+    Mutant(
+        tag="recurrence",
+        why="An unrecognised on_repeat must raise, not fall through to the non-raising branch. Widening the accepted set restores the silent-success path: a caller who asked for a raise gets a PERMANENT Failure returned as an ordinary value, and code that only handles Stuck treats the stall as the answer.",
+        path="agentkit/kernel/recurrence.py",
+        before="    if on_repeat not in (\"escalate\", \"stop\"):",
+        after="    if on_repeat not in (\"escalate\", \"stop\", \"raise\"):",
+        tests=RECURRENCE_TESTS,
+    ),
+    Mutant(
+        tag="recurrence",
+        why="A signature comparison that raises (numpy-style elementwise `==`) must count as NOT the same, so the run falls through to the backstop and is reported UNKNOWN/retriable 'out of budget'. Flipping it to True makes an uncomparable signature type report PERMANENT/non-retriable stuck on attempt 2 \u2014 wrong in the terminal direction.",
+        path="agentkit/kernel/recurrence.py",
+        before="    except Exception:\n        return False",
+        after="    except Exception:\n        return True",
+        tests=RECURRENCE_TESTS,
+    ),
+    Mutant(
+        tag="recurrence",
+        why="The recorded attempt number is the entire reason the history is a dict of attempts and not a bare set \u2014 'attempt 3 repeats attempt 1' is what tells an operator this is an oscillation rather than a wedge. The shipped suite never asserted the message, so the attempt number was free to rot into a placeholder undetected.",
+        path="agentkit/kernel/recurrence.py",
+        before="        bucket.append((attempt, signature))",
+        after="        bucket.append((0, signature))",
+        tests=RECURRENCE_TESTS,
+    ),
+    Mutant(
+        tag="recurrence",
+        why="The history must be every signature seen, not a one-element window. Collapsing it makes an A,B,A,B oscillation read as progress and silently reverts the bound to max_attempts \u2014 the exact naive form the module exists to reject.",
+        path="agentkit/kernel/recurrence.py",
+        before="        bucket = seen.setdefault(key, [])",
+        after="        seen.clear()\n        bucket = seen.setdefault(key, [])",
+        tests=RECURRENCE_TESTS,
+    ),
+    Mutant(
+        tag="grounding",
+        why="the audit trail goes stale: under reground_every_turn the prefix holds turn-N evidence while the record still claims turn 1 \u2014 the trail contradicting the transcript, which is worse than no trail. SURVIVED the shipped suite; killed by the test I added.",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="                    # The record tracks the PREFIX, so it is overwritten rather\n                    # than appended: the prefix now holds this turn's evidence\n                    # only, and a record that accumulated would claim the run\n                    # grounded on blocks that are no longer in the prompt.\n                    self._record(wc, admitted)\n",
+        after="                    # MUTANT: record not refreshed on re-ground\n",
+        tests=GROUNDING_TESTS,
+    ),
+    Mutant(
+        tag="grounding",
+        why="a stale grounding block survives into turn N when this turn's retrieval admits nothing \u2014 the prompt asserts evidence gathered for a different question, precisely when the application's admit just said 'none of this may be used'. SURVIVED the shipped suite; killed by the test I added.",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="                        grounding=grounding_msgs,\n",
+        after="                        grounding=grounding_msgs or wc.prefix.grounding,\n",
+        tests=GROUNDING_TESTS,
+    ),
+    Mutant(
+        tag="grounding",
+        why="the record becomes first-write-wins, so it freezes at turn 1 forever. Same failure as the first mutant by a different route. SURVIVED the shipped suite; killed by the test I added.",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))\n",
+        after="        wc.scratchpad.setdefault(\n            GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted)\n        )\n",
+        tests=GROUNDING_TESTS,
+    ),
+    Mutant(
+        tag="grounding",
+        why="removes the build-time both-seams guard I added, restoring the silent precedence: `builder.grounding = src` on a grounder=-wired builder had its admit predicate dropped and every model-authored item reached the prompt (observed on the shipped code). SURVIVED the shipped suite; killed by the test I added.",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="        if self.grounder is not None and self.grounding is not None:\n            raise ValueError(\n                \"RequestBuilder has both grounder= and grounding= set at build time \u2014 \"",
+        after="        if False:\n            raise ValueError(\n                \"RequestBuilder has both grounder= and grounding= set at build time \u2014 \"",
+        tests=GROUNDING_TESTS,
+    ),
+    Mutant(
+        tag="grounding",
+        why="reverts the durable-state encoding, putting live MemoryItem dataclasses back in the scratchpad \u2014 the run then dies with TypeError inside PostgresCheckpointStore.save while passing every in-memory test.",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))\n",
+        after="        wc.note(GROUNDING_RECORD_KEY, admitted)\n",
+        tests=GROUNDING_TESTS,
+    ),
+    Mutant(
+        tag="grounding",
+        why="the encoder silently drops metadata, so the `tier` key an admit policy reads is absent from the audit trail \u2014 the record would say a run grounded on evidence without recording what made it evidence.",
+        path="agentkit/capabilities/request_builder/base.py",
+        before="        \"metadata\": dict(item.metadata),\n",
+        after="        \"metadata\": {},\n",
+        tests=GROUNDING_TESTS,
     ),
 )
 
