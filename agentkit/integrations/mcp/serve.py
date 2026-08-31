@@ -567,8 +567,27 @@ class McpServerSpec:
         # ``O_CREAT``'s mode argument only applies when the file is created, so
         # ``fchmod`` covers the restart case where it already exists at some
         # other mode. Both act on the descriptor, so neither can be raced by a
-        # symlink swapped in underneath the path.
-        fd = os.open(self.config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # symlink swapped in AFTER the open.
+        #
+        # ``O_NOFOLLOW`` covers the case that defence does not: a symlink
+        # already sitting at ``config_path`` when the open runs. Without it,
+        # ``O_CREAT`` follows the link and writes the bearer token through to
+        # whatever it points at, at whatever mode that file already had — so
+        # the credential lands somewhere the caller never named and the
+        # ``fchmod`` tightens a descriptor that was never the risk. The window
+        # is real wherever the path is attacker-influenced: a predictable name
+        # under a shared ``/tmp``, or a caller-supplied ``config_path`` in a
+        # directory something else can write.
+        #
+        # Refusing is the only safe answer, and it costs a caller who
+        # deliberately symlinked their config path an ``OSError`` naming it —
+        # which is the right trade, because there is no way to tell that caller
+        # apart from an attacker who got there first.
+        fd = os.open(
+            self.config_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+        )
         try:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", closefd=False) as handle:

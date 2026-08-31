@@ -1055,3 +1055,38 @@ def test_the_stdio_config_carries_the_env_the_child_is_spawned_with() -> None:
 
     entry = json.loads(spec.config_path.read_text())["mcpServers"]["engine"]
     assert entry["env"] == {"PYTHONPATH": "/srv/app", "AGENTKIT_ENV": "prod"}
+
+
+def test_a_symlink_at_the_config_path_is_refused_rather_than_followed(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The config file holds a live bearer token, so where it lands is a
+    security property rather than a housekeeping one.
+
+    ``_write_config`` already defends the post-open race: it ``fchmod``s the
+    descriptor rather than the path, so a symlink swapped in AFTER the open
+    cannot redirect the mode change. What that does not cover is a symlink
+    already sitting at ``config_path`` when the open runs — ``O_CREAT`` without
+    ``O_NOFOLLOW`` follows it, and the credential is written through to
+    wherever it points, at whatever mode that file already had.
+
+    The window is real wherever the path is attacker-influenced: a predictable
+    name under a shared ``/tmp``, or a caller-supplied ``config_path`` in a
+    directory something else can write. Refusing is the only safe answer,
+    because there is no legitimate reason to write a credential through a link
+    the caller did not verify."""
+    victim = tmp_path / "victim.json"
+    victim.write_text("{}")
+    link = tmp_path / "config.json"
+    link.symlink_to(victim)
+
+    # The config is written during construction, so the refusal lands at wiring
+    # time rather than at the first request — which is where a caller can still
+    # do something about it.
+    with pytest.raises(OSError):
+        serve_registry(
+            _registry(), name="engine", ctx=make_test_ctx(), config_path=link
+        )
+
+    # The credential must not have reached the link's target.
+    assert victim.read_text() == "{}"

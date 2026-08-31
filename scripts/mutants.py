@@ -3418,8 +3418,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="mcpauth",
         why="THE TOCTOU, and it is the shipped code. `write_text` creates at `0o666 & ~umask` \u2014 0644 under the common umask \u2014 and only then does `chmod(0o600)` run, so the live bearer token sat on disk world-readable in between. Measured, not argued: a polling thread read the real credential out of the file at 0644 and it matched the running server's `auth_headers`. The default config_path hides inside a 0700 mkdtemp, but `config_path=` is a supported argument and `stop()`'s own docstring reasons about callers who point it at a directory that persists \u2014 exactly where the window is reachable \u2014 and it reopened on every `start()`. Asserting the FINAL mode, which is what the shipped test does, cannot see this at all.",
         path="agentkit/integrations/mcp/serve.py",
-        before="        fd = os.open(self.config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)",
-        after="        self.config_path.write_text(json.dumps(self._document, indent=2))",
+        before="        fd = os.open(\n            self.config_path,\n            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,\n            0o600,\n        )",
+        after="        self.config_path.write_text(json.dumps(self._document, indent=2))\n        fd = os.open(self.config_path, os.O_RDONLY)",
         tests=MCP_AUTH_TESTS,
     ),
     Mutant(
@@ -3436,6 +3436,14 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/integrations/mcp/approvals.py",
         before="        transport.host, transport.port = self.host, self.port",
         after="        pass",
+        tests=MCP_AUTH_TESTS,
+    ),
+    Mutant(
+        tag="mcpauth",
+        why="the config open follows a symlink again, so a link already sitting at config_path redirects the bearer token to whatever it points at, at that file's mode \u2014 the fchmod then tightens a descriptor that was never the risk",
+        path="agentkit/integrations/mcp/serve.py",
+        before="            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,",
+        after="            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,",
         tests=MCP_AUTH_TESTS,
     ),
 )
