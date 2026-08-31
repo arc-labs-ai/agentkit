@@ -444,7 +444,9 @@ async def main() -> None:
         print("cli_kwargs:", approvals.cli_kwargs())
 
         # Ask it the questions the CLI would ask.
-        async with MCPClient(StreamableHttpServer(url=approvals.url)) as client:
+        async with MCPClient(
+            StreamableHttpServer(url=approvals.url, headers=approvals.auth_headers)
+        ) as client:
             print("tools:     ", [t.name for t in await client.list_tools()])
             for args in (
                 {"tool_name": "Read", "input": {"file_path": "/etc/passwd"}},
@@ -645,7 +647,11 @@ async def main() -> None:
     print("cli_kwargs keys:  ", sorted(spec.cli_kwargs()))
 
     async with spec:
-        async with MCPClient(StreamableHttpServer(url=spec.url, timeout_s=10.0)) as client:
+        async with MCPClient(
+        StreamableHttpServer(
+            url=spec.url, headers=spec.auth_headers, timeout_s=10.0
+        )
+    ) as client:
             listed = {t.name: t for t in await client.list_tools()}
             print("advertised:       ", sorted(listed))
             assert run_check.schema is not None
@@ -917,23 +923,33 @@ by whether the tool asked for a human. Splatting `auto_approve` into
 `requires_approval=True` is a statement the CLI reads, not a check this
 server performs.
 
-!!! warning "Loopback, and no authentication at all"
-    The HTTP transport binds `127.0.0.1` with **no authentication**.
-    Anything able to reach that port can call these tools — including
-    the ones marked `requires_approval`, because the server itself does
-    not gate on that. Loopback-only *is* the containment, which is why
-    `host` defaults to `127.0.0.1` and why nothing in the package
-    overrides it. Do not bind a routable address.
+!!! warning "Loopback, plus a generated bearer token"
+    The HTTP transport binds `127.0.0.1` and, by default, **requires a
+    bearer token** that the listener generates. `cli_kwargs()` puts it
+    in the config document's `headers`; `spec.auth_headers` is the same
+    credential for a non-CLI client. Nothing accepts a caller-supplied
+    token — one that a caller can set is one that ends up a constant in
+    somebody's config file.
 
-    This is the same posture `ApprovalServer` carries, with a wider
-    blast radius: reaching that one lets you *answer* permission
-    prompts, reaching this one lets you *run the tools*.
+    Loopback alone used to *be* the containment, and that argument holds
+    exactly as long as nothing untrusted shares the host. It is the
+    wrong assumption for the case this exists to serve: the point of
+    `ClaudeCliCognition` is that the CLI runs `Bash` — a build, a
+    package install, a script out of a repository the agent was pointed
+    at — inside the same network namespace as the server holding the
+    agent's own tools. The trust boundary loopback assumes is precisely
+    the boundary the tool set is designed to cross.
 
-    The config file is written `0600` for the same reason. That is
-    tidiness, not a boundary — anything that can scan the port range
-    finds the server without reading the file — but there is no reason
-    to publish a loopback endpoint to every other account on a shared
-    build host.
+    A token is a weaker fence than a `0700` directory, and the honest
+    statement is that it turns *anything on the host* into *anything
+    that can read this process's temp directory*. That is why the config
+    file is `0600` and why `stop()` removes it together with the
+    listener — the file is now a live credential, so a stale one
+    outliving its server would be worse than untidy.
+
+    `auth="none"` restores the old unauthenticated behaviour. It is
+    still supported, and now something a caller asks for by name rather
+    than gets by default.
 
 #### Which transport, and when
 
@@ -1116,7 +1132,11 @@ async def main() -> None:
         [slow_build, call_upstream], name="engine", ctx=make_test_ctx(), timeout_s=0.05
     )
     async with spec:
-        async with MCPClient(StreamableHttpServer(url=spec.url, timeout_s=10.0)) as client:
+        async with MCPClient(
+        StreamableHttpServer(
+            url=spec.url, headers=spec.auth_headers, timeout_s=10.0
+        )
+    ) as client:
             ours = await client.call_tool("slow_build", {})
             theirs = await client.call_tool("call_upstream", {"url": "http://x"})
     print("our deadline:", ours.content[0].text)

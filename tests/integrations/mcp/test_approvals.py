@@ -40,11 +40,14 @@ from agentkit.agents.cognition import ClaudeCliCognition
 from agentkit.agents.control.elicitation import Decision, Elicitation
 from agentkit.agents.control.gate import should_gate
 from agentkit.context import WorkingContext
+from agentkit.integrations.mcp import approvals
 from agentkit.integrations.mcp.approvals import (
+    _MAX_ARGUMENT_CHARS,
     SERVER_NAME,
     TOOL_NAME,
     ApprovalServer,
 )
+from agentkit.testing.fakes.clock import FakeClock
 from agentkit.testing.fakes.ctx import FakeCtx
 from tests.agents.cognition.test_claude_cli import _FakeProcess, _line
 
@@ -377,10 +380,14 @@ async def test_cli_kwargs_wire_the_cognition() -> None:
 
     assert kwargs["permission_prompt_tool"] == f"mcp__{SERVER_NAME}__{TOOL_NAME}"
     config = json.loads(kwargs["mcp_config"][0])
-    assert config["mcpServers"][SERVER_NAME] == {
-        "type": "http",
-        "url": "http://127.0.0.1:51234/mcp",
-    }
+    # The credential travels IN the document the caller is handed, which is the
+    # whole reason ``cli_kwargs()`` exists: a caller assembling an Authorization
+    # header by hand is a caller who will hardcode one.
+    entry = config["mcpServers"][SERVER_NAME]
+    assert entry["type"] == "http"
+    assert entry["url"] == "http://127.0.0.1:51234/mcp"
+    assert entry["headers"] == server.auth_headers
+    assert entry["headers"]["Authorization"].startswith("Bearer ")
     # Strict by default: without it the CLI also loads whatever MCP servers the
     # working directory or the user's home configuration happen to define,
     # which is not what a service wiring an approval gate is asking for.
@@ -1321,3 +1328,598 @@ async def test_stopping_a_server_that_never_started_does_not_raise(
         with pytest.raises(OSError):
             await server.start()
     # leaving the stack ran stop(); reaching here at all is the assertion
+
+# ── 18. a permission prompt is a decision, not a tick on a counter ─────────
+
+
+class _RecordingCtx:
+    """A ctx whose ``emit`` records. The run's observer is the only place a
+    decision made inside this server can reach a UI or a log shipper."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, Any]] = []
+
+    async def emit(
+        self,
+        kind: str,
+        render: str = "",
+        *,
+        payload: Any = None,
+        agent: str = "",
+        parent_id: Any = None,
+    ) -> None:
+        del agent, parent_id
+        self.events.append((kind, render, payload))
+
+
+class _ExplodingCtx:
+    """An observer that raises. A refusal that happened matters more than a
+    record of it that did not."""
+
+    async def emit(self, *_a: Any, **_kw: Any) -> None:
+        raise RuntimeError("the bus is closed")
+
+
+@pytest.mark.asyncio
+async def test_a_human_approval_is_recorded_as_a_decision() -> None:
+    """The count that existed could not answer a single question worth asking:
+    not what was allowed, not who allowed it, not which approval preceded the
+    write we are looking at. The record has to carry the call itself."""
+    asker = _Asker(Decision(kind="approve", actor="ops"))
+    server = _server(asker)
+
+    out = await _decide(server, "Write", file_path="/tmp/out.txt")
+
+    assert out["behavior"] == "allow"
+    (rec,) = server.decisions
+    assert rec.tool == "Write"
+    assert rec.arguments == {"file_path": "/tmp/out.txt"}
+    assert rec.allowed is True
+    assert rec.source == "asker"
+    assert rec.asked is True
+    assert rec.at  # stamped, not blank
+
+
+@pytest.mark.asyncio
+async def test_an_auto_allow_hit_records_its_source_and_asks_nobody() -> None:
+    """"Allowed because a person said so" and "allowed because the operator put
+    this tool on a list" are the two facts an auditor most needs apart, and a
+    boolean cannot hold them. The assertion on ``asker.seen`` is the point:
+    ``asked=False`` has to mean nobody was interrupted."""
+    asker = _Asker(Decision(kind="deny"))
+    server = _server(asker, auto_allow=("Read",))
+
+    out = await _decide(server, "Read", file_path="/etc/hosts")
+
+    assert out["behavior"] == "allow"
+    assert asker.seen == []
+    (rec,) = server.decisions
+    assert (rec.source, rec.asked, rec.allowed) == ("auto_allow", False, True)
+    assert rec.arguments == {"file_path": "/etc/hosts"}
+
+
+@pytest.mark.asyncio
+async def test_an_auto_tier_decision_is_still_recorded() -> None:
+    """AUTO is the tier with no reviewer, no elicitation and no answer to read,
+    so the record is the ONLY evidence the server saw the call at all — and
+    ``source`` is what keeps "the tier does not gate this" from reading as "a
+    person approved it"."""
+    asker = _Asker(Decision(kind="deny"))
+    server = _server(asker, autonomy="auto")
+
+    out = await _decide(server, "Bash", command="rm -rf /tmp/x")
+
+    assert out["behavior"] == "allow"
+    assert asker.seen == []
+    (rec,) = server.decisions
+    assert (rec.source, rec.asked, rec.allowed) == ("autonomy", False, True)
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_is_distinguishable_from_a_human_refusal() -> None:
+    """This is the whole argument for ``source`` existing. Both rows deny, both
+    carry a reason, and nothing else on the record tells them apart — but "a
+    reviewer said no" and "nobody was there" call for opposite responses from
+    whoever reads the trail."""
+    never = asyncio.Event()  # deliberately never set
+
+    class _Slow:
+        async def ask(self, request: Elicitation) -> Decision:
+            await never.wait()
+            return Decision(kind="approve")
+
+    timed_out = _server(_Slow(), timeout_s=0.05)
+    refused = _server(_Asker(Decision(kind="deny", note="not that path")))
+
+    await _decide(timed_out, "Write", file_path="/etc/passwd")
+    await _decide(refused, "Write", file_path="/etc/passwd")
+
+    (expired,) = timed_out.decisions
+    (denied,) = refused.decisions
+    assert expired.allowed is denied.allowed is False
+    assert expired.source == "timeout"
+    assert denied.source == "asker"
+    # ...and a prompt that reached a person before expiring says so.
+    assert expired.asked is True
+
+
+@pytest.mark.asyncio
+async def test_an_asker_that_raises_records_an_error_and_the_session_survives() -> None:
+    """An ``error`` must not read as a policy decision — nobody decided this.
+    And the next prompt has to be answered, because a permission gate that
+    stops answering is the CLI reporting a broken permission system."""
+    calls: list[str] = []
+
+    class _Flaky:
+        async def ask(self, request: Elicitation) -> Decision:
+            calls.append(request.prompt)
+            if len(calls) == 1:
+                raise RuntimeError("the queue went away")
+            return Decision(kind="approve")
+
+    server = _server(_Flaky())
+
+    first = await _decide(server, "Bash", command="ls")
+    second = await _decide(server, "Bash", command="pwd")
+
+    assert first["behavior"] == "deny"
+    assert second["behavior"] == "allow"
+    broke, ok = server.decisions
+    assert (broke.source, broke.allowed, broke.asked) == ("error", False, True)
+    assert "RuntimeError" in broke.reason
+    assert (ok.source, ok.allowed) == ("asker", True)
+
+
+@pytest.mark.asyncio
+async def test_the_recorded_reason_is_the_text_the_model_receives() -> None:
+    """A record whose reason differs from the refusal the model was given
+    documents a run that did not happen."""
+    server = _server(_Asker(Decision(kind="deny", note="that path is out of scope")))
+
+    out = await _decide(server, "Write", file_path="/etc/passwd")
+
+    (rec,) = server.decisions
+    assert rec.reason == out["message"] == "that path is out of scope"
+
+
+@pytest.mark.asyncio
+async def test_decisions_are_oldest_first_and_agree_with_prompts_seen() -> None:
+    """``prompts_seen`` is existing public API and stays. The two must not be
+    able to disagree, or the count becomes a second, quieter source of truth."""
+    server = _server(_Asker(Decision(kind="approve")))
+
+    for tool in ("Read", "Write", "Bash"):
+        await _decide(server, tool)
+
+    assert [d.tool for d in server.decisions] == ["Read", "Write", "Bash"]
+    assert len(server.decisions) == server.prompts_seen == 3
+
+
+@pytest.mark.asyncio
+async def test_the_decisions_tuple_is_a_snapshot_not_the_live_list() -> None:
+    """A caller holding the trail must not be able to edit it, and must not see
+    it grow under them while they iterate."""
+    server = _server(_Asker(Decision(kind="approve")))
+    await _decide(server, "Read")
+    snapshot = server.decisions
+    await _decide(server, "Write")
+
+    assert len(snapshot) == 1
+    assert len(server.decisions) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_recorded_decision_cannot_be_edited_after_the_fact() -> None:
+    """Frozen for the same reason ``HookDecision`` is: a decision that can be
+    rewritten is not an audit trail."""
+    server = _server(_Asker(Decision(kind="approve")))
+    await _decide(server, "Write", file_path="/tmp/a")
+    (rec,) = server.decisions
+
+    with pytest.raises(Exception):  # noqa: B017 — FrozenInstanceError is not public
+        rec.allowed = False  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        rec.arguments["file_path"] = "/etc/passwd"  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_a_ctx_with_no_emit_records_normally_and_raises_nothing() -> None:
+    """``ctx`` is optional and a structural stub predating it is legal, so the
+    observer is reached through ``getattr``. Recording must not depend on it."""
+    for ctx in (None, object()):
+        server = _server(_Asker(Decision(kind="approve")), ctx=ctx)
+        out = await _decide(server, "Read")
+        assert out["behavior"] == "allow"
+        assert len(server.decisions) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_decision_reaches_the_run_observer() -> None:
+    """``gate.check`` is the kind ``ReActCognition`` and ``elicit`` already
+    stamp for this event, so a consumer assembling "every point a person took
+    responsibility in this run" does not have to know which path produced it."""
+    ctx = _RecordingCtx()
+    server = _server(_Asker(Decision(kind="deny", note="no")), ctx=ctx, agent="dev")
+
+    await _decide(server, "Write", file_path="/etc/passwd")
+
+    (kind, render, payload) = ctx.events[0]
+    assert kind == "gate.check"
+    assert "Write" in render
+    assert payload["allowed"] is False
+    assert payload["source"] == "asker"
+    assert payload["reason"] == "no"
+
+
+@pytest.mark.asyncio
+async def test_the_observer_payload_carries_no_arguments() -> None:
+    """The in-memory record is complete and unredacted; the broadcast is
+    deliberately not the record. The observer stream fans out to logs and UIs
+    the caller may not own, and the arguments are the half most likely to carry
+    a token — so the trail keeps them and the event does not."""
+    ctx = _RecordingCtx()
+    server = _server(_Asker(Decision(kind="approve")), ctx=ctx)
+
+    await _decide(server, "Bash", command="curl -H 'Authorization: Bearer sk-live'")
+
+    (_kind, render, payload) = ctx.events[0]
+    assert "sk-live" not in render
+    assert "sk-live" not in json.dumps(payload)
+    assert "sk-live" in server.decisions[0].arguments["command"]
+
+
+@pytest.mark.asyncio
+async def test_an_observer_that_raises_does_not_lose_the_decision() -> None:
+    """The append comes first and the emit is best-effort — the same order
+    ``HookSettings._emit`` keeps, for the same reason."""
+    server = _server(_Asker(Decision(kind="approve")), ctx=_ExplodingCtx())
+
+    out = await _decide(server, "Read")
+
+    assert out["behavior"] == "allow"
+    assert len(server.decisions) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_modify_records_the_arguments_that_actually_ran() -> None:
+    """The CLI runs ``updatedInput`` and does not tell the model it changed, so
+    the edited arguments exist NOWHERE else in the run. Recording the request
+    instead would name a call that never happened while the one that did went
+    unrecorded — worse than no trail, because it reads like one."""
+    edited = {"file_path": "/tmp/sandbox/out.txt", "content": "hello"}
+    server = _server(_Asker(Decision(kind="modify", value=edited)))
+
+    out = await _decide(server, "Write", file_path="/etc/out.txt", content="hello")
+
+    assert out["updatedInput"] == edited
+    (rec,) = server.decisions
+    assert rec.arguments == edited
+    assert (rec.allowed, rec.source, rec.asked) == (True, "asker", True)
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_records_the_arguments_that_were_refused() -> None:
+    """A deny has no ``updatedInput``; what was refused is what was asked."""
+    server = _server(_Asker(Decision(kind="deny")))
+
+    await _decide(server, "Write", file_path="/etc/passwd")
+
+    (rec,) = server.decisions
+    assert rec.arguments == {"file_path": "/etc/passwd"}
+
+
+@pytest.mark.asyncio
+async def test_arguments_that_are_not_json_serialisable_are_still_recorded() -> None:
+    """Dropping the field is not an option: a tool name says ``Write``, and a
+    decision has to have been about ``Write`` of a particular path."""
+
+    class _Opaque:
+        def __repr__(self) -> str:
+            return "<opaque>"
+
+    server = _server(_Asker(Decision(kind="deny", note="no")))
+
+    await _decide(server, "Bash", command=_Opaque(), cwd="/srv")
+
+    (rec,) = server.decisions
+    assert set(rec.arguments) == {"command", "cwd"}
+    assert rec.arguments["cwd"] == "/srv"
+
+
+@pytest.mark.asyncio
+async def test_enormous_arguments_are_truncated_rather_than_dropped() -> None:
+    """``Write`` carries the whole file body, and a server that held every
+    prompt for the life of a run would grow with the bytes the agent wrote."""
+    server = _server(_Asker(Decision(kind="approve")))
+
+    await _decide(server, "Write", file_path="/tmp/big", content="x" * 200_000)
+
+    (rec,) = server.decisions
+    assert rec.arguments["file_path"] == "/tmp/big"  # small values survive intact
+    recorded = rec.arguments["content"]
+    assert len(recorded) < _MAX_ARGUMENT_CHARS + 200
+    assert "truncated" in recorded
+    assert "200002" in recorded  # the true rendered size is named, not hidden
+
+
+@pytest.mark.asyncio
+async def test_an_allow_the_encoder_refuses_is_recorded_as_an_error() -> None:
+    """``_allow`` degrades to a deny when the arguments cannot be encoded. The
+    branch intended an allow and the CLI got a refusal, and filing that under
+    ``autonomy`` would send an auditor looking for a tier that never denied
+    anything."""
+    server = ApprovalServer(autonomy="auto")
+
+    out = await _decide(server, "Bash", command=float("nan"))
+
+    assert out["behavior"] == "deny"
+    (rec,) = server.decisions
+    assert (rec.source, rec.allowed) == ("error", False)
+
+
+@pytest.mark.asyncio
+async def test_a_server_with_no_reviewer_records_the_error_it_denies_with() -> None:
+    """Reachable only when ``autonomy`` is tightened after construction, which
+    is exactly the case where the trail is how anyone finds out."""
+    server = ApprovalServer(autonomy="auto")
+    server.autonomy = "gated"
+
+    out = await _decide(server, "Bash", command="ls")
+
+    assert out["behavior"] == "deny"
+    (rec,) = server.decisions
+    assert (rec.source, rec.asked, rec.allowed) == ("error", False, False)
+    assert rec.reason == out["message"]
+
+
+@pytest.mark.asyncio
+async def test_a_misconfigured_timeout_records_that_nobody_was_asked() -> None:
+    """``asked`` is NOT ``source == "asker"`` and it is not derivable from the
+    verdict. ``timeout_s=0`` expires before the transport is scheduled, so the
+    prompt cost a person nothing — while an ordinary expiry cost them the
+    interruption. Same ``source``, different ``asked``."""
+    asker = _Asker(Decision(kind="approve"))
+    server = _server(asker)
+    server.timeout_s = 0  # refused at construction; assignable afterwards
+
+    out = await _decide(server, "Bash", command="ls")
+
+    assert out["behavior"] == "deny"
+    (rec,) = server.decisions
+    assert (rec.source, rec.asked) == ("timeout", False)
+    assert asker.seen == []
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_is_not_a_decision_records_an_error() -> None:
+    """The HITL API this replaced was ``dict[str, str]`` with ``"approve"`` as
+    a bare string, so an ``Asker`` written from memory returns a ``str``. That
+    is a transport bug, not a refusal, and the trail has to say which."""
+
+    class _Legacy:
+        async def ask(self, request: Elicitation) -> Any:
+            return "approve"
+
+    server = _server(_Legacy())
+
+    out = await _decide(server, "Bash", command="ls")
+
+    assert out["behavior"] == "deny"
+    (rec,) = server.decisions
+    assert (rec.source, rec.allowed, rec.asked) == ("error", False, True)
+    assert "str" in rec.reason
+
+
+@pytest.mark.asyncio
+async def test_the_timestamp_comes_from_the_run_clock() -> None:
+    """A replayed or fake-clocked run must not stamp its approval trail with
+    real wall-clock times, or it stops lining up with the checkpoints beside
+    it. ``clock`` is the same ``ClockPort`` seam ``Checkpointer`` takes."""
+    server = _server(_Asker(Decision(kind="approve")), clock=FakeClock(start=1_700_000_000.0))
+
+    await _decide(server, "Read")
+
+    (rec,) = server.decisions
+    assert rec.at == "2023-11-14T22:13:20+00:00"
+
+
+@pytest.mark.asyncio
+async def test_a_broken_clock_does_not_take_down_the_decision() -> None:
+    """A decision that already happened outranks a timestamp for it."""
+
+    class _BrokenClock:
+        def now(self) -> float:
+            raise RuntimeError("no clock")
+
+        async def sleep(self, seconds: float) -> None:
+            return None
+
+    server = _server(_Asker(Decision(kind="approve")), clock=_BrokenClock())
+
+    out = await _decide(server, "Read")
+
+    assert out["behavior"] == "allow"
+    (rec,) = server.decisions
+    assert rec.at == ""
+
+
+@pytest.mark.asyncio
+async def test_concurrent_prompts_are_ordered_by_when_they_were_decided() -> None:
+    """The CLI can ask about several tools at once, so "oldest first" has to
+    mean something specific. It means DECIDED-first: a record exists when there
+    is a verdict to record, which is also the order an operator reading the
+    trail alongside the CLI's own output sees them resolve. Arrival order lives
+    on the ``Elicitation`` id, which is stamped from ``prompts_seen``."""
+    gates = {name: asyncio.Event() for name in ("Read", "Write", "Bash")}
+
+    class _Gated:
+        async def ask(self, request: Elicitation) -> Decision:
+            await gates[request.tool_call["name"]].wait()
+            return Decision(kind="approve")
+
+    server = _server(_Gated())
+    pending = [asyncio.create_task(_decide(server, name)) for name in gates]
+    await asyncio.sleep(0.01)  # let all three park inside ask()
+
+    for name in ("Bash", "Read", "Write"):  # answered out of arrival order
+        gates[name].set()
+        await asyncio.sleep(0.01)
+    await asyncio.gather(*pending)
+
+    assert [d.tool for d in server.decisions] == ["Bash", "Read", "Write"]
+    assert len(server.decisions) == server.prompts_seen == 3
+
+
+# ── 19. what the record still could not tell apart, and what it broadcast ──
+
+
+@pytest.mark.asyncio
+async def test_a_value_answer_is_recorded_as_a_broken_transport_not_a_refusal() -> None:
+    """``test_a_value_decision_is_not_consent`` already pins that the MESSAGE
+    names the transport and never says "declined" — because only the Asker's
+    author can tell yes from no here, and they cannot if the text blames the
+    human. The RECORD has to draw the same line, and it is the record that
+    outlives the run.
+
+    A ``value`` answer means the transport handed back whatever the person
+    typed instead of a verdict, so it belongs with the other four ways NOBODY
+    DECIDED. Filed as ``asker`` it is byte-for-byte a human refusal, which is
+    the collapse ``source`` exists to prevent — and the more expensive
+    direction, since the person may well have typed "yes"."""
+    typed_an_answer = _server(_Asker(Decision(kind="value", value="yes, go ahead")))
+    genuinely_refused = _server(_Asker(Decision(kind="deny", note="not that path")))
+
+    await _decide(typed_an_answer, "Bash", command="rm -rf /")
+    await _decide(genuinely_refused, "Bash", command="rm -rf /")
+
+    (broken,) = typed_an_answer.decisions
+    (refused,) = genuinely_refused.decisions
+    assert broken.allowed is refused.allowed is False  # identical verdicts...
+    assert broken.source == "error"  # ...and distinguishable anyway
+    assert refused.source == "asker"
+    # It still cost a person the interruption, whatever their transport did
+    # with the answer.
+    assert broken.asked is True
+
+
+@pytest.mark.asyncio
+async def test_an_observer_that_hangs_does_not_park_the_permission_answer() -> None:
+    """Recording is on the critical path: ``_decide`` cannot answer the CLI
+    until ``_record`` — which awaits ``ctx.emit`` — has returned. Suppressing
+    exceptions covers an observer that RAISES and says nothing about one that
+    HANGS, and a hung observer holds the permission prompt open forever, which
+    is the ``dontAsk`` failure this module exists to remove arriving by a
+    slower route. ``timeout_s`` bounds the human; nothing bounded the bus.
+
+    The bound is the same argument ``_ask`` makes about the ``Asker``: the
+    protocol lets an implementation wait forever, so it is enforced here.
+    """
+    started = asyncio.Event()
+
+    class _HangingCtx:
+        async def emit(self, *_a: Any, **_kw: Any) -> None:
+            started.set()
+            await asyncio.Event().wait()  # never set
+
+    server = _server(_Asker(Decision(kind="approve")), ctx=_HangingCtx())
+
+    with patch.object(approvals, "_EMIT_TIMEOUT_S", 0.05):
+        out = await asyncio.wait_for(_decide(server, "Read"), timeout=5)
+
+    assert started.is_set(), "the observer really was called"
+    assert out["behavior"] == "allow"  # the CLI got its answer
+    assert len(server.decisions) == 1  # ...and the trail kept the decision
+
+
+@pytest.mark.asyncio
+async def test_the_record_exists_before_the_observer_is_told() -> None:
+    """The stated contract of ``_record`` is that the append comes FIRST and
+    the emit is best-effort. An observer that raises cannot show that — the
+    suppression is inside ``_emit``, so both orders look identical from
+    outside. A UI that renders the trail when it hears the event can: with the
+    order reversed, ``gate.check`` announces a decision that is not in
+    ``decisions`` yet, and the pane it paints is one row short of the run."""
+    seen_at_emit_time: list[int] = []
+    server: ApprovalServer
+
+    class _ReentrantCtx:
+        async def emit(self, *_a: Any, **_kw: Any) -> None:
+            seen_at_emit_time.append(len(server.decisions))
+
+    server = _server(_Asker(Decision(kind="approve")), ctx=_ReentrantCtx())
+
+    await _decide(server, "Read")
+
+    assert seen_at_emit_time == [1], "the event announced a decision the trail did not have"
+
+
+@pytest.mark.asyncio
+async def test_the_observation_says_which_agent_was_gated() -> None:
+    """A run with a supervisor and three workers puts every ``gate.check`` on
+    one stream. Without the attribution, "somebody's Bash call was refused" is
+    all a reader gets, and the whole point of the record is that a decision has
+    provenance. ``HookSettings._emit`` does not pass one and should; this does,
+    and nothing pinned it."""
+    seen: list[str] = []
+
+    class _AttributingCtx:
+        async def emit(self, *_a: Any, agent: str = "", **_kw: Any) -> None:
+            seen.append(agent)
+
+    server = _server(_Asker(Decision(kind="deny")), ctx=_AttributingCtx(), agent="worker-2")
+
+    await _decide(server, "Bash", command="ls")
+
+    assert seen == ["worker-2"]
+
+
+@pytest.mark.asyncio
+async def test_the_broadcast_carries_the_whole_record_except_the_arguments() -> None:
+    """The payload's redaction is exactly one field wide, and the rest of the
+    record has to be on the wire or a consumer reading only the stream cannot
+    reconstruct the trail. ``asked`` and ``at`` are the two the existing
+    coverage missed, and they are the two that carry information no other
+    producer of ``gate.check`` emits."""
+    ctx = _RecordingCtx()
+    server = _server(
+        _Asker(Decision(kind="approve")),
+        ctx=ctx,
+        clock=FakeClock(start=1_700_000_000.0),
+    )
+
+    await _decide(server, "Write", file_path="/tmp/out.txt")
+
+    (rec,) = server.decisions
+    (_kind, _render, payload) = ctx.events[0]
+    assert payload == {
+        "tool": rec.tool,
+        "allowed": rec.allowed,
+        "reason": rec.reason,
+        "source": rec.source,
+        "asked": rec.asked,
+        "at": rec.at,
+    }
+    assert payload["asked"] is True
+    assert payload["at"] == "2023-11-14T22:13:20+00:00"
+    assert "arguments" not in payload
+
+
+@pytest.mark.asyncio
+async def test_an_allow_records_the_arguments_the_caller_handed_over() -> None:
+    """The allow path reads its record back off the wire, which means it reads
+    it back through ``json.loads``. Anything the encoder normalises on the way
+    out — a tuple, a non-string key — comes back normalised, while the SAME
+    call refused records the originals. Pinned rather than fixed: the CLI's
+    arguments arrive as JSON in production, so the normalisation is a no-op
+    there, and reading the record off the answer is what stops the trail and
+    the refusal disagreeing. But a caller diffing ``decisions`` against what
+    they passed should know the two paths do not answer alike."""
+    allowed = _server(_Asker(Decision(kind="approve")))
+    refused = _server(_Asker(Decision(kind="deny")))
+    args: dict[str, Any] = {"tags": ("a", "b")}
+
+    await allowed._decide("Write", dict(args))
+    await refused._decide("Write", dict(args))
+
+    assert allowed.decisions[0].arguments == {"tags": ["a", "b"]}  # JSON round trip
+    assert refused.decisions[0].arguments == {"tags": ("a", "b")}  # untouched

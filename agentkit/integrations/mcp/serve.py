@@ -38,16 +38,31 @@ defended at its site below:
 
 Requires the ``mcp`` extra (``pip install "arc-agentkit[mcp]"``).
 
-.. warning::
-   The HTTP transport binds ``127.0.0.1`` with no authentication: anything able
-   to reach that port can run these tools. Loopback-only is the containment.
-   See :mod:`agentkit.integrations.mcp._transport`.
+The HTTP transport is **authenticated by default**: the listener carries a
+generated bearer token and ``cli_kwargs()`` keeps carrying everything needed to
+address it, so nothing about the wiring above changes. That default is the one
+behavioural change worth calling out, and it is a change of default rather than
+of capability — ``auth="none"`` is still there and is now something a caller
+says out loud.
+
+A served registry is where this matters most, and more than it does for the
+sibling ``ApprovalServer``. An approval server answers prompts; a served
+``ToolRegistry`` is whatever the application put in it. The listener sits in the
+same network namespace as the CLI's ``Bash``, which routinely runs a build, a
+package install or a test suite out of a repository the agent was pointed at, so
+"only loopback can reach it" and "only the runner can reach it" are not the same
+statement. A verdict reachable by anything sharing the namespace is a verdict no
+longer produced only by the runner that was supposed to produce it: it does not
+have to be attacked to be worthless, it only has to be reachable. See
+:mod:`agentkit.integrations.mcp._transport` for the fence and for why it is a
+bearer token rather than a Unix socket.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import sys
@@ -60,8 +75,10 @@ from typing import Any, Literal
 
 from agentkit.integrations.mcp._transport import (
     LoopbackMcpTransport,
+    McpAuth,
     http_mcp_config,
     qualified_tool_name,
+    validated_auth,
 )
 from agentkit.kernel._json import dumps as _json_dumps
 from agentkit.kernel.concurrency import Cancelled
@@ -265,6 +282,7 @@ class McpServerSpec:
     name: str
     config_path: Path
     transport: Transport
+    auth: McpAuth
     tool_names: tuple[str, ...]
     mcp_names: Mapping[str, str]
     requires_approval: tuple[str, ...]
@@ -292,6 +310,26 @@ class McpServerSpec:
         if self.transport != "http":
             return None
         return f"http://{self.host}:{self.port}/mcp"
+
+    @property
+    def auth_headers(self) -> Mapping[str, str]:
+        """The headers a client must send to be answered, empty under
+        ``auth="none"``.
+
+        ``cli_kwargs()`` already carries everything the CLI needs, because a
+        caller assembling MCP JSON by hand is the gap this module exists to
+        close. A client that is not the CLI — agentkit's own
+        ``StreamableHttpServer``, a probe, a health check — needs the same
+        thing one layer down, and this is it.
+
+        A mapping rather than the raw token, and there is deliberately no
+        ``spec.token``: a bare token invites concatenation into a URL, and a
+        credential in a URL is the one placement the fence refuses outright
+        because URLs are logged.
+        """
+        if self._transport is None:
+            return {}
+        return MappingProxyType(self._transport.auth_headers)
 
     @property
     def calls_seen(self) -> int:
@@ -470,13 +508,30 @@ class McpServerSpec:
 
         The config file goes because a stale one outlives the port it names,
         and the next reader gets a URL pointing at nothing — or, worse, at
-        whatever bound that port next. Only a directory this spec created is
-        removed; a caller-supplied ``config_path`` is theirs to keep.
+        whatever bound that port next. Under ``auth="bearer"`` it is worse
+        still: the document carries the token, so a config that outlives its
+        listener is a live credential lying on disk naming a port something
+        else may bind.
+
+        Which is why the removal is in a ``finally``. Without it, a listener
+        whose shutdown raised — a uvicorn task that would not join, an fd
+        already closed underneath us — took the deletion with it and left
+        exactly that file behind, on the one path where something had already
+        gone wrong and nobody was going to come back and tidy up.
+
+        The FILE goes even when the directory is the caller's. The directory is
+        theirs (they may well have chosen a persistent one, which is the point
+        of passing ``config_path=``); the file is ours, we wrote it, and what we
+        wrote into it is a secret.
         """
-        if self._transport is not None:
-            await self._transport.stop()
-        if self._owns_config_dir:
-            shutil.rmtree(self.config_path.parent, ignore_errors=True)
+        try:
+            if self._transport is not None:
+                await self._transport.stop()
+        finally:
+            if self._owns_config_dir:
+                shutil.rmtree(self.config_path.parent, ignore_errors=True)
+            else:
+                self.config_path.unlink(missing_ok=True)
 
     def _write_config(self) -> None:
         """Materialise the ``--mcp-config`` document. Idempotent.
@@ -490,12 +545,36 @@ class McpServerSpec:
         if not self._document:
             return
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(json.dumps(self._document, indent=2))
-        # 0600 because the document names a loopback endpoint with no auth on
-        # it. Not a security boundary — anything that can scan the port range
-        # finds the server anyway — but there is no reason to publish the
-        # address.
-        self.config_path.chmod(0o600)
+        # 0600 was hygiene when the document only named a loopback endpoint:
+        # anything that can scan the port range finds the server anyway, and
+        # there was simply no reason to publish the address. Under
+        # ``auth="bearer"`` it stopped being hygiene and became the fence's
+        # other half — the CLI reads the token OUT of this file, so anything
+        # that can read this file holds the credential.
+        #
+        # Which is why the mode is set on the DESCRIPTOR, before a byte of the
+        # document is written, rather than by a ``chmod`` afterwards.
+        # ``write_text`` creates at ``0o666 & ~umask`` — 0644 under the common
+        # umask — so a later ``chmod`` leaves a window in which the live token
+        # is on disk world-readable. Measured, not theorised: a polling thread
+        # read the real credential out of the file at 0644 before the chmod
+        # landed. The default ``config_path`` is inside a ``mkdtemp`` whose 0700
+        # hid it, but ``config_path=`` is a supported argument and ``stop()``
+        # reasons explicitly about callers who point it at a directory that
+        # persists — which is exactly where the window is reachable. The window
+        # also reopened on every ``start()``, because this method runs again.
+        #
+        # ``O_CREAT``'s mode argument only applies when the file is created, so
+        # ``fchmod`` covers the restart case where it already exists at some
+        # other mode. Both act on the descriptor, so neither can be raced by a
+        # symlink swapped in underneath the path.
+        fd = os.open(self.config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", closefd=False) as handle:
+                handle.write(json.dumps(self._document, indent=2))
+        finally:
+            os.close(fd)
 
     def _asgi_app(self) -> Any:
         """The streamable-HTTP app around the lowlevel server.
@@ -532,6 +611,7 @@ def serve_registry(
     name: str,
     ctx: Ctx,
     transport: Transport = "http",
+    auth: McpAuth | None = None,
     timeout_s: float | None = None,
     config_path: Path | str | None = None,
     host: str = "127.0.0.1",
@@ -563,6 +643,27 @@ def serve_registry(
     its closures and its ``ctx`` do not survive the boundary. The command is
     whatever re-creates them on the other side, and it should call
     :func:`serve_registry_stdio`.
+
+    ``auth`` defaults to whatever the chosen transport can actually enforce:
+    ``"bearer"`` over HTTP, ``"none"`` over stdio. It resolves per transport
+    rather than being one constant because the two boundaries are different
+    objects, not two settings of one. Over HTTP the port is reachable by
+    anything sharing the namespace and a token is the only thing that narrows
+    it. Over stdio there is no request to carry a header at all: the CLI
+    spawned the process and holds both ends of the pipe, which IS the check,
+    and demanding an explicit ``auth="none"`` there would be ceremony for a
+    boundary the OS already holds.
+
+    Which is why ``transport="stdio", auth="bearer"`` RAISES here rather than
+    quietly handing back an unauthenticated spec. A caller who asked for a
+    credential and got a server without one has a guard that looks wired and
+    enforces nothing — the exact failure this package refuses everywhere else,
+    and the only reason to prefer a wiring-time ``ValueError`` over a
+    convenient degradation.
+
+    ``auth="none"`` is the old unauthenticated loopback listener, unchanged and
+    still supported. It is a defensible choice on a host nobody else shares; it
+    stopped being defensible as the thing you get by saying nothing.
     """
     if not _SERVER_NAME.fullmatch(name):
         # The tool names are rewritten because the model never typed them; the
@@ -582,6 +683,22 @@ def serve_registry(
             "— or use transport='http', which keeps the tools in THIS process."
         )
 
+    # Resolved before anything is built, so the refusal below lands in the
+    # caller's own frame next to the wiring that caused it.
+    mode: McpAuth = (
+        ("bearer" if transport == "http" else "none")
+        if auth is None
+        else validated_auth(auth, where="serve_registry")
+    )
+    if transport == "stdio" and mode == "bearer":
+        raise ValueError(
+            "serve_registry(transport='stdio', auth='bearer') cannot be provided: a stdio "
+            "server has no request to carry a credential — the CLI spawns the process and "
+            "holds both ends of the pipe, and that pipe is the boundary. Pass auth='none' "
+            "to say so explicitly, or transport='http', where the token is a real fence "
+            "in front of a port anything on the host can otherwise reach."
+        )
+
     plan = _plan(_tools_of(registry))
     advertised = [_advertise(tool, mcp_name=n) for n, tool in sorted(plan.items())]
     mcp_names = {tool.name: qualified_tool_name(name, n) for n, tool in plan.items()}
@@ -596,12 +713,17 @@ def serve_registry(
 
     listener: LoopbackMcpTransport | None = None
     if transport == "http":
-        listener = LoopbackMcpTransport(host=host, port=port)
+        listener = LoopbackMcpTransport(host=host, port=port, authenticated=mode == "bearer")
         # Reserve BEFORE writing the config: the file has to name the port, and
         # picking one that something else then takes is the failure mode the
         # reservation exists to remove. See ``LoopbackMcpTransport.reserve``.
         port = listener.reserve()
-        document = http_mcp_config(name, listener.url)
+        # The token comes off the listener that will enforce it, not out of a
+        # second generator here. One object holds the credential, so the
+        # document and the fence cannot disagree — and a spec that re-enters
+        # ``async with`` rewrites the same document, because the listener it
+        # reads from is the same object.
+        document = http_mcp_config(name, listener.url, token=listener.token)
     else:
         document = {
             "mcpServers": {
@@ -624,6 +746,7 @@ def serve_registry(
         name=name,
         config_path=path,
         transport=transport,
+        auth=mode,
         tool_names=every,
         mcp_names=MappingProxyType(mcp_names),
         requires_approval=approval,
@@ -673,6 +796,10 @@ async def serve_registry_stdio(
         # better than one that looks openable.
         config_path=Path("<stdio: no config file>"),
         transport="stdio",
+        # Nothing to authenticate to: the CLI spawned this process and holds
+        # both ends of the pipe. Saying "bearer" here would be a claim about a
+        # fence that does not exist on this path.
+        auth="none",
         tool_names=(),
         mcp_names=MappingProxyType({}),
         requires_approval=(),

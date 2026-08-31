@@ -103,7 +103,16 @@ def test_the_config_is_written_to_a_real_path_the_cli_can_read() -> None:
     assert spec.config_path.exists()
     config = json.loads(spec.config_path.read_text())
     assert config == {
-        "mcpServers": {"engine": {"type": "http", "url": spec.url}}
+        "mcpServers": {
+            "engine": {
+                "type": "http",
+                "url": spec.url,
+                # ``headers`` is the CLI's own key and the only credential seam
+                # it offers; the fence in front of this listener is on the
+                # other end of it. See ``tests/.../test_transport_auth.py``.
+                "headers": dict(spec.auth_headers),
+            }
+        }
     }
     assert spec.url is not None and spec.url.startswith("http://127.0.0.1:")
 
@@ -764,6 +773,31 @@ def test_the_http_listener_serves_the_same_registry_over_a_real_socket(
     assert e2e["http_calls_seen"] == 3
 
 
+@pytest.mark.slow
+def test_a_client_with_no_credential_is_refused_before_the_registry_sees_it(
+    e2e: dict[str, Any],
+) -> None:
+    """What a caller sees if they point a plain ``MCPClient`` at an
+    authenticated server, and it is the pair of assertions that matters rather
+    than either alone.
+
+    The 401 has to arrive as an EXCEPTION out of the transport — an
+    ``httpx.HTTPStatusError``, raised where the connection is made — and not as
+    an ``isError`` tool result. A bad CALLER is not a bad CALL: the ``isError``
+    path exists so the model can repair its own mistake, and routing a security
+    refusal down it would hand the model a boundary to reason about and work
+    around.
+
+    ``calls_seen`` unmoved is the other half. It is the server's own count of
+    ``_dispatch`` entries, so an unchanged number is direct evidence the
+    request was refused at the ASGI layer rather than answered by a tool that
+    happened to say no — and those two produce logs that read the same.
+    """
+    assert "401" in e2e["unauthenticated_error"], e2e["unauthenticated_error"]
+    assert "HTTPStatusError" in e2e["unauthenticated_error"]
+    assert e2e["http_calls_seen"] == e2e["http_calls_seen_before_refusal"] == 3
+
+
 # ── 13. against the real binary ────────────────────────────────────────────
 #
 # Everything above proves agentkit speaks MCP correctly to agentkit. That is
@@ -807,6 +841,14 @@ def test_the_real_cli_accepts_the_config_and_calls_the_served_tool(tmp_path: Any
     assert verdict["tool_names"] == ["mcp__engine__run_check"]
     assert verdict["calls_seen"] >= 1, "the CLI never reached the server"
     assert marker.read_text() == "lint", "the tool body did not run in the serving process"
+    # And it got past a fence that was really there. The bearer-token design
+    # rests entirely on the CLI sending the ``headers`` entry from
+    # ``--mcp-config``; that fact was verified once with a socket sniffer while
+    # this was written, and this is what keeps it verified. Every assertion
+    # above would still pass against an unauthenticated listener, so these two
+    # lines are what make them a statement about the fence.
+    assert verdict["auth"] == "bearer"
+    assert verdict["config_has_credential"] is True
 
 
 # ── 13. review pass: gaps the first suite left open ────────────────────────
@@ -989,10 +1031,11 @@ async def test_re_entering_a_stopped_spec_puts_its_config_file_back() -> None:
 
 
 def test_the_config_file_is_not_world_readable() -> None:
-    """The document names a loopback endpoint with no authentication in front of
-    it. Not a security boundary — anything that can scan the port range finds
-    the server anyway — but there is no reason to publish the address to every
-    other account on a shared build host."""
+    """This was hygiene when the document only named a loopback endpoint: there
+    was no reason to publish the address to every other account on a shared
+    build host, but anything that could scan the port range found the server
+    anyway. It is the fence's other half now — the CLI reads the bearer token
+    OUT of this file, so anything that can read it holds the credential."""
     spec = _spec()
     mode = spec.config_path.stat().st_mode & 0o777
     assert mode == 0o600, f"config readable beyond its owner: {oct(mode)}"

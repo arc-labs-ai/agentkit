@@ -266,9 +266,11 @@ escaped the parser's handler — and because the reader stopped before the
   `Asker` that raises instead of returning a `Decision` breaks it.
 - **The CLI's hook timeout is a fail-open**, not a fail-closed. If you override
   the generated deadlines, keep the CLI's the loosest.
-- **`serve_registry` and `ApprovalServer` bind loopback with no authentication.**
-  Anything able to reach the port can call those tools or answer those prompts.
-  That is the containment; do not bind them to a routable address.
+- **`serve_registry` and `ApprovalServer` require a generated bearer token** by
+  default, and `cli_kwargs()` carries it. Loopback alone was the containment
+  before, which held only as long as nothing untrusted shared the host — and the
+  point of this cognition is that the CLI runs `Bash` in that same namespace.
+  `auth="none"` restores the old behaviour if you want it, by name.
 
 ## Related
 

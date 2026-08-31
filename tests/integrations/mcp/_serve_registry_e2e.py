@@ -56,6 +56,20 @@ def _text(result: Any) -> str:
     return "".join(b.text for b in result.content if getattr(b, "text", None) is not None)
 
 
+def _flatten(exc: BaseException) -> list[str]:
+    """Every leaf of a possibly-nested ``ExceptionGroup``, as text.
+
+    ``anyio`` task groups wrap whatever the transport raised, and the wrapper's
+    own ``str`` is "unhandled errors in a TaskGroup (1 sub-exception)" — which
+    says nothing about the 401 that is the entire point of the assertion. The
+    parent test needs to see the status code, not the shape of the plumbing it
+    arrived through.
+    """
+    if isinstance(exc, BaseExceptionGroup):
+        return [line for sub in exc.exceptions for line in _flatten(sub)]
+    return [f"{type(exc).__name__}: {exc}"]
+
+
 async def main() -> dict[str, Any]:
     server = StdioServer(command=sys.executable, args=("-m", __spec__.name, "--serve"))
     verdict: dict[str, Any] = {}
@@ -87,11 +101,15 @@ async def _over_http() -> dict[str, Any]:
     spec = serve_registry(_registry(), name="engine", ctx=make_test_ctx())
     out: dict[str, Any] = {}
     async with spec:
-        # The config file is what the CLI is handed, so read the URL back OUT
-        # of it rather than off the object: a spec whose file disagrees with
-        # its own attribute would pass every in-process test and fail the CLI.
-        url = json.loads(spec.config_path.read_text())["mcpServers"]["engine"]["url"]
-        async with MCPClient(StreamableHttpServer(url=url, timeout_s=10.0)) as client:
+        # The config file is what the CLI is handed, so read the URL and the
+        # credential back OUT of it rather than off the object: a spec whose
+        # file disagrees with its own attributes would pass every in-process
+        # test and fail the CLI.
+        entry = json.loads(spec.config_path.read_text())["mcpServers"]["engine"]
+        url, headers = entry["url"], entry["headers"]
+        async with MCPClient(
+            StreamableHttpServer(url=url, headers=dict(headers), timeout_s=10.0)
+        ) as client:
             out["http_tools"] = [t.name for t in await client.list_tools()]
             out["http_ok"] = _text(await client.call_tool("run_check", {"name": "http"}))
             bad = await client.call_tool("run_check", {"nope": 1})
@@ -99,6 +117,20 @@ async def _over_http() -> dict[str, Any]:
             out["http_survived"] = _text(
                 await client.call_tool("run_check", {"name": "later"})
             )
+        out["http_calls_seen_before_refusal"] = spec.calls_seen
+
+        # What a caller sees if they point a PLAIN client at an authenticated
+        # server. It has to be an exception out of the transport rather than an
+        # ``isError`` result, and ``calls_seen`` has to be unmoved afterwards —
+        # that pair is the difference between "a bad caller" and "a bad call",
+        # and only a real socket can tell them apart.
+        try:
+            async with MCPClient(StreamableHttpServer(url=url, timeout_s=10.0)) as blind:
+                await blind.list_tools()
+        except BaseException as exc:  # noqa: BLE001 — the TYPE is the finding
+            out["unauthenticated_error"] = " | ".join(_flatten(exc))
+        else:
+            out["unauthenticated_error"] = ""
     out["http_calls_seen"] = spec.calls_seen
     return out
 

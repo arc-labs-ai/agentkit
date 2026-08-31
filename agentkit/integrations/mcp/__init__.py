@@ -29,7 +29,11 @@ error surfaces only when a caller actually reaches for this integration.
 
 from __future__ import annotations
 
-from agentkit.integrations.mcp.approvals import ApprovalServer
+from agentkit.integrations.mcp.approvals import (
+    ApprovalDecision,
+    ApprovalServer,
+    ApprovalSource,
+)
 from agentkit.integrations.mcp.client import MCPClient, StdioServer, StreamableHttpServer
 from agentkit.integrations.mcp.memory import mcp_resources
 from agentkit.integrations.mcp.prompts import mcp_prompts
@@ -42,7 +46,9 @@ from agentkit.integrations.mcp.serve import (
 from agentkit.integrations.mcp.tools import mcp_tools
 
 __all__ = [
+    "ApprovalDecision",
     "ApprovalServer",
+    "ApprovalSource",
     "MCPClient",
     "McpServerSpec",
     "StdioServer",

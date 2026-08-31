@@ -98,10 +98,36 @@ KNOWN_BROKEN: dict[str, str] = {
     # field forces it. Deleting one is always progress.
 }
 
+def _approval_decision() -> Any:
+    """`ApprovalDecision.source` is a Literal alias with no default, so
+    synthesis cannot reach the type at all — the same reason `WorkflowResult`
+    is below. Imported inside the factory because it lives behind the `mcp`
+    extra, and this file must still import when that extra is absent (the
+    walker already skips the module in that case, so the entry simply goes
+    unused rather than breaking collection).
+
+    The payload is deliberately non-empty: `arguments` is the mutable-through-
+    frozen field this ratchet exists to catch, and an empty dict would let the
+    check pass while verifying nothing.
+    """
+    from agentkit.integrations.mcp.approvals import ApprovalDecision
+
+    return ApprovalDecision(
+        tool="Write",
+        arguments={"file_path": "/tmp/out.txt", "nested": {"deep": [1, 2]}},
+        allowed=True,
+        reason="",
+        source="asker",
+        at="1970-01-01T00:00:00+00:00",
+        asked=True,
+    )
+
+
 # Types whose representative instance cannot be synthesized from annotations
 # alone — Protocols and abstract seams have no fields to read. Register a
 # concrete stand-in rather than letting synthesis guess.
 FACTORIES: dict[str, Any] = {
+    "ApprovalDecision": _approval_decision,
     # `ContextScope` is a Protocol; `LastNTurns` is the simplest real impl.
     "ContextScope": lambda: agentkit.LastNTurns(2),
     # These carry a CROSS-FIELD constraint that annotations cannot express, so

@@ -80,6 +80,15 @@ async def main() -> dict[str, Any]:
         init = evals.get("cli_init") or {}
         return {
             "calls_seen": spec.calls_seen,
+            "auth": spec.auth,
+            # Reported so the parent can assert the binary got past a fence
+            # that was really there. The whole bearer-token design rests on the
+            # CLI actually sending a ``headers`` entry from ``--mcp-config``,
+            # and nothing but the real binary can confirm it: an in-process
+            # test would be agentkit sending itself a header it also checks.
+            "config_has_credential": "headers" in json.loads(spec.config_path.read_text())[
+                "mcpServers"
+            ]["engine"],
             "tool_names": list(spec.tool_names),
             "mcp_servers": [
                 {"name": s.get("name"), "status": s.get("status")}
