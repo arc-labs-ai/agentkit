@@ -7,14 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Three batches of work in this cycle: five gaps reported from production use, a
-follow-up sweep for other major issues, and a thirteen-item programme closing
-the seams a CLI-driven application needs.
+Four batches of work in this cycle: five gaps reported from production use, a
+follow-up sweep for other major issues, a thirteen-item programme closing the
+seams a CLI-driven application needs, and a second CLI-delegating cognition for
+OpenAI's `codex` — which also surfaced a bug in the first one.
 
 Everything is additive except three behaviour changes, each called out at its
 own entry: the concurrency-bound change below, a tool's model-facing
 description now being its whole docstring rather than its first line, and both
 MCP servers now requiring a bearer token by default.
+
+### Added — `CodexCliCognition`, the second CLI-delegating cognition
+
+`ClaudeCliCognition` hands the whole loop to a locally-installed `claude`.
+`CodexCliCognition` does the same for OpenAI's `codex`, and everything a caller
+relies on is identical: exactly one terminal `final` event on every exit path,
+the same `AgentResult` and stop-reason taxonomy, the same `spawn=` seam for
+tests, the same `evals` keys where the same fact exists. Auth stays the CLI's
+problem — whatever `CODEX_API_KEY`, `OPENAI_API_KEY` or `$CODEX_HOME` login it
+would find on its own.
+
+What is NOT identical is where the two binaries genuinely differ, and each of
+those is a visible difference in the API rather than a field that quietly does
+nothing:
+
+- **Containment is an OS sandbox, not a tool list.** There is no `tools=`;
+  Codex gives every session the same `shell` / `apply_patch` / `update_plan`
+  and restricts what they may do with `--sandbox` and `--ask-for-approval`. So
+  `caps` — the Rule-of-Two tags `RunPolicy` reads — are derived from the
+  sandbox and `web_search` rather than from a tool table. The configuration
+  worth knowing: `sandbox="read-only"` with `web_search=True` IS the lethal
+  trifecta, and it is the most innocuous-looking wiring Codex has.
+- **There is no system-prompt flag.** `system_prompt_mode="prepend"` (the
+  default) puts `agent.prompt` above the task and keeps Codex's own base
+  instructions; `"replace"` writes it to an `experimental_instructions_file`.
+  In a session the prepended prompt goes out on the first turn only.
+- **The CLI reports no cost.** `Usage.cost_usd` is computed from
+  `pricing.cost` (or an injected `pricing=`) and every result carries
+  `evals["cost_source"] == "estimated"`, because an unpriced model costs $0.00
+  and a caller must not read that as a bill. There is also no
+  `--max-budget-usd`: an exhausted budget refuses to spawn (resumable
+  `budget_exhausted`) and the spend is charged afterwards, but nothing stops a
+  run mid-flight the way the Claude cognition can.
+- **A session resumes a thread rather than holding a process.** `codex exec` is
+  one-shot, so `CodexCliSession` spawns per turn and threads the conversation
+  through `codex exec resume <id>`. That costs a warm-up per turn and buys
+  three things the held-process design cannot have: a cancelled turn does not
+  end the conversation, per-turn structured output works, and a failed turn
+  costs one turn.
+
+Also in this area:
+
+- **Both `--json` vocabularies are parsed.** Codex has shipped thread events
+  (`item.completed`) and the older `{"msg": {...}}` shape, and a service does
+  not get to pick which version its operator installed. Supporting one would
+  have made the other a run that exits 0, emits nothing and returns an empty
+  answer — silent, plausible and wrong, since the forward-compat rule is "don't
+  crash". The shape is detected per payload, not sniffed once.
+- **The cached-token split.** Codex counts input tokens inclusive of the cached
+  prefix; agentkit's `Usage.input_tokens` is the fresh input. Subtracting is
+  not a tidy-up — a Codex session is mostly cache, so getting it backwards
+  double-counts nearly the whole prompt on every turn.
+- **`as_codex_mcp(spec)`** projects a `serve_registry` server into the
+  `mcp_servers=` config Codex reads, so the CLI calls your tools through
+  agentkit's own tool path. `McpServerSpec.codex_kwargs()` is the same thing as
+  a method, beside `cli_kwargs()`. The token travels in
+  `bearer_token_env_var` + the child's environment rather than the argv, which
+  is world-readable in `ps`. `hook_settings` and `as_cli_agents` have no Codex
+  counterpart — no pre-tool hook, no sub-agent roster — and the package
+  docstring says which and why rather than leaving a reader to search.
+- **`FakeCodexCli` + `codex_turn(...)`** for testing the path offline. Same
+  spawn seam and the same shared value types (`CliRun`, `CliStderr`,
+  `CliInvocation`) as `FakeClaudeCli`; a spawn here is a TURN, because the CLI
+  is one-shot. `codex_turn` builds the real event order, since that order
+  carries meaning the cognition depends on.
+
+### Fixed — a CLI session could not actually be an agent's cognition
+
+`ClaudeCliSession.drive` exists so consecutive `agent.run(...)` calls share one
+process and one CLI-side conversation, and the class docstring advertises it.
+It did not work: `Agent._span_attrs` reads `cognition.name` for the
+`agentkit.agent.cognition` trace attribute on every run, the session had no
+such attribute, and `agent.run` raised `AttributeError: 'ClaudeCliSession'
+object has no attribute 'name'` before reaching the CLI at all. Both sessions
+now report `"<bin>_session"` — suffixed rather than delegated verbatim, so a
+trace distinguishes the two regimes, which are genuinely different things to
+debug. Found while building the same surface for Codex, which is the value of
+writing the second one: the documented usage of the first had no test.
 
 ### Added — give the Claude CLI your own tools, approvals, hooks and sub-agents
 

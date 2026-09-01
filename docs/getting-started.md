@@ -60,9 +60,10 @@ pip install "arc-agentkit[http,postgres]"   # extras compose
 - **No API key** for the first example below — it runs against the
   `FakeLLM` test double that ships in the package.
 - For a real run, either an API key for a provider (Anthropic, OpenAI,
-  DeepSeek and OpenRouter ship as presets), or the local `claude` CLI on
-  your `PATH`, which `ClaudeCliCognition` drives using the CLI's own
-  login — no server-side key.
+  DeepSeek and OpenRouter ship as presets), or a local coding CLI on your
+  `PATH` — `claude` for `ClaudeCliCognition`, `codex` for
+  `CodexCliCognition`. Either is driven using the CLI's own login, so
+  there is no server-side key.
 
 ## Verify the install
 

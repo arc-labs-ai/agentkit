@@ -137,6 +137,7 @@ nav:
       - Adapters: concepts/adapters.md
       - Integrations (MCP): concepts/integrations.md
       - The Claude CLI: concepts/claude-cli.md
+      - The Codex CLI: concepts/codex-cli.md
       - Observability: concepts/observability.md
       - Testing: concepts/testing.md
   - Mental models:

@@ -59,6 +59,7 @@ from agentkit.agents.cognition import (
     ReActCognition,
     CoordinatorCognition,
     ClaudeCliCognition,
+    CodexCliCognition,
 )
 
 # One chat call + optional parse-and-repair.
@@ -85,6 +86,20 @@ ClaudeCliCognition(
 # agent.prompt is APPENDED to the CLI's own system prompt (--append-system-prompt);
 # system_prompt_mode="replace" opts into overriding it. Resume a prior run with
 # resume_session_id=<evals["session_id"]> — session_id= NAMES a new session.
+
+# The same, for a locally-installed `codex` CLI. Same drive contract; containment
+# is an OS SANDBOX rather than a tool list, because Codex has no tool allow-list.
+CodexCliCognition(
+    model="gpt-5-codex",
+    sandbox="workspace-write",       # read-only | workspace-write | danger-full-access
+    ask_for_approval="never",        # nobody is at the terminal in a service
+    skip_git_repo_check=True,        # codex refuses to run outside a git repo
+)
+# No --append-system-prompt exists: agent.prompt is PREPENDED to the task
+# (system_prompt_mode="replace" writes an instructions file instead). No cost is
+# reported by the CLI, so usage.cost_usd is computed and evals["cost_source"] is
+# always "estimated". No --max-budget-usd either: the budget refuses before and
+# charges after, but nothing stops a run mid-flight.
 ```
 
 ## Tools
@@ -557,6 +572,38 @@ ClaudeCliCognition(agents=as_cli_agents([reviewer_skill, repairer_skill]))
 # A skill carrying custom agentkit tools raises SkillNotProjectable, by name, at
 # construction: serve them with serve_registry and the sub-agent reaches them as
 # mcp__<server>__<tool>.
+```
+
+## Codex CLI seams (same idea, fewer of them)
+
+```python
+from agentkit.agents.control.safety import RunPolicy
+from agentkit.agents.cognition import CodexCliCognition
+from agentkit.integrations.codex_cli import as_codex_mcp
+
+# Capability tags come off the SANDBOX, not a tool table — Codex has no tool
+# allow-list, so what a session can reach is what its sandbox permits.
+CodexCliCognition().caps                                   # ('private_data',) — read-only
+CodexCliCognition(sandbox="danger-full-access").caps       # + egress
+CodexCliCognition(web_search=True).caps                    # full trifecta: --search is two legs
+RunPolicy().check([cognition])                             # reads `.caps`, same as any tool
+# read-only + web_search is the trifecta and looks like the SAFEST config there is.
+
+# Point it at your own tools. serve_registry writes Claude's --mcp-config document;
+# Codex reads config.toml keys, so the same spec has a second projection.
+cognition = CodexCliCognition(model="gpt-5-codex", **as_codex_mcp(spec))
+# The bearer token travels in bearer_token_env_var + env=, never the argv (`ps`).
+
+# One thread, many turns. codex exec is one-shot, so a session RESUMES rather than
+# holding a process: a warm-up per turn, but a cancelled turn does not end the
+# conversation and per-turn output= works.
+async with cognition.session() as chat:
+    async for ev in chat.turn("summarise the repo"):
+        ...
+
+# NOT available, and no substitute is pretended: there is no PreToolUse hook, so
+# hook_settings has no counterpart and no middleware reaches `shell`; and there is
+# no sub-agent roster, so as_cli_agents has none either. The sandbox is the control.
 ```
 
 ## Structured output

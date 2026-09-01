@@ -39,7 +39,8 @@ import pytest
 
 from agentkit import Agent
 from agentkit.agents.cognition import ClaudeCliCognition
-from agentkit.agents.cognition.claude_cli import CLI_TOOL_CAPS, _middleware_name, _tool_middleware_names
+from agentkit.agents.cognition._cli_common import _middleware_name, _tool_middleware_names
+from agentkit.agents.cognition.claude_cli import CLI_TOOL_CAPS
 from agentkit.agents.control.safety import TRIFECTA, RunPolicy
 from agentkit.context import WorkingContext
 from agentkit.middlewares import audit, egress, idempotent, meter, security, tracing

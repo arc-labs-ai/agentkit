@@ -284,6 +284,7 @@ cancellation and timeout tests, where the wait is the thing under test.
 | `RecordingTracer` | `TracePort` | `.spans` |
 | `FakeCtx` | `Ctx` | `.spans` |
 | `FakeClaudeCli` | the `claude` subprocess | `.spawns` — how many times it was launched |
+| `FakeCodexCli` | the `codex` subprocess | `.spawns`, `.argv()` — and `codex_turn(...)` to build one |
 
 ## `FakeClaudeCli` — testing the CLI path without spending
 
@@ -315,6 +316,40 @@ asking for one more raises `ScriptExhausted` rather than replaying the
 last turn — the same discipline `FakeLLM.script` uses, and for the same
 reason. Pass `repeat_last=True` when the unbounded loop is the point of
 the test.
+
+### `FakeCodexCli` — the same seam, the other binary
+
+`CodexCliCognition` has the identical problem and the double is its twin;
+the two share their replay machinery and their value types (`CliRun`,
+`CliStderr`, `CliInvocation`), so a recorded spawn is a recorded spawn
+whichever binary produced it.
+
+```python
+from agentkit.agents.cognition import CodexCliCognition
+from agentkit.testing import FakeCodexCli, codex_turn
+
+cli = FakeCodexCli.script(codex_turn(text="done", usage=(1200, 1000, 40)))
+cognition = CodexCliCognition(spawn=cli)
+```
+
+Two things differ, and both follow from `codex exec` being one-shot:
+
+- **A spawn is a TURN.** `FakeClaudeCli` serves many turns from one
+  spawn, because that CLI holds a process open. A three-turn
+  `CodexCliSession` consumes three runs — `FakeCodexCli.answering("one",
+  "two", "three")` is the shorthand.
+- **`codex_turn(...)` builds the event order a real turn has** —
+  `thread.started`, `turn.started`, the items, `turn.completed`. The
+  order carries meaning the cognition depends on (the thread id arrives
+  first because a session resumes it; the usage arrives last because the
+  budget is charged from it), so a hand-written stream is where a test
+  ends up asserting against something the binary would never emit.
+
+`usage=` is passed in the CLI's *own* convention — input tokens
+inclusive of the cached prefix — because the subtraction into agentkit's
+convention is the cognition's job, and a builder that pre-split it would
+make the test that pins that subtraction assert against its own
+arithmetic.
 
 Malformed sessions are constructible on purpose, because every bug worth
 a regression test here is a session that came back wrong: a truncated

@@ -173,6 +173,10 @@ Four ship in `agentkit.agents.cognition`:
   messages between them.
 - **`ClaudeCliCognition`** — hands the whole loop to a locally installed
   `claude` CLI, so you manage no API keys at all.
+- **`CodexCliCognition`** — the same for a locally installed `codex` CLI.
+  Deliberately parallel to the one above, and deliberately not identical:
+  its containment is an OS sandbox rather than a tool list. See
+  [The Codex CLI](codex-cli.md).
 
 If a term above is new, the [glossary](../glossary.md) defines each one
 in a sentence.
@@ -190,6 +194,10 @@ resulting stream is recorded.
 - **`ClaudeCliCognition`** — delegates the loop to a locally-installed
   `claude` CLI, so no API key is handled on your server; the CLI's own
   auth is used. Emits the same `StreamEvent`s the others do.
+- **`CodexCliCognition`** — the same arrangement for OpenAI's `codex`
+  CLI: same `drive` contract, same terminal-event guarantee, same
+  `spawn=` seam. Where the two binaries genuinely differ, so does the
+  API — see [The Codex CLI](codex-cli.md) for the four places.
 
 Import path: `from agentkit.agents.cognition import ReActCognition`.
 Cognitions are deliberately **not** re-exported from the top-level
@@ -327,7 +335,7 @@ something you branch on rather than sniff out of a dict:
 | `max_iterations` | The tool-loop ceiling was reached with no final answer |
 | `invalid_output` | Parse-and-repair exhausted |
 | `terminated` | Stopped deliberately: a `TerminationCondition` fired, a person declined at a gate, a run was cancelled (the exact wording is in `evals["stop_reason"]`) |
-| `failed` | The run errored and the cognition reported it as *data* rather than raising — only `ClaudeCliCognition` does this, so its guarantee of a terminal event survives a subprocess that never starts |
+| `failed` | The run errored and the cognition reported it as *data* rather than raising — only the two CLI cognitions do this, so their guarantee of a terminal event survives a subprocess that never starts |
 
 `result.is_suspended` and `result.is_resumable` are the two convenience
 reads. A run that **failed** usually produces no `AgentResult` at all —
@@ -442,7 +450,8 @@ have to declare it.
 
 !!! abstract "Where this fits in the four themes"
     This page covers the **Cognition** theme (`SingleCallCognition`,
-    `ReActCognition`, `CoordinatorCognition`, `ClaudeCliCognition`, and
+    `ReActCognition`, `CoordinatorCognition`, `ClaudeCliCognition`,
+    `CodexCliCognition`, and
     your own `Cognition` implementations) and the **Control** theme
     (`Autonomy`, `RunPolicy`, `ActorBudget`, `Suspended` +
     `agent.resume(...)`, `SignalChannel`, `Handoff`). See the four-theme

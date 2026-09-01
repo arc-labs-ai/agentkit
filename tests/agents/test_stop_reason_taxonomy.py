@@ -35,6 +35,11 @@ from agentkit.agents.cognition.claude_cli import (
     _CLI_INVALID_OUTPUT_REASONS,
     _cli_stop_reason,
 )
+from agentkit.agents.cognition.codex_cli import (
+    _CODEX_FAILURE_REASONS,
+    _CODEX_INVALID_OUTPUT_REASONS,
+    _codex_stop_reason,
+)
 from agentkit.agents.control.termination import FunctionalTermination, MaxTurns
 from agentkit.agents.policies.ledger import LedgerPolicy
 from agentkit.agents.policies.plan import PlanPolicy, StaticPlanner, Step
@@ -220,7 +225,7 @@ def test_a_round_robin_stopped_by_max_turns_condition_agrees_with_the_ceiling() 
     assert res.stop_reason == "max_iterations"
 
 
-# ── 4. the CLI cognition — the one producer that reports failure as data ────
+# ── 4. the CLI cognitions — the producers that report failure as data ───────
 
 
 @pytest.mark.parametrize("reason", sorted(_CLI_FAILURE_REASONS) + ["cli_exit_1", "cli_exit_137"])
@@ -228,6 +233,44 @@ def test_cli_failures_map_to_failed(reason: str) -> None:
     """A subprocess that never started is not a deliberate stop. ``cli_exit_<n>``
     is dynamic, which is why this mapping is local to the cognition."""
     assert _cli_stop_reason(reason) == "failed"
+
+
+@pytest.mark.parametrize("reason", sorted(_CODEX_FAILURE_REASONS) + ["cli_exit_1", "cli_exit_137"])
+def test_codex_failures_map_to_failed(reason: str) -> None:
+    """The same contract for the second CLI cognition, asserted against its OWN
+    table rather than a shared one. The two sets overlap heavily and differ
+    where the binaries do — ``turn_failed`` exists only for Codex, ``turn_refused``
+    only for Claude — so a single parametrised list over a merged set would stop
+    noticing when one of them lost an entry."""
+    assert _codex_stop_reason(reason) == "failed"
+
+
+@pytest.mark.parametrize("reason", sorted(_CODEX_INVALID_OUTPUT_REASONS))
+def test_codex_structured_output_failures_are_invalid_output(reason: str) -> None:
+    """Codex constrains its final MESSAGE to the schema rather than returning a
+    separate validated field, so "the answer is not JSON" is the shape failing,
+    not the run — ``invalid_output``, same as everywhere else."""
+    assert _codex_stop_reason(reason) == "invalid_output"
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    [(None, "complete"), ("success", "complete"), ("cancelled", "terminated")],
+)
+def test_codex_non_failures_defer_to_the_shared_table(reason: str | None, expected: str) -> None:
+    assert _codex_stop_reason(reason) == expected
+
+
+def test_budget_exhausted_stays_resumable_through_both_cli_cognitions() -> None:
+    """Both cognitions refuse to spawn when the budget is already gone, and both
+    have to report that as the RESUMABLE reason — raise the ceiling and run
+    again — rather than as a failure. It is deliberately absent from both
+    failure sets so the shared table answers, and this is the test that says so:
+    listing it locally would flip it to ``failed`` and silently strand a run an
+    operator could have released."""
+    assert _cli_stop_reason("budget_exhausted") == "budget_exhausted"
+    assert _codex_stop_reason("budget_exhausted") == "budget_exhausted"
+    assert "budget_exhausted" in RESUMABLE_STOP_REASONS
 
 
 def test_an_interrupt_is_terminated_not_failed() -> None:
@@ -304,6 +347,8 @@ def test_every_reason_the_framework_itself_passes_is_categorised() -> None:
         set(_REASON_TO_STOP)
         | _CLI_FAILURE_REASONS
         | _CLI_INVALID_OUTPUT_REASONS
+        | _CODEX_FAILURE_REASONS
+        | _CODEX_INVALID_OUTPUT_REASONS
         | set(get_args(AgentStopReason))
     )
     uncategorised: dict[str, list[str]] = {}
@@ -321,6 +366,6 @@ def test_every_reason_the_framework_itself_passes_is_categorised() -> None:
     assert scanned > 20, f"the scan found almost nothing ({scanned} files) — the glob broke"
     assert not uncategorised, (
         "these stop reasons are passed by the framework but categorised nowhere; add each to "
-        "`_REASON_TO_STOP` in agents/result.py (or `_CLI_FAILURE_REASONS` / "
-        f"`_CLI_INVALID_OUTPUT_REASONS` if it is a CLI failure mode): {uncategorised}"
+        "`_REASON_TO_STOP` in agents/result.py (or the `_CLI_*` / `_CODEX_*` sets in the "
+        f"relevant cognition if it is a CLI failure mode): {uncategorised}"
     )

@@ -1,7 +1,8 @@
 # The Claude CLI
 
-Everywhere else in agentkit, your code owns the loop. This is the one place it
-does not.
+Everywhere else in agentkit, your code owns the loop. This is one of two places
+it does not — the other is [The Codex CLI](codex-cli.md), which is deliberately
+parallel to this page and differs only where the binaries do.
 
 `ClaudeCliCognition` hands the whole agent loop to a locally installed `claude`
 binary. The CLI decides how many turns to take, which of its own tools to call,
@@ -274,6 +275,10 @@ escaped the parser's handler — and because the reader stopped before the
 
 ## Related
 
+- [The Codex CLI](codex-cli.md) — the sibling cognition. Same contract, and four
+  real differences: an OS sandbox instead of a tool list, no system-prompt flag,
+  no CLI-reported cost, and a session that resumes a thread rather than holding
+  a process.
 - [Integrations (MCP)](integrations.md) — `serve_registry` and `ApprovalServer`,
   the two servers this page points at.
 - [Agents](agents.md) — `ClaudeCliCognition` alongside the other three

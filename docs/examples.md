@@ -16,8 +16,9 @@ Five of the six run offline against `FakeLLM` — no API key, no network.
 | `04_claude_cli.py` | Delegating the whole loop to a locally-installed `claude` CLI via `ClaudeCliCognition`. | the `claude` CLI |
 | `05_streaming_typed_output.py` | Rendering a typed object *while the model is writing it*, via `StreamEvent.partial_output`. | `pydantic` |
 | `06_hitl_budget_and_capabilities.py` | Three things composing: a capability mismatch refused at construction before any spend, a gated tool that **parks in place** on an injected `Asker`, and a budget that stops on a verdict and writes a recoverable checkpoint. | nothing |
+| `07_codex_cli.py` | The same delegation to a locally-installed `codex` CLI via `CodexCliCognition` — and the difference that matters: containment is an OS **sandbox**, not a tool list, shown by running one instruction under two of them. | the `codex` CLI |
 
-Two of them are worth calling out because they demonstrate behaviour
+Three of them are worth calling out because they demonstrate behaviour
 the docs otherwise only assert:
 
 - **05** shows the negative case as well as the positive one: an agent
@@ -27,6 +28,10 @@ the docs otherwise only assert:
   wired into `Services`, the cognition awaits the human in place instead
   of checkpointing and unwinding — the other half of the HITL story from
   [tutorial step 5](tutorial.md#step-5-make-it-ask-before-it-acts).
+- **07** runs the *same* instruction under `sandbox="read-only"` and
+  `sandbox="workspace-write"` and prints whether the file appeared. The
+  [Codex CLI page](concepts/codex-cli.md) claims the sandbox is real
+  containment rather than a declared policy; this is the claim executing.
 
 ## Running them
 
@@ -37,15 +42,21 @@ uv sync
 uv run python examples/01_single_agent.py
 ```
 
-`uv sync` is enough for every example except `04`. It installs the dev
-group, which pulls in `pydantic` (transitively, via the `mcp` extra) —
-that is what `05` needs.
+`uv sync` is enough for every example except `04` and `07`. It installs
+the dev group, which pulls in `pydantic` (transitively, via the `mcp`
+extra) — that is what `05` needs.
 
 `04_claude_cli.py` additionally needs the `claude` CLI on your `PATH`
 and an authenticated Claude Code session; it uses whatever auth the CLI
 already resolved (`~/.claude/` login, `CLAUDE_CODE_OAUTH_TOKEN`, or
 `ANTHROPIC_API_KEY`) rather than a key held by agentkit. If `claude`
 isn't installed it prints a note and exits cleanly, so it is safe in CI.
+
+`07_codex_cli.py` is the same arrangement for the `codex` CLI, using
+whatever auth *it* resolved (`$CODEX_HOME` login, `CODEX_API_KEY`, or
+`OPENAI_API_KEY`). It also initialises a throwaway git repo, because
+`codex` refuses to run outside one unless told to skip the check. Same
+clean exit when the binary is missing.
 
 To point any of the others at a real provider, replace the `FakeLLM(...)`
 construction with a preset — `claude(api_key=...)`, `openai(api_key=...)`
