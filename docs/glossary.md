@@ -42,6 +42,7 @@ without touching your prompt, your tools, or anything downstream:
 - `ReActCognition` — the tool loop (see **ReAct** below).
 - `CoordinatorCognition` — drive several child agents.
 - `ClaudeCliCognition` — hand the whole job to a local `claude` CLI.
+- `CodexCliCognition` — the same for a local `codex` CLI.
 
 → [Agents](concepts/agents.md)
 
@@ -537,9 +538,11 @@ post it somewhere. Tools declare which legs they supply as `caps`, and
 `RunPolicy` refuses a set that assembles all three without a human gate.
 Two things surprise people. One tool can supply two legs — `WebFetch`
 both ingests untrusted content and reaches the network — so you do not
-need three dangerous-looking tools. And a Claude CLI session now
-declares capabilities of its own, where the default "every built-in
-tool" is the full trifecta.
+need three dangerous-looking tools. And both CLI sessions declare
+capabilities of their own: for `claude` the default "every built-in
+tool" is the full trifecta, and for `codex` the trifecta is a
+*read-only* sandbox with `web_search=True` — which reads like the safest
+configuration it has.
 
 → [Agents](concepts/agents.md)
 
@@ -630,13 +633,34 @@ the next entry — as a *server* publishing your own tools.
 
 → [Integrations](concepts/integrations.md)
 
+### Sandbox (Codex)
+
+**The operating-system fence around what a `codex` session's own tools
+may do** — read the workspace, write to it, or reach the network.
+
+It is worth its own entry because it is not the same kind of thing as a
+tool allow-list. `claude` restricts what a session *has*; `codex` gives
+every session the same `shell` and `apply_patch` and restricts what
+those may *do*, with `sandbox="read-only"` / `"workspace-write"` /
+`"danger-full-access"`. That is weaker in one way — you cannot take a
+tool away — and stronger in another: it is enforced below the CLI rather
+than by the model declining to call something. It is also the whole of
+the containment for a Codex session, because no tool middleware reaches
+`shell` and there is no pre-tool hook that could make it.
+
+`ask_for_approval` is the other half and not a substitute: in a service
+it should be `"never"`, since nobody is at the terminal, which leaves
+the sandbox as the only control.
+
+→ [The Codex CLI](concepts/codex-cli.md)
+
 ### Serving tools over MCP
 
 **Publishing a `ToolRegistry` of your own as an MCP server, so a program
 you do not control can call your Python functions.**
 
-It exists because `ClaudeCliCognition` hands the whole loop to the
-`claude` binary, and that binary cannot import your code. The only way
+It exists because the CLI cognitions hand the whole loop to a binary,
+and that binary cannot import your code. The only way
 it calls your `deploy()` is if something serves it. Everything needed to
 *describe* an agentkit tool was already there and already correct — only
 the wire was missing, so a service wrote MCP JSON by hand and then owned
@@ -644,7 +668,9 @@ the job of keeping a hand-written schema in step with the Python
 signature it claimed to describe. `serve_registry` sends the existing
 schema out unchanged, and carries `side_effecting`, `requires_approval`
 and `caps` across with it, so a policy check on your side still sees
-what the tools can do.
+what the tools can do. The same server reaches `codex` through
+`as_codex_mcp(spec)`, which is the same document spelled as the TOML
+keys that CLI reads.
 
 → [Integrations](concepts/integrations.md)
 

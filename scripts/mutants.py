@@ -192,6 +192,14 @@ CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
 CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
 CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
 FAKE_CLI_TESTS = ("tests/testing/test_fake_claude_cli.py",)
+CODEX_TESTS = ("tests/agents/cognition/test_codex_cli.py",)
+CODEX_EVENT_TESTS = ("tests/agents/cognition/test_codex_cli_events.py",)
+CODEX_FLAG_TESTS = ("tests/agents/cognition/test_codex_cli_flags.py",)
+CODEX_CAPS_TESTS = ("tests/agents/cognition/test_codex_cli_caps.py",)
+CODEX_SESSION_TESTS = ("tests/agents/cognition/test_codex_cli_session.py",)
+CODEX_BUDGET_TESTS = ("tests/agents/cognition/test_codex_cli_budget.py",)
+CODEX_SCHEMA_TESTS = ("tests/agents/cognition/test_codex_cli_structured.py",)
+FAKE_CODEX_TESTS = ("tests/testing/test_fake_codex_cli.py",)
 MEM_DEDUPE_TESTS = (
     "tests/memory/test_composite_memory_dedupe.py",
     "tests/memory/test_memory_item.py",
@@ -1132,7 +1140,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="Ctrl-C during a CLI run is swallowed into a tidy successful-looking "
         "terminal event instead of propagating — which also hides a test double's "
         "ScriptExhausted, the one exception that must never be caught",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/agents/cognition/_cli_common.py",
         before="    if fatal_exc is not None and not isinstance(fatal_exc, Exception):",
         after="    if fatal_exc is not None and isinstance(fatal_exc, Exception):",
         tests=FAKE_CLI_TESTS,
@@ -1157,7 +1165,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="json.loads on bytes sniffs a BOM, so a non-UTF-8 diagnostic line raises "
         "UnicodeDecodeError rather than JSONDecodeError; narrowing the catch lets one "
         "bad byte abort the run and bill the completed work at $0.00",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/agents/cognition/_cli_common.py",
         before="    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError",
         after="    except json.JSONDecodeError:",
         tests=FAKE_CLI_TESTS,
@@ -1166,7 +1174,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="fakecli",
         why="a replayed process that reports its exit code before wait() makes every "
         "persistent session look dead from turn two",
-        path="agentkit/testing/fakes/claude_cli.py",
+        path="agentkit/testing/fakes/_cli_replay.py",
         before="        return self._invocation.returncode\n\n    async def wait(self) -> int:",
         after="        return self._run.returncode\n\n    async def wait(self) -> int:",
         tests=FAKE_CLI_TESTS,
@@ -1176,7 +1184,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="dropping the newline-less fragment at EOF silently loses a recording's "
         "final result payload — cost, usage and session id vanish while the run still "
         "reports partial=False",
-        path="agentkit/testing/fakes/claude_cli.py",
+        path="agentkit/testing/fakes/_cli_replay.py",
         before="            yield blob[start:]\n            return",
         after="            return",
         tests=FAKE_CLI_TESTS,
@@ -1186,7 +1194,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="sorting the queued stderr chunks as whole tuples lets a tie on the stdout "
         "position fall through to comparing BYTES, so a multi-write traceback is "
         "reassembled in alphabetical order",
-        path="agentkit/testing/fakes/claude_cli.py",
+        path="agentkit/testing/fakes/_cli_replay.py",
         before="sorted(run.interleaved_stderr, key=lambda pair: pair[0])",
         after="sorted(run.interleaved_stderr)",
         tests=FAKE_CLI_TESTS,
@@ -1196,7 +1204,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a double whose terminate() does not stop the child still reports "
         "stop_reason='cancelled', because cancellation outranks the exit code — so a "
         "leaked subprocess is invisible from the result alone",
-        path="agentkit/testing/fakes/claude_cli.py",
+        path="agentkit/testing/fakes/_cli_replay.py",
         before="        self._invocation.terminated = True",
         after="        self._invocation.terminated = False",
         tests=FAKE_CLI_TESTS,
@@ -1621,7 +1629,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="the validated dict is handed back raw instead of the declared type",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/agents/cognition/_cli_common.py",
         before="        return adapter.validate(value), None",
         after="        return value, None",
         tests=CLI_SCHEMA_TESTS,
@@ -1661,7 +1669,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="the field-level coercion diagnostics are dropped, leaving only '1 error(s)'",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/agents/cognition/_cli_common.py",
         before='        detail = "; ".join(str(e) for e in getattr(exc, "errors", ()) or ())',
         after='        detail = ""',
         tests=CLI_SCHEMA_TESTS,
@@ -3445,6 +3453,185 @@ MUTANTS: tuple[Mutant, ...] = (
         before="            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,",
         after="            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,",
         tests=MCP_AUTH_TESTS,
+    ),
+    # ── the codex CLI cognition ─────────────────────────────────────────────
+    #
+    # Chosen for the places this cognition's logic is a TRANSLATION rather than
+    # a pass-through, because those are the ones that stay plausible while
+    # wrong. Every mutant below leaves a run that still exits 0 and still
+    # returns an answer.
+    Mutant(
+        tag="codex",
+        why="the cached prefix is not subtracted, so every cached token is billed at "
+        "full input rate — and a Codex session is mostly cache, so the estimate and "
+        "every meter are wrong by roughly the whole prompt on every turn",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="    return max(0, total_input - cached), cached",
+        after="    return total_input, cached",
+        tests=CODEX_EVENT_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a completed item re-emits text its updates already streamed, so a UI with "
+        "a cursor in it shows every sentence twice while the final answer stays right",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="        already = self.emitted.get(key, 0)",
+        after="        already = 0",
+        tests=CODEX_EVENT_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="an item's text is folded on every phase, so an updated-then-completed "
+        "message lands in the answer twice",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='        return [(ev, _EventDelta(text=text if phase == "completed" else ""))]',
+        after="        return [(ev, _EventDelta(text=text))]",
+        tests=CODEX_EVENT_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="the legacy vocabulary stops being parsed, so an older `codex` produces a "
+        "run that exits 0, emits no events and returns an empty answer with no stop "
+        "reason — silent, plausible and wrong, because forward-compat is 'don't crash'",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='    if "msg" in payload and isinstance(payload.get("msg"), dict):',
+        after="    if False:",
+        tests=CODEX_EVENT_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a paired tool item emits its call event twice, so an observer counting "
+        "tool calls doubles every shell command",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='    if log.first_call(f"call:{item_id}"):',
+        after="    if True:",
+        tests=CODEX_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="an unset sandbox reports no capabilities, so RunPolicy's lethal-trifecta "
+        "gate goes blind on the commonest wiring there is — a cognition nobody "
+        "configured, which the CLI still runs read-only",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="        return self.sandbox or _DEFAULT_SANDBOX",
+        after='        return self.sandbox or "danger-full-access"',
+        tests=CODEX_CAPS_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="web search stops contributing untrusted_content, so a read-only sandbox "
+        "with --search — the most innocuous-looking configuration Codex has — is no "
+        "longer refused as the lethal trifecta",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='            tags.update(("untrusted_content", "egress"))',
+        after='            tags.update(("egress",))',
+        tests=CODEX_CAPS_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="the subcommand is emitted before the options instead of after them, which "
+        "is the one argv layout `codex exec` cannot parse for both its global and its "
+        "parent-only flags",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='        argv: list[str] = [self.codex_bin, "exec"]',
+        after='        argv: list[str] = [self.codex_bin, "exec", *resume]',
+        tests=CODEX_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a config override value is interpolated rather than serialised, so a "
+        "string arrives unquoted (a TOML parse error), a bool arrives quoted (the "
+        "string 'True'), and a Windows path's backslashes end the value early",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="    if isinstance(value, str):\n        return json.dumps(value)",
+        after="    if isinstance(value, str):\n        return value",
+        tests=CODEX_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a session forgets the thread it started, so every turn opens a fresh "
+        "conversation — the model answers each question competently with no memory of "
+        "the last, which reads as a bad model rather than a bug",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='            resume = ("resume", self.session_id) if self.session_id else ()',
+        after="            resume = ()",
+        tests=CODEX_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a session cannot be an agent's cognition again: Agent._span_attrs reads "
+        "cognition.name on every run, so agent.run raises AttributeError before "
+        "reaching the CLI — the bug this attribute was added to fix",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='        return f"{self._cog.name}_session"',
+        after='        raise AttributeError("name")',
+        tests=CODEX_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a final message that is not the JSON --output-schema asked for is reported "
+        "as a clean success with parsed=None, so a caller who declared output=Invoice "
+        "reads the silence as if the type had simply not been wired",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="            if decode_error is not None:\n                final_partial = True",
+        after="            if decode_error is not None:\n                final_partial = False",
+        tests=CODEX_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="the schema's scratch directory outlives the run, so every typed run leaks "
+        "a file naming the caller's data model",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="            if scratch is not None:\n                shutil.rmtree(scratch, ignore_errors=True)",
+        after="            if scratch is None:\n                shutil.rmtree(scratch, ignore_errors=True)",
+        tests=CODEX_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="the CLI's spend never reaches the framework's meters, which is the silent "
+        "$0.00 ledger the Claude cognition shipped once — the middleware that would "
+        "have charged it never runs, because the Invoker is bypassed",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="        charge_error = await self._charge_meters(ctx, usage)",
+        after="        charge_error = None",
+        tests=CODEX_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="an exhausted budget spawns anyway, and the resumable budget_exhausted stop "
+        "reason becomes a completed run that overspent",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before="                self._refuse_if_budget_exhausted(ctx)",
+        after="                pass",
+        tests=CODEX_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="codex",
+        why="a computed cost is presented as if the CLI reported one, so a caller bills "
+        "against a price-table lookup — or against the 0.00 an unpriced model returns",
+        path="agentkit/agents/cognition/codex_cli.py",
+        before='            "cost_source": "estimated",',
+        after='            "cost_source": "reported",',
+        tests=CODEX_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="fakecodex",
+        why="the codex double replays past the end of its recording, so a session that "
+        "spawns twice for one turn — a retry nobody asked for — is answered with a "
+        "stable, plausible, wrong result instead of raising",
+        path="agentkit/testing/fakes/codex_cli.py",
+        before="            if not self._repeat_last or not self._runs:",
+        after="            if self._runs:",
+        tests=FAKE_CODEX_TESTS,
+    ),
+    Mutant(
+        tag="fakecodex",
+        why="codex_turn emits its terminal payload first, so every test asserting on a "
+        "stream asserts against an order the binary never produces",
+        path="agentkit/testing/fakes/codex_cli.py",
+        before="        out.append(completed)",
+        after="        out.insert(0, completed)",
+        tests=FAKE_CODEX_TESTS,
     ),
 )
 

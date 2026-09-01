@@ -1,11 +1,14 @@
 """Test doubles — fakes that satisfy port Protocols with deterministic
 canned behavior for unit + integration tests.
 
-One exception, and it is deliberate: `FakeClaudeCli` fakes a SUBPROCESS,
-not a port, because `ClaudeCliCognition` has no port to stand behind —
-it spawns the `claude` binary and parses its stream-json stdout. The
-double replaces the spawn and nothing above it, so a test still runs the
-real parser, the real event mapping and the real budget charge.
+Two exceptions, and they are deliberate: `FakeClaudeCli` and
+`FakeCodexCli` fake a SUBPROCESS, not a port, because the CLI cognitions
+have no port to stand behind — they spawn the `claude` / `codex` binary
+and parse its JSON stdout. Each double replaces the spawn and nothing
+above it, so a test still runs the real parser, the real event mapping
+and the real budget charge. They share their value types (`CliRun`,
+`CliStderr`, `CliInvocation`) because a recorded spawn is a recorded
+spawn whichever binary produced it.
 
 Each fake records calls (where useful) so tests can assert on what the
 agent sent. All exports here are re-exported from `agentkit.testing`
@@ -18,6 +21,7 @@ callers who prefer per-module imports."""
 
 from agentkit.testing.fakes.claude_cli import CliInvocation, CliRun, CliStderr, FakeClaudeCli
 from agentkit.testing.fakes.clock import FakeClock
+from agentkit.testing.fakes.codex_cli import FakeCodexCli, codex_turn
 from agentkit.testing.fakes.compactor import FakeCompactor
 from agentkit.testing.fakes.ctx import FakeCtx
 from agentkit.testing.fakes.fetch import FakeFetch
@@ -34,6 +38,7 @@ __all__ = [
     "CliStderr",
     "FakeClaudeCli",
     "FakeClock",
+    "FakeCodexCli",
     "FakeCompactor",
     "FakeCtx",
     "FakeFetch",
@@ -46,4 +51,5 @@ __all__ = [
     "RecordingTracer",
     "ScriptExhausted",
     "Turn",
+    "codex_turn",
 ]

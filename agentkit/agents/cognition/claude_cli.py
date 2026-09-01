@@ -41,12 +41,21 @@ import contextlib
 import json
 import os
 import uuid
-import weakref
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from agentkit.agents.cognition._cli_common import (
+    CliSpawn,
+    _CliCall,
+    _coerce_structured,
+    _get_semaphore,
+    _parse_line,
+    _reraise_if_not_an_exception,
+    _terminate,
+    _tool_middleware_names,
+)
 from agentkit.agents.control.safety import TRIFECTA
 from agentkit.agents.result import AgentResult, AgentStopReason, stop_reason_for
 from agentkit.kernel.protocols import Ctx
@@ -67,49 +76,6 @@ PermissionMode = Literal[
     "manual",
     "dontAsk",
 ]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Class-level concurrency guard.
-#
-# The upstream Claude Code SDK has a known hang at ~200 parallel subprocesses
-# (SDK issue #728) because the subprocess close path serializes on shared IPC.
-# We bound spawn concurrency per (binary, config_dir) tuple so that two
-# distinct CLI installations (or two isolated config dirs) don't share a
-# single semaphore. The default (8) keeps a healthy margin under the observed
-# hang threshold; callers who know their environment can bump it via
-# ``max_concurrent``.
-#
-# ``weakref.WeakValueDictionary`` lets the semaphore get GC'd when no
-# ``ClaudeCliCognition`` referencing that key remains — no permanent global
-# state accumulated across long-running processes.
-# ─────────────────────────────────────────────────────────────────────────────
-_SEMAPHORES: weakref.WeakValueDictionary[tuple[str, str | None, int], asyncio.BoundedSemaphore] = (
-    weakref.WeakValueDictionary()
-)
-
-
-# The transport seam's type. Deliberately ``...``-argumented: the two spawn
-# sites pass different ``stdin=`` modes and future flags may add keywords, and a
-# double that had to re-declare the exact signature would break on every one of
-# them for no gain — it forwards ``**kwargs`` anyway.
-CliSpawn = Callable[..., Awaitable["asyncio.subprocess.Process"]]
-
-
-def _get_semaphore(bin_: str, config_dir: str | None, max_concurrent: int) -> asyncio.BoundedSemaphore:
-    """Return the shared BoundedSemaphore for this (bin, config_dir, max) triple.
-
-    A ``WeakValueDictionary`` alone doesn't hold the semaphore alive — the
-    caller must keep the returned reference for the duration of the acquire.
-    That's the intended lifetime: as soon as no ``ClaudeCliCognition`` still
-    has an in-flight ``drive`` referencing it, the entry drops.
-    """
-    key = (bin_, config_dir, max_concurrent)
-    sem = _SEMAPHORES.get(key)
-    if sem is None:
-        sem = asyncio.BoundedSemaphore(max_concurrent)
-        _SEMAPHORES[key] = sem
-    return sem
 
 
 # Reasons this cognition emits that mean "the run ERRORED", as opposed to
@@ -207,77 +173,6 @@ CLI_TOOL_CAPS: dict[str, tuple[str, ...]] = {
     "WebSearch": ("untrusted_content", "egress"),
     "Write": (),
 }
-
-
-def _middleware_name(mw: object) -> str:
-    """A name a reader can match against the chain they wrote.
-
-    The two middleware shapes name themselves differently. ``BaseMiddleware``
-    instances (``Egress``, ``Audit``, ``MeterMiddleware``) have a useful class
-    name. The raw ``(call, next)`` ones are closures that are ALL called ``mw``
-    — ``memoize()``, ``retry()`` and ``tracing()`` return functions whose
-    ``__name__`` is literally ``"mw"``, which in a warning would read as three
-    identical entries. Their ``__qualname__`` is ``"memoize.<locals>.mw"``, and
-    the half before ``.<locals>`` is the factory the caller actually typed.
-
-    ``idempotent()`` therefore reports as ``memoize`` — it delegates to it. That
-    is a small inaccuracy kept on purpose: the alternative is a registry of
-    factory identities that drifts the first time someone writes a middleware
-    of their own, and "memoize" still points at the right module.
-    """
-    qualname = getattr(mw, "__qualname__", None)
-    if isinstance(qualname, str) and qualname:
-        return qualname.split(".<locals>.")[0].rsplit(".", 1)[-1]
-    return type(mw).__name__
-
-
-def _tool_middleware_names(ctx: Ctx | None) -> tuple[str, ...]:
-    """The tool chain's middleware names, de-duplicated, in chain order.
-
-    Read defensively off ``ctx.invoker`` because a context legitimately has no
-    invoker (``make_test_ctx()`` with no LLM, a bare structural stub) and a
-    missing collaborator must not turn a safety warning into an AttributeError
-    raised out of ``drive``.
-
-    Only the TOOL chain. The chat chain is bypassed too, but it was never going
-    to see a tool call, so naming ``compaction`` in a warning about tool calls
-    would be a name the reader cannot act on.
-    """
-    invoker = getattr(ctx, "invoker", None)
-    chain = getattr(invoker, "tool_middleware", None) or ()
-    # ``dict.fromkeys`` rather than ``set``: chain ORDER is what the caller
-    # wrote, and two ``retry()`` entries should read as one name, not two.
-    return tuple(dict.fromkeys(_middleware_name(mw) for mw in chain))
-
-
-def _coerce_structured(agent: Agent | None, value: Any) -> tuple[Any, str | None]:
-    """Turn the CLI's validated JSON into the type the agent declared.
-
-    The CLI validates against the schema and hands back a plain dict. An agent
-    that declared ``output=Invoice`` wants an ``Invoice``, so the value goes
-    back through the same ``SchemaAdapter`` that produced the schema — one
-    round trip, one definition of the type.
-
-    Returns ``(parsed, error)``. A coercion failure is reported, never raised:
-    the run happened and its text is real, so the caller gets a terminal event
-    with ``partial=True`` and an explanation rather than an exception thrown
-    from inside a generator.
-
-    With no adapter (an explicit ``json_schema=`` on an agent that declares no
-    ``output=``) the validated dict IS the parsed value — there is no Python
-    type to build.
-    """
-    adapter = getattr(agent, "_output_adapter", None)
-    if adapter is None:
-        return value, None
-    try:
-        return adapter.validate(value), None
-    except Exception as exc:  # noqa: BLE001 — reported as data, see docstring
-        # ``OutputCoercionError.__str__`` summarises ("1 error(s)"); the
-        # per-field diagnostics live on ``.errors`` and are the only part a
-        # caller can act on, so they go into the message.
-        detail = "; ".join(str(e) for e in getattr(exc, "errors", ()) or ())
-        return None, f"{type(exc).__name__}: {exc}" + (f" — {detail}" if detail else "")
 
 
 def _cli_stop_reason(reason: str | None) -> AgentStopReason:
@@ -1396,6 +1291,26 @@ class ClaudeCliSession:
         self._interrupted = False
         self._capabilities: frozenset[str] = frozenset()
 
+    @property
+    def name(self) -> str:
+        """``"claude_cli_session"`` — the cognition's name, marked as a session.
+
+        Required, not decorative. ``Agent._span_attrs`` reads ``cognition.name``
+        for the ``agentkit.agent.cognition`` trace attribute on EVERY run, so a
+        session without one raised ``AttributeError: 'ClaudeCliSession' object has no
+        attribute 'name'`` straight out of ``agent.run(...)`` — which is
+        precisely the usage :meth:`drive` exists for and this class's docstring
+        advertises. Measured; the one-shot cognition has had the field since it
+        was written and the session never did.
+
+        Suffixed rather than delegated verbatim so a trace distinguishes the two
+        regimes. They have genuinely different behaviour to debug — one
+        conversation across many turns versus a fresh one each time — and
+        ``agentkit.agent.cognition`` is the attribute that is supposed to say
+        which turn-taking regime ran.
+        """
+        return f"{self._cog.name}_session"
+
     # ---- lifecycle -------------------------------------------------------------------------
 
     async def __aenter__(self) -> ClaudeCliSession:
@@ -1999,21 +1914,6 @@ _BARE_CREDENTIAL_ENV = (
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True, slots=True)
-class _CliCall:
-    """The minimum a ``Meter`` needs from a "call" it is charging.
-
-    ``Budget.charge`` ignores its ``call`` entirely, but ``Quota`` reads
-    ``call.ctx.scope.key()`` to partition per tenant — so a bare ``None`` would
-    charge the run budget and crash the quota. ``request`` is present and
-    ``None`` because a custom meter may look for it; there is no ``ChatRequest``
-    here, and inventing one would be a lie.
-    """
-
-    ctx: Any
-    request: Any = None
-
-
 @dataclass(slots=True)
 class _TurnState:
     """Everything one turn accumulates from the CLI's stream.
@@ -2085,41 +1985,6 @@ class _EventDelta:
     structured_output: Any = None
     init: dict[str, Any] | None = None  # ``system/init`` startup metadata
     api_retry: dict[str, Any] | None = None  # one ``system/api_retry`` payload
-
-
-def _parse_line(line: bytes) -> dict[str, Any] | None:
-    """Parse one stdout line as a JSON object; skip blank / non-JSON lines.
-
-    The CLI occasionally emits a blank warmup line or a non-JSON diagnostic;
-    those must NOT crash the loop — return ``None`` and let the caller move
-    on.
-
-    ``ValueError``, not ``JSONDecodeError``. ``json.loads`` on **bytes** sniffs
-    the encoding first (RFC 4627 / :func:`json.detect_encoding`), so a line
-    opening with ``b"\\xff\\xfe"`` is read as a UTF-16-LE BOM and a line
-    opening with ``b"\\xef\\xbb\\xbf"`` as a UTF-8 one — and when the rest does
-    not decode, what comes back is a ``UnicodeDecodeError``, which is a
-    ``ValueError`` but is NOT a ``JSONDecodeError``. It escaped this function
-    and hit ``drive``'s ``except BaseException``, so ONE undecodable byte on
-    stdout ended the whole run: ``stop_reason="parse_failed"``, no output, and
-    — because the reader never got past that line — the ``result`` payload was
-    never seen, so a completed run reported ``$0.00`` to the budget. Measured.
-    Reachable without anything exotic: ``claude`` is Node, filenames are
-    arbitrary bytes, and a warning naming a latin-1 path is a non-UTF-8
-    diagnostic on stdout, which is exactly the case this docstring already
-    promised to survive. Both exceptions mean the same thing here — "this line
-    is not a JSON object" — and both must be skipped.
-    """
-    stripped = line.strip()
-    if not stripped:
-        return None
-    try:
-        obj = json.loads(stripped)
-    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError
-        return None
-    if not isinstance(obj, dict):
-        return None
-    return obj
 
 
 async def _events_from_payload(
@@ -2318,49 +2183,6 @@ def _flatten_tool_result_content(content: Any) -> str:
                 parts.append(item)
         return "".join(parts)
     return str(content)
-
-
-def _reraise_if_not_an_exception(fatal_exc: BaseException | None) -> None:
-    """Finish the sentence the outer ``except BaseException`` starts.
-
-    That arm widens past ``Exception`` so a ``KeyboardInterrupt`` or a
-    ``SystemExit`` mid-run still produces the terminal event this cognition
-    guarantees — its comment says "before propagating". It did not propagate.
-    Ctrl-C during ``agent.run()`` on a CLI cognition came back as a tidy
-    ``AgentResult(partial=True, stop_reason="failed")`` with
-    ``evals["error"] == "KeyboardInterrupt: "``, the interpreter kept running,
-    and the caller's own ``except KeyboardInterrupt`` never fired. Measured;
-    ``asyncio.CancelledError`` had exactly this bug and was fixed the same way
-    two lines above.
-
-    ``Exception`` is the dividing line and not a hand-written list because it
-    is the same line the language draws: things outside it are not "the
-    operation failed", they are "this program is being taken down" or "a
-    contract has been violated" — ``SystemExit``, ``KeyboardInterrupt``, and
-    ``agentkit.testing.ScriptExhausted``, which is a ``BaseException``
-    precisely so it survives sites like this one. A run's failure modes are all
-    ``Exception``s (``FileNotFoundError`` on a missing binary, ``PermissionError``,
-    a parse bug), so the reported-as-data contract is untouched: every one of
-    them still arrives as a ``final`` event and nothing more.
-    """
-    if fatal_exc is not None and not isinstance(fatal_exc, Exception):
-        raise fatal_exc
-
-
-async def _terminate(proc: asyncio.subprocess.Process, grace_s: float) -> None:
-    """Send SIGTERM, wait ``grace_s`` for a clean exit, then SIGKILL if the
-    process is still alive. Never raises: this runs from a ``finally`` and
-    must not mask the original ``Cancelled``.
-    """
-    with contextlib.suppress(ProcessLookupError):
-        proc.terminate()
-    try:
-        await asyncio.wait_for(proc.wait(), timeout=grace_s)
-    except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
-        with contextlib.suppress(Exception):
-            await proc.wait()
 
 
 __all__ = [

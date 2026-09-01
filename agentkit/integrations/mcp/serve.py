@@ -362,6 +362,28 @@ class McpServerSpec:
             kwargs["tools"] = ("",)
         return kwargs
 
+    def codex_kwargs(self, *, tool_timeout_s: float | None = None) -> dict[str, Any]:
+        """The ``CodexCliCognition`` fields that wire this server in.
+
+        The same server, spelled the way the other CLI reads it: Codex takes MCP
+        servers as ``config.toml`` keys (``-c mcp_servers.<name>.<field>=…``)
+        rather than as a ``--mcp-config`` document, and an authenticated HTTP
+        server's token travels in an environment variable it names rather than
+        in a header. Both are handled by
+        :func:`agentkit.integrations.codex_cli.as_codex_mcp`; this method exists
+        so a reader who found ``cli_kwargs`` finds the counterpart in the same
+        place instead of concluding there is none.
+
+        There is no ``builtin_tools=`` switch, unlike ``cli_kwargs``. Codex has
+        no tool allow-list — every session has ``shell`` — so "only OUR tools"
+        is not a thing a flag can say there, and a parameter that quietly did
+        nothing would be worse than its absence. What contains the CLI's own
+        tools in a Codex session is ``sandbox=``.
+        """
+        from agentkit.integrations.codex_cli import as_codex_mcp
+
+        return as_codex_mcp(self, tool_timeout_s=tool_timeout_s)
+
     # ---- the server ------------------------------------------------------------------------
 
     def build_server(self) -> Any:

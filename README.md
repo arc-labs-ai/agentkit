@@ -111,9 +111,11 @@ depth lives:
 - **[Agent + Cognition](https://arc-labs-ai.github.io/agentkit/concepts/agents/)** —
   `Agent` is identity + chat-call config; `Cognition` is the pluggable
   turn-taking strategy. Ships with `SingleCallCognition`, `ReActCognition`
-  (tool loop + HITL suspend + durable resume), and `CoordinatorCognition`
-  (multi-agent orchestration). Adding a new regime is one Protocol impl —
-  no `Agent` subclassing.
+  (tool loop + HITL suspend + durable resume), `CoordinatorCognition`
+  (multi-agent orchestration), and two that hand the whole loop to a coding
+  CLI you installed yourself — `ClaudeCliCognition` and `CodexCliCognition`,
+  no server-side API key either way. Adding a new regime is one Protocol
+  impl — no `Agent` subclassing.
 - **[Middleware](https://arc-labs-ai.github.io/agentkit/concepts/middlewares/)** —
   cross-cutting concerns as composable functions: `tracing`, `retry`,
   `fallback`, `memoize`, `output_coerce`, `meter`, `compaction`, `egress`,

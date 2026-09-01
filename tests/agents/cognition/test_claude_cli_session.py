@@ -1161,3 +1161,55 @@ def test_the_real_cli_honours_an_interrupt_and_stays_alive() -> None:
     # The session survived: the same process answered a second turn.
     assert second.stop_reason == "complete"
     assert "still here" in second.output.lower()
+
+
+# ── the session as an agent's cognition ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_session_can_actually_be_an_agents_cognition() -> None:
+    """``ClaudeCliSession.drive`` exists so consecutive ``agent.run(...)`` calls
+    share one process and one CLI-side conversation, and the class docstring
+    says so. It did not work: ``Agent._span_attrs`` reads ``cognition.name`` for
+    the ``agentkit.agent.cognition`` trace attribute on every run, the session
+    had no such attribute, and ``agent.run`` raised ``AttributeError:
+    'ClaudeCliSession' object has no attribute 'name'`` before reaching the CLI
+    at all.
+
+    Found while building the same surface for the Codex cognition, which is
+    exactly the value of writing the second one: the documented usage of the
+    first had no test.
+    """
+    from agentkit.testing.fakes import CliRun, FakeClaudeCli
+
+    def _turn(text: str) -> list[dict[str, Any]]:
+        return [
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "session_id": "sess-1",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+
+    cli = FakeClaudeCli(
+        [CliRun.of([{"type": "system", "subtype": "init", "session_id": "sess-1"}, *_turn("one"), *_turn("two")])]
+    )
+    cog = ClaudeCliCognition(spawn=cli)
+    chat = cog.session()
+    await chat.start()
+    try:
+        agent = Agent(name="x", cognition=chat)
+        first = await agent.run("a", FakeCtx())
+        second = await agent.run("b", FakeCtx())
+    finally:
+        await chat.close()
+
+    assert (first.output, second.output) == ("one", "two")
+    # One spawn for two turns — the whole reason to hold a process.
+    assert cli.spawns == 1
+    # And the name a trace will carry marks it as the session regime rather
+    # than the one-shot one, which are different things to debug.
+    assert chat.name == "claude_cli_session"

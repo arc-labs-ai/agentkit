@@ -1101,6 +1101,34 @@ The process boundary is real work — everything the tools need has to be
 reachable from a fresh interpreter running under the CLI's environment
 — and it buys you nothing that loopback does not already give you.
 
+#### Pointing Codex at the same server
+
+`spec.cli_kwargs()` writes Claude Code's `--mcp-config` shape. Codex reads
+MCP servers out of `config.toml` instead, addressed as
+`mcp_servers.<name>.<key>`, so the same spec has a second projection:
+
+```python
+from agentkit.agents.cognition import CodexCliCognition
+from agentkit.integrations.codex_cli import as_codex_mcp
+
+
+async def wire(spec):
+    async with spec:
+        return CodexCliCognition(model="gpt-5-codex", **as_codex_mcp(spec))
+```
+
+`spec.codex_kwargs()` is the same thing as a method, next to `cli_kwargs()`.
+
+One part is not a rename. Codex has no header field for a bearer token — it
+has `bearer_token_env_var`, naming an environment variable it reads at connect
+time. So the projection also returns an `env=` entry, and the credential
+travels in the child's environment rather than in the argv, which is
+world-readable in `ps` output on most systems.
+
+There is no `builtin_tools=` switch on the Codex side, because Codex has no
+tool allow-list: every session has `shell` whatever you serve it. What contains
+that is `sandbox=`, covered on [The Codex CLI](codex-cli.md).
+
 #### The lifecycle, and re-entering it
 
 `serve_registry` is synchronous on purpose. It reserves the port and
@@ -1276,6 +1304,9 @@ repair a call it has been lied to about.
   — `Elicitation` / `Decision` in full.
 - [Plug the claude CLI into FastAPI code-gen](../recipes/claude-cli-fastapi-code-gen.md)
   — `ClaudeCliCognition` end to end.
+- [The Codex CLI](codex-cli.md) — `as_codex_mcp`, and the two Claude-side
+  adapters (`hook_settings`, `as_cli_agents`) that have no Codex counterpart
+  and why.
 - [Concepts · Agents](agents.md) — where `Tool`, `MemorySource` and
   `Prompt` plug in.
 - The protocol itself: <https://modelcontextprotocol.io>

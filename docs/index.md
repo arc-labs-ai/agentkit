@@ -108,6 +108,7 @@ needed is always further down than that.
 | Wire one LLM call with retry / cost / trace on top            | `Chat` (from `claude()` / `openai()` / `deepseek()` / `openrouter()`) |
 | Build an agent that loops through tools                       | `Agent` + `ReActCognition`                                  |
 | Delegate the whole loop to a local `claude` CLI               | `Agent` + `ClaudeCliCognition`                              |
+| …or to a local `codex` CLI, contained by an OS sandbox        | `Agent` + `CodexCliCognition(sandbox=...)`                  |
 | Orchestrate many child agents                                 | `Agent` + `CoordinatorCognition`                            |
 | A fixed multi-step pipeline (author writes the plan)          | `Workflow`                                                  |
 | One pipeline step whose width you only learn at runtime       | `Workflow.map(name, over=..., each=...)`                    |
@@ -129,6 +130,7 @@ needed is always further down than that.
 |---------------------------------------------------------------|-------------------------------------------------------------|
 | Consume an MCP server's tools                                 | `MCPClient` + `mcp_tools()`                                 |
 | Let the `claude` CLI call the tools you already wrote         | `serve_registry(registry, name=..., ctx=...)` → `spec.cli_kwargs()` |
+| …or the `codex` CLI, which reads the same server as TOML      | `spec.codex_kwargs()` / `as_codex_mcp(spec)`                |
 | Send the CLI's permission prompts to your reviewer, and keep what they decided | `ApprovalServer(asker=...)` → `.cli_kwargs()` / `.decisions` |
 | Make your tool middleware reach the CLI's own `Write` / `Bash` | `hook_settings(middleware=..., ctx=..., tools=...)`         |
 
@@ -145,13 +147,16 @@ needed is always further down than that.
 |---------------------------------------------------------------|-------------------------------------------------------------|
 | Unit-test an agent end to end with no API key                 | `agentkit.testing` — `FakeLLM` + `make_test_ctx(...)`       |
 | Do the same for the `claude` CLI path, offline and free       | `FakeClaudeCli.script([...])` + `ClaudeCliCognition(spawn=...)` |
+| …and for the `codex` one                                      | `FakeCodexCli.script(codex_turn(...))` + `CodexCliCognition(spawn=...)` |
 
 Three rows in "reach outside the process" are one story. The CLI owns
 its loop, so anything you want it to respect — your tools, your
 reviewer, your guardrails — has to reach it as configuration before it
 starts. [The Claude CLI](concepts/claude-cli.md) walks those seams;
 [Integrations](concepts/integrations.md) has the two MCP servers in
-full.
+full. [The Codex CLI](concepts/codex-cli.md) is the same argument for
+the other binary — and covers the two of those seams Codex simply does
+not have, rather than leaving you to look.
 
 ## The run in one picture
 
@@ -261,12 +266,23 @@ guarantees and a side-by-side against the alternatives.
 
     ---
 
-    The one loop your code does not own. What `ClaudeCliCognition`
-    gives away, which of your middlewares stop applying when it does,
-    and the five seams — MCP tools, approvals, hooks, sub-agents, a
-    test double — that reach back into it.
+    One of the two loops your code does not own. What
+    `ClaudeCliCognition` gives away, which of your middlewares stop
+    applying when it does, and the five seams — MCP tools, approvals,
+    hooks, sub-agents, a test double — that reach back into it.
 
     [:octicons-arrow-right-24: Delegate to the CLI safely](concepts/claude-cli.md)
+
+-   __The Codex CLI__
+
+    ---
+
+    The other one. Same contract, four real differences — containment
+    is an OS sandbox rather than a tool list, there is no
+    system-prompt flag, the CLI reports no cost, and a session resumes
+    a thread instead of holding a process.
+
+    [:octicons-arrow-right-24: Read the differences](concepts/codex-cli.md)
 
 -   __Worked scenarios__
 
