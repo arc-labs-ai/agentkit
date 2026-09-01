@@ -1245,6 +1245,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sandbox-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sandbox (Codex)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#serving-tools-over-mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1742,6 +1753,34 @@
     
   
     The Claude CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/codex-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Codex CLI
   
 
     
@@ -4263,6 +4302,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sandbox-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sandbox (Codex)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#serving-tools-over-mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4374,6 +4424,7 @@ without touching your prompt, your tools, or anything downstream:</p>
 <li><code>ReActCognition</code> — the tool loop (see <strong>ReAct</strong> below).</li>
 <li><code>CoordinatorCognition</code> — drive several child agents.</li>
 <li><code>ClaudeCliCognition</code> — hand the whole job to a local <code>claude</code> CLI.</li>
+<li><code>CodexCliCognition</code> — the same for a local <code>codex</code> CLI.</li>
 </ul>
 <p>→ <a href="../concepts/agents/">Agents</a></p>
 <h3 id="react">ReAct<a class="headerlink" href="#react" title="Anchor link">&para;</a></h3>
@@ -4693,9 +4744,11 @@ post it somewhere. Tools declare which legs they supply as <code>caps</code>, an
 <code>RunPolicy</code> refuses a set that assembles all three without a human gate.
 Two things surprise people. One tool can supply two legs — <code>WebFetch</code>
 both ingests untrusted content and reaches the network — so you do not
-need three dangerous-looking tools. And a Claude CLI session now
-declares capabilities of its own, where the default "every built-in
-tool" is the full trifecta.</p>
+need three dangerous-looking tools. And both CLI sessions declare
+capabilities of their own: for <code>claude</code> the default "every built-in
+tool" is the full trifecta, and for <code>codex</code> the trifecta is a
+<em>read-only</em> sandbox with <code>web_search=True</code> — which reads like the safest
+configuration it has.</p>
 <p>→ <a href="../concepts/agents/">Agents</a></p>
 <h3 id="evaluator">Evaluator<a class="headerlink" href="#evaluator" title="Anchor link">&para;</a></h3>
 <p><strong>Something that scores an answer</strong>, so "did this get better?" has a
@@ -4754,11 +4807,27 @@ service.</p>
 directions: as a <em>client</em> consuming other people's servers, and — see
 the next entry — as a <em>server</em> publishing your own tools.</p>
 <p>→ <a href="../concepts/integrations/">Integrations</a></p>
+<h3 id="sandbox-codex">Sandbox (Codex)<a class="headerlink" href="#sandbox-codex" title="Anchor link">&para;</a></h3>
+<p><strong>The operating-system fence around what a <code>codex</code> session's own tools
+may do</strong> — read the workspace, write to it, or reach the network.</p>
+<p>It is worth its own entry because it is not the same kind of thing as a
+tool allow-list. <code>claude</code> restricts what a session <em>has</em>; <code>codex</code> gives
+every session the same <code>shell</code> and <code>apply_patch</code> and restricts what
+those may <em>do</em>, with <code>sandbox="read-only"</code> / <code>"workspace-write"</code> /
+<code>"danger-full-access"</code>. That is weaker in one way — you cannot take a
+tool away — and stronger in another: it is enforced below the CLI rather
+than by the model declining to call something. It is also the whole of
+the containment for a Codex session, because no tool middleware reaches
+<code>shell</code> and there is no pre-tool hook that could make it.</p>
+<p><code>ask_for_approval</code> is the other half and not a substitute: in a service
+it should be <code>"never"</code>, since nobody is at the terminal, which leaves
+the sandbox as the only control.</p>
+<p>→ <a href="../concepts/codex-cli/">The Codex CLI</a></p>
 <h3 id="serving-tools-over-mcp">Serving tools over MCP<a class="headerlink" href="#serving-tools-over-mcp" title="Anchor link">&para;</a></h3>
 <p><strong>Publishing a <code>ToolRegistry</code> of your own as an MCP server, so a program
 you do not control can call your Python functions.</strong></p>
-<p>It exists because <code>ClaudeCliCognition</code> hands the whole loop to the
-<code>claude</code> binary, and that binary cannot import your code. The only way
+<p>It exists because the CLI cognitions hand the whole loop to a binary,
+and that binary cannot import your code. The only way
 it calls your <code>deploy()</code> is if something serves it. Everything needed to
 <em>describe</em> an agentkit tool was already there and already correct — only
 the wire was missing, so a service wrote MCP JSON by hand and then owned
@@ -4766,7 +4835,9 @@ the job of keeping a hand-written schema in step with the Python
 signature it claimed to describe. <code>serve_registry</code> sends the existing
 schema out unchanged, and carries <code>side_effecting</code>, <code>requires_approval</code>
 and <code>caps</code> across with it, so a policy check on your side still sees
-what the tools can do.</p>
+what the tools can do. The same server reaches <code>codex</code> through
+<code>as_codex_mcp(spec)</code>, which is the same document spelled as the TOML
+keys that CLI reads.</p>
 <p>→ <a href="../concepts/integrations/">Integrations</a></p>
 <h3 id="bearer-token-and-the-loopback-fence">Bearer token and the loopback fence<a class="headerlink" href="#bearer-token-and-the-loopback-fence" title="Anchor link">&para;</a></h3>
 <p><strong>Binding a server to <code>127.0.0.1</code> keeps it off the network. It does not
@@ -4836,7 +4907,7 @@ differently.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 05:18:50 UTC">August 31, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 1, 2026 15:49:20 UTC">September 1, 2026</span>
   </span>
 
     

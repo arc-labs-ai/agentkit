@@ -1138,6 +1138,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pointing-codex-at-the-same-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pointing Codex at the same server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-lifecycle-and-re-entering-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1215,6 +1226,34 @@
     
   
     The Claude CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codex-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Codex CLI
   
 
     
@@ -3213,6 +3252,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pointing-codex-at-the-same-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pointing Codex at the same server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-lifecycle-and-re-entering-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4391,6 +4441,27 @@ somewhere.</p>
 The process boundary is real work — everything the tools need has to be
 reachable from a fresh interpreter running under the CLI's environment
 — and it buys you nothing that loopback does not already give you.</p>
+<h4 id="pointing-codex-at-the-same-server">Pointing Codex at the same server<a class="headerlink" href="#pointing-codex-at-the-same-server" title="Anchor link">&para;</a></h4>
+<p><code>spec.cli_kwargs()</code> writes Claude Code's <code>--mcp-config</code> shape. Codex reads
+MCP servers out of <code>config.toml</code> instead, addressed as
+<code>mcp_servers.&lt;name&gt;.&lt;key&gt;</code>, so the same spec has a second projection:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.agents.cognition</span><span class="w"> </span><span class="kn">import</span> <span class="n">CodexCliCognition</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.codex_cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">as_codex_mcp</span>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wire</span><span class="p">(</span><span class="n">spec</span><span class="p">):</span>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>        <span class="k">return</span> <span class="n">CodexCliCognition</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-5-codex&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">as_codex_mcp</span><span class="p">(</span><span class="n">spec</span><span class="p">))</span>
+</span></code></pre></div>
+<p><code>spec.codex_kwargs()</code> is the same thing as a method, next to <code>cli_kwargs()</code>.</p>
+<p>One part is not a rename. Codex has no header field for a bearer token — it
+has <code>bearer_token_env_var</code>, naming an environment variable it reads at connect
+time. So the projection also returns an <code>env=</code> entry, and the credential
+travels in the child's environment rather than in the argv, which is
+world-readable in <code>ps</code> output on most systems.</p>
+<p>There is no <code>builtin_tools=</code> switch on the Codex side, because Codex has no
+tool allow-list: every session has <code>shell</code> whatever you serve it. What contains
+that is <code>sandbox=</code>, covered on <a href="../codex-cli/">The Codex CLI</a>.</p>
 <h4 id="the-lifecycle-and-re-entering-it">The lifecycle, and re-entering it<a class="headerlink" href="#the-lifecycle-and-re-entering-it" title="Anchor link">&para;</a></h4>
 <p><code>serve_registry</code> is synchronous on purpose. It reserves the port and
 writes the config file, so the returned spec is complete enough to
@@ -4423,51 +4494,51 @@ the port it names, and the next reader gets a URL pointing at nothing —
 or worse, at whatever bound that port next. Only a directory the spec
 created is removed; a <code>config_path=</code> you supplied is yours to keep.</p>
 <h4 id="two-timeouts-that-do-not-read-the-same">Two timeouts that do not read the same<a class="headerlink" href="#two-timeouts-that-do-not-read-the-same" title="Anchor link">&para;</a></h4>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="sd">&quot;&quot;&quot;A tool&#39;s own TimeoutError is not this server&#39;s deadline firing.&quot;&quot;&quot;</span>
-</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>
-</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
-</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>
-</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">MCPClient</span><span class="p">,</span> <span class="n">StreamableHttpServer</span><span class="p">,</span> <span class="n">serve_registry</span>
-</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
-</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
-</span><span id="__span-22-9"><a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>
-</span><span id="__span-22-10"><a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="n">logging</span><span class="o">.</span><span class="n">disable</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
-</span><span id="__span-22-11"><a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>
-</span><span id="__span-22-12"><a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
-</span><span id="__span-22-13"><a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</span><span id="__span-22-14"><a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">slow_build</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-22-15"><a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait far past the server&#39;s deadline, so only the deadline can end it.&quot;&quot;&quot;</span>
-</span><span id="__span-22-16"><a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3600</span><span class="p">)</span>
-</span><span id="__span-22-17"><a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a>    <span class="k">return</span> <span class="s2">&quot;never&quot;</span>
-</span><span id="__span-22-18"><a id="__codelineno-22-18" name="__codelineno-22-18" href="#__codelineno-22-18"></a>
-</span><span id="__span-22-19"><a id="__codelineno-22-19" name="__codelineno-22-19" href="#__codelineno-22-19"></a>
-</span><span id="__span-22-20"><a id="__codelineno-22-20" name="__codelineno-22-20" href="#__codelineno-22-20"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-</span><span id="__span-22-21"><a id="__codelineno-22-21" name="__codelineno-22-21" href="#__codelineno-22-21"></a><span class="k">def</span><span class="w"> </span><span class="nf">call_upstream</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-22-22"><a id="__codelineno-22-22" name="__codelineno-22-22" href="#__codelineno-22-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Read the named upstream, failing the way a real client fails.&quot;&quot;&quot;</span>
-</span><span id="__span-22-23"><a id="__codelineno-22-23" name="__codelineno-22-23" href="#__codelineno-22-23"></a>    <span class="k">raise</span> <span class="ne">TimeoutError</span><span class="p">(</span><span class="s2">&quot;upstream read timed out after 3s&quot;</span><span class="p">)</span>
-</span><span id="__span-22-24"><a id="__codelineno-22-24" name="__codelineno-22-24" href="#__codelineno-22-24"></a>
-</span><span id="__span-22-25"><a id="__codelineno-22-25" name="__codelineno-22-25" href="#__codelineno-22-25"></a>
-</span><span id="__span-22-26"><a id="__codelineno-22-26" name="__codelineno-22-26" href="#__codelineno-22-26"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-22-27"><a id="__codelineno-22-27" name="__codelineno-22-27" href="#__codelineno-22-27"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span>
-</span><span id="__span-22-28"><a id="__codelineno-22-28" name="__codelineno-22-28" href="#__codelineno-22-28"></a>        <span class="p">[</span><span class="n">slow_build</span><span class="p">,</span> <span class="n">call_upstream</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">make_test_ctx</span><span class="p">(),</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">0.05</span>
-</span><span id="__span-22-29"><a id="__codelineno-22-29" name="__codelineno-22-29" href="#__codelineno-22-29"></a>    <span class="p">)</span>
-</span><span id="__span-22-30"><a id="__codelineno-22-30" name="__codelineno-22-30" href="#__codelineno-22-30"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
-</span><span id="__span-22-31"><a id="__codelineno-22-31" name="__codelineno-22-31" href="#__codelineno-22-31"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span>
-</span><span id="__span-22-32"><a id="__codelineno-22-32" name="__codelineno-22-32" href="#__codelineno-22-32"></a>        <span class="n">StreamableHttpServer</span><span class="p">(</span>
-</span><span id="__span-22-33"><a id="__codelineno-22-33" name="__codelineno-22-33" href="#__codelineno-22-33"></a>            <span class="n">url</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">auth_headers</span><span class="p">,</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">10.0</span>
-</span><span id="__span-22-34"><a id="__codelineno-22-34" name="__codelineno-22-34" href="#__codelineno-22-34"></a>        <span class="p">)</span>
-</span><span id="__span-22-35"><a id="__codelineno-22-35" name="__codelineno-22-35" href="#__codelineno-22-35"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
-</span><span id="__span-22-36"><a id="__codelineno-22-36" name="__codelineno-22-36" href="#__codelineno-22-36"></a>            <span class="n">ours</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;slow_build&quot;</span><span class="p">,</span> <span class="p">{})</span>
-</span><span id="__span-22-37"><a id="__codelineno-22-37" name="__codelineno-22-37" href="#__codelineno-22-37"></a>            <span class="n">theirs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;call_upstream&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;http://x&quot;</span><span class="p">})</span>
-</span><span id="__span-22-38"><a id="__codelineno-22-38" name="__codelineno-22-38" href="#__codelineno-22-38"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;our deadline:&quot;</span><span class="p">,</span> <span class="n">ours</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-</span><span id="__span-22-39"><a id="__codelineno-22-39" name="__codelineno-22-39" href="#__codelineno-22-39"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;their error: &quot;</span><span class="p">,</span> <span class="n">theirs</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-</span><span id="__span-22-40"><a id="__codelineno-22-40" name="__codelineno-22-40" href="#__codelineno-22-40"></a>
-</span><span id="__span-22-41"><a id="__codelineno-22-41" name="__codelineno-22-41" href="#__codelineno-22-41"></a>
-</span><span id="__span-22-42"><a id="__codelineno-22-42" name="__codelineno-22-42" href="#__codelineno-22-42"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="sd">&quot;&quot;&quot;A tool&#39;s own TimeoutError is not this server&#39;s deadline firing.&quot;&quot;&quot;</span>
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>
+</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.integrations.mcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">MCPClient</span><span class="p">,</span> <span class="n">StreamableHttpServer</span><span class="p">,</span> <span class="n">serve_registry</span>
+</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_test_ctx</span>
+</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tool</span>
+</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>
+</span><span id="__span-23-10"><a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a><span class="n">logging</span><span class="o">.</span><span class="n">disable</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+</span><span id="__span-23-11"><a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a>
+</span><span id="__span-23-12"><a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a>
+</span><span id="__span-23-13"><a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-23-14"><a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">slow_build</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-23-15"><a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait far past the server&#39;s deadline, so only the deadline can end it.&quot;&quot;&quot;</span>
+</span><span id="__span-23-16"><a id="__codelineno-23-16" name="__codelineno-23-16" href="#__codelineno-23-16"></a>    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3600</span><span class="p">)</span>
+</span><span id="__span-23-17"><a id="__codelineno-23-17" name="__codelineno-23-17" href="#__codelineno-23-17"></a>    <span class="k">return</span> <span class="s2">&quot;never&quot;</span>
+</span><span id="__span-23-18"><a id="__codelineno-23-18" name="__codelineno-23-18" href="#__codelineno-23-18"></a>
+</span><span id="__span-23-19"><a id="__codelineno-23-19" name="__codelineno-23-19" href="#__codelineno-23-19"></a>
+</span><span id="__span-23-20"><a id="__codelineno-23-20" name="__codelineno-23-20" href="#__codelineno-23-20"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-23-21"><a id="__codelineno-23-21" name="__codelineno-23-21" href="#__codelineno-23-21"></a><span class="k">def</span><span class="w"> </span><span class="nf">call_upstream</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="__span-23-22"><a id="__codelineno-23-22" name="__codelineno-23-22" href="#__codelineno-23-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Read the named upstream, failing the way a real client fails.&quot;&quot;&quot;</span>
+</span><span id="__span-23-23"><a id="__codelineno-23-23" name="__codelineno-23-23" href="#__codelineno-23-23"></a>    <span class="k">raise</span> <span class="ne">TimeoutError</span><span class="p">(</span><span class="s2">&quot;upstream read timed out after 3s&quot;</span><span class="p">)</span>
+</span><span id="__span-23-24"><a id="__codelineno-23-24" name="__codelineno-23-24" href="#__codelineno-23-24"></a>
+</span><span id="__span-23-25"><a id="__codelineno-23-25" name="__codelineno-23-25" href="#__codelineno-23-25"></a>
+</span><span id="__span-23-26"><a id="__codelineno-23-26" name="__codelineno-23-26" href="#__codelineno-23-26"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-23-27"><a id="__codelineno-23-27" name="__codelineno-23-27" href="#__codelineno-23-27"></a>    <span class="n">spec</span> <span class="o">=</span> <span class="n">serve_registry</span><span class="p">(</span>
+</span><span id="__span-23-28"><a id="__codelineno-23-28" name="__codelineno-23-28" href="#__codelineno-23-28"></a>        <span class="p">[</span><span class="n">slow_build</span><span class="p">,</span> <span class="n">call_upstream</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;engine&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">make_test_ctx</span><span class="p">(),</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">0.05</span>
+</span><span id="__span-23-29"><a id="__codelineno-23-29" name="__codelineno-23-29" href="#__codelineno-23-29"></a>    <span class="p">)</span>
+</span><span id="__span-23-30"><a id="__codelineno-23-30" name="__codelineno-23-30" href="#__codelineno-23-30"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">spec</span><span class="p">:</span>
+</span><span id="__span-23-31"><a id="__codelineno-23-31" name="__codelineno-23-31" href="#__codelineno-23-31"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">MCPClient</span><span class="p">(</span>
+</span><span id="__span-23-32"><a id="__codelineno-23-32" name="__codelineno-23-32" href="#__codelineno-23-32"></a>        <span class="n">StreamableHttpServer</span><span class="p">(</span>
+</span><span id="__span-23-33"><a id="__codelineno-23-33" name="__codelineno-23-33" href="#__codelineno-23-33"></a>            <span class="n">url</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">auth_headers</span><span class="p">,</span> <span class="n">timeout_s</span><span class="o">=</span><span class="mf">10.0</span>
+</span><span id="__span-23-34"><a id="__codelineno-23-34" name="__codelineno-23-34" href="#__codelineno-23-34"></a>        <span class="p">)</span>
+</span><span id="__span-23-35"><a id="__codelineno-23-35" name="__codelineno-23-35" href="#__codelineno-23-35"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+</span><span id="__span-23-36"><a id="__codelineno-23-36" name="__codelineno-23-36" href="#__codelineno-23-36"></a>            <span class="n">ours</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;slow_build&quot;</span><span class="p">,</span> <span class="p">{})</span>
+</span><span id="__span-23-37"><a id="__codelineno-23-37" name="__codelineno-23-37" href="#__codelineno-23-37"></a>            <span class="n">theirs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;call_upstream&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;http://x&quot;</span><span class="p">})</span>
+</span><span id="__span-23-38"><a id="__codelineno-23-38" name="__codelineno-23-38" href="#__codelineno-23-38"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;our deadline:&quot;</span><span class="p">,</span> <span class="n">ours</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-23-39"><a id="__codelineno-23-39" name="__codelineno-23-39" href="#__codelineno-23-39"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;their error: &quot;</span><span class="p">,</span> <span class="n">theirs</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+</span><span id="__span-23-40"><a id="__codelineno-23-40" name="__codelineno-23-40" href="#__codelineno-23-40"></a>
+</span><span id="__span-23-41"><a id="__codelineno-23-41" name="__codelineno-23-41" href="#__codelineno-23-41"></a>
+</span><span id="__span-23-42"><a id="__codelineno-23-42" name="__codelineno-23-42" href="#__codelineno-23-42"></a><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>our deadline: tool &#39;slow_build&#39; did not return within 0.05s and was abandoned
-</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>their error:  tool &#39;call_upstream&#39; failed: TimeoutError: upstream read timed out after 3s
+<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>our deadline: tool &#39;slow_build&#39; did not return within 0.05s and was abandoned
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>their error:  tool &#39;call_upstream&#39; failed: TimeoutError: upstream read timed out after 3s
 </span></code></pre></div>
 <p>Those are deliberately different sentences, and the difference is a
 bug fix rather than a flourish. The handler used to use
@@ -4555,6 +4626,9 @@ repair a call it has been lied to about.</p>
   — <code>Elicitation</code> / <code>Decision</code> in full.</li>
 <li><a href="../../recipes/claude-cli-fastapi-code-gen/">Plug the claude CLI into FastAPI code-gen</a>
   — <code>ClaudeCliCognition</code> end to end.</li>
+<li><a href="../codex-cli/">The Codex CLI</a> — <code>as_codex_mcp</code>, and the two Claude-side
+  adapters (<code>hook_settings</code>, <code>as_cli_agents</code>) that have no Codex counterpart
+  and why.</li>
 <li><a href="../agents/">Concepts · Agents</a> — where <code>Tool</code>, <code>MemorySource</code> and
   <code>Prompt</code> plug in.</li>
 <li>The protocol itself: <a href="https://modelcontextprotocol.io">https://modelcontextprotocol.io</a></li>
@@ -4579,7 +4653,7 @@ repair a call it has been lied to about.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 04:44:02 UTC">August 31, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 1, 2026 15:49:20 UTC">September 1, 2026</span>
   </span>
 
     

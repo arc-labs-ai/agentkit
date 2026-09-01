@@ -1151,6 +1151,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../codex-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Codex CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../observability/" class="md-nav__link">
         
   
@@ -3268,6 +3296,10 @@ touching your prompt, your tools, or anything downstream.</p>
   messages between them.</li>
 <li><strong><code>ClaudeCliCognition</code></strong> — hands the whole loop to a locally installed
   <code>claude</code> CLI, so you manage no API keys at all.</li>
+<li><strong><code>CodexCliCognition</code></strong> — the same for a locally installed <code>codex</code> CLI.
+  Deliberately parallel to the one above, and deliberately not identical:
+  its containment is an OS sandbox rather than a tool list. See
+  <a href="../codex-cli/">The Codex CLI</a>.</li>
 </ul>
 <p>If a term above is new, the <a href="../../glossary/">glossary</a> defines each one
 in a sentence.</p>
@@ -3283,7 +3315,11 @@ required. See <a href="../observability/">Concepts · Observability</a> for how 
 resulting stream is recorded.
 - <strong><code>ClaudeCliCognition</code></strong> — delegates the loop to a locally-installed
   <code>claude</code> CLI, so no API key is handled on your server; the CLI's own
-  auth is used. Emits the same <code>StreamEvent</code>s the others do.</p>
+  auth is used. Emits the same <code>StreamEvent</code>s the others do.
+- <strong><code>CodexCliCognition</code></strong> — the same arrangement for OpenAI's <code>codex</code>
+  CLI: same <code>drive</code> contract, same terminal-event guarantee, same
+  <code>spawn=</code> seam. Where the two binaries genuinely differ, so does the
+  API — see <a href="../codex-cli/">The Codex CLI</a> for the four places.</p>
 <p>Import path: <code>from agentkit.agents.cognition import ReActCognition</code>.
 Cognitions are deliberately <strong>not</strong> re-exported from the top-level
 <code>agentkit</code> package — that surface is already dense, and cognitions are
@@ -3462,7 +3498,7 @@ something you branch on rather than sniff out of a dict:</p>
 </tr>
 <tr>
 <td><code>failed</code></td>
-<td>The run errored and the cognition reported it as <em>data</em> rather than raising — only <code>ClaudeCliCognition</code> does this, so its guarantee of a terminal event survives a subprocess that never starts</td>
+<td>The run errored and the cognition reported it as <em>data</em> rather than raising — only the two CLI cognitions do this, so their guarantee of a terminal event survives a subprocess that never starts</td>
 </tr>
 </tbody>
 </table>
@@ -3587,7 +3623,8 @@ stop the run, because <code>YES</code> was matched as a substring.</p>
 <div class="admonition abstract">
 <p class="admonition-title">Where this fits in the four themes</p>
 <p>This page covers the <strong>Cognition</strong> theme (<code>SingleCallCognition</code>,
-<code>ReActCognition</code>, <code>CoordinatorCognition</code>, <code>ClaudeCliCognition</code>, and
+<code>ReActCognition</code>, <code>CoordinatorCognition</code>, <code>ClaudeCliCognition</code>,
+<code>CodexCliCognition</code>, and
 your own <code>Cognition</code> implementations) and the <strong>Control</strong> theme
 (<code>Autonomy</code>, <code>RunPolicy</code>, <code>ActorBudget</code>, <code>Suspended</code> +
 <code>agent.resume(...)</code>, <code>SignalChannel</code>, <code>Handoff</code>). See the four-theme
@@ -3626,7 +3663,7 @@ grid on the <a href="../../">landing page</a>.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 30, 2026 23:00:00 UTC">August 30, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 1, 2026 15:49:20 UTC">September 1, 2026</span>
   </span>
 
     

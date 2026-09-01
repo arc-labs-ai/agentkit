@@ -1140,6 +1140,34 @@
   
   
     <li class="md-nav__item">
+      <a href="concepts/codex-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Codex CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="concepts/observability/" class="md-nav__link">
         
   
@@ -3185,6 +3213,10 @@ needed is always further down than that.</p>
 <td><code>Agent</code> + <code>ClaudeCliCognition</code></td>
 </tr>
 <tr>
+<td>…or to a local <code>codex</code> CLI, contained by an OS sandbox</td>
+<td><code>Agent</code> + <code>CodexCliCognition(sandbox=...)</code></td>
+</tr>
+<tr>
 <td>Orchestrate many child agents</td>
 <td><code>Agent</code> + <code>CoordinatorCognition</code></td>
 </tr>
@@ -3251,6 +3283,10 @@ needed is always further down than that.</p>
 <td><code>serve_registry(registry, name=..., ctx=...)</code> → <code>spec.cli_kwargs()</code></td>
 </tr>
 <tr>
+<td>…or the <code>codex</code> CLI, which reads the same server as TOML</td>
+<td><code>spec.codex_kwargs()</code> / <code>as_codex_mcp(spec)</code></td>
+</tr>
+<tr>
 <td>Send the CLI's permission prompts to your reviewer, and keep what they decided</td>
 <td><code>ApprovalServer(asker=...)</code> → <code>.cli_kwargs()</code> / <code>.decisions</code></td>
 </tr>
@@ -3296,6 +3332,10 @@ needed is always further down than that.</p>
 <td>Do the same for the <code>claude</code> CLI path, offline and free</td>
 <td><code>FakeClaudeCli.script([...])</code> + <code>ClaudeCliCognition(spawn=...)</code></td>
 </tr>
+<tr>
+<td>…and for the <code>codex</code> one</td>
+<td><code>FakeCodexCli.script(codex_turn(...))</code> + <code>CodexCliCognition(spawn=...)</code></td>
+</tr>
 </tbody>
 </table>
 <p>Three rows in "reach outside the process" are one story. The CLI owns
@@ -3303,7 +3343,9 @@ its loop, so anything you want it to respect — your tools, your
 reviewer, your guardrails — has to reach it as configuration before it
 starts. <a href="concepts/claude-cli/">The Claude CLI</a> walks those seams;
 <a href="concepts/integrations/">Integrations</a> has the two MCP servers in
-full.</p>
+full. <a href="concepts/codex-cli/">The Codex CLI</a> is the same argument for
+the other binary — and covers the two of those seams Codex simply does
+not have, rather than leaving you to look.</p>
 <h2 id="the-run-in-one-picture">The run in one picture<a class="headerlink" href="#the-run-in-one-picture" title="Anchor link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart TB
     A[Agent] --&gt;|drives| B[Cognition]
@@ -3392,11 +3434,20 @@ local <code>claude</code> CLI.</p>
 <li>
 <p><strong>The Claude CLI</strong></p>
 <hr />
-<p>The one loop your code does not own. What <code>ClaudeCliCognition</code>
-gives away, which of your middlewares stop applying when it does,
-and the five seams — MCP tools, approvals, hooks, sub-agents, a
-test double — that reach back into it.</p>
+<p>One of the two loops your code does not own. What
+<code>ClaudeCliCognition</code> gives away, which of your middlewares stop
+applying when it does, and the five seams — MCP tools, approvals,
+hooks, sub-agents, a test double — that reach back into it.</p>
 <p><a href="concepts/claude-cli/">:octicons-arrow-right-24: Delegate to the CLI safely</a></p>
+</li>
+<li>
+<p><strong>The Codex CLI</strong></p>
+<hr />
+<p>The other one. Same contract, four real differences — containment
+is an OS sandbox rather than a tool list, there is no
+system-prompt flag, the CLI reports no cost, and a session resumes
+a thread instead of holding a process.</p>
+<p><a href="concepts/codex-cli/">:octicons-arrow-right-24: Read the differences</a></p>
 </li>
 <li>
 <p><strong>Worked scenarios</strong></p>
@@ -3447,7 +3498,7 @@ what a good change looks like here.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 31, 2026 05:18:50 UTC">August 31, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 1, 2026 15:49:20 UTC">September 1, 2026</span>
   </span>
 
     
