@@ -158,7 +158,11 @@ async def test_an_explicit_json_schema_wins_over_the_agents_output() -> None:
     cog = CodexCliCognition(json_schema=explicit, spawn=cli)
     result = final_of(await drive(cog, agent=Agent(name="r", cognition=cog)))
 
-    assert cli.seen["document"] == explicit
+    # The caller's schema reaches the file, plus the ``additionalProperties:
+    # false`` OpenAI's strict mode requires — see
+    # ``_strict_object_schema``. Everything the caller declared is intact; the
+    # one added key is the difference between a run and a 400.
+    assert cli.seen["document"] == {**explicit, "additionalProperties": False}
     # No agentkit adapter exists (the agent declared no ``output=``), so the
     # validated dict IS the parsed value — there is no Python type to build.
     assert result.parsed == {"n": 3}

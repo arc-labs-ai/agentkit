@@ -395,11 +395,13 @@ async def test_a_line_that_is_valid_json_but_an_unknown_event_type() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_session_with_no_result_event_at_all() -> None:
-    """The CLI answered and then exited 0 without its `result` payload. Today
-    that reads as a clean success with zero usage and no session id — worth
-    pinning as-is, because the moment the cognition starts calling it a
-    failure this test is the thing that says so."""
+async def test_a_session_with_no_result_event_at_all_is_malformed_output() -> None:
+    """The CLI answered and then exited 0 without its ``result`` payload.
+
+    This used to read as a clean success with zero usage and no session id, and
+    the test said: *the moment the cognition starts calling it a failure this
+    test is the thing that says so.* It does now — a fragment reported as
+    ``partial=False`` is a wrong answer presented as a finished one."""
     cli = FakeClaudeCli.script(
         [
             {"type": "system", "subtype": "init", "session_id": "s"},
@@ -409,8 +411,8 @@ async def test_a_session_with_no_result_event_at_all() -> None:
     result = (await _drive(ClaudeCliCognition(spawn=cli)))[-1].result
     assert result.output == "answered"
     assert result.usage.cost_usd == 0.0
-    assert result.partial is False
-    assert "stop_reason" not in result.evals
+    assert result.partial is True
+    assert result.evals["stop_reason"] == "malformed_output"
 
 
 @pytest.mark.asyncio

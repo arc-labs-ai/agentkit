@@ -37,6 +37,7 @@ from agentkit.testing.fakes.ctx import FakeCtx
 from agentkit.tools.from_agent import as_tool
 from tests.agents.cognition.test_claude_cli import (
     _FakeProcess,
+    _FakeStdin,
     _line,
 )
 
@@ -207,13 +208,14 @@ def test_A3_wait_for_timeout_raises_TimeoutError_and_terminates_child() -> None:
             return b'{"type":"result","session_id":"s","duration_ms":1,"usage":{}}\n'
 
     class _SlowStderr:
-        async def read(self) -> bytes:
+        async def read(self, n: int = -1) -> bytes:
             return b""
 
     class _CooperativeProcess:
         def __init__(self) -> None:
             self.stdout = _SlowStdout()
             self.stderr = _SlowStderr()
+            self.stdin = _FakeStdin()
             self._returncode: int | None = None
 
         @property

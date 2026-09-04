@@ -159,8 +159,8 @@ async def test_the_agent_prompt_is_prepended_only_on_the_first_turn() -> None:
         await take(chat.turn("first question"))
         await take(chat.turn("second question"))
 
-    assert cli.invocations[0].argv[-1] == "You are terse.\n\n---\n\nfirst question"
-    assert cli.invocations[1].argv[-1] == "second question"
+    assert cli.invocations[0].stdin.decode() == "You are terse.\n\n---\n\nfirst question"
+    assert cli.invocations[1].stdin.decode() == "second question"
 
 
 @pytest.mark.asyncio
@@ -180,7 +180,7 @@ async def test_replace_mode_rewrites_the_instructions_file_on_every_turn() -> No
     for invocation in cli.invocations:
         argv = list(invocation.argv)
         assert any(a.startswith("experimental_instructions_file=") for a in argv), argv
-        assert argv[-1] in ("one", "two")
+        assert invocation.stdin.decode() in ("one", "two")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,8 +342,8 @@ async def test_the_session_agent_is_the_default_and_a_turn_can_override_it() -> 
     # Turn one carries the session's agent prompt; turn two is a resume, so no
     # prompt is prepended at all — which is the point of the previous test and
     # is what makes the override observable only through the schema.
-    assert cli.invocations[0].argv[-1].startswith("DEFAULT")
-    assert cli.invocations[1].argv[-1] == "two"
+    assert cli.invocations[0].stdin.decode().startswith("DEFAULT")
+    assert cli.invocations[1].stdin.decode() == "two"
 
 
 @pytest.mark.asyncio

@@ -235,7 +235,12 @@ class FakeCodexCli:
         implementation should wire file descriptors, and there are none here.
         """
         run = self._next_run()
-        invocation = CliInvocation(argv=tuple(argv), cwd=cwd, env=dict(env or {}))
+        invocation = CliInvocation(
+            argv=tuple(argv),
+            cwd=cwd,
+            env=dict(env or {}),
+            start_new_session=bool(_ignored.get("start_new_session", False)),
+        )
         self.invocations.append(invocation)
         # Structurally a Process for every attribute the cognition touches
         # (stdout/stderr/stdin/returncode/wait/terminate/kill) and nothing
