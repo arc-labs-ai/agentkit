@@ -154,6 +154,14 @@ class CliInvocation:
     cwd: str | None = None
     env: Mapping[str, str] = field(default_factory=dict)
     stdin: bytes = b""
+    # Whether the spawn asked for a NEW session/process group. Recorded because
+    # it is half of a correctness property no assertion on argv or output can
+    # reach: without it the child shares the service's process group, and the
+    # group kill that reaps what the CLI forked would instead signal the
+    # service. The other half is that ``_terminate`` actually signals the group
+    # — see the orphan test, which uses a real subprocess because a double
+    # cannot have grandchildren.
+    start_new_session: bool = False
     # stdout lines the consumer has actually pulled. The streaming assertion:
     # a double that buffered a run to completion before handing over its first
     # event would show this at the recording's full length by the time the
@@ -307,8 +315,21 @@ class _ReplayProcess:
         self._invocation.terminated = True
         # A well-behaved process exits on SIGTERM; the native encoding of that
         # is a negative return code, and ``_finalise`` reports it verbatim.
-        self._invocation.returncode = -15
+        self._invocation.returncode = self._exit_code(-15)
 
     def kill(self) -> None:
         self._invocation.killed = True
-        self._invocation.returncode = -9
+        self._invocation.returncode = self._exit_code(-9)
+
+    def _exit_code(self, sig_code: int) -> int:
+        """A signal only decides the exit code of a process that was still ALIVE.
+
+        A real ``Process`` that has already exited raises ``ProcessLookupError``
+        on a further ``terminate()``/``kill()`` and keeps the code it exited
+        with; the double used to overwrite it, so a SIGTERM the child obeyed,
+        followed by the group SIGKILL sweep that reaps whatever it forked,
+        reported ``-9`` — "we had to kill it" — for a process that shut down
+        politely. The distinction is the entire diagnostic value of the field.
+        """
+        current = self._invocation.returncode
+        return current if current is not None else sig_code

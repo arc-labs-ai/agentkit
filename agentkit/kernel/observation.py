@@ -24,6 +24,7 @@ from agentkit.kernel._frozen import deep_freeze
 # on any consumer of ``obs.kind`` — a typo becomes a type error instead
 # of a silent missed-branch.
 ObservationKind = Literal[
+    "run_start",
     "progress",
     "summary",
     "partial_result",
@@ -39,6 +40,7 @@ ObservationKind = Literal[
     # items landed, the other says they did not. Folding them together
     # would make "did this source persist anything?" a payload question.
     "memory.write_refused",
+    "policy.flagged",
 ]
 
 # Kinds that must never be dropped under backpressure (vs progress/summary, which may be coalesced).

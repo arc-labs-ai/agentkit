@@ -28,3 +28,26 @@ if str(_AGENTKIT_ROOT) not in sys.path:
 _TESTS_DIR = Path(__file__).resolve().parent
 if str(_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_DIR))
+
+
+# ── hypothesis profiles ──────────────────────────────────────────────────────
+# Registered here rather than in a test module because ``--hypothesis-profile``
+# is resolved at CONFIG time, before any test file is imported.
+#
+# Only ``deep`` is registered. An earlier version also overrode the DEFAULT
+# profile to 250 examples, which silently made every other property test in
+# the repo search 2.5x harder and added ~12s to the full run — a cost that
+# unrelated files paid for a convenience in one of them. The ordinary run
+# therefore uses Hypothesis's own default; ``deep`` is for a pre-release sweep:
+#
+#     pytest tests/agents/cognition/test_cli_parser_properties.py \
+#         --hypothesis-profile=deep
+from hypothesis import HealthCheck
+from hypothesis import settings as _hypothesis_settings
+
+_hypothesis_settings.register_profile(
+    "deep",
+    max_examples=4000,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)

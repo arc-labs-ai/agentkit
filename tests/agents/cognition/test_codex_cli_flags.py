@@ -151,9 +151,18 @@ async def test_the_working_dir_is_both_cd_and_the_subprocess_cwd(tmp_path: Path)
 
 
 def test_the_sandbox_and_approval_flags_render() -> None:
+    """The approval policy is a CONFIG KEY, not a flag.
+
+    ``codex exec`` used to take ``--ask-for-approval``; codex 0.152.1 answers it
+    with ``error: unexpected argument '--ask-for-approval' found`` and exits 2
+    before starting a thread — so every run of a cognition carrying this field
+    died on a clap usage message with no output at all. ``-c approval_policy=``
+    was verified against the binary.
+    """
     argv = argv_of(CodexCliCognition(sandbox="workspace-write", ask_for_approval="never"))
     assert value_after(argv, "--sandbox") == "workspace-write"
-    assert value_after(argv, "--ask-for-approval") == "never"
+    assert "--ask-for-approval" not in argv
+    assert overrides(argv)["approval_policy"] == '"never"' 
 
 
 def test_bypassing_the_sandbox_renders_one_flag_and_not_the_others() -> None:
@@ -173,8 +182,20 @@ def test_added_directories_each_get_their_own_flag(tmp_path: Path) -> None:
     assert str(a) in argv and str(b) in argv
 
 
-def test_web_search_is_a_flag_not_a_config_key() -> None:
-    assert "--search" in argv_of(CodexCliCognition(web_search=True))
+def test_web_search_is_a_flag_on_the_PARENT_command() -> None:
+    """``--search`` belongs to ``codex``, not to ``codex exec``.
+
+    It used to be accepted after the subcommand. codex 0.152.1 answers that
+    with ``error: unexpected argument '--search' found`` and exits 2 before
+    starting a thread, so every ``web_search=True`` run died on a clap usage
+    message with no output. The flag still exists — ``codex --help`` documents
+    it as "Enable live web search" — it just has to come first.
+    """
+    argv = argv_of(CodexCliCognition(web_search=True))
+    assert "--search" in argv
+    assert argv.index("--search") < argv.index("exec"), (
+        f"--search must precede the subcommand, got {argv}"
+    )
 
 
 def test_network_access_is_a_config_key_because_it_has_no_flag() -> None:
@@ -399,7 +420,7 @@ async def test_prepend_mode_puts_the_agent_prompt_above_the_task() -> None:
     agent = Agent(name="local", prompt="You are terse.", cognition=cog)
     await drive(cog, agent=agent, task="count the files")
 
-    assert cli.invocations[-1].argv[-1] == "You are terse.\n\n---\n\ncount the files"
+    assert cli.invocations[-1].stdin.decode() == "You are terse.\n\n---\n\ncount the files"
 
 
 @pytest.mark.asyncio
@@ -410,7 +431,7 @@ async def test_the_separator_is_there_so_a_one_line_prompt_is_not_run_on() -> No
     cli = FakeCodexCli.script(codex_turn(text="x", usage=(1, 0, 1)))
     cog = CodexCliCognition(spawn=cli)
     await drive(cog, agent=Agent(name="a", prompt="Be terse.", cognition=cog), task="Why?")
-    assert "\n\n---\n\n" in cli.invocations[-1].argv[-1]
+    assert "\n\n---\n\n" in cli.invocations[-1].stdin.decode()
 
 
 @pytest.mark.asyncio
@@ -422,7 +443,7 @@ async def test_a_versioned_prompt_is_rendered_not_stringified() -> None:
     )
     agent = Agent(name="a", prompt=prompt, cognition=cog)
     await drive(cog, agent=agent, task="go")
-    assert cli.invocations[-1].argv[-1].startswith("Act as a reviewer.")
+    assert cli.invocations[-1].stdin.decode().startswith("Act as a reviewer.")
 
 
 @pytest.mark.asyncio
@@ -430,7 +451,7 @@ async def test_an_agent_with_no_prompt_sends_the_task_alone() -> None:
     cli = FakeCodexCli.script(codex_turn(text="x", usage=(1, 0, 1)))
     cog = CodexCliCognition(spawn=cli)
     await drive(cog, task="just this")
-    assert cli.invocations[-1].argv[-1] == "just this"
+    assert cli.invocations[-1].stdin.decode() == "just this"
 
 
 @pytest.mark.asyncio
@@ -444,7 +465,7 @@ async def test_replace_mode_writes_an_instructions_file_and_sends_the_task_alone
     await drive(cog, agent=agent, task="check main.py")
 
     argv = list(cli.invocations[-1].argv)
-    assert argv[-1] == "check main.py"
+    assert cli.invocations[-1].stdin.decode() == "check main.py"
     assert "experimental_instructions_file" in overrides(argv)
 
 

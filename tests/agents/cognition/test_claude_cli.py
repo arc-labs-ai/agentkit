@@ -64,8 +64,39 @@ class _FakeStderr:
     def __init__(self, data: bytes = b"") -> None:
         self._data = data
 
-    async def read(self) -> bytes:
-        return self._data
+    async def read(self, n: int = -1) -> bytes:
+        # ``n`` because the real ``StreamReader.read`` takes it, and the
+        # driver drains stderr in chunks so a pipe nobody closes cannot
+        # hang the run. A double that does not match the API it stands in
+        # for hides exactly that kind of change.
+        out, self._data = self._data, b""
+        return out
+
+
+class _FakeStdin:
+    """``proc.stdin`` — records what the cognition wrote.
+
+    Both paths write the turn here now: a session always did, and ``drive``
+    was migrated off the argv-carried prompt. A double without it made every
+    one-shot run die on ``assert proc.stdin is not None`` with no events, which
+    is the correct assertion meeting an out-of-date fake.
+    """
+
+    def __init__(self) -> None:
+        self.written = b""
+        self.closed = False
+
+    def write(self, data: bytes) -> None:
+        self.written += bytes(data)
+
+    async def drain(self) -> None:
+        return None
+
+    def is_closing(self) -> bool:
+        return self.closed
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class _FakeProcess:
@@ -79,6 +110,7 @@ class _FakeProcess:
     ) -> None:
         self.stdout = _FakeStdout(stdout_lines)
         self.stderr = _FakeStderr(stderr)
+        self.stdin = _FakeStdin()
         self._returncode: int | None = None
         self._final_returncode = returncode
         self._terminate_hook = terminate_hook
@@ -99,12 +131,17 @@ class _FakeProcess:
         self.terminated = True
         if self._terminate_hook is not None:
             self._terminate_hook()
-        # Simulate a well-behaved process: exit on SIGTERM.
-        self._returncode = -15
+        # Simulate a well-behaved process: exit on SIGTERM. Only if it was
+        # still running — a signal to an exited process changes nothing, and
+        # the group-SIGKILL sweep that follows every terminate would otherwise
+        # relabel a polite shutdown as a kill.
+        if self._returncode is None:
+            self._returncode = -15
 
     def kill(self) -> None:
         self.killed = True
-        self._returncode = -9
+        if self._returncode is None:
+            self._returncode = -9
 
 
 def _line(payload: dict[str, Any]) -> bytes:
@@ -228,7 +265,13 @@ def test_happy_path_emits_all_events_in_order() -> None:
     # The argv must include the required flags.
     argv = spawn.await_args.args
     assert argv[0] == "claude"
-    assert "-p" in argv and "do it" in argv
+    assert "-p" in argv
+    # The TASK is not in argv — it goes over stdin as one stream-json user
+    # turn, the same transport a session uses. See ``_build_argv``.
+    assert "do it" not in argv
+    assert "--input-format" in argv and "stream-json" in argv
+    assert json.loads(proc.stdin.written)["message"]["content"] == "do it"
+    assert proc.stdin.closed, "stdin must be closed, or the CLI waits for a second turn"
     assert "--output-format" in argv and "stream-json" in argv
     assert "--verbose" in argv
     assert "--model" in argv and "claude-opus-4-5" in argv

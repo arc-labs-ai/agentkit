@@ -379,6 +379,8 @@ async def test_cli_kwargs_wire_the_cognition() -> None:
     kwargs = server.cli_kwargs()
 
     assert kwargs["permission_prompt_tool"] == f"mcp__{SERVER_NAME}__{TOOL_NAME}"
+    assert kwargs["permission_mode"] == "default"
+    assert kwargs["setting_sources"] == ()
     config = json.loads(kwargs["mcp_config"][0])
     # The credential travels IN the document the caller is handed, which is the
     # whole reason ``cli_kwargs()`` exists: a caller assembling an Authorization

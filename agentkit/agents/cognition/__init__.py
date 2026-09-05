@@ -19,10 +19,27 @@ guarantee, same ``spawn=`` seam — and deliberately not identical, because the
 binaries are not: see each class's docstring for the four places they diverge
 and why papering over any of them would be a field that silently does nothing.
 
+Both CLI cognitions share a policy layer over the things a service has to be
+able to state rather than inherit — :class:`CliTimeouts` (liveness bounds with
+a typed reason per bound), ``env_policy`` (which credentials the child
+resolves), ``native_tool_policy`` (refusing tools the middleware cannot govern)
+and :class:`StructuredOutputFailure` (schema failures with JSON paths instead
+of one English sentence). The policy is shared; the transports are not, because
+the binaries genuinely differ.
+
 Adding a new cognition is implementing the ``Cognition`` Protocol;
 no Agent subclassing required.
 """
 
+from agentkit.agents.cognition._cli_common import (
+    CliLineTooLong,
+    CliTimedOut,
+    CliTimeouts,
+    EnvPolicy,
+    InvalidSchemaError,
+    SchemaViolation,
+    StructuredOutputFailure,
+)
 from agentkit.agents.cognition.base import Cognition
 from agentkit.agents.cognition.claude_cli import (
     ClaudeCliCognition,
@@ -50,13 +67,19 @@ __all__ = [
     "ClaudeCliCognition",
     "ClaudeCliSession",
     "CliSpawn",
+    "CliTimedOut",
+    "CliTimeouts",
     "CodexCliCognition",
     "CodexCliSession",
     "Cognition",
     "CoordinatorCognition",
+    "EnvPolicy",
     "InterruptReceipt",
+    "InvalidSchemaError",
     "ReActCognition",
     "ReasoningEffort",
     "SandboxMode",
+    "SchemaViolation",
     "SingleCallCognition",
+    "StructuredOutputFailure",
 ]

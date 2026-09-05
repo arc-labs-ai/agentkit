@@ -404,11 +404,16 @@ async def test_the_real_cli_runs_inside_a_workflow(tmp_path: Path) -> None:
         skip_git_repo_check=True,
     )
     agent = Agent(name="reader", cognition=cog)
-    wf = Workflow(name="wf").add_node("read", agent)
+    # ``Workflow.agent(name, agent)`` — there is no ``add_node``; the Claude
+    # sibling test has always used the real method. This one could not fail on
+    # it before, because every real-CLI Codex test died in argv parsing first.
+    wf = Workflow(name="wf")
+    wf.agent("read", agent)
 
     result = await wf.run("What number is in n.txt? Digits only.", FakeCtx())
-    assert "4271" in result.output, result.output
-    assert result.stop_reason == "complete"
+    # WorkflowResult carries per-node outputs on ``outputs``, keyed by node name
+    # — same as the Claude sibling test asserts.
+    assert "4271" in result.outputs["read"], result.outputs
 
 
 @real_codex

@@ -459,7 +459,15 @@ async def test_interleaved_stderr_written_mid_run_survives_to_the_end() -> None:
 @pytest.mark.asyncio
 async def test_a_truncated_final_line_is_skipped_rather_than_ending_the_run() -> None:
     """A process killed mid-JSON-object. The lines before it are real and must
-    survive; the fragment is not JSON and must not raise."""
+    survive; the fragment is not JSON and must not raise — AND the run must not
+    claim to have finished.
+
+    The last part is the reversal. This used to assert ``partial is False``
+    ("exit 0, nothing said otherwise"), so a killed process handed back a
+    half-written answer labelled complete. Nothing said otherwise because
+    nothing was LOOKING: a successful ``turn.completed`` leaves ``stop_reason``
+    at ``None``, exactly like a stream that stopped early, so the two were
+    indistinguishable until ``saw_terminal`` made the difference explicit."""
     cli = FakeCodexCli.script(
         [
             {"type": "thread.started", "thread_id": "t"},
@@ -468,8 +476,9 @@ async def test_a_truncated_final_line_is_skipped_rather_than_ending_the_run() ->
         ]
     )
     result = final_of(await drive(CodexCliCognition(spawn=cli)))
-    assert result.output == "kept"
-    assert result.partial is False  # exit 0, nothing said otherwise
+    assert result.output == "kept", "the complete lines before the fragment are real"
+    assert result.partial is True
+    assert result.evals["stop_reason"] == "malformed_output"
 
 
 @pytest.mark.asyncio
@@ -509,12 +518,15 @@ async def test_an_unknown_payload_type_is_ignored() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_run_with_no_turn_completed_reads_as_a_clean_but_empty_success() -> None:
-    """Pinned as-is rather than asserted as correct. The CLI answered and
-    exited 0 without its terminal payload, so there is no usage and no
-    duration; the moment this cognition starts calling that a failure, THIS is
-    the test that says so — and the matching Claude test pins the identical
-    choice, which is why they agree."""
+async def test_a_run_with_no_turn_completed_is_reported_as_malformed_output() -> None:
+    """The moment the old test anticipated, arrived.
+
+    It pinned "clean but empty success" and said: *the moment this cognition
+    starts calling that a failure, THIS is the test that says so.* It is now a
+    failure, because reporting it as a success was the worst shape available —
+    ``partial=False`` on a fragment, no usage, no duration, and nothing in the
+    result to suggest the CLI had not finished writing. The matching Claude
+    test makes the identical change, which is why they still agree."""
     cli = FakeCodexCli.script(
         [
             {"type": "thread.started", "thread_id": "t"},
@@ -522,10 +534,10 @@ async def test_a_run_with_no_turn_completed_reads_as_a_clean_but_empty_success()
         ]
     )
     result = final_of(await drive(CodexCliCognition(spawn=cli)))
-    assert result.output == "answered"
-    assert result.partial is False
+    assert result.output == "answered", "whatever did arrive is still real"
+    assert result.partial is True
     assert result.usage.total_tokens == 0
-    assert "stop_reason" not in result.evals
+    assert result.evals["stop_reason"] == "malformed_output"
 
 
 @pytest.mark.asyncio

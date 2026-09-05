@@ -75,7 +75,6 @@ spawn and every turn is its own spawn.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import shutil
@@ -87,14 +86,30 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from agentkit.agents.cognition._cli_common import (
+    CliLineTooLong,
     CliSpawn,
-    _CliCall,
+    CliTimedOut,
+    CliTimeouts,
+    EnvPolicy,
+    StructuredOutputFailure,
+    _as_dict,
+    _as_int,
+    _as_list,
+    _build_child_env,
+    _charge_meters,
+    _CliLaunch,
+    _CliRunOutcome,
     _coerce_structured,
     _get_semaphore,
-    _parse_line,
+    _is_working_dir_missing,
+    _looks_secret,
+    _redact_secrets,
+    _require_working_dir,
     _reraise_if_not_an_exception,
-    _terminate,
+    _run_cli_process,
+    _timeout_stop_reason,
     _tool_middleware_names,
+    _validate_json_schema,
 )
 from agentkit.agents.result import AgentResult, AgentStopReason, stop_reason_for
 from agentkit.kernel.protocols import Ctx
@@ -132,6 +147,10 @@ _CODEX_FAILURE_REASONS = frozenset(
     {
         "spawn_failed",
         "parse_failed",
+        # A single NDJSON payload outgrew the reader's buffer. ``failed``, and
+        # deliberately NOT ``parse_failed``: the line was valid JSON, just too
+        # big to assemble, so the fix is a size rather than a corruption hunt.
+        "output_line_too_long",
         "working_dir_missing",
         # The CLI wrote a top-level ``{"type":"error"}`` — a transport or
         # stream failure it could not attribute to the turn.
@@ -143,8 +162,47 @@ _CODEX_FAILURE_REASONS = frozenset(
         # A turn was asked of a session with no thread to resume. ``failed``
         # rather than ``terminated``: nobody chose to stop this.
         "session_closed",
+        # ── liveness (see CliTimeouts) ──────────────────────────────────────
+        # ``failed`` and not ``expired``: ``expired`` means a human-gate
+        # deadline passed and the run degraded and CONTINUED. Nothing continues
+        # here. And not ``terminated``: nobody chose this, a bound did.
+        "startup_timeout",
+        "first_event_timeout",
+        "idle_timeout",
+        "total_timeout",
+        "authentication_failed",
+        # ── stream integrity ────────────────────────────────────────────────
+        # The stream ended without the CLI's own end-of-turn payload: a process
+        # killed from outside, a full disk, a broken pipe, a truncated final
+        # line. Measured before this reason existed — the run reported
+        # ``stop_reason="complete"``, ``partial=False``, and handed back half an
+        # answer as a finished one, which is the worst shape a failure can take.
+        "malformed_output",
+        # A death by signal rather than a chosen exit, and a schema the CLI
+        # refused at startup. Both are refinements of ``cli_exit_<n>``.
+        "process_crashed",
+        "schema_rejected",
     }
 )
+
+# Phrases ``codex`` prints when authentication has FAILED. Lower-case,
+# substring-matched against stderr, and used only to refine an already-failed
+# ``startup_timeout`` — see ``_timeout_stop_reason`` for why the list must not
+# contain anything the CLI prints while working.
+_CODEX_AUTH_FAILURE_STDERR: tuple[str, ...] = (
+    "not logged in",
+    "run `codex login`",
+    "codex login",
+    "unauthorized",
+    "invalid_api_key",
+    "invalid api key",
+    "401",
+)
+
+
+def _classify_timeout(exc: CliTimedOut, stderr_bytes: bytes) -> str:
+    """This CLI's spelling of :func:`_timeout_stop_reason`."""
+    return _timeout_stop_reason(exc, stderr_bytes, _CODEX_AUTH_FAILURE_STDERR)
 
 # Structured-output failures are ``invalid_output`` in the closed taxonomy —
 # the same category the tool loop uses when parse-and-repair is exhausted. They
@@ -193,6 +251,26 @@ CODEX_SANDBOX_CAPS: dict[str, tuple[str, ...]] = {
 # says "the CLI's tools" teaches nobody anything.
 CODEX_NATIVE_TOOLS: tuple[str, ...] = ("shell", "apply_patch", "update_plan")
 
+# Ambient variables that decide WHICH identity the CLI runs as. Removed by
+# ``env_policy="profile"``, absent under ``"isolated"``.
+#
+# Shorter than the Claude list, and honestly so. Measured against codex
+# 0.152.1: a bogus ``OPENAI_API_KEY`` alongside a valid ``CODEX_HOME`` login was
+# ignored and the run succeeded — the opposite of the Claude CLI, which prefers
+# the ambient key and says so on stderr. There is no session-linkage half here
+# either, because nothing in a running Codex process exports handles to itself
+# the way ``CLAUDE_CODE_MESSAGING_TOKEN`` and friends do.
+#
+# Kept anyway: precedence is a config key (``preferred_auth_method``) rather
+# than a law, ``--ignore-user-config`` changes which config is consulted, and a
+# service that has declared a policy should get the same guarantee from both
+# cognitions rather than one that happens to be unnecessary today.
+_CODEX_AMBIENT_AUTH_ENV: tuple[str, ...] = (
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+    "OPENAI_BASE_URL",
+)
+
 # What a Codex sandbox mode is called when nobody passed ``--sandbox``. The CLI
 # documents ``codex exec`` as defaulting to read-only, and the caps property
 # has to answer for the default configuration too — reporting no capabilities
@@ -217,6 +295,49 @@ def _split_input_tokens(total_input: int, cached: int) -> tuple[int, int]:
     """
     cached = max(0, cached)
     return max(0, total_input - cached), cached
+
+
+
+# Phrases each CLI prints when it has REJECTED THE SCHEMA we handed it, as
+# opposed to failing for any other reason. Same discipline as the auth markers:
+# only ever refines an already-failed run, and must not contain anything the
+# CLI prints while working.
+_SCHEMA_REJECTED_STDERR: tuple[str, ...] = (
+    "is not a valid json schema",
+    "invalid json schema",
+    "--json-schema",
+    "--output-schema",
+    "output schema",
+)
+
+
+def _exit_stop_reason(return_code: int, stderr_bytes: bytes) -> str:
+    """Name a non-zero exit more precisely than ``cli_exit_<n>`` where we can.
+
+    Three outcomes, in decreasing confidence:
+
+    ``process_crashed``
+        A NEGATIVE return code is a death by signal, not a chosen exit — the
+        OOM killer, a segfault, an operator's ``kill``. ``cli_exit_-9`` reads
+        as an exit status that does not exist; ``process_crashed`` names what
+        happened and the signal is kept alongside. Only reachable for a signal
+        WE did not send: cancellation and timeouts are decided earlier and win.
+
+    ``schema_rejected``
+        The CLI refused the schema at startup. Pre-spawn validation catches the
+        structural mistakes, but each binary has its own additional rules, and
+        "exit 2" for a bad schema is a message an operator has to dig out of
+        stderr to understand.
+
+    ``cli_exit_<n>``
+        Everything else, unchanged.
+    """
+    if return_code < 0:
+        return "process_crashed"
+    haystack = stderr_bytes.decode("utf-8", errors="replace").lower()
+    if any(marker in haystack for marker in _SCHEMA_REJECTED_STDERR):
+        return "schema_rejected"
+    return f"cli_exit_{return_code}"
 
 
 def _codex_stop_reason(reason: str | None) -> AgentStopReason:
@@ -432,8 +553,50 @@ class CodexCliCognition:
     continue_session: bool = False
 
     extra_args: tuple[str, ...] = ()  # escape hatch for future CLI flags
+
+    # ── liveness ────────────────────────────────────────────────────────────
+    # The same four bounds as the Claude cognition, with the same defaults and
+    # the same reasons — see :class:`CliTimeouts`. One Codex-specific note on
+    # ``idle``: this CLI's ``shell`` tool is the whole point of it, so a run
+    # that is silently compiling for four minutes is doing its job. An ``idle``
+    # tuned to model latency will kill working runs here even more readily than
+    # it will on the Claude side.
+    timeouts: CliTimeouts = field(default_factory=CliTimeouts)
     terminate_grace_s: float = 5.0
     max_concurrent: int = 8  # class-level semaphore, shared per (bin, home, max)
+
+    # ── environment and authentication ──────────────────────────────────────
+    # The same knob as ``ClaudeCliCognition.env_policy``, and deliberately the
+    # same three names — but the urgency is NOT the same, and saying so is the
+    # point of this comment.
+    #
+    # Measured, codex 0.152.1: a bogus ``OPENAI_API_KEY`` in the environment was
+    # IGNORED in favour of the ``CODEX_HOME`` login, and the run succeeded. The
+    # Claude CLI does the opposite and says so on stderr. So there is no live
+    # credential-override bug here to fix; what this buys is determinism (the
+    # child gets what we chose, not what the operator's shell had), symmetry
+    # for a caller wiring both cognitions behind one policy, and cover for the
+    # fact that Codex's precedence is itself configurable and a CLI upgrade
+    # away from flipping.
+    #
+    # ``None`` resolves to "profile" when ``config_home`` is set and "inherit"
+    # otherwise, matching the Claude cognition's rule.
+    env_policy: EnvPolicy | None = None
+
+    # ── native tool policy ──────────────────────────────────────────────────
+    # Same field as the Claude cognition, and the one place where the same
+    # value means something genuinely different — because the programs differ.
+    #
+    # Claude can satisfy "deny": ``tools=("",)`` plus ``mcp_config=`` leaves the
+    # session with no ungoverned native tool. **Codex cannot.** Every Codex
+    # session has ``shell``, there is no tool allow-list, and there is no
+    # PreToolUse hook to route the call back through agentkit. So
+    # ``native_tool_policy="deny"`` here does not configure anything away — it
+    # refuses to construct, which is the honest answer to "my policy is that no
+    # ungovernable tool may run" and is exactly what a deny policy is for. A
+    # service that sets it learns at startup that Codex cannot meet it, instead
+    # of never learning.
+    native_tool_policy: Literal["deny", "warn", "allow"] = "warn"
 
     # ── spend ───────────────────────────────────────────────────────────────
     # Half of what the Claude cognition gets. There is no ``--max-budget-usd``
@@ -461,6 +624,8 @@ class CodexCliCognition:
     # cognitions in one service are usually two configurations, and the second
     # one is the one nobody has audited).
     _bypass_warned: bool = field(default=False, init=False, repr=False, compare=False)
+    # Same latch discipline for the env-strip notice: once per instance.
+    _env_warned: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Refuse combinations the CLI itself refuses, at construction.
@@ -495,9 +660,63 @@ class CodexCliCognition:
         missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]
         if missing_dirs:
             raise ValueError(f"CodexCliCognition: add_dirs entries are not directories: {missing_dirs}")
+        # ``-c key=value`` is the ONLY way to set a Codex config override, and
+        # it is an argument — ``codex exec`` has no config-file flag, so unlike
+        # the Claude cognition there is nowhere safe to move a secret to.
+        # Warned rather than refused: the value may be a placeholder, an
+        # already-scoped short-lived token, or a key the caller genuinely
+        # accepts on this host, and refusing would break a working
+        # configuration over a name heuristic.
+        exposed = sorted(k for k in self.config_overrides if _looks_secret(k, None))
+        for server, table in self.mcp_servers.items():
+            exposed += sorted(
+                f"mcp_servers.{server}.{k}" for k in table if _looks_secret(k, None)
+            )
+        if exposed:
+            import warnings
+
+            warnings.warn(
+                f"CodexCliCognition: {', '.join(exposed)} will be rendered into the "
+                "process argument list as `-c key=value`, where any local account can "
+                "read it with `ps`. `codex exec` has no config-file flag, so agentkit "
+                "cannot move it out of argv the way it does for the Claude cognition's "
+                "inline --mcp-config/--settings blobs. Codex's own answer is to keep the "
+                "secret in the ENVIRONMENT and name it from the config: set "
+                "mcp_servers[...]['bearer_token_env_var'] = 'MY_TOKEN' and pass "
+                "env={'MY_TOKEN': ...}, which this cognition already supports.",
+                UserWarning,
+                stacklevel=3,
+            )
         missing_images = [str(i) for i in self.images if not Path(i).is_file()]
         if missing_images:
             raise ValueError(f"CodexCliCognition: images entries are not files: {missing_images}")
+        if self.native_tool_policy == "deny":
+            raise ValueError(
+                "CodexCliCognition(native_tool_policy='deny') cannot be satisfied. Every "
+                "Codex session has the `shell` tool — there is no tool allow-list and no "
+                "PreToolUse hook — so the CLI runs it inside its own process where "
+                "agentkit's tool middleware (egress/SSRF checks, input guards, audit "
+                "records, idempotency keys) cannot reach it. A deny policy means an "
+                "ungovernable tool must not start, and here that is the whole cognition. "
+                "Use ClaudeCliCognition(tools=('',), mcp_config=...) if the policy has to "
+                "hold, or set native_tool_policy='warn' and rely on the OS sandbox "
+                f"(sandbox={self.effective_sandbox!r}) as the containment that does apply."
+            )
+        if self.env_policy is not None and self.env_policy not in (
+            "inherit",
+            "profile",
+            "isolated",
+        ):
+            raise ValueError(
+                f"CodexCliCognition: env_policy must be 'inherit', 'profile' or 'isolated', "
+                f"got {self.env_policy!r}"
+            )
+        if self.json_schema is not None:
+            # Before the spawn. The Codex path writes the schema to a temp file
+            # and the CLI reads it there, so a malformed one surfaces as a bare
+            # non-zero exit with the complaint on stderr — even less legible
+            # than Claude's, which at least names the flag.
+            _validate_json_schema(self.json_schema, who="CodexCliCognition")
         for server, table in self.mcp_servers.items():
             if not isinstance(table, Mapping) or not table:
                 raise ValueError(
@@ -691,16 +910,12 @@ class CodexCliCognition:
 
         state = _TurnState()
         log = _ItemLog()
-        cancelled = False
+        outcome = _CliRunOutcome()
         schema_requested = False
-        stderr_bytes: bytes = b""
-        proc: asyncio.subprocess.Process | None = None
-        fatal_exc: BaseException | None = None
-        should_reraise_cancel = False
         # Temp files the spawn needs and nobody else should have to manage: the
         # ``--output-schema`` document and, under ``system_prompt_mode="replace"``,
-        # the instructions file. Removed in the ``finally`` regardless of how
-        # the run ends — including a KeyboardInterrupt, which is why this is a
+        # the instructions file. Removed in the ``finally`` regardless of how the
+        # run ends — including a KeyboardInterrupt, which is why this is a
         # directory rather than two NamedTemporaryFiles whose cleanup order
         # would have to be tracked.
         scratch: str | None = None
@@ -714,74 +929,65 @@ class CodexCliCognition:
         # under concurrency actually needs.
         started_at = time.monotonic()
 
-        if self.working_dir is not None and not self.working_dir.exists():
-            wd_missing = f"working_dir does not exist: {self.working_dir}"
-        else:
-            wd_missing = None
+        def _prepare() -> _CliLaunch:
+            """argv/env resolution and the scratch files, inside the driver's
+            guarded block so a throw here still reaches the terminal event."""
+            nonlocal schema_requested, scratch
+            schema = self._resolve_json_schema(agent)
+            schema_requested = schema is not None
+            self._refuse_if_budget_exhausted(ctx)
+            instructions = self._replacement_instructions(agent)
+            if schema is not None or instructions is not None:
+                scratch = tempfile.mkdtemp(prefix="agentkit-codex-")
+                os.chmod(scratch, 0o700)
+            schema_path = (
+                _write(scratch, "output_schema.json", json.dumps(_strict_object_schema(schema)))
+                if schema
+                else None
+            )
+            instr_path = _write(scratch, "instructions.md", instructions) if instructions else None
+            argv = self._build_argv(
+                prompt,
+                resume=resume,
+                output_schema_path=schema_path,
+                instructions_path=instr_path,
+                stream_input=True,
+            )
+            _require_working_dir(self.working_dir)
+            return _CliLaunch(
+                argv=argv,
+                env=self._build_env(),
+                cwd=str(self.working_dir) if self.working_dir is not None else None,
+                # Raw text — the ``-`` in argv is the CLI's own marker for
+                # "instructions come from stdin". No envelope, unlike claude.
+                stdin_payload=prompt.encode(),
+            )
+
+        async def _handle(payload: dict[str, Any]) -> AsyncIterator[StreamEvent]:
+            """One payload → its events, folding this run's state on the way.
+
+            ``_events_from_payload`` is a SYNC generator here and an async one
+            on the Claude side; the driver takes an async iterator, so the
+            adaptation happens in this closure rather than by giving the shared
+            driver two shapes to support.
+            """
+            for ev, delta in _events_from_payload(payload, log):
+                state.fold(delta)
+                if ev is not None:
+                    yield ev
 
         try:
-            try:
-                schema = self._resolve_json_schema(agent)
-                schema_requested = schema is not None
-                self._refuse_if_budget_exhausted(ctx)
-                instructions = self._replacement_instructions(agent)
-                if schema is not None or instructions is not None:
-                    scratch = tempfile.mkdtemp(prefix="agentkit-codex-")
-                    os.chmod(scratch, 0o700)
-                schema_path = _write(scratch, "output_schema.json", json.dumps(schema)) if schema else None
-                instr_path = _write(scratch, "instructions.md", instructions) if instructions else None
-
-                argv = self._build_argv(
-                    prompt,
-                    resume=resume,
-                    output_schema_path=schema_path,
-                    instructions_path=instr_path,
-                )
-                env = self._build_env()
-
-                if wd_missing is not None:
-                    raise FileNotFoundError(wd_missing)
-
-                async with sem:
-                    proc = await (self.spawn or asyncio.create_subprocess_exec)(
-                        *argv,
-                        stdin=asyncio.subprocess.DEVNULL,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                        cwd=str(self.working_dir) if self.working_dir is not None else None,
-                        env=env,
-                    )
-                    assert proc.stdout is not None  # PIPE
-                    try:
-                        async for line in proc.stdout:
-                            if ctx is not None:
-                                try:
-                                    ctx.check_cancelled()
-                                except Exception:
-                                    cancelled = True
-                                    break
-                            payload = _parse_line(line)
-                            if payload is None:
-                                continue
-                            for ev, delta in _events_from_payload(payload, log):
-                                if ev is not None:
-                                    yield ev
-                                state.fold(delta)
-                    finally:
-                        if cancelled and proc.returncode is None:
-                            await _terminate(proc, self.terminate_grace_s)
-                        if proc.stderr is not None:
-                            with contextlib.suppress(Exception):
-                                stderr_bytes = await proc.stderr.read()
-                        with contextlib.suppress(Exception):
-                            await proc.wait()
-            except asyncio.CancelledError:
-                cancelled = True
-                should_reraise_cancel = True
-                if proc is not None and proc.returncode is None:
-                    await _terminate(proc, self.terminate_grace_s)
-            except BaseException as exc:  # noqa: BLE001 — see terminal-event guarantee
-                fatal_exc = exc
+            async for event in _run_cli_process(
+                prepare=_prepare,
+                handle=_handle,
+                spawn=self.spawn,
+                semaphore=sem,
+                timeouts=self.timeouts,
+                terminate_grace_s=self.terminate_grace_s,
+                ctx=ctx,
+                outcome=outcome,
+            ):
+                yield event
         finally:
             if scratch is not None:
                 shutil.rmtree(scratch, ignore_errors=True)
@@ -790,18 +996,19 @@ class CodexCliCognition:
             agent=agent,
             ctx=ctx,
             state=state,
-            cancelled=cancelled,
-            fatal_exc=fatal_exc,
-            spawned=proc is not None,
-            return_code=proc.returncode if proc is not None else -1,
-            stderr_bytes=stderr_bytes,
+            cancelled=outcome.cancelled,
+            fatal_exc=outcome.fatal_exc,
+            spawned=outcome.spawned,
+            return_code=outcome.return_code,
+            stderr_bytes=outcome.stderr_bytes,
             schema_requested=schema_requested,
             elapsed_ms=int((time.monotonic() - started_at) * 1000),
+            timed_out=outcome.timed_out,
         )
         yield StreamEvent("final", usage=result.usage, result=result)
-        if should_reraise_cancel:
+        if outcome.should_reraise_cancel:
             raise asyncio.CancelledError()
-        _reraise_if_not_an_exception(fatal_exc)
+        _reraise_if_not_an_exception(outcome.fatal_exc)
 
     async def _finalise(
         self,
@@ -816,6 +1023,7 @@ class CodexCliCognition:
         stderr_bytes: bytes,
         schema_requested: bool,
         elapsed_ms: int | None = None,
+        timed_out: CliTimedOut | None = None,
     ) -> AgentResult:
         """Turn one completed turn's state into its terminal ``AgentResult``.
 
@@ -832,6 +1040,11 @@ class CodexCliCognition:
         if cancelled:
             final_stop_reason = "cancelled"
             final_partial = True
+        elif timed_out is not None:
+            # Above ``fatal_exc``: a parse error on the half-written line we cut
+            # off mid-flight must not outrank the bound that caused the cut.
+            final_stop_reason = _classify_timeout(timed_out, stderr_bytes)
+            final_partial = True
         elif fatal_exc is not None:
             if isinstance(fatal_exc, _SessionClosed):
                 final_stop_reason = "session_closed"
@@ -842,20 +1055,34 @@ class CodexCliCognition:
                 # so this module keeps its import of ``runtime.meter`` lazy.
                 final_stop_reason = "budget_exhausted"
             elif not spawned:
-                if isinstance(fatal_exc, FileNotFoundError) and str(fatal_exc).startswith(
-                    "working_dir does not exist:"
-                ):
+                if _is_working_dir_missing(fatal_exc):
                     final_stop_reason = "working_dir_missing"
                 else:
                     final_stop_reason = "spawn_failed"
+            elif isinstance(fatal_exc, CliLineTooLong):
+                # Its own reason, not ``parse_failed``. Nothing was malformed:
+                # the CLI emitted well-formed JSON that is simply bigger than
+                # the reader will assemble, and the fix is a size — read less
+                # per tool call, or raise the limit — where ``parse_failed``
+                # sends an operator looking for a corrupt payload.
+                final_stop_reason = "output_line_too_long"
             else:
                 final_stop_reason = "parse_failed"
             final_partial = True
         elif return_code not in (0, None):
-            final_stop_reason = f"cli_exit_{return_code}"
+            assert return_code is not None
+            final_stop_reason = _exit_stop_reason(return_code, stderr_bytes)
             final_partial = True
         elif state.is_error:
             final_stop_reason = state.stop_reason or "cli_reported_error"
+            final_partial = True
+        elif spawned and not state.saw_terminal:
+            # The process ended cleanly but never emitted its end-of-turn
+            # payload, so whatever text arrived is a fragment the CLI had not
+            # finished writing. Placed BELOW the ``is_error`` branch so a CLI
+            # that reported its own failure keeps saying so, and above plain
+            # success so a truncated stream can never be reported as complete.
+            final_stop_reason = "malformed_output"
             final_partial = True
         else:
             final_stop_reason = state.stop_reason  # may still be None on clean success
@@ -878,7 +1105,7 @@ class CodexCliCognition:
         #   parses, does not → structured_output_mismatch
         #   does not parse   → structured_output_missing
         parsed: Any = None
-        evals_structured_error: str | None = None
+        structured_failure: StructuredOutputFailure | None = None
         structured_output: Any = None
         if schema_requested:
             structured_output, decode_error = _decode_structured(state.text)
@@ -886,15 +1113,24 @@ class CodexCliCognition:
                 final_partial = True
                 if final_stop_reason in (None, "success"):
                     final_stop_reason = "structured_output_missing"
-                evals_structured_error = decode_error
+                # ``undecodable`` and not ``missing``: for Codex the structured
+                # answer IS the final message, so "there was text and it was not
+                # JSON" is a different fault from "there was nothing" — and it
+                # is the one where the raw excerpt is worth keeping, because
+                # what the model actually said is the whole diagnosis.
+                structured_failure = StructuredOutputFailure(
+                    kind="undecodable" if state.text.strip() else "missing",
+                    detail=decode_error,
+                    raw_excerpt=(state.text[:800] + "…") if len(state.text) > 800 else state.text,
+                    truncated=len(state.text) > 800,
+                )
             else:
-                parsed, coercion_error = _coerce_structured(agent, structured_output)
-                if coercion_error is not None:
+                parsed, structured_failure = _coerce_structured(agent, structured_output)
+                if structured_failure is not None:
                     final_partial = True
                     final_stop_reason = "structured_output_mismatch"
-                    evals_structured_error = coercion_error
 
-        charge_error = await self._charge_meters(ctx, usage)
+        charge_error = await _charge_meters(ctx, usage, enabled=self.meter_spend)
 
         evals: dict[str, Any] = {
             "session_id": state.session_id or "",
@@ -914,6 +1150,9 @@ class CodexCliCognition:
             evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
+        if timed_out is not None:
+            evals["timeout_s"] = timed_out.limit_s
+            evals["timeout_kind"] = timed_out.reason
         if state.model:
             # Which model ACTUALLY ran. Codex resolves aliases and profiles on
             # its side, so this can differ from ``self.model`` — and it is the
@@ -926,20 +1165,36 @@ class CodexCliCognition:
             evals["thinking"] = state.thinking
         if structured_output is not None:
             evals["structured_output"] = structured_output
-        if evals_structured_error is not None:
-            evals["structured_output_error"] = evals_structured_error
+        if structured_failure is not None:
+            # The string is the shape callers and tests have always read; the
+            # dict is the one an application can branch on, via
+            # ``StructuredOutputFailure.of(result.evals)``. A dict rather than
+            # the dataclass because ``evals`` is deep-frozen and checkpointed.
+            evals["structured_output_error"] = str(structured_failure)
+            evals["structured_output_failure"] = structured_failure.to_dict()
         if state.errors:
             # Non-fatal item-level errors (a truncated command output, a
             # retried tool). A run that took 40s and looks fine is explained by
             # these and nothing else in the result.
             evals["cli_errors"] = list(state.errors)
         if fatal_exc is not None:
-            evals["error"] = f"{type(fatal_exc).__name__}: {fatal_exc}"
+            # Redacted like stderr: an exception message can carry a URL with a
+            # token in it, and this string is checkpointed and fanned out to
+            # observers exactly like the rest of ``evals``.
+            evals["error"] = _redact_secrets(f"{type(fatal_exc).__name__}: {fatal_exc}")
         if charge_error is not None:
             evals["meter_error"] = charge_error
         if final_partial and stderr_bytes:
-            stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+            stderr_text = _redact_secrets(
+                stderr_bytes.decode("utf-8", errors="replace").strip()
+            )
             if stderr_text:
+                # The CLI's own diagnostics, verbatim except for
+                # credential-shaped runs. An ``AgentResult`` is checkpointed,
+                # logged and fanned out to observers, so a CLI that prints a
+                # failing request's Authorization header would otherwise have
+                # it persisted. Defence in depth, not a boundary — see
+                # ``_redact_secrets``.
                 evals["stderr"] = stderr_text
 
         return AgentResult(
@@ -1079,33 +1334,6 @@ class CodexCliCognition:
 
             raise MeterExceeded(f"codex CLI not spawned: the run budget has {headroom} USD left")
 
-    async def _charge_meters(self, ctx: Ctx | None, usage: Usage) -> str | None:
-        """Put the run's spend on the framework's books. Returns an error note.
-
-        The CLI bypasses the ``Invoker``, so the ``meter()`` middleware never
-        sees this usage and every meter on the context stays at zero. That is
-        how a documented safety mechanism ends up doing nothing, so the charge
-        happens here instead.
-
-        Nothing raises out of this. The spend already happened, the run already
-        produced an answer, and the terminal-event guarantee says the caller
-        gets that answer; a ceiling crossed on the LAST call is recorded and
-        reported, not converted into a lost result.
-        """
-        if not self.meter_spend or ctx is None:
-            return None
-        call = _CliCall(ctx=ctx)
-        note: str | None = None
-        for meter in getattr(ctx, "all_meters", None) or []:
-            try:
-                await meter.charge(call, usage)
-            except Exception as exc:  # noqa: BLE001 — see docstring
-                note = f"{type(exc).__name__}: {exc}"
-        actor = getattr(ctx, "actor_budget", None)
-        if actor is not None:
-            with contextlib.suppress(Exception):
-                actor.charge(tokens=usage.total_tokens, cost_usd=usage.cost_usd, steps=1)
-        return note
 
     def _warn_if_middleware_bypassed(self, ctx: Ctx | None) -> None:
         """Say which middlewares will not run, once, before the first spawn.
@@ -1156,6 +1384,7 @@ class CodexCliCognition:
         resume: tuple[str, ...] = (),
         output_schema_path: Path | None = None,
         instructions_path: Path | None = None,
+        stream_input: bool = False,
     ) -> list[str]:
         """Assemble the CLI argv.
 
@@ -1166,11 +1395,30 @@ class CodexCliCognition:
         getting it wrong is a clap parse error several seconds into a run whose
         message names the flag rather than the position.
 
-        The prompt goes last, behind a ``--`` separator when it begins with a
-        dash — otherwise a task like ``"--force a rewrite"`` is read as flags
-        and the run dies on an unknown argument.
+        The prompt goes last. With ``stream_input`` it is the single character
+        ``-``, which is the CLI's own documented spelling of "read the
+        instructions from stdin" (``codex exec --help``: *"If not provided as an
+        argument (or if `-` is used), instructions are read from stdin"*), and
+        the real prompt is written to the pipe instead. Otherwise it is the text
+        itself, behind a ``--`` separator when it begins with a dash — a task
+        like ``"--force a rewrite"`` would otherwise be read as flags and the
+        run would die on an unknown argument.
+
+        ``-`` is passed WITHOUT the ``--`` separator even though it starts with
+        a dash: the separator would turn it into a literal one-character prompt,
+        which is the one way to get this exactly backwards.
         """
-        argv: list[str] = [self.codex_bin, "exec"]
+        # ``--search`` is a PARENT-level flag, not an ``exec`` one. It used to
+        # be accepted after the subcommand; codex 0.152.1 answers that with
+        # ``error: unexpected argument '--search' found`` and exits 2 before
+        # starting a thread, so every run with ``web_search=True`` died on a
+        # clap usage message. It still exists — ``codex --help`` documents it as
+        # "Enable live web search" — it simply has to come before ``exec``.
+        # Verified against the binary: ``codex --search exec …`` runs.
+        argv: list[str] = [self.codex_bin]
+        if self.web_search:
+            argv += ["--search"]
+        argv += ["exec"]
         # ── format ──────────────────────────────────────────────────────────
         # ``--color never`` unconditionally: the CLI writes human progress to
         # stderr, and this cognition surfaces that stderr verbatim in
@@ -1187,12 +1435,22 @@ class CodexCliCognition:
         else:
             if self.sandbox is not None:
                 argv += ["--sandbox", self.sandbox]
+            # ``--ask-for-approval`` is NOT a flag on ``codex exec``. It used to
+            # be; codex 0.152.1 rejects it outright —
+            #
+            #     error: unexpected argument '--ask-for-approval' found
+            #
+            # — and the CLI exits 2 before starting a thread, so every run of a
+            # cognition carrying this field failed with a clap usage message
+            # and no output. The approval policy is a config key now, and
+            # ``-c approval_policy=<mode>`` was verified to run. It is emitted
+            # here rather than through ``_resolved_overrides`` so that an
+            # explicit ``config_overrides={"approval_policy": ...}`` still wins,
+            # which is the precedence that function already documents.
             if self.ask_for_approval is not None:
-                argv += ["--ask-for-approval", self.ask_for_approval]
+                argv += ["-c", f"approval_policy={_toml_scalar(self.ask_for_approval)}"]
         for d in self.add_dirs:
             argv += ["--add-dir", str(d)]
-        if self.web_search:
-            argv += ["--search"]
         # ── reproducibility ─────────────────────────────────────────────────
         if self.ignore_user_config:
             argv += ["--ignore-user-config"]
@@ -1221,9 +1479,12 @@ class CodexCliCognition:
         argv += list(self.extra_args)
         # ── the subcommand and its positionals, last ────────────────────────
         argv += list(resume)
-        if prompt.startswith("-"):
-            argv += ["--"]
-        argv += [prompt]
+        if stream_input:
+            argv += ["-"]
+        else:
+            if prompt.startswith("-"):
+                argv += ["--"]
+            argv += [prompt]
         return argv
 
     def _resolved_overrides(self, instructions_path: Path | None) -> dict[str, Any]:
@@ -1248,10 +1509,25 @@ class CodexCliCognition:
         out.update(self.config_overrides)
         return out
 
+    @property
+    def effective_env_policy(self) -> EnvPolicy:
+        """The policy actually in force, with ``None`` resolved.
+
+        ``config_home=`` implies ``"profile"``, matching the Claude cognition's
+        rule so one wiring reads the same across both. Codex was measured NOT to
+        prefer an ambient ``OPENAI_API_KEY`` over the ``CODEX_HOME`` login, so
+        this is hygiene here rather than a fix — see the ``env_policy`` field.
+        """
+        if self.env_policy is not None:
+            return self.env_policy
+        return "profile" if self.config_home is not None else "inherit"
+
     def _build_env(self) -> dict[str, str]:
-        """Copy the process env; layer ``CODEX_HOME`` on top when the cognition
-        was constructed with a ``config_home`` (for isolated auth / settings /
-        session history, e.g. a per-tenant server-side wrapper).
+        """The child's environment, under :attr:`effective_env_policy`.
+
+        Layers ``CODEX_HOME`` on top when the cognition was constructed with a
+        ``config_home`` (isolated auth / settings / session history, e.g. a
+        per-tenant server-side wrapper), then :attr:`env` last.
 
         Nothing else is injected. The Claude cognition bridges
         ``correlation_id`` into ``CLAUDE_TRACE_EXTERNAL_ID`` because that
@@ -1261,11 +1537,34 @@ class CodexCliCognition:
         The id is still on the result as ``evals["external_run_id"]``. Anything
         else a run needs goes through :attr:`env`, explicitly.
         """
-        env = os.environ.copy()
+        env, removed = _build_child_env(
+            policy=self.effective_env_policy,
+            credential_vars=_CODEX_AMBIENT_AUTH_ENV,
+            overrides=self.env,
+        )
+        if removed:
+            self._warn_env_stripped(removed)
         if self.config_home is not None:
             env["CODEX_HOME"] = str(self.config_home)
-        env.update(self.env)
         return env
+
+    def _warn_env_stripped(self, removed: tuple[str, ...]) -> None:
+        """Name what the policy removed, once. See the Claude counterpart —
+        a silent strip is as invisible as the silent inherit it replaces."""
+        if self._env_warned:
+            return
+        self._env_warned = True
+        import warnings
+
+        warnings.warn(
+            f"CodexCliCognition(env_policy={self.effective_env_policy!r}) removed "
+            f"{', '.join(removed)} from the CLI's environment"
+            + (" (implied by config_home=)" if self.env_policy is None else "")
+            + ". Pass env_policy='inherit' to keep the ambient values, or env={...} to "
+            "supply the credential explicitly.",
+            UserWarning,
+            stacklevel=4,
+        )
 
 
 class CodexCliSession:
@@ -1499,6 +1798,46 @@ def _write(directory: str | None, name: str, text: str) -> Path:
     return path
 
 
+
+def _strict_object_schema(node: Any) -> Any:
+    """A copy of ``node`` with ``additionalProperties: false`` on every object.
+
+    OpenAI's structured-output mode is STRICT, and strict mode refuses a schema
+    whose objects do not close themselves:
+
+        'additionalProperties' is required to be supplied and to be false.
+        (param: text.format.schema, status 400)
+
+    That is a provider constraint, not an agentkit one, which is why the
+    normalisation lives here and not in the schema adapters — ``claude
+    --json-schema`` accepts the open form happily, and rewriting a caller's
+    schema framework-wide to satisfy one provider would be the wrong blast
+    radius.
+
+    It matters because the two adapters disagree. The dataclass adapter already
+    emits ``additionalProperties: false``; Pydantic's ``model_json_schema()``
+    does not. So ``output=SomeDataclass`` worked on Codex and
+    ``output=SomePydanticModel`` failed every single time with a 400 the caller
+    could only see by reading ``evals["stderr"]`` on a failed run — an arbitrary
+    difference between two ways of declaring the same shape. Verified against
+    the binary: identical schemas, exit 1 without the key and exit 0 with it.
+
+    An explicitly-set ``additionalProperties`` is left ALONE, including a
+    ``True`` the provider will reject. A caller who wrote it meant it, and
+    silently inverting a stated instruction is worse than the error that names
+    it.
+    """
+    if isinstance(node, list):
+        return [_strict_object_schema(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    out = {key: _strict_object_schema(value) for key, value in node.items()}
+    is_object = out.get("type") == "object" or "properties" in out
+    if is_object and "additionalProperties" not in out:
+        out["additionalProperties"] = False
+    return out
+
+
 def _toml_scalar(value: Any) -> str:
     """Render a ``-c key=value`` right-hand side the way Codex parses it.
 
@@ -1637,6 +1976,7 @@ class _TurnState:
     duration_ms: int | None = None
     is_error: bool = False
     stop_reason: str | None = None
+    saw_terminal: bool = False
     errors: list[str] = field(default_factory=list)
 
     def fold(self, delta: _EventDelta) -> None:
@@ -1657,6 +1997,8 @@ class _TurnState:
             self.duration_ms = delta.duration_ms
         if delta.is_error:
             self.is_error = True
+        if delta.saw_terminal:
+            self.saw_terminal = True
         if delta.stop_reason is not None:
             self.stop_reason = delta.stop_reason
         if delta.error is not None:
@@ -1681,6 +2023,13 @@ class _EventDelta:
     duration_ms: int | None = None
     is_error: bool = False
     stop_reason: str | None = None
+    # Did the CLI reach its OWN end-of-turn payload? Tracked explicitly rather
+    # than inferred, because a SUCCESSFUL terminal payload leaves
+    # ``stop_reason`` at ``None`` — exactly the value a stream that stopped
+    # early also has, so the two were indistinguishable. Measured before this
+    # existed: stdout truncated mid-object reported ``stop_reason="complete"``,
+    # ``partial=False``, and handed back half an answer as a finished one.
+    saw_terminal: bool = False
     # A NON-fatal diagnostic the CLI attached to an item. Collected rather than
     # folded into ``is_error``: the run continues and usually succeeds, and
     # promoting "command output truncated" to a failed run would be wrong.
@@ -1726,18 +2075,29 @@ def _thread_events(
                 None,
                 _EventDelta(
                     usage=_usage_from(payload.get("usage")),
-                    duration_ms=int(duration) if duration is not None else None,
+                    duration_ms=_as_int(duration) if duration is not None else None,
+                    # The CLI's own end-of-turn marker. Reaching it is what
+                    # separates "the run finished" from "the stream stopped".
+                    saw_terminal=True,
                 ),
             )
         ]
 
     if ptype == "turn.failed":
-        error = payload.get("error") or {}
+        error = _as_dict(payload.get("error"))
         message = str(error.get("message") or "the CLI reported a failed turn")
         return [
             (
                 StreamEvent("step", text=f"turn_failed:{message}"),
-                _EventDelta(is_error=True, stop_reason="turn_failed", error=message),
+                _EventDelta(
+                    is_error=True,
+                    stop_reason="turn_failed",
+                    error=message,
+                    # A FAILED turn is still a completed stream: the CLI said
+                    # how it ended. Only a stream that stops without saying
+                    # anything is malformed.
+                    saw_terminal=True,
+                ),
             )
         ]
 
@@ -1806,7 +2166,7 @@ def _item_events(
         )
 
     if itype == "file_change":
-        changes = item.get("changes") or []
+        changes = _as_list(item.get("changes"))
         return _paired(
             item_id=item_id,
             phase=phase,
@@ -1826,7 +2186,7 @@ def _item_events(
             # The CLI's own naming convention for an MCP tool, so a name in an
             # agentkit audit record matches the name in a Codex transcript.
             name=f"mcp__{server}__{tool}" if server or tool else "mcp",
-            arguments=dict(item.get("arguments") or {}),
+            arguments=dict(_as_dict(item.get("arguments"))),
             result=lambda: _flatten_content(item.get("result")),
         )
 
@@ -1843,7 +2203,7 @@ def _item_events(
     if itype == "todo_list":
         if phase == "started":
             return []
-        entries = item.get("items") or []
+        entries = _as_list(item.get("items"))
         done = sum(1 for e in entries if isinstance(e, dict) and e.get("completed"))
         return [(StreamEvent("step", text=f"plan:{done}/{len(entries)}"), _EventDelta())]
 
@@ -1945,11 +2305,11 @@ def _usage_from(raw: Any) -> Usage:
     if not isinstance(raw, dict):
         return Usage()
     fresh, cached = _split_input_tokens(
-        int(raw.get("input_tokens") or 0), int(raw.get("cached_input_tokens") or 0)
+        _as_int(raw.get("input_tokens")), _as_int(raw.get("cached_input_tokens"))
     )
     return Usage(
         input_tokens=fresh,
-        output_tokens=int(raw.get("output_tokens") or 0),
+        output_tokens=_as_int(raw.get("output_tokens")),
         cache_read_tokens=cached,
     )
 
@@ -1963,7 +2323,7 @@ def _legacy_events(
     downstream — the fold, the stop-reason priority, the cost, the terminal
     event — has exactly one implementation. Only the reading differs.
     """
-    msg = payload.get("msg") or {}
+    msg = _as_dict(payload.get("msg"))
     mtype = str(msg.get("type") or "")
     # The legacy stream keys tool events on ``call_id``; the outer ``id`` is a
     # per-event sequence number and would make every begin/end pair look like
@@ -2048,7 +2408,7 @@ def _legacy_events(
         )
 
     if mtype == "mcp_tool_call_begin":
-        invocation = msg.get("invocation") or {}
+        invocation = _as_dict(msg.get("invocation"))
         server = str(invocation.get("server") or msg.get("server") or "")
         tool = str(invocation.get("tool") or msg.get("tool") or "")
         return _paired(
@@ -2056,7 +2416,7 @@ def _legacy_events(
             phase="started",
             log=log,
             name=f"mcp__{server}__{tool}" if server or tool else "mcp",
-            arguments=dict(invocation.get("arguments") or msg.get("arguments") or {}),
+            arguments=dict(invocation.get("arguments") or _as_dict(msg.get("arguments"))),
             result=lambda: "",
         )
 
@@ -2076,7 +2436,7 @@ def _legacy_events(
             phase="started",
             log=log,
             name="apply_patch",
-            arguments={"changes": sorted(msg.get("changes") or {})},
+            arguments={"changes": sorted(_as_dict(msg.get("changes")))},
             result=lambda: "",
         )
 
@@ -2091,7 +2451,7 @@ def _legacy_events(
         )
 
     if mtype == "token_count":
-        info = msg.get("info") or {}
+        info = _as_dict(msg.get("info"))
         total = info.get("total_token_usage") if isinstance(info, dict) else None
         # Cumulative, not per-call: the LAST one is the turn's total, and
         # ``fold`` replaces rather than adds for exactly this reason.
@@ -2102,12 +2462,26 @@ def _legacy_events(
         return [
             (
                 StreamEvent("step", text=f"error:{message}"),
-                _EventDelta(is_error=True, stop_reason="cli_reported_error", error=message),
+                _EventDelta(
+                    is_error=True,
+                    stop_reason="cli_reported_error",
+                    error=message,
+                    # A reported error is a stream that ended by SAYING so,
+                    # which is not the same as one that stopped mid-sentence.
+                    saw_terminal=True,
+                ),
             )
         ]
 
     if mtype == "task_complete":
-        return []
+        # The LEGACY vocabulary's end-of-turn marker — the counterpart of
+        # ``turn.completed`` on the current one. It carries nothing this
+        # cognition needs (the text arrived on ``agent_message``, the usage on
+        # ``token_count``), which is why it used to return an empty list. It
+        # still has to say the stream ENDED: without that, a complete run on an
+        # older ``codex`` reads as ``malformed_output``, and a version-compat
+        # feature would have become a version-compat bug.
+        return [(None, _EventDelta(saw_terminal=True))]
 
     return []
 

@@ -35,6 +35,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from agentkit.kernel.observation import ObservationKind
+from agentkit.kernel.protocols import AutonomyLiteral
 from agentkit.kernel.types import Scope
 
 
@@ -68,6 +70,12 @@ class _NullTracer:
 
     def span(self, *_args: Any, **_attrs: Any) -> _NullSpan:
         return _NullSpan()
+
+    def current_span_id(self) -> None:
+        return None
+
+    def add_event_to_current_span(self, _name: str, **_fields: Any) -> None:
+        return None
 
 
 class _NullInvoker:
@@ -118,11 +126,12 @@ class NullCtx:
 
     correlation_id: str
     scope: Scope
-    autonomy: str  # AutonomyLiteral at runtime; kept `str` here to stay Ctx-compatible via structural typing
+    autonomy: AutonomyLiteral
     trace: _NullTracer
     invoker: _NullInvoker
     store: None
     checkpointer: None
+    asker: None
 
     def __init__(self, scope: Scope | None = None) -> None:
         self.correlation_id = "null-ctx"
@@ -134,6 +143,7 @@ class NullCtx:
         self.invoker = _NullInvoker()
         self.store = None
         self.checkpointer = None
+        self.asker = None
 
     def check_cancelled(self) -> None:
         """No cancellation token attached — always a no-op."""
@@ -153,7 +163,7 @@ class NullCtx:
 
     async def emit(
         self,
-        kind: str,
+        kind: ObservationKind,
         render: str = "",
         *,
         payload: Any = None,

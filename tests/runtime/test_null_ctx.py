@@ -74,6 +74,7 @@ def test_null_ctx_satisfies_ctx_protocol_structurally() -> None:
     assert hasattr(nc, "invoker")
     assert hasattr(nc, "store")
     assert hasattr(nc, "checkpointer")
+    assert hasattr(nc, "asker")
     # COOPERATIVE CONTROL
     assert callable(nc.check_cancelled)
     assert callable(nc.semaphore)
@@ -181,8 +182,10 @@ def test_emit_drops_the_observation_on_the_floor() -> None:
 
     async def go() -> None:
         nc = NullCtx()
-        assert await nc.emit("any.kind") is None
-        assert await nc.emit("k", "render text", payload={"x": 1}, agent="a", parent_id="p") is None
+        assert await nc.emit("progress") is None
+        assert await nc.emit(
+            "summary", "render text", payload={"x": 1}, agent="a", parent_id="p"
+        ) is None
 
     _run(go())
 

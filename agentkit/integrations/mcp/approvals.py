@@ -722,11 +722,19 @@ class ApprovalServer:
         also loads whatever MCP servers the working directory or the user's
         home configuration happen to define, which is not what a service
         wiring an approval gate is asking for.
+
+        Ambient setting sources are disabled for the same reason. A user's
+        global ``permissions.allow = ["Write"]`` otherwise resolves the call
+        before ``--permission-prompt-tool`` is consulted, silently bypassing
+        the reviewer this object promises to ask. This does not use ``bare``:
+        OAuth and keychain subscription credentials remain available.
         """
         return {
             "mcp_config": (self.mcp_config,),
             "strict_mcp_config": True,
             "permission_prompt_tool": self.tool_name,
+            "permission_mode": "default",
+            "setting_sources": (),
         }
 
     # ---- the decision ----------------------------------------------------------------------

@@ -21,9 +21,9 @@ callers reach those through this façade.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, Self
 
-from agentkit.kernel.observation import TracePort
+from agentkit.kernel.observation import ObservationKind, TracePort
 
 # The autonomy seam stays kernel-local; typing it as ``Literal``
 # instead of pulling in the agents-layer ``Autonomy`` enum avoids a
@@ -50,13 +50,35 @@ class Ctx(Protocol):
     autonomy: AutonomyLiteral  # "auto" | "gated" | "manual" — gating policy input
 
     # SERVICES (façades; each has its own structural shape) ---------------------------------
-    trace: TracePort  # supports `with ctx.trace.span(name, kind, **attrs): ...`
-    invoker: Any  # `.chat(req, ctx)` / `.stream(req, ctx)` / `.invoke_tool(req, ctx)`
-    store: Any | None  # StorePort or None — generic KV (cache / idempotency / audit)
-    checkpointer: Any | None  # `Checkpointer` over CheckpointPort, for durable run state
-    asker: Any | None  # `agents.control.elicitation.Asker` or None — the human transport. When
-    # present a cognition PARKS on it (awaits in place, keeping live
-    # state); when absent it falls back to checkpoint-and-suspend.
+    @property
+    def trace(self) -> TracePort:
+        """Tracing facade; supports ``with ctx.trace.span(...)``."""
+        ...
+
+    @property
+    def invoker(self) -> Any:
+        """Model/tool invocation facade."""
+        ...
+
+    @property
+    def store(self) -> Any | None:
+        """Generic durable store, when configured."""
+        ...
+
+    @property
+    def checkpointer(self) -> Any | None:
+        """Durable run-state checkpointer, when configured."""
+        ...
+
+    @property
+    def asker(self) -> Any | None:
+        """Human transport, when configured."""
+        ...
+
+    # ``agents.control.elicitation.Asker`` is intentionally kept out of
+    # this kernel protocol to avoid an upward import. When present a
+    # cognition parks on it (awaiting in place with live state); when
+    # absent it falls back to checkpoint-and-suspend.
     # Framework code reads it via ``getattr(ctx, "asker", None)`` so a
     # NullCtx / structural stub predating this field still works.
 
@@ -69,13 +91,13 @@ class Ctx(Protocol):
         """Return the budget-derived concurrency semaphore for `gather_bounded`."""
         ...
 
-    def child(self) -> Ctx:
+    def child(self) -> Self:
         """Return a child context with `depth+1`, sharing the budget/services/cancel token."""
         ...
 
     async def emit(
         self,
-        kind: str,
+        kind: ObservationKind,
         render: str = "",
         *,
         payload: Any = None,

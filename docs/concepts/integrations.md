@@ -410,6 +410,11 @@ arguments and expecting an allow/deny back. So `ApprovalServer` *is* an
 MCP server. Each prompt becomes an `Elicitation`, the application's
 `Asker` answers it, and the answer maps back onto the CLI's wire shape.
 
+The returned CLI configuration also disables ambient `user`, `project`, and
+`local` setting sources while leaving subscription authentication intact. This
+is part of the approval guarantee: a global `permissions.allow = ["Write"]`
+would otherwise settle the call before the permission-prompt tool could see it.
+
 Because an `Asker` may await a person for as long as it likes, the CLI
 turn parks in place — the same behaviour agentkit's own tool loop gets
 from the same protocol.

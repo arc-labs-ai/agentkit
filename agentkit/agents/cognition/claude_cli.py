@@ -2,13 +2,21 @@
 
 Zero pip dependency. Users install the ``claude`` CLI separately (from
 Anthropic) and this cognition subprocesses it per ``agent.run(...)`` /
-``agent.stream(...)`` with ``claude -p "<task>" --output-format stream-json
---verbose``.
+``agent.stream(...)`` with ``claude -p --input-format stream-json
+--output-format stream-json --verbose``, writing the task to the child's stdin
+as one stream-json user turn. The task is NOT an argv entry: the OS caps an
+argument list (measured: ``OSError`` E2BIG past ~1 MB on darwin, and Linux caps
+a single argument at 128 KiB), and an argv-carried prompt is readable by anyone
+who can run ``ps``.
 
-Auth is entirely the CLI's problem: whatever ``CLAUDE_CODE_OAUTH_TOKEN``,
-``ANTHROPIC_API_KEY``, or ``~/.claude/`` OAuth (from ``claude login``) the CLI
-would find on its own is what this cognition uses. agentkit itself never
-touches an API key here.
+Auth is the CLI's to resolve, but WHICH auth it resolves is a choice this
+cognition makes explicitly — see ``env_policy``. The CLI prefers an ambient
+``ANTHROPIC_API_KEY`` over a signed-in profile and says so on its own stderr,
+so inheriting the parent environment wholesale would let a stray key override
+the ``config_dir`` a caller passed precisely to isolate a tenant. The default
+still inherits; setting ``config_dir=`` switches to ``"profile"``, which strips
+the ambient credentials and lets the configuration directory win. agentkit
+itself never reads or stores an API key.
 
 Wire it like any other cognition:
 
@@ -39,22 +47,50 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
+import shutil
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from agentkit.agents.cognition._cli_common import (
+    _CANCEL_POLL_S,
+    _STDOUT_LINE_LIMIT,
+    START_NEW_SESSION,
+    CliLineTooLong,
     CliSpawn,
-    _CliCall,
+    CliTimedOut,
+    CliTimeouts,
+    EnvPolicy,
+    StructuredOutputFailure,
+    _as_cost,
+    _as_dict,
+    _as_int,
+    _as_list,
+    _build_child_env,
+    _charge_meters,
+    _CliDeadline,
+    _CliLaunch,
+    _CliRunOutcome,
     _coerce_structured,
+    _drain_stderr,
     _get_semaphore,
+    _is_inline_json,
+    _is_working_dir_missing,
+    _iter_stdout,
+    _make_scratch,
     _parse_line,
+    _redact_secrets,
+    _require_working_dir,
     _reraise_if_not_an_exception,
+    _run_cli_process,
     _terminate,
+    _timeout_stop_reason,
+    _too_big_for_argv,
     _tool_middleware_names,
+    _validate_json_schema,
+    _write_private,
 )
 from agentkit.agents.control.safety import TRIFECTA
 from agentkit.agents.result import AgentResult, AgentStopReason, stop_reason_for
@@ -77,6 +113,8 @@ PermissionMode = Literal[
     "dontAsk",
 ]
 
+SettingSource = Literal["user", "project", "local"]
+
 
 # Reasons this cognition emits that mean "the run ERRORED", as opposed to
 # "something stopped it deliberately". ``cli_exit_<n>`` is dynamic, which is
@@ -86,6 +124,10 @@ _CLI_FAILURE_REASONS = frozenset(
     {
         "spawn_failed",
         "parse_failed",
+        # A single NDJSON payload outgrew the reader's buffer. ``failed``, and
+        # deliberately NOT ``parse_failed``: the line was valid JSON, just too
+        # big to assemble, so the fix is a size rather than a corruption hunt.
+        "output_line_too_long",
         "working_dir_missing",
         "cli_reported_error",
         # A turn sent into a dead session produced no answer. ``failed`` rather
@@ -99,6 +141,31 @@ _CLI_FAILURE_REASONS = frozenset(
         # refusal used to report ``session_closed`` on a process that was still
         # alive and still answering.
         "turn_refused",
+        # ── liveness (see CliTimeouts) ──────────────────────────────────────
+        # ``failed`` and not ``expired``: in this framework ``expired`` means a
+        # human-gate deadline passed and the run DEGRADED AND CONTINUED, which
+        # is the opposite of what happens here — the process is killed and
+        # there is no answer. And not ``terminated`` either: nobody chose to
+        # stop this, a bound did.
+        "startup_timeout",
+        "first_event_timeout",
+        "idle_timeout",
+        "total_timeout",
+        # A ``startup_timeout`` whose stderr says the CLI could not
+        # authenticate. Same event, more specific name — see
+        # ``_classify_timeout``.
+        "authentication_failed",
+        # ── stream integrity ────────────────────────────────────────────────
+        # The stream ended without the CLI's own end-of-turn payload: a process
+        # killed from outside, a full disk, a broken pipe, a truncated final
+        # line. Measured before this reason existed — the run reported
+        # ``stop_reason="complete"``, ``partial=False``, and handed back half an
+        # answer as a finished one, which is the worst shape a failure can take.
+        "malformed_output",
+        # A death by signal rather than a chosen exit, and a schema the CLI
+        # refused at startup. Both are refinements of ``cli_exit_<n>``.
+        "process_crashed",
+        "schema_rejected",
     }
 )
 
@@ -173,6 +240,49 @@ CLI_TOOL_CAPS: dict[str, tuple[str, ...]] = {
     "WebSearch": ("untrusted_content", "egress"),
     "Write": (),
 }
+
+
+
+# Phrases each CLI prints when it has REJECTED THE SCHEMA we handed it, as
+# opposed to failing for any other reason. Same discipline as the auth markers:
+# only ever refines an already-failed run, and must not contain anything the
+# CLI prints while working.
+_SCHEMA_REJECTED_STDERR: tuple[str, ...] = (
+    "is not a valid json schema",
+    "invalid json schema",
+    "--json-schema",
+    "--output-schema",
+    "output schema",
+)
+
+
+def _exit_stop_reason(return_code: int, stderr_bytes: bytes) -> str:
+    """Name a non-zero exit more precisely than ``cli_exit_<n>`` where we can.
+
+    Three outcomes, in decreasing confidence:
+
+    ``process_crashed``
+        A NEGATIVE return code is a death by signal, not a chosen exit — the
+        OOM killer, a segfault, an operator's ``kill``. ``cli_exit_-9`` reads
+        as an exit status that does not exist; ``process_crashed`` names what
+        happened and the signal is kept alongside. Only reachable for a signal
+        WE did not send: cancellation and timeouts are decided earlier and win.
+
+    ``schema_rejected``
+        The CLI refused the schema at startup. Pre-spawn validation catches the
+        structural mistakes, but each binary has its own additional rules, and
+        "exit 2" for a bad schema is a message an operator has to dig out of
+        stderr to understand.
+
+    ``cli_exit_<n>``
+        Everything else, unchanged.
+    """
+    if return_code < 0:
+        return "process_crashed"
+    haystack = stderr_bytes.decode("utf-8", errors="replace").lower()
+    if any(marker in haystack for marker in _SCHEMA_REJECTED_STDERR):
+        return "schema_rejected"
+    return f"cli_exit_{return_code}"
 
 
 def _cli_stop_reason(reason: str | None) -> AgentStopReason:
@@ -310,6 +420,12 @@ class ClaudeCliCognition:
     # ``--settings``: a settings file path or an inline JSON string, overriding
     # the same keys in the user's settings.json for this session only.
     settings: str | Path | None = None
+    # ``--setting-sources`` controls which ambient settings files the CLI may
+    # load. ``None`` preserves Claude's defaults; ``()`` emits an empty source
+    # list and is the service-safe spelling for ignoring user/project/local
+    # permission grants without using ``--bare`` (which would also disable
+    # subscription OAuth). Explicit ``settings=`` still applies.
+    setting_sources: tuple[SettingSource, ...] | None = None
     # ``--agents``: subagent definitions as JSON, serialised for you.
     agents: dict[str, Any] | None = None
     # ``--bare``: skip auto-discovery of hooks, skills, commands, subagents,
@@ -365,8 +481,68 @@ class ClaudeCliCognition:
     continue_session: bool = False
     fork_session: bool = False  # → --fork-session (only with resume/continue)
     extra_args: tuple[str, ...] = ()  # escape hatch for future CLI flags
+
+    # ── liveness ────────────────────────────────────────────────────────────
+    # Four bounds on a run that has stopped making progress, each with its own
+    # stop reason so an operator is told WHICH kind of stuck this is. Only
+    # ``startup`` is on by default — see :class:`CliTimeouts` for why the other
+    # three cannot be defaulted safely without knowing what the session does.
+    #
+    # This does not replace ``asyncio.wait_for`` around ``drive``; that still
+    # works and still raises ``TimeoutError``. It replaces having only that,
+    # which reports every hang identically.
+    #
+    # Applies to a :class:`ClaudeCliSession` too, per TURN — see that class for
+    # why ``total`` cannot mean the whole conversation. It did not once, which
+    # was the worse of the two possible bugs: the field is on the cognition a
+    # session holds, so a caller who set it was given no bounds and no warning.
+    timeouts: CliTimeouts = field(default_factory=CliTimeouts)
     terminate_grace_s: float = 5.0
     max_concurrent: int = 8  # class-level semaphore (see module doc)
+
+    # ── environment and authentication ──────────────────────────────────────
+    # WHICH auth the child resolves, stated rather than inherited. See
+    # ``_CLAUDE_AMBIENT_AUTH_ENV`` for the measurement that made this a field:
+    # the CLI prefers an ambient ``ANTHROPIC_API_KEY`` over the signed-in
+    # profile and says so on stderr, so ``config_dir=`` alone does not isolate
+    # a tenant — it only isolates the half the API key was not already
+    # overriding.
+    #
+    #   "inherit"   os.environ verbatim — the historical behaviour.
+    #   "profile"   os.environ minus the ambient auth/session variables, so the
+    #               CLI falls through to config_dir / its own login.
+    #   "isolated"  a fixed passthrough set (PATH, HOME, proxies, TLS) plus
+    #               ``env`` — nothing else about this process reaches the child.
+    #
+    # ``None`` resolves to "profile" when ``config_dir`` is set and "inherit"
+    # otherwise: setting a config dir IS the statement of intent to isolate, and
+    # inheriting a key that overrides it is never what that caller meant. A
+    # strip is warned about once, naming the variables, so a run that genuinely
+    # wanted the ambient key is told where it went.
+    env_policy: EnvPolicy | None = None
+    # Explicit environment for the child, layered over whatever the policy
+    # produced — including over a name the policy just removed. That ordering
+    # is what makes ``env_policy="profile"`` usable with per-tenant
+    # credentials: the strip removes the AMBIENT key, this puts back a CHOSEN
+    # one. Mirrors ``CodexCliCognition.env``.
+    env: Mapping[str, str] = field(default_factory=dict)
+
+    # ── native tool policy ──────────────────────────────────────────────────
+    # What to do about the middleware bypass this cognition documents at
+    # length: the CLI runs its own tools inside its own process, so no
+    # egress/SSRF check, input guard, audit record or idempotency key applies
+    # to any of them.
+    #
+    #   "warn"   the historical behaviour — warn once, naming what is bypassed.
+    #   "deny"   refuse at CONSTRUCTION if this session holds any native tool.
+    #            Satisfiable here: tools=("",) plus mcp_config= serves every
+    #            tool back through agentkit, where the chain does apply.
+    #   "allow"  silence. For a caller who has read the trade and accepted it.
+    #
+    # "warn" stays the default because "deny" changes whether existing code
+    # constructs at all. A service that means it sets deny and finds out at
+    # startup instead of never.
+    native_tool_policy: Literal["deny", "warn", "allow"] = "warn"
 
     # ── the transport seam ──────────────────────────────────────────────────
     # How the subprocess gets created. ``None`` — the default, and the only
@@ -402,6 +578,9 @@ class ClaudeCliCognition:
     # Set only when a warning is actually emitted, so a cognition first driven
     # on a middleware-free context still warns when it later meets one.
     _bypass_warned: bool = field(default=False, init=False, repr=False, compare=False)
+    # Same latch discipline for the env-strip notice: once per instance, so a
+    # long-lived cognition does not narrate every spawn.
+    _env_warned: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Refuse combinations the CLI itself refuses, at construction.
@@ -452,6 +631,33 @@ class ClaudeCliCognition:
                 "ClaudeCliCognition: tools=() is ambiguous — pass tools=None to leave the "
                 "CLI's default tool set alone, or tools=('',) to disable every tool"
             )
+        if self.native_tool_policy == "deny":
+            held = self.native_tools()
+            if held:
+                raise ValueError(
+                    "ClaudeCliCognition(native_tool_policy='deny') but this session holds "
+                    f"native CLI tools: {', '.join(held)}. The CLI runs those inside its own "
+                    "process, so agentkit's tool middleware — egress/SSRF checks, input "
+                    "guards, audit records, idempotency keys — cannot reach them, and a deny "
+                    "policy says an ungovernable tool must not start. Serve the tools over "
+                    "MCP instead (tools=(\'\',) with mcp_config=...), so every call comes back "
+                    "through the Invoker, or set native_tool_policy='warn' to accept the gap."
+                )
+        if self.env_policy is not None and self.env_policy not in (
+            "inherit",
+            "profile",
+            "isolated",
+        ):
+            raise ValueError(
+                f"ClaudeCliCognition: env_policy must be 'inherit', 'profile' or 'isolated', "
+                f"got {self.env_policy!r}"
+            )
+        if self.json_schema is not None:
+            # Before the spawn, not three seconds into it. See
+            # ``_validate_json_schema`` — the CLI's own rejection arrives on a
+            # subprocess's stderr, which this cognition surfaces only on a run
+            # that already failed.
+            _validate_json_schema(self.json_schema, who="ClaudeCliCognition")
         if self.session_id is not None:
             try:
                 uuid.UUID(str(self.session_id))
@@ -533,131 +739,126 @@ class ClaudeCliCognition:
         # problems are diagnosed from the first failed run.
         self._warn_if_middleware_bypassed(ctx)
 
-        # Bounded-concurrency spawn guard. Held for the whole CLI lifetime so
+        # Bounded-concurrency spawn guard, held for the whole CLI lifetime so
         # concurrent drives don't race the subprocess table (SDK issue #728).
-        # The local ``sem`` reference keeps the WeakValueDictionary entry
-        # alive for the ``async with sem`` scope — no instance-field
-        # bookkeeping needed.
+        # The local reference keeps the WeakValueDictionary entry alive.
         cfg_dir = str(self.config_dir) if self.config_dir is not None else None
         sem = _get_semaphore(self.claude_bin, cfg_dir, self.max_concurrent)
 
         state = _TurnState()
-        cancelled = False
+        outcome = _CliRunOutcome()
         # Set once the schema is resolved. Initialised False so a spawn that
-        # dies before resolution still reaches the terminal event.
+        # dies before resolution still reaches the terminal event. Assigned
+        # from inside ``_prepare`` because that is where resolution happens.
         schema_requested = False
-        stderr_bytes: bytes = b""
-        proc: asyncio.subprocess.Process | None = None
-        # ``fatal_exc`` records any exception raised before/during spawn or
-        # while parsing the CLI's output. We can't ``raise`` past the final
-        # yield without breaking the terminal-event guarantee, so we stash
-        # the message and fold it into the final event's ``stop_reason`` +
-        # ``evals``. The generator still terminates normally.
-        fatal_exc: BaseException | None = None
-        # Set when a caller-injected cancel (asyncio.CancelledError from
-        # wait_for / TaskGroup) arrives. We yield the terminal event first,
-        # then re-raise so the caller's cancel mechanism honours the signal.
-        # Suppressing would make wait_for timeouts silently return a partial
-        # result instead of raising TimeoutError.
-        should_reraise_cancel = False
+        # Holds inline ``mcp_config`` / ``settings`` blobs written to 0600
+        # files so they never enter the argument list. Created only when
+        # something is actually inline; removed in the ``finally`` however the
+        # run ends, KeyboardInterrupt included.
+        scratch: str | None = None
 
-        # Pre-flight: if working_dir is set and doesn't exist, surface a
-        # distinct stop_reason so operators don't confuse it with a missing
-        # binary. `create_subprocess_exec` would raise FileNotFoundError
-        # either way but the reader loses the distinction.
-        if self.working_dir is not None and not self.working_dir.exists():
-            wd_missing = f"working_dir does not exist: {self.working_dir}"
-        else:
-            wd_missing = None
+        def _prepare() -> _CliLaunch:
+            """argv/env resolution, inside the driver's guarded block.
 
-        try:
-            # argv / env resolution can throw (e.g., ``Prompt.render()`` on a
-            # malformed template, ``os.environ.copy()`` under bizarre OS
-            # states). Inside the outer try so we always yield a final.
+            Everything here can throw — ``Prompt.render()`` on a malformed
+            template, ``MeterExceeded`` from an exhausted budget, a schema the
+            adapter cannot render — and every one of those has to reach the
+            caller as a terminal event rather than as an exception out of a
+            generator that never yielded.
+            """
+            nonlocal schema_requested, scratch
             system_prompt = self._resolve_system_prompt(agent.prompt)
             schema = self._resolve_json_schema(agent)
             schema_requested = schema is not None
             budget_cap = self._budget_cap(ctx)
+            # ``stream_input=True``: the task goes over STDIN, not in argv. See
+            # ``_build_argv`` — an argv-carried prompt is capped by the OS
+            # (measured: OSError E2BIG past ~1 MB on darwin, and Linux caps a
+            # SINGLE argument at 128 KiB), is visible to anyone who can run
+            # ``ps``, and was a second transport to keep in step with the
+            # session path's.
+            # The scratch dir is shared with the credential materialisation
+            # below; either reason is enough to create it.
+            oversized_prompt = _too_big_for_argv(system_prompt)
+            if self._needs_scratch() or oversized_prompt:
+                scratch = _make_scratch()
+            system_prompt_path = (
+                str(_write_private(scratch, "system-prompt.txt", system_prompt))
+                if scratch is not None and oversized_prompt
+                else None
+            )
+            mcp_config, settings = (
+                self._materialise_secrets(scratch)
+                if scratch is not None
+                else (tuple(str(c) for c in self.mcp_config),
+                      str(self.settings) if self.settings is not None else None)
+            )
             argv = self._build_argv(
-                task, system_prompt=system_prompt, json_schema=schema, max_budget_usd=budget_cap
+                "",
+                system_prompt=system_prompt,
+                json_schema=schema,
+                max_budget_usd=budget_cap,
+                stream_input=True,
+                mcp_config=mcp_config,
+                settings=settings,
+                system_prompt_path=system_prompt_path,
             )
             env = self._build_env(ctx=ctx)
+            # Pre-flight: a missing working_dir gets its own stop reason so an
+            # operator does not confuse it with a missing binary.
+            # ``create_subprocess_exec`` raises FileNotFoundError for both.
+            _require_working_dir(self.working_dir)
+            return _CliLaunch(
+                argv=argv,
+                env=env,
+                cwd=str(self.working_dir) if self.working_dir is not None else None,
+                # One stream-json user turn — the same encoding a session
+                # writes, which is what makes the two paths one transport.
+                stdin_payload=_user_turn(task).encode(),
+            )
 
-            if wd_missing is not None:
-                raise FileNotFoundError(wd_missing)
+        async def _handle(payload: dict[str, Any]) -> AsyncIterator[StreamEvent]:
+            """One payload → its events, folding this run's state on the way."""
+            async for ev, delta in _events_from_payload(payload, partial=self.partial_messages):
+                state.fold(delta)
+                if ev is not None:
+                    yield ev
 
-            async with sem:
-                proc = await (self.spawn or asyncio.create_subprocess_exec)(
-                    *argv,
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=str(self.working_dir) if self.working_dir is not None else None,
-                    env=env,
-                )
-                assert proc.stdout is not None  # PIPE
-                try:
-                    async for line in proc.stdout:
-                        try:
-                            ctx.check_cancelled()
-                        except Exception:
-                            cancelled = True
-                            break
-                        payload = _parse_line(line)
-                        if payload is None:
-                            continue
-                        async for ev, delta in _events_from_payload(
-                            payload, partial=self.partial_messages
-                        ):
-                            if ev is not None:
-                                yield ev
-                            state.fold(delta)
-                finally:
-                    if cancelled and proc.returncode is None:
-                        await _terminate(proc, self.terminate_grace_s)
-                    # Collect stderr — best-effort; the pipe may already be closed.
-                    if proc.stderr is not None:
-                        with contextlib.suppress(Exception):
-                            stderr_bytes = await proc.stderr.read()
-                    with contextlib.suppress(Exception):
-                        await proc.wait()
-        except asyncio.CancelledError:
-            cancelled = True
-            should_reraise_cancel = True
-            if proc is not None and proc.returncode is None:
-                await _terminate(proc, self.terminate_grace_s)
-        except BaseException as exc:  # noqa: BLE001 — see terminal-event guarantee
-            # Anything else that escapes to here (FileNotFoundError on
-            # missing ``claude`` binary, PermissionError, parse-time bug
-            # in _events_from_payload) becomes a final event with a
-            # ``spawn_failed`` / ``parse_failed`` stop_reason. We
-            # deliberately widen to ``BaseException`` so ``KeyboardInterrupt``
-            # and ``SystemExit`` also produce a terminal event before
-            # propagating — see ``_reraise_if_not_an_exception`` past the
-            # final yield, which is the half that actually propagates and was
-            # missing for as long as this comment claimed it. (``CancelledError``
-            # is handled separately above so timeouts propagate correctly.)
-            fatal_exc = exc
+        try:
+            async for event in _run_cli_process(
+                prepare=_prepare,
+                handle=_handle,
+                spawn=self.spawn,
+                semaphore=sem,
+                timeouts=self.timeouts,
+                terminate_grace_s=self.terminate_grace_s,
+                ctx=ctx,
+                outcome=outcome,
+            ):
+                yield event
+        finally:
+            if scratch is not None:
+                shutil.rmtree(scratch, ignore_errors=True)
 
         result = await self._finalise(
             agent=agent,
             ctx=ctx,
             state=state,
-            cancelled=cancelled,
-            fatal_exc=fatal_exc,
-            spawned=proc is not None,
-            return_code=proc.returncode if proc is not None else -1,
-            stderr_bytes=stderr_bytes,
+            cancelled=outcome.cancelled,
+            fatal_exc=outcome.fatal_exc,
+            spawned=outcome.spawned,
+            return_code=outcome.return_code,
+            stderr_bytes=outcome.stderr_bytes,
             schema_requested=schema_requested,
+            timed_out=outcome.timed_out,
         )
         yield StreamEvent("final", usage=state.usage, result=result)
-        if should_reraise_cancel:
+        if outcome.should_reraise_cancel:
             # Terminal event delivered; now propagate the cancel so
             # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
             # and TaskGroup cancels propagate to siblings.
             raise asyncio.CancelledError()
-        _reraise_if_not_an_exception(fatal_exc)
-
+        _reraise_if_not_an_exception(outcome.fatal_exc)
 
     async def _finalise(
         self,
@@ -671,6 +872,7 @@ class ClaudeCliCognition:
         return_code: int | None,
         stderr_bytes: bytes,
         schema_requested: bool,
+        timed_out: CliTimedOut | None = None,
     ) -> AgentResult:
         """Turn one completed turn's state into its terminal ``AgentResult``.
 
@@ -697,6 +899,13 @@ class ClaudeCliCognition:
         if cancelled:
             final_stop_reason = "cancelled"
             final_partial = True
+        elif timed_out is not None:
+            # Above ``fatal_exc`` for the same reason ``cancelled`` is: the
+            # bound is WHY the run ended, and a parse error on the half-written
+            # line we cut off mid-flight would otherwise outrank it and report
+            # ``parse_failed`` for a hang.
+            final_stop_reason = _classify_timeout(timed_out, stderr_bytes)
+            final_partial = True
         elif fatal_exc is not None:
             # Distinguish working_dir_missing from spawn_failed for
             # operator clarity (the CLI would raise FileNotFoundError for
@@ -722,17 +931,23 @@ class ClaudeCliCognition:
                 # ``runtime.meter`` lazy.
                 final_stop_reason = "budget_exhausted"
             elif not spawned:
-                if isinstance(fatal_exc, FileNotFoundError) and str(fatal_exc).startswith(
-                    "working_dir does not exist:"
-                ):
+                if _is_working_dir_missing(fatal_exc):
                     final_stop_reason = "working_dir_missing"
                 else:
                     final_stop_reason = "spawn_failed"
+            elif isinstance(fatal_exc, CliLineTooLong):
+                # Its own reason, not ``parse_failed``. Nothing was malformed:
+                # the CLI emitted well-formed JSON that is simply bigger than
+                # the reader will assemble, and the fix is a size — read less
+                # per tool call, or raise the limit — where ``parse_failed``
+                # sends an operator looking for a corrupt payload.
+                final_stop_reason = "output_line_too_long"
             else:
                 final_stop_reason = "parse_failed"
             final_partial = True
         elif return_code not in (0, None):
-            final_stop_reason = f"cli_exit_{return_code}"
+            assert return_code is not None
+            final_stop_reason = _exit_stop_reason(return_code, stderr_bytes)
             final_partial = True
         elif state.is_error:
             # When the CLI signals ``is_error: true`` while exiting 0, the
@@ -745,6 +960,14 @@ class ClaudeCliCognition:
                 final_stop_reason = "cli_reported_error"
             else:
                 final_stop_reason = state.stop_reason
+            final_partial = True
+        elif spawned and not state.saw_terminal:
+            # The process ended cleanly but never emitted its end-of-turn
+            # payload, so whatever text arrived is a fragment the CLI had not
+            # finished writing. Placed BELOW the ``is_error`` branch so a CLI
+            # that reported its own failure keeps saying so, and above plain
+            # success so a truncated stream can never be reported as complete.
+            final_stop_reason = "malformed_output"
             final_partial = True
         else:
             final_stop_reason = state.stop_reason  # may still be None on clean success
@@ -763,30 +986,40 @@ class ClaudeCliCognition:
         # declared ``output=Invoice`` reads the prose as if the object simply
         # had not been wired. Treating it as a failure makes it visible.
         parsed: Any = None
+        structured_failure: StructuredOutputFailure | None = None
         if schema_requested:
             if state.structured_output is not None:
-                parsed, coercion_error = _coerce_structured(agent, state.structured_output)
-                if coercion_error is not None:
+                parsed, structured_failure = _coerce_structured(agent, state.structured_output)
+                if structured_failure is not None:
                     final_partial = True
                     final_stop_reason = "structured_output_mismatch"
-                    evals_structured_error = coercion_error
-                else:
-                    evals_structured_error = None
+            elif final_stop_reason == "error_max_structured_output_retries":
+                # The CLI validated against ``--json-schema`` itself, re-prompted
+                # itself, and gave up. agentkit never saw the attempts, so there
+                # are no per-field violations to report — naming the kind is the
+                # honest limit of what we know.
+                final_partial = True
+                structured_failure = StructuredOutputFailure(
+                    kind="retries_exhausted",
+                    detail=(
+                        "the CLI exhausted its own structured-output retries against "
+                        "--json-schema; the intermediate attempts are not visible to agentkit"
+                    ),
+                )
             else:
                 final_partial = True
                 if final_stop_reason in (None, "success"):
                     final_stop_reason = "structured_output_missing"
-                evals_structured_error = (
-                    "the CLI returned no state.structured_output despite --json-schema"
+                structured_failure = StructuredOutputFailure(
+                    kind="missing",
+                    detail="the CLI returned no structured_output despite --json-schema",
                 )
-        else:
-            evals_structured_error = None
 
         # Charge the framework's meters with what the CLI actually spent. After
         # the stop-reason decision (so a charge cannot change it) and before the
         # terminal event (so the books are straight by the time the caller sees
         # the result).
-        charge_error = await self._charge_meters(ctx, state.usage)
+        charge_error = await _charge_meters(ctx, state.usage, enabled=self.meter_spend)
 
         evals: dict[str, Any] = {
             "session_id": state.session_id or "",
@@ -801,6 +1034,11 @@ class ClaudeCliCognition:
             evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
+        if timed_out is not None:
+            # The number that fired, so the fix ("raise it" / "this was a real
+            # hang") does not need the cognition's construction site to hand.
+            evals["timeout_s"] = timed_out.limit_s
+            evals["timeout_kind"] = timed_out.reason
         if state.init:
             # Startup facts an operator needs when a run behaves oddly: which
             # model actually ran, which MCP servers connected — and which were
@@ -816,8 +1054,15 @@ class ClaudeCliCognition:
             # The RAW validated dict, alongside the typed ``parsed`` object. A
             # caller that declared no Python type still wants the data.
             evals["structured_output"] = state.structured_output
-        if evals_structured_error is not None:
-            evals["structured_output_error"] = evals_structured_error
+        if structured_failure is not None:
+            # Two representations on purpose. The string is the shape callers
+            # and tests have always read; the dict is the one an application can
+            # branch on, via ``StructuredOutputFailure.of(result.evals)``. It is
+            # a DICT rather than the dataclass because ``evals`` is deep-frozen,
+            # checkpointed and serialised — a dataclass in there would make a
+            # result that cannot round-trip through JSON.
+            evals["structured_output_error"] = str(structured_failure)
+            evals["structured_output_failure"] = structured_failure.to_dict()
         if state.thinking:
             # Reasoning chain from ``thinking`` blocks — separate from
             # ``output`` (the final response). Live consumers already saw
@@ -825,15 +1070,26 @@ class ClaudeCliCognition:
             # AgentResult callers.
             evals["thinking"] = state.thinking
         if fatal_exc is not None:
-            evals["error"] = f"{type(fatal_exc).__name__}: {fatal_exc}"
+            # Redacted like stderr: an exception message can carry a URL with a
+            # token in it, and this string is checkpointed and fanned out to
+            # observers exactly like the rest of ``evals``.
+            evals["error"] = _redact_secrets(f"{type(fatal_exc).__name__}: {fatal_exc}")
         if charge_error is not None:
             # A meter refused the charge — almost always a ceiling crossed by
             # this very run. The spend is on the books either way; this records
             # that the ceiling is now behind us.
             evals["meter_error"] = charge_error
         if final_partial and stderr_bytes:
-            stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+            stderr_text = _redact_secrets(
+                stderr_bytes.decode("utf-8", errors="replace").strip()
+            )
             if stderr_text:
+                # The CLI's own diagnostics, verbatim except for
+                # credential-shaped runs. An ``AgentResult`` is checkpointed,
+                # logged and fanned out to observers, so a CLI that prints a
+                # failing request's Authorization header would otherwise have
+                # it persisted. Defence in depth, not a boundary — see
+                # ``_redact_secrets``.
                 evals["stderr"] = stderr_text
 
         return AgentResult(
@@ -1039,6 +1295,9 @@ class ClaudeCliCognition:
         agent-likes in tests that don't build one.
         """
         if self.json_schema is not None:
+            # Already validated in ``__post_init__``; not re-checked here
+            # because a frozen field cannot have changed and a second identical
+            # refusal per drive would be noise.
             return self.json_schema
         adapter = getattr(agent, "_output_adapter", None)
         if adapter is None:
@@ -1047,7 +1306,17 @@ class ClaudeCliCognition:
             schema = adapter.json_schema()
         except Exception:  # noqa: BLE001 — a schema we cannot render is not a run-ender
             return None
-        return schema if isinstance(schema, dict) and schema else None
+        if not isinstance(schema, dict) or not schema:
+            return None
+        # An adapter-produced schema still gets the structural check. It is
+        # generated rather than hand-written, so it fails rarely — but when it
+        # does (a model with a field the adapter cannot render, a $ref to a
+        # definition it dropped) the CLI burns its full structured-output retry
+        # budget and reports ``error_max_structured_output_retries``, which
+        # reads as the model failing to comply with a schema that no output
+        # could ever have satisfied.
+        _validate_json_schema(schema, who="ClaudeCliCognition(output=...)")
+        return schema
 
     def _budget_cap(self, ctx: Ctx | None) -> str | None:
         """The run's remaining headroom, as the CLI's ``--max-budget-usd`` wants it.
@@ -1080,34 +1349,6 @@ class ClaudeCliCognition:
             )
         return f"{headroom:f}"
 
-    async def _charge_meters(self, ctx: Ctx | None, usage: Usage) -> str | None:
-        """Put the CLI's spend on the framework's books. Returns an error note.
-
-        The CLI bypasses the ``Invoker``, so the ``meter()`` middleware never
-        sees this usage and every meter on the context stays at zero. That is
-        how a documented safety mechanism ends up doing nothing — the same
-        failure ``ActorBudget`` had — so the charge happens here instead.
-
-        Nothing raises out of this. The spend already happened, the run already
-        produced an answer, and the terminal-event guarantee says the caller
-        gets that answer; a ceiling crossed on the LAST call is recorded and
-        reported, not converted into a lost result. A custom meter that
-        misbehaves is contained for the same reason.
-        """
-        if not self.meter_spend or ctx is None:
-            return None
-        call = _CliCall(ctx=ctx)
-        note: str | None = None
-        for meter in getattr(ctx, "all_meters", None) or []:
-            try:
-                await meter.charge(call, usage)
-            except Exception as exc:  # noqa: BLE001 — see docstring
-                note = f"{type(exc).__name__}: {exc}"
-        actor = getattr(ctx, "actor_budget", None)
-        if actor is not None:
-            with contextlib.suppress(Exception):
-                actor.charge(tokens=usage.total_tokens, cost_usd=usage.cost_usd, steps=1)
-        return note
 
     def _build_argv(
         self,
@@ -1117,16 +1358,26 @@ class ClaudeCliCognition:
         json_schema: dict[str, Any] | None = None,
         max_budget_usd: str | None = None,
         stream_input: bool = False,
+        mcp_config: tuple[str, ...] | None = None,
+        settings: str | None = None,
+        system_prompt_path: str | None = None,
     ) -> list[str]:
         """Assemble the CLI argv. Order-independent; kept grouped by role
         (identity → format → model → prompt → tools → permissions → resume →
         extras) so a diff is legible."""
         argv: list[str] = [self.claude_bin, "-p"]
         if stream_input:
-            # A session feeds turns over stdin as newline-delimited JSON, so
-            # there is no prompt ARGUMENT — passing one alongside
-            # ``--input-format stream-json`` would make the CLI run it as a
-            # first turn nobody asked for.
+            # Turns arrive over stdin as newline-delimited JSON, so there is no
+            # prompt ARGUMENT — passing one alongside ``--input-format
+            # stream-json`` would make the CLI run it as a first turn nobody
+            # asked for.
+            #
+            # BOTH paths use this now. A session always did; ``drive`` was
+            # migrated to it because an argv-carried prompt fails at the OS
+            # level on a large one (measured: ~1 MB on darwin, and Linux caps a
+            # single argument at 128 KiB), shows the whole task to any user who
+            # can run ``ps``, and made the one-shot and session paths two
+            # transports to keep in step. They are one now.
             argv += ["--input-format", "stream-json"]
         else:
             argv += [task]
@@ -1134,10 +1385,36 @@ class ClaudeCliCognition:
         if self.model is not None:
             argv += ["--model", self.model]
         if system_prompt:
-            flag = "--system-prompt" if self.system_prompt_mode == "replace" else (
-                "--append-system-prompt"
-            )
-            argv += [flag, system_prompt]
+            # A big system prompt is the LAST payload that still travelled in
+            # argv, and the one most likely to grow: it is where a retrieved
+            # context, a long persona or a compiled instruction set ends up,
+            # while the task is usually a sentence. Measured: 2,000,000 bytes
+            # came back ``spawn_failed`` / ``OSError: [Errno 7] Argument list
+            # too long`` — before the binary ran, so with no stderr, no CLI
+            # diagnostic, and an error naming "the argument list" rather than
+            # which of the four things in it was to blame.
+            #
+            # ``--system-prompt-file`` / ``--append-system-prompt-file`` take a
+            # path instead. Neither appears in ``claude --help`` on 2.1.236 and
+            # both work — verified not merely accepted but HONOURED, by giving
+            # the CLI a persona through each and getting it back.
+            #
+            # Only above ``_ARGV_TEXT_LIMIT``, so an ordinary prompt keeps the
+            # exact argv it has today. The alternative — always writing a file —
+            # would make every run depend on a writable temp dir to do something
+            # that currently needs no filesystem at all, which trades a bug that
+            # bites large prompts for a failure mode that could bite every
+            # locked-down sandbox.
+            replace = self.system_prompt_mode == "replace"
+            if system_prompt_path is not None:
+                # The pair has to track ``system_prompt_mode``. Swapping them
+                # silently turns "replace Claude Code's system prompt" into
+                # "add to it" — a behaviour change nothing would fail on.
+                flag = "--system-prompt-file" if replace else "--append-system-prompt-file"
+                argv += [flag, system_prompt_path]
+            else:
+                flag = "--system-prompt" if replace else "--append-system-prompt"
+                argv += [flag, system_prompt]
         if self.allowed_tools:
             argv += ["--allowed-tools", ",".join(self.allowed_tools)]
         if self.disallowed_tools:
@@ -1164,19 +1441,37 @@ class ClaudeCliCognition:
             argv += ["--effort", self.effort]
         for d in self.add_dirs:
             argv += ["--add-dir", str(d)]
-        if self.mcp_config:
-            # Variadic: every entry after the flag, path or inline JSON alike.
-            argv += ["--mcp-config", *(str(c) for c in self.mcp_config)]
+        # ``mcp_config`` / ``settings`` arrive already materialised: an inline
+        # JSON blob has been written to a 0600 file and replaced by its path,
+        # because an argument list is world-readable and these blobs routinely
+        # carry bearer tokens. See ``_materialise_secrets``. ``None`` means the
+        # caller did not materialise (argv-shape tests, the flags matrix), so
+        # fall back to the declared values.
+        resolved_mcp = mcp_config if mcp_config is not None else tuple(
+            str(c) for c in self.mcp_config
+        )
+        if resolved_mcp:
+            # Variadic: every entry after the flag.
+            argv += ["--mcp-config", *resolved_mcp]
         if self.strict_mcp_config:
             argv += ["--strict-mcp-config"]
-        if self.settings is not None:
-            argv += ["--settings", str(self.settings)]
+        resolved_settings = settings if settings is not None else (
+            str(self.settings) if self.settings is not None else None
+        )
+        if resolved_settings is not None:
+            argv += ["--settings", resolved_settings]
+        if self.setting_sources is not None:
+            argv += ["--setting-sources", ",".join(self.setting_sources)]
         if self.agents is not None:
             argv += ["--agents", json.dumps(self.agents)]
         if self.no_session_persistence:
             argv += ["--no-session-persistence"]
-        if self.permission_mode != "default":
-            argv += ["--permission-mode", self.permission_mode]
+        # State the mode even when it is ``default``. In print mode Claude Code
+        # otherwise resolves an omitted flag to ``auto`` (observed on 2.1.226),
+        # which silently bypasses ``--permission-prompt-tool`` and lets a native
+        # Write run without consulting the configured approval server. A field
+        # whose value says ``default`` must not compile to a different policy.
+        argv += ["--permission-mode", self.permission_mode]
         if self.permission_prompt_tool is not None:
             argv += ["--permission-prompt-tool", self.permission_prompt_tool]
         if self.max_turns is not None:
@@ -1200,21 +1495,86 @@ class ClaudeCliCognition:
         argv += list(self.extra_args)
         return argv
 
-    def _build_env(self, *, ctx: Ctx | None = None) -> dict[str, str]:
-        """Copy the process env; layer ``CLAUDE_CONFIG_DIR`` on top when the
-        cognition was constructed with a ``config_dir`` (for isolated auth /
-        settings, e.g. per-tenant server-side wrapper). Also default
-        ``CLAUDE_ENABLE_STREAM_WATCHDOG=1`` to mitigate long-tail SSE hangs
-        (SDK issue #33949) unless the caller already set it explicitly.
+    def _materialise_secrets(self, scratch: str) -> tuple[tuple[str, ...], str | None]:
+        """Move inline ``mcp_config`` / ``settings`` blobs out of argv.
 
-        When ``ctx`` carries a ``correlation_id``, bridge it into the child
-        as ``CLAUDE_TRACE_EXTERNAL_ID`` so operators can join agentkit and
-        CLI traces on a single id. Idempotent under nested drives — a
-        caller-set value wins.
+        Both options accept a path OR inline JSON, and the inline form is the
+        convenient one this class advertises — so a caller who wires an HTTP
+        MCP server the documented way puts its ``Authorization`` header into
+        the process argument list, where every local account can read it with
+        ``ps``. Measured: two argv entries carrying a bearer token from an
+        ordinary ``mcp_config=`` / ``settings=`` pair.
+
+        This is the same fix as moving the prompt to stdin, applied to a
+        payload that IS the secret rather than merely private. A path is left
+        alone — it is already a reference rather than a value.
+
+        Returns ``(mcp_config_values, settings_value)`` ready for ``_build_argv``.
         """
-        env = os.environ.copy()
-        if self.bare:
-            self._warn_if_bare_mode_has_no_credential(env)
+        mcp: list[str] = []
+        for index, entry in enumerate(self.mcp_config):
+            text = str(entry)
+            if _is_inline_json(text):
+                mcp.append(str(_write_private(scratch, f"mcp-{index}.json", text)))
+            else:
+                mcp.append(text)
+        settings: str | None = None
+        if self.settings is not None:
+            text = str(self.settings)
+            settings = (
+                str(_write_private(scratch, "settings.json", text))
+                if _is_inline_json(text)
+                else text
+            )
+        return tuple(mcp), settings
+
+    def _needs_scratch(self) -> bool:
+        """Is anything about this configuration inline (and therefore a leak)?"""
+        if self.settings is not None and _is_inline_json(str(self.settings)):
+            return True
+        return any(_is_inline_json(str(c)) for c in self.mcp_config)
+
+    @property
+    def effective_env_policy(self) -> EnvPolicy:
+        """The policy actually in force, with ``None`` resolved.
+
+        ``config_dir=`` implies ``"profile"``. A caller who points the CLI at a
+        specific configuration directory has stated the intent this policy
+        exists to honour, and the measured behaviour of the binary is that an
+        ambient ``ANTHROPIC_API_KEY`` overrides it — so "inherit" there is a
+        default that silently defeats the flag it accompanies.
+        """
+        if self.env_policy is not None:
+            return self.env_policy
+        return "profile" if self.config_dir is not None else "inherit"
+
+    def _build_env(self, *, ctx: Ctx | None = None) -> dict[str, str]:
+        """The child's environment, under :attr:`effective_env_policy`.
+
+        Layers ``CLAUDE_CONFIG_DIR`` on top when the cognition was constructed
+        with a ``config_dir`` (isolated auth / settings, e.g. a per-tenant
+        server-side wrapper), and defaults ``CLAUDE_ENABLE_STREAM_WATCHDOG=1``
+        to mitigate long-tail SSE hangs (SDK issue #33949) unless the caller
+        already set it explicitly.
+
+        When ``ctx`` carries a ``correlation_id``, bridges it into the child as
+        ``CLAUDE_TRACE_EXTERNAL_ID`` so operators can join agentkit and CLI
+        traces on a single id. Idempotent under nested drives — a caller-set
+        value wins.
+
+        The bare-mode credential check runs LAST, on the environment the child
+        will actually get. It used to run on the raw ``os.environ`` copy, which
+        under a stripping policy would clear a run that has no credential left.
+        """
+        env, removed = _build_child_env(
+            policy=self.effective_env_policy,
+            credential_vars=_CLAUDE_AMBIENT_AUTH_ENV,
+            overrides=self.env,
+        )
+        # Only the AUTH half is worth a warning; see ``_CLAUDE_SESSION_ENV``.
+        notable = tuple(n for n in removed if n in _CLAUDE_AUTH_ENV)
+        if notable:
+            self._warn_env_stripped(notable)
         if self.config_dir is not None:
             env["CLAUDE_CONFIG_DIR"] = str(self.config_dir)
         env.setdefault("CLAUDE_ENABLE_STREAM_WATCHDOG", "1")
@@ -1222,7 +1582,39 @@ class ClaudeCliCognition:
             correlation_id = getattr(ctx, "correlation_id", None)
             if correlation_id:
                 env.setdefault("CLAUDE_TRACE_EXTERNAL_ID", str(correlation_id))
+        if self.bare:
+            self._warn_if_bare_mode_has_no_credential(env)
         return env
+
+    def _warn_env_stripped(self, removed: tuple[str, ...]) -> None:
+        """Name what the policy removed, once.
+
+        A silent strip is the same class of invisible behaviour as the silent
+        inherit it replaces: the run that used to work on an ambient key now
+        fails to authenticate, and nothing connects that to a default the
+        caller never typed. Naming the variables and the way back makes it a
+        one-line fix instead of an investigation.
+        """
+        if self._env_warned:
+            return
+        self._env_warned = True
+        import warnings
+
+        warnings.warn(
+            f"ClaudeCliCognition(env_policy={self.effective_env_policy!r}) removed "
+            f"{', '.join(removed)} from the CLI's environment"
+            + (
+                " (implied by config_dir=)"
+                if self.env_policy is None
+                else ""
+            )
+            + ". The CLI prefers an ambient API key over a signed-in profile, so leaving "
+            "these in place would silently override the configuration directory this run "
+            "was pointed at. Pass env_policy='inherit' to keep the ambient values, or "
+            "env={...} to supply the credential explicitly.",
+            UserWarning,
+            stacklevel=4,
+        )
 
 
 class ClaudeCliSession:
@@ -1268,7 +1660,23 @@ class ClaudeCliSession:
     * **Cancelling a turn ends the session.** There is no way to tell the CLI
       "forget the turn you were mid-way through" over this protocol, so the
       process is terminated. That is the honest outcome: the alternative is a
-      session whose context contains half an answer nobody saw.
+      session whose context contains half an answer nobody saw. A crossed
+      ``timeouts`` bound is the same situation arriving by itself and ends the
+      session the same way.
+    * **``timeouts`` are per TURN**, measured from the write to stdin. Reading
+      ``total`` as a ceiling on the whole conversation would kill the thing
+      this class is for, so it bounds the longest single turn instead;
+      ``startup`` bounds each turn's first line rather than only the first
+      turn's, which is the right shape anyway, since the turn that pays the
+      CLI's warm-up is the slowest one.
+
+    The POLICIES are the cognition's, unchanged, and that is deliberate. The
+    process lifecycle differs — which is why this class has its own read loop
+    rather than going through ``_run_cli_process`` — but nothing about holding
+    a process open makes a credential safer in argv or a hang more acceptable.
+    Both were once true here and both were wrong in the same direction: a
+    session is the LONGER-lived process, so a leak sits in ``ps`` for the whole
+    conversation and an unbounded hang never ends.
     """
 
     def __init__(self, cognition: ClaudeCliCognition, *, agent: Agent | None = None) -> None:
@@ -1278,6 +1686,16 @@ class ClaudeCliSession:
         self._lock = asyncio.Lock()
         self._closed = False
         self._sem_holder: Any = None
+        # The system prompt this session's PROCESS was spawned with, rendered.
+        # ``--system-prompt`` is fixed at spawn, so this is the one the whole
+        # conversation runs under and the value a later turn's agent has to
+        # match — see ``_turn``.
+        self._system_prompt = ""
+        # Where this session's materialised secrets live, if it had any. Owned
+        # by the SESSION rather than by a turn: the CLI may re-read an
+        # ``--mcp-config`` file at any point while it is alive, so the
+        # directory has to outlast every turn and is torn down in ``close``.
+        self._scratch: str | None = None
         self.session_id: str | None = None  # populated from the first turn's init payload
         # Control requests are answered on the SAME stdout the turn reader is
         # consuming, so the reader routes each ``control_response`` to the
@@ -1336,7 +1754,52 @@ class ClaudeCliSession:
         self._sem_holder = sem
         await sem.acquire()
         try:
-            argv = cog._build_argv("", system_prompt="", stream_input=True)
+            # Inline ``mcp_config`` / ``settings`` blobs are written to 0600
+            # files and referenced by path, exactly as ``drive`` does — see
+            # ``_materialise_secrets``. A session needs this MORE than a
+            # one-shot run does, not less: the leak is an argument list any
+            # local account can read with ``ps``, and this process carries it
+            # for the whole conversation rather than for one turn.
+            #
+            # Passing the pair explicitly is also what stops ``_build_argv``
+            # falling back to the DECLARED values. That fallback exists for
+            # argv-shape tests; reaching it here is how the session shipped the
+            # token it was supposed to hide.
+            # ``agent.prompt`` IS the system prompt, and the session used to
+            # drop it: ``_build_argv`` was called with ``system_prompt=""`` and
+            # nothing ever supplied one, so an agent handed to ``session()``
+            # kept its schema, its meters and its name — and silently lost the
+            # instructions that say what it IS. Measured, same agent both ways:
+            # ``drive()`` answered in the configured persona and the session
+            # answered as a bare assistant, with no error and nothing missing
+            # from the result to notice.
+            self._system_prompt = cog._resolve_system_prompt(
+                self._agent.prompt if self._agent is not None else None
+            )
+            oversized_prompt = _too_big_for_argv(self._system_prompt)
+            if cog._needs_scratch() or oversized_prompt:
+                self._scratch = _make_scratch()
+            system_prompt_path = (
+                str(_write_private(self._scratch, "system-prompt.txt", self._system_prompt))
+                if self._scratch is not None and oversized_prompt
+                else None
+            )
+            mcp_config, settings = (
+                cog._materialise_secrets(self._scratch)
+                if self._scratch is not None
+                else (
+                    tuple(str(c) for c in cog.mcp_config),
+                    str(cog.settings) if cog.settings is not None else None,
+                )
+            )
+            argv = cog._build_argv(
+                "",
+                system_prompt=self._system_prompt,
+                stream_input=True,
+                mcp_config=mcp_config,
+                settings=settings,
+                system_prompt_path=system_prompt_path,
+            )
             self._proc = await (cog.spawn or asyncio.create_subprocess_exec)(
                 *argv,
                 stdin=asyncio.subprocess.PIPE,
@@ -1344,11 +1807,21 @@ class ClaudeCliSession:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(cog.working_dir) if cog.working_dir is not None else None,
                 env=cog._build_env(),
+                start_new_session=START_NEW_SESSION,
+                limit=_STDOUT_LINE_LIMIT,
             )
         except BaseException:
+            self._system_prompt = ""
+            self._discard_scratch()
             sem.release()
             self._sem_holder = None
             raise
+
+    def _discard_scratch(self) -> None:
+        """Delete this session's generated files, if it made any."""
+        scratch, self._scratch = self._scratch, None
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
 
     async def close(self) -> None:
         """Close stdin and wait for the CLI to exit, then release the permit.
@@ -1367,6 +1840,11 @@ class ClaudeCliSession:
                 await asyncio.wait_for(proc.wait(), timeout=self._cog.terminate_grace_s)
             except TimeoutError:
                 await _terminate(proc, self._cog.terminate_grace_s)
+        # After the process is gone, never before: the CLI may read an
+        # ``--mcp-config`` file at any point while it is alive, and pulling it
+        # out from under a still-running child would break the session in a way
+        # that looks like a config error.
+        self._discard_scratch()
         if self._sem_holder is not None:
             self._sem_holder.release()
             self._sem_holder = None
@@ -1493,8 +1971,8 @@ class ClaudeCliSession:
         finally:
             self._pending.pop(request_id, None)
 
-        response = payload.get("response") or {}
-        inner = response.get("response") or {}
+        response = _as_dict(payload.get("response"))
+        inner = _as_dict(response.get("response"))
         return InterruptReceipt(
             delivered=response.get("subtype") == "success",
             still_queued=tuple(inner.get("still_queued") or ()),
@@ -1550,7 +2028,7 @@ class ClaudeCliSession:
         something a previous turn abandoned, and a stray reply must not take
         down the turn currently streaming.
         """
-        response = payload.get("response") or {}
+        response = _as_dict(payload.get("response"))
         request_id = str(response.get("request_id") or payload.get("request_id") or "")
         future = self._pending.get(request_id)
         if future is not None and not future.done():
@@ -1647,6 +2125,7 @@ class ClaudeCliSession:
         self._cog._warn_if_middleware_bypassed(ctx)
         state = _TurnState()
         cancelled = False
+        timed_out: CliTimedOut | None = None
         fatal_exc: BaseException | None = None
         should_reraise_cancel = False
         stderr_bytes = b""
@@ -1673,6 +2152,35 @@ class ClaudeCliSession:
                         "conversation context is gone, so this turn was not sent"
                     )
                 if agent is not None:
+                    # ``--system-prompt`` is fixed at spawn like ``--json-schema``
+                    # below, so a turn whose agent carries a DIFFERENT one cannot
+                    # be honoured. Refusing beats the alternative this replaced:
+                    # the prompt was silently discarded and the turn answered as
+                    # whatever the process was spawned as, which reads like the
+                    # model ignoring its instructions rather than like a wiring
+                    # mistake.
+                    #
+                    # Compared against what the PROCESS was spawned with, not
+                    # against "has a prompt at all" — the ordinary
+                    # ``session(agent=a)`` then ``turn(t, agent=a)`` pattern
+                    # passes the same agent through both doors and must not
+                    # refuse itself. Rendered on both sides, because a ``Prompt``
+                    # is a versioned object and two equivalent ones are not the
+                    # same instance.
+                    turn_prompt = self._cog._resolve_system_prompt(agent.prompt)
+                    if turn_prompt != self._system_prompt:
+                        raise _TurnRefused(
+                            "the system prompt is a process-level flag on the CLI, so it "
+                            "cannot be changed per turn. This session was started with "
+                            + (
+                                f"{self._system_prompt[:60]!r}..."
+                                if self._system_prompt
+                                else "no system prompt"
+                            )
+                            + ". Pass the agent when you OPEN the session "
+                            "(cognition.session(agent=...)) so its prompt is set at spawn, "
+                            "or use ClaudeCliCognition.drive() for a per-run prompt."
+                        )
                     schema_requested = self._cog._resolve_json_schema(agent) is not None
                     if schema_requested:
                         # ``--json-schema`` is a process-level flag, fixed at
@@ -1696,13 +2204,39 @@ class ClaudeCliSession:
                 sent = True
 
                 assert proc.stdout is not None  # PIPE
-                async for line in proc.stdout:
+                # One deadline per TURN, constructed here rather than at
+                # ``start``, so every bound is measured from the moment this
+                # turn reached the CLI.
+                #
+                # That makes ``total`` a per-turn ceiling on a session, which
+                # is the only reading that can work: a session exists in order
+                # to outlive its turns, so a bound on the whole conversation
+                # would kill the thing the class is for. ``startup`` likewise
+                # applies to each turn's first line rather than only the first
+                # turn's — the right shape anyway, since the first turn pays
+                # the CLI's warm-up and a later one answers sooner, so a bound
+                # that clears the former clears the latter with room to spare.
+                #
+                # ``_iter_stdout`` notes EVERY line against ``idle``, control
+                # responses included. That is deliberate: an in-flight
+                # ``interrupt()`` is the CLI talking, and counting it as
+                # silence would let a stop button trip an idle bound on a turn
+                # that is working perfectly well.
+                deadline = _CliDeadline(self._cog.timeouts)
+                # See the driver: poll for the cancellation token only when a
+                # ctx carries one. A session needs this at least as much — the
+                # process it holds is the one most likely to be sitting in a
+                # long tool call when somebody presses stop.
+                poll_s = _CANCEL_POLL_S if ctx is not None else None
+                async for line in _iter_stdout(proc.stdout, deadline, poll_s=poll_s):
                     if ctx is not None:
                         try:
                             ctx.check_cancelled()
                         except Exception:
                             cancelled = True
                             break
+                    if line is None:
+                        continue  # a poll tick — the check above was the point
                     payload = _parse_line(line)
                     if payload is None:
                         continue
@@ -1717,6 +2251,11 @@ class ClaudeCliSession:
                         payload, partial=self._cog.partial_messages
                     ):
                         if ev is not None:
+                            # ``first_event`` measures time to turn CONTENT.
+                            # A ``system/init`` is the CLI talking to itself
+                            # and a ``control_response`` never gets here, so
+                            # neither one satisfies the bound.
+                            deadline.note_event()
                             yield ev
                         state.fold(delta)
                         # Capabilities are folded LIVE, not after the turn:
@@ -1741,6 +2280,14 @@ class ClaudeCliSession:
                     # (A cancel breaks out of the same loop mid-answer, which is
                     # the opposite situation.)
                     turn_complete = True
+            except CliTimedOut as exc:
+                # Same standing as a cancel, and for the same reason: the CLI
+                # is mid-turn and no protocol message retracts a half-finished
+                # one, so the process — and with it the conversation — ends
+                # here. Reported as data through ``_finalise``, which already
+                # ranks a crossed bound above the parse error that cutting the
+                # stream mid-line can produce.
+                timed_out = exc
             except asyncio.CancelledError:
                 cancelled = True
                 should_reraise_cancel = True
@@ -1749,9 +2296,15 @@ class ClaudeCliSession:
             finally:
                 self._turn_active = False
                 self._fail_pending("the turn ended before the CLI answered")
-                if cancelled and proc is not None and proc.returncode is None:
+                if (
+                    (cancelled or timed_out is not None)
+                    and proc is not None
+                    and proc.returncode is None
+                ):
                     # No protocol message retracts a half-finished turn, so the
-                    # session ends with it.
+                    # session ends with it. The GROUP, not the pid: a turn that
+                    # stopped reporting is exactly the one whose CLI may have
+                    # forked something expensive.
                     await _terminate(proc, self._cog.terminate_grace_s)
                 # ── does THIS turn's failure end the SESSION? ───────────────
                 # It used to: any exception at all set ``_closed``, so a
@@ -1762,7 +2315,12 @@ class ClaudeCliSession:
                 # session_closed`` with no output. Only a dead process — or a
                 # stream we can no longer line up with a turn boundary — is a
                 # dead session.
-                session_over = cancelled or proc is None or proc.returncode is not None
+                session_over = (
+                    cancelled
+                    or timed_out is not None
+                    or proc is None
+                    or proc.returncode is not None
+                )
                 if isinstance(fatal_exc, _SessionClosed) and not isinstance(
                     fatal_exc, _TurnRefused
                 ):
@@ -1788,10 +2346,14 @@ class ClaudeCliSession:
                     session_over = not await self._resync(proc)
                 if session_over:
                     self._closed = True
-                if (cancelled or fatal_exc is not None) and proc is not None:
+                if (cancelled or timed_out is not None or fatal_exc is not None) and proc is not None:
                     if proc.stderr is not None:
-                        with contextlib.suppress(Exception):
-                            stderr_bytes = await asyncio.wait_for(proc.stderr.read(), 0.5)
+                        # Short, because a session's process may still be ALIVE
+                        # here — a refused turn leaves it running, and an
+                        # unbounded read on a live pipe never returns. Chunked
+                        # via ``_drain_stderr`` so hitting the bound costs the
+                        # chunk in flight rather than the whole diagnostic.
+                        stderr_bytes = await _drain_stderr(proc.stderr, 0.5)
 
             if state.session_id:
                 self.session_id = state.session_id
@@ -1821,6 +2383,7 @@ class ClaudeCliSession:
                 return_code=proc.returncode if proc is not None else -1,
                 stderr_bytes=stderr_bytes,
                 schema_requested=schema_requested,
+                timed_out=timed_out,
             )
             yield StreamEvent("final", usage=state.usage, result=result)
             if should_reraise_cancel:
@@ -1900,6 +2463,74 @@ def _user_turn(text: str) -> str:
 # points at exactly the wrong fix. The check below is deliberately
 # conservative: any one of these, or a ``settings`` blob (which may carry an
 # ``apiKeyHelper``), and we stay quiet.
+# Everything ambient that decides WHICH identity the CLI runs as. Removed by
+# ``env_policy="profile"`` and absent under ``"isolated"``.
+#
+# The first half is auth proper, and the reason this field exists at all.
+# Measured against claude 2.1.236, which announces it on stderr:
+#
+#     ⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another
+#       auth source is set and takes precedence over your claude.ai login
+#
+# The provider switches are in the same list because they redirect where auth
+# is resolved from entirely: an inherited ``CLAUDE_CODE_USE_BEDROCK=1`` sends a
+# run configured for a signed-in Anthropic profile to AWS instead.
+#
+# The second half is SESSION linkage, and it is not hypothetical — every one of
+# these is set in the environment of any process started from inside a running
+# Claude Code session, which is exactly where a developer first runs an
+# agentkit script. ``CLAUDE_CODE_MESSAGING_TOKEN`` is a live credential for the
+# PARENT session's IPC socket; inheriting the set makes the spawned CLI present
+# itself as a child of a conversation it has nothing to do with.
+_CLAUDE_AUTH_ENV: tuple[str, ...] = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+)
+
+# The session half. Stripped by the same policies and deliberately NOT warned
+# about: removing them cannot surprise anyone. They decide nothing about which
+# credentials are used, so a caller debugging an auth failure gains nothing
+# from the name, and every process started from inside a Claude Code session
+# has all of them — so warning would mean warning on essentially every
+# developer machine, every run, about something that was never going to be
+# wanted. The auth half above is the half where silence would cost something.
+_CLAUDE_SESSION_ENV: tuple[str, ...] = (
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_BRIDGE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+)
+
+_CLAUDE_AMBIENT_AUTH_ENV: tuple[str, ...] = _CLAUDE_AUTH_ENV + _CLAUDE_SESSION_ENV
+
+# Phrases the ``claude`` CLI prints when authentication has FAILED. Lower-case;
+# matched as substrings against stderr. Deliberately excludes the "takes
+# precedence over your claude.ai login" warning, which this CLI prints on
+# perfectly successful runs — see ``_timeout_stop_reason``.
+_CLAUDE_AUTH_FAILURE_STDERR: tuple[str, ...] = (
+    "invalid api key",
+    "please run /login",
+    "not logged in",
+    "authentication_error",
+    "oauth token has expired",
+    "invalid bearer token",
+    "401",
+)
+
+
+def _classify_timeout(exc: CliTimedOut, stderr_bytes: bytes) -> str:
+    """This CLI's spelling of :func:`_timeout_stop_reason`."""
+    return _timeout_stop_reason(exc, stderr_bytes, _CLAUDE_AUTH_FAILURE_STDERR)
+
+
 _BARE_CREDENTIAL_ENV = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -1933,6 +2564,7 @@ class _TurnState:
     structured_output: Any = None
     init: dict[str, Any] = field(default_factory=dict)
     api_retries: list[dict[str, Any]] = field(default_factory=list)
+    saw_terminal: bool = False
 
     def fold(self, delta: _EventDelta) -> None:
         """Apply one payload's state delta. ``None`` means "this payload said
@@ -1950,6 +2582,8 @@ class _TurnState:
             self.duration_ms = delta.duration_ms
         if delta.is_error:
             self.is_error = True
+        if delta.saw_terminal:
+            self.saw_terminal = True
         if delta.stop_reason is not None:
             self.stop_reason = delta.stop_reason
         if delta.structured_output is not None:
@@ -1985,6 +2619,13 @@ class _EventDelta:
     structured_output: Any = None
     init: dict[str, Any] | None = None  # ``system/init`` startup metadata
     api_retry: dict[str, Any] | None = None  # one ``system/api_retry`` payload
+    # Did the CLI reach its OWN end-of-turn payload? Tracked explicitly rather
+    # than inferred, because a SUCCESSFUL terminal payload leaves
+    # ``stop_reason`` at ``None`` — exactly the value a stream that stopped
+    # early also has, so the two were indistinguishable. Measured before this
+    # existed: stdout truncated mid-object reported ``stop_reason="complete"``,
+    # ``partial=False``, and handed back half an answer as a finished one.
+    saw_terminal: bool = False
 
 
 async def _events_from_payload(
@@ -2045,10 +2686,10 @@ async def _events_from_payload(
         # provider SSE event; the only ones a consumer can render are the
         # content deltas (``signature_delta`` / ``input_json_delta`` carry
         # cryptographic and tool-argument fragments, which are not text).
-        event = payload.get("event") or {}
+        event = _as_dict(payload.get("event"))
         if event.get("type") != "content_block_delta":
             return
-        delta = event.get("delta") or {}
+        delta = _as_dict(event.get("delta"))
         dtype = delta.get("type")
         if dtype == "text_delta":
             chunk = str(delta.get("text") or "")
@@ -2063,8 +2704,8 @@ async def _events_from_payload(
         return
 
     if ptype == "assistant":
-        msg = payload.get("message") or {}
-        for block in msg.get("content") or []:
+        msg = _as_dict(payload.get("message"))
+        for block in _as_list(msg.get("content")):
             if not isinstance(block, dict):
                 continue
             btype = block.get("type")
@@ -2096,7 +2737,7 @@ async def _events_from_payload(
                 tc = ToolCall(
                     id=str(block.get("id") or ""),
                     name=str(block.get("name") or ""),
-                    arguments=dict(block.get("input") or {}),
+                    arguments=dict(_as_dict(block.get("input"))),
                 )
                 yield StreamEvent("tool_call", tool_call=tc), _EventDelta()
         return
@@ -2105,8 +2746,8 @@ async def _events_from_payload(
         # ``user`` messages in stream-json carry echoed tool_result blocks
         # (the CLI's post-execution reply to its own tool_use). Surface each
         # as a ``tool_result`` event so downstream observers see the pairing.
-        msg = payload.get("message") or {}
-        for block in msg.get("content") or []:
+        msg = _as_dict(payload.get("message"))
+        for block in _as_list(msg.get("content")):
             if not isinstance(block, dict):
                 continue
             if block.get("type") != "tool_result":
@@ -2124,16 +2765,16 @@ async def _events_from_payload(
         return
 
     if ptype == "result":
-        usage_obj = payload.get("usage") or {}
+        usage_obj = _as_dict(payload.get("usage"))
         # Match Anthropic wire shape: `usage.input_tokens` /
         # `usage.output_tokens` / `usage.cache_read_input_tokens` /
         # `usage.cache_creation_input_tokens`. All optional; default to 0.
         usage = Usage(
-            input_tokens=int(usage_obj.get("input_tokens") or 0),
-            output_tokens=int(usage_obj.get("output_tokens") or 0),
-            cost_usd=float(payload.get("total_cost_usd") or 0.0),
-            cache_read_tokens=int(usage_obj.get("cache_read_input_tokens") or 0),
-            cache_write_tokens=int(usage_obj.get("cache_creation_input_tokens") or 0),
+            input_tokens=_as_int(usage_obj.get("input_tokens")),
+            output_tokens=_as_int(usage_obj.get("output_tokens")),
+            cost_usd=_as_cost(payload.get("total_cost_usd")),
+            cache_read_tokens=_as_int(usage_obj.get("cache_read_input_tokens")),
+            cache_write_tokens=_as_int(usage_obj.get("cache_creation_input_tokens")),
         )
         duration = payload.get("duration_ms")
         session_id = payload.get("session_id")
@@ -2154,10 +2795,13 @@ async def _events_from_payload(
             _EventDelta(
                 usage=usage,
                 session_id=str(session_id) if session_id else None,
-                duration_ms=int(duration) if duration is not None else None,
+                duration_ms=_as_int(duration) if duration is not None else None,
                 is_error=is_error,
                 stop_reason=stop_reason,
                 structured_output=payload.get("structured_output"),
+                # The CLI's own end-of-turn marker. Reaching it is what
+                # separates "the run finished" from "the stream stopped".
+                saw_terminal=True,
             ),
         )
         return

@@ -29,15 +29,17 @@ import json
 import os
 import shutil
 import time
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from agentkit import Agent, Scope
-from agentkit.agents.cognition import ClaudeCliCognition, claude_cli
+from agentkit.agents.cognition import ClaudeCliCognition, CliTimeouts, claude_cli
 from agentkit.agents.cognition.claude_cli import _user_turn
 from agentkit.kernel.types import StreamEvent
+from agentkit.prompts.prompt import Prompt
 from agentkit.runtime import Budget, RunContext, Services
 from agentkit.testing.fakes.ctx import FakeCtx
 from tests._assertions import assert_money
@@ -1213,3 +1215,558 @@ async def test_a_session_can_actually_be_an_agents_cognition() -> None:
     # And the name a trace will carry marks it as the session regime rather
     # than the one-shot one, which are different things to debug.
     assert chat.name == "claude_cli_session"
+
+
+# ── 7. the policies a session used to skip ──────────────────────────────────
+#
+# `drive()` and a session are two entry points into the same binary with
+# genuinely different PROCESS lifecycles: one spawn per turn versus one spawn
+# for the conversation. That difference is why the session has its own read
+# loop instead of going through `_run_cli_process`, and it is a real one — a
+# session turn ends at a `result` payload with the process still alive, and it
+# multiplexes `control_response` messages off the same stdout so `interrupt()`
+# can be awaited.
+#
+# What does NOT follow is that the two paths should differ in POLICY. They did.
+# Secrets were kept out of `drive`'s argv and left in the session's, and the
+# liveness bounds applied to `drive` and were silently ignored by the session —
+# the worse half of the two, because `timeouts=` is a field on the cognition a
+# session holds, so it was configuration that was accepted and discarded.
+#
+# Both are asymmetries in the wrong direction: a session is the LONGER-lived
+# process. A leaked credential sits in `ps` for the whole conversation rather
+# than for one turn, and a hang with no bound hangs forever rather than until
+# the next spawn.
+
+
+_TOKEN = "sk-ant-secret-value-do-not-leak"
+_MCP_BLOB = json.dumps({"mcpServers": {"x": {"url": "https://e", "headers": {"Authorization": f"Bearer {_TOKEN}"}}}})
+_SETTINGS_BLOB = json.dumps({"env": {"MY_TOKEN": _TOKEN}})
+
+
+def _argv_of(spawn: Any) -> list[str]:
+    return list(spawn.await_args.args)
+
+
+def _one_turn(cog: ClaudeCliCognition, proc: Any) -> Any:
+    """Open a session, run one turn, close it. Returns the patched spawn mock."""
+
+    async def _go() -> None:
+        async with cog.session() as chat:
+            await _collect(chat, "hello")
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+    return spawn
+
+
+def test_an_inline_mcp_config_never_reaches_the_session_argv() -> None:
+    """The documented way to wire an HTTP MCP server puts a bearer token in an
+    inline blob. An argument list is world-readable — any local account can
+    read it with ``ps`` — so the blob is written to a 0600 file and passed by
+    path, exactly as ``drive`` does.
+
+    This is the check that used to fail. ``start()`` called ``_build_argv``
+    without ``mcp_config=``, which made it fall back to the DECLARED value; the
+    fallback exists for argv-shape tests and reaching it here is how the
+    session shipped the token it was supposed to hide."""
+    cog = ClaudeCliCognition(mcp_config=(_MCP_BLOB,))
+    spawn = _one_turn(cog, _FakeSessionProcess([_turn_lines("hi")]))
+
+    argv = _argv_of(spawn)
+    assert not any(_TOKEN in a for a in argv), f"credential in argv: {argv}"
+    path = argv[argv.index("--mcp-config") + 1]
+    assert path.endswith("mcp-0.json"), path
+
+
+def test_an_inline_settings_blob_never_reaches_the_session_argv() -> None:
+    """``settings`` is the same hazard by another door — it may carry an
+    ``env`` block, or an ``apiKeyHelper``."""
+    cog = ClaudeCliCognition(settings=_SETTINGS_BLOB)
+    spawn = _one_turn(cog, _FakeSessionProcess([_turn_lines("hi")]))
+
+    argv = _argv_of(spawn)
+    assert not any(_TOKEN in a for a in argv), f"credential in argv: {argv}"
+    assert argv[argv.index("--settings") + 1].endswith("settings.json")
+
+
+def _probe(path: str) -> tuple[bool, str, str]:
+    """Existence, permission bits and content of a materialised file.
+
+    Called through ``asyncio.to_thread`` by the tests below, because they look
+    at the file from inside a LIVE session's coroutine and blocking file IO
+    there is what ASYNC240 exists to catch. A test that models an open session
+    should not model it with a stalled event loop.
+    """
+    if not os.path.exists(path):
+        return False, "", ""
+    return True, oct(os.stat(path).st_mode)[-3:], Path(path).read_text()
+
+
+def test_the_materialised_file_is_readable_only_by_this_user() -> None:
+    """0600, and set BEFORE the content is written. A file that exists for one
+    umask-wide instant with the secret already in it would close one disclosure
+    by opening a smaller one."""
+    holder: dict[str, str] = {}
+    cog = ClaudeCliCognition(mcp_config=(_MCP_BLOB,))
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+
+    async def _go() -> None:
+        async with cog.session() as chat:
+            argv = _argv_of(spawn)
+            holder["path"] = argv[argv.index("--mcp-config") + 1]
+            # Read it while the session is OPEN: the file has to be there for
+            # the whole conversation, not merely at spawn.
+            exists, mode, text = await asyncio.to_thread(_probe, holder["path"])
+            assert exists and mode == "600", f"mode {mode!r}"
+            assert json.loads(text)["mcpServers"]["x"]["headers"]
+            await _collect(chat, "hello")
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+
+    # ...and gone once the session is closed.
+    assert not os.path.exists(holder["path"])
+
+
+def test_a_path_valued_mcp_config_is_passed_through_untouched() -> None:
+    """A path is already a reference rather than a value, so there is nothing
+    to hide and no scratch directory to make."""
+    cog = ClaudeCliCognition(mcp_config=("/etc/mcp.json",))
+    spawn = _one_turn(cog, _FakeSessionProcess([_turn_lines("hi")]))
+
+    argv = _argv_of(spawn)
+    assert argv[argv.index("--mcp-config") + 1] == "/etc/mcp.json"
+
+
+def test_the_scratch_survives_every_turn_and_dies_with_the_session() -> None:
+    """Ownership is the SESSION's, not a turn's. The CLI may re-read an
+    ``--mcp-config`` file at any point while it is alive, so deleting it after
+    the turn that spawned it — which is what ``drive`` correctly does with its
+    own copy — would break a later turn in a way that looks like a config
+    error."""
+    seen: list[bool] = []
+    holder: dict[str, str] = {}
+    cog = ClaudeCliCognition(mcp_config=(_MCP_BLOB,))
+    proc = _FakeSessionProcess([_turn_lines("a"), _turn_lines("b")])
+
+    async def _go() -> None:
+        async with cog.session() as chat:
+            argv = _argv_of(spawn)
+            holder["path"] = argv[argv.index("--mcp-config") + 1]
+            await _collect(chat, "first")
+            seen.append((await asyncio.to_thread(_probe, holder["path"]))[0])
+            await _collect(chat, "second")
+            seen.append((await asyncio.to_thread(_probe, holder["path"]))[0])
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+
+    assert seen == [True, True], "the file was deleted out from under a live CLI"
+    assert not os.path.exists(holder["path"])
+
+
+def test_a_failed_spawn_does_not_leave_the_secret_on_disk() -> None:
+    """``start()`` writes the file before it spawns, so the failure path has to
+    clean up. Otherwise every failed session start leaks a credential into
+    /tmp, which is strictly worse than the argv it replaced — argv dies with
+    the process."""
+    made: list[str] = []
+    real_make = claude_cli._make_scratch
+
+    def _spy() -> str:
+        path = real_make()
+        made.append(path)
+        return path
+
+    cog = ClaudeCliCognition(mcp_config=(_MCP_BLOB,))
+    boom = AsyncMock(side_effect=OSError("no such binary"))
+    with (
+        patch.object(claude_cli, "_make_scratch", _spy),
+        patch("agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec", new=boom),
+        pytest.raises(OSError, match="no such binary"),
+    ):
+        asyncio.run(cog.session().start())
+
+    assert made, "the spy never ran — this test is asserting nothing"
+    assert not os.path.exists(made[0])
+
+
+# ── the agent's system prompt ───────────────────────────────────────────────
+#
+# ``agent.prompt`` IS the system prompt. ``drive()`` renders it into
+# ``--append-system-prompt``; the session used to call ``_build_argv`` with
+# ``system_prompt=""`` and never supply one, so an agent handed to a session
+# kept its schema, its meters and its name and silently lost the instructions
+# that say what it IS.
+#
+# The worst part was which door it broke. ``ClaudeCliSession.drive`` exists so
+# a session can BE an agent's cognition — swap ``cognition=cog`` for
+# ``cognition=chat`` and keep the process warm — and that advertised
+# substitution changed the model's behaviour with no error and nothing missing
+# from the result to notice. Measured, same agent both ways:
+#
+#     cognition=cog   ->  "ARRR, 2 + 2 be 4, matey!..."
+#     cognition=chat  ->  "4"
+#
+# which debugs like a model ignoring its instructions rather than like wiring.
+
+
+_PERSONA = "You are a pirate. Always answer in pirate speak."
+
+
+def _system_prompt_of(spawn: Any) -> str | None:
+    argv = list(spawn.await_args.args)
+    for flag in ("--append-system-prompt", "--system-prompt"):
+        if flag in argv:
+            return str(argv[argv.index(flag) + 1])
+    return None
+
+
+def test_an_agent_given_to_the_session_supplies_the_system_prompt() -> None:
+    """THE regression. The prompt has to reach argv at SPAWN, because
+    ``--system-prompt`` is process-level and there is no later chance."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    agent = Agent(name="p", prompt=_PERSONA)
+
+    async def _go() -> None:
+        async with ClaudeCliCognition().session(agent=agent) as chat:
+            await _collect(chat, "hello")
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+
+    assert _system_prompt_of(spawn) == _PERSONA
+
+
+def test_a_session_with_no_agent_sends_no_system_prompt() -> None:
+    """An empty ``--append-system-prompt`` is not the same as omitting it, and
+    a bare conversational session must stay bare."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+
+    async def _go() -> None:
+        async with ClaudeCliCognition().session() as chat:
+            await _collect(chat, "hello")
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+
+    assert _system_prompt_of(spawn) is None
+
+
+def test_the_session_honours_system_prompt_mode() -> None:
+    """``replace`` discards the CLI's own prompt — and with it every
+    instruction that makes its tools usable — so it must stay opt-in here
+    exactly as it is on ``drive``."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    agent = Agent(name="p", prompt=_PERSONA)
+
+    async def _go() -> None:
+        cog = ClaudeCliCognition(system_prompt_mode="replace")
+        async with cog.session(agent=agent) as chat:
+            await _collect(chat, "hello")
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+
+    argv = list(spawn.await_args.args)
+    assert "--system-prompt" in argv and "--append-system-prompt" not in argv
+
+
+def test_a_huge_session_system_prompt_goes_to_a_file() -> None:
+    """The argv ceiling applies at ``start()`` too — the session builds its own
+    argv, which is how it missed the credential fix and the liveness bounds."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    agent = Agent(name="p", prompt="You are terse. " * 4000)  # 60,000 bytes
+
+    async def _go() -> None:
+        async with ClaudeCliCognition().session(agent=agent) as chat:
+            await _collect(chat, "hello")
+
+    with _patched(proc) as spawn:
+        asyncio.run(_go())
+
+    argv = list(spawn.await_args.args)
+    assert "--append-system-prompt-file" in argv
+    assert "--append-system-prompt" not in argv
+
+
+def test_the_same_agent_through_both_doors_is_not_refused() -> None:
+    """``session(agent=a)`` then ``turn(t, agent=a)`` is the ordinary pattern.
+
+    The refusal below compares against what the PROCESS was spawned with, not
+    against "does this turn carry a prompt" — the naive check would make a
+    session refuse its own agent."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    agent = Agent(name="p", prompt=_PERSONA)
+
+    async def _go() -> Any:
+        async with ClaudeCliCognition().session(agent=agent) as chat:
+            proc.stdout.feed_next_turn()
+            return [ev async for ev in chat.turn("hello", agent=agent)][-1].result
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.stop_reason == "complete", result.evals
+
+
+def test_an_equivalent_prompt_object_is_not_refused() -> None:
+    """A ``Prompt`` is a versioned object, so two equivalent ones are not the
+    same instance. The comparison renders both sides for that reason."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+    # Two DIFFERENT versions of the same text: the rendered prompt is what the
+    # CLI is given, so that is what has to match. Comparing the objects — or
+    # their versions — would refuse a caller who merely rebuilt an equivalent
+    # one, which is the common case when a Prompt is loaded per turn.
+    opened = Agent(name="p", prompt=Prompt(id="persona", version="1", template=_PERSONA))
+    turned = Agent(name="p", prompt=Prompt(id="persona", version="2", template=_PERSONA))
+
+    async def _go() -> Any:
+        async with ClaudeCliCognition().session(agent=opened) as chat:
+            proc.stdout.feed_next_turn()
+            return [ev async for ev in chat.turn("hello", agent=turned)][-1].result
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.stop_reason == "complete", result.evals
+
+
+def test_a_turn_that_brings_a_different_prompt_is_refused_not_dropped() -> None:
+    """Same treatment ``output=`` already got, for the same reason.
+
+    Silently answering as whatever the process was spawned as is the behaviour
+    this replaces — and it is the one that reads like a bad model instead of a
+    wiring mistake. A ``_TurnRefused`` costs the TURN and leaves the
+    conversation alive."""
+    proc = _FakeSessionProcess([_turn_lines("hi")])
+
+    async def _go() -> tuple[Any, Any]:
+        async with ClaudeCliCognition().session() as chat:  # spawned bare
+            refused = [
+                ev async for ev in chat.turn("hello", agent=Agent(name="p", prompt=_PERSONA))
+            ][-1].result
+            after = await _collect(chat, "and again")
+            return refused, after[-1].result
+
+    with _patched(proc):
+        refused, after = asyncio.run(_go())
+
+    assert refused.evals["stop_reason"] == "turn_refused"
+    assert "cannot be changed per turn" in (refused.evals.get("error") or "")
+    assert "session(agent=" in (refused.evals.get("error") or "")
+    sent = [m["message"]["content"] for m in proc.stdin.messages]
+    assert sent == ["and again"], (
+        f"only the follow-up turn should have reached the CLI, got {sent}"
+    )
+    # The session survives it, and the refusal cost NOTHING on the wire: the
+    # next turn gets the first scripted answer, because the refused one was
+    # never sent and never consumed it.
+    assert after.stop_reason == "complete" and after.output == "hi"
+
+
+# ── liveness ────────────────────────────────────────────────────────────────
+
+
+class _TimedStdout:
+    """Emits lines on a schedule, then goes quiet — and STAYS quiet.
+
+    ``_SessionStdout`` above busy-waits between lines, which is right for the
+    protocol tests and wrong for these. A liveness bound is wall-clock, so the
+    reader has to actually park; a spin would burn the CPU the timeout is
+    supposed to be waiting through, and "quiet" has to be a suspension rather
+    than a hot loop for the same reason it is in a real pipe.
+    """
+
+    def __init__(self, steps: list[tuple[float, bytes]]) -> None:
+        self._steps = list(steps)
+        self._never = asyncio.Event()
+
+    def __aiter__(self) -> _TimedStdout:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if not self._steps:
+            await self._never.wait()  # a live CLI with nothing to say
+            raise AssertionError("unreachable")
+        delay, line = self._steps.pop(0)
+        await asyncio.sleep(delay)
+        return line
+
+
+def _timed(steps: list[tuple[float, bytes]], *, stderr: bytes = b"") -> Any:
+    proc = _FakeSessionProcess([])
+    proc.stdout = _TimedStdout(steps)
+    proc.stderr = _FakeStderr(stderr)
+    return proc
+
+
+async def _timed_turn(chat: Any, task: str = "hello", **kw: Any) -> list[StreamEvent]:
+    """Like ``_collect``, minus the ``feed_next_turn`` — a ``_TimedStdout``
+    releases itself on a clock."""
+    return [ev async for ev in chat.turn(task, **kw)]
+
+
+def _final(events: list[StreamEvent]) -> Any:
+    finals = [e for e in events if e.type == "final"]
+    assert len(finals) == 1, f"expected exactly one terminal event, got {len(finals)}"
+    return finals[0].result
+
+
+def test_a_turn_that_goes_silent_trips_the_idle_bound() -> None:
+    """THE bound that was ignored. Before this, a session turn whose CLI hung
+    hung with it — forever, with no stop reason and no process teardown."""
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=None, idle=0.05))
+    proc = _timed([(0.0, _line({"type": "assistant", "message": {"content": [{"type": "text", "text": "par"}]}}))])
+
+    async def _go() -> Any:
+        async with cog.session() as chat:
+            return _final(await _timed_turn(chat))
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.evals["stop_reason"] == "idle_timeout"
+    assert result.stop_reason == "failed" and result.partial is True
+    # And the process is gone: no protocol message retracts a half-finished
+    # turn, so the conversation ends with it.
+    assert proc.terminated is True
+
+
+def test_a_turn_whose_cli_never_speaks_trips_the_startup_bound() -> None:
+    """``startup`` is per TURN on a session, measured from the write to stdin —
+    see the comment on the deadline. The first turn pays the CLI's warm-up, so
+    a bound that clears that clears every later turn with room to spare."""
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=0.05))
+    proc = _timed([])
+
+    async def _go() -> Any:
+        async with cog.session() as chat:
+            return _final(await _timed_turn(chat))
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.evals["stop_reason"] == "startup_timeout"
+    assert result.stop_reason == "failed" and result.partial is True
+
+
+def test_a_startup_bound_crossed_on_a_credential_error_says_so() -> None:
+    """The refinement ``drive`` already had, now reachable from a session:
+    ``startup_timeout`` alone sends an operator looking at the network when the
+    answer is a credential."""
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=0.05))
+    proc = _timed([], stderr=b"Invalid API key \xc2\xb7 Please run /login")
+
+    async def _go() -> Any:
+        async with cog.session() as chat:
+            return _final(await _timed_turn(chat))
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.evals["stop_reason"] == "authentication_failed"
+    assert result.evals["timeout_kind"] == "startup_timeout", (
+        "the refinement must not lose WHICH bound was crossed"
+    )
+
+
+def test_first_event_measures_turn_content_not_the_clis_own_chatter() -> None:
+    """A ``system/init`` is the CLI talking to itself. Counting it would let a
+    session that emits an init and then hangs satisfy a bound that exists to
+    catch exactly that."""
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=None, first_event=0.1))
+    proc = _timed([(0.0, _line({"type": "system", "subtype": "init", "session_id": "s"}))])
+
+    async def _go() -> Any:
+        async with cog.session() as chat:
+            return _final(await _timed_turn(chat))
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.evals["stop_reason"] == "first_event_timeout"
+
+
+def test_total_bounds_the_turn_not_the_conversation() -> None:
+    """The one bound whose meaning had to be CHOSEN rather than copied.
+
+    A session exists in order to outlive its turns, so reading ``total`` as a
+    ceiling on the whole conversation would kill the thing the class is for.
+    Per-turn is the only reading that works: here two turns each finish well
+    inside ``total`` while the conversation as a whole runs past it."""
+    # Each turn is two lines 0.1s apart, so a turn costs ~0.2s against a 0.45s
+    # bound; three of them cost ~0.6s, which the WHOLE conversation would fail.
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=None, total=0.45))
+    proc = _timed([(0.1, b) for turn in "abc" for b in _turn_lines(turn)])
+
+    async def _go() -> tuple[list[Any], float]:
+        started = time.monotonic()
+        async with cog.session() as chat:
+            results = [_final(await _timed_turn(chat, t)) for t in ("first", "second", "third")]
+        return results, time.monotonic() - started
+
+    with _patched(proc):
+        results, elapsed = asyncio.run(_go())
+
+    assert [r.stop_reason for r in results] == ["complete"] * 3
+    assert [r.output for r in results] == ["a", "b", "c"]
+    assert elapsed > 0.45, "the conversation did not actually outrun `total`"
+
+
+def test_a_control_response_counts_as_liveness_not_as_silence() -> None:
+    """An in-flight ``interrupt()`` is the CLI talking. Counting its
+    acknowledgement as silence would let a stop button trip an idle bound on a
+    turn that is working perfectly well — the read loop consumes both off the
+    same stdout, so the two are indistinguishable to anything but this rule."""
+    ack = _line({"type": "control_response", "response": {"request_id": "nobody", "subtype": "success"}})
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=None, idle=0.12))
+    # Four gaps of 0.08s: each is inside the bound, their sum is not.
+    proc = _timed([(0.08, ack), (0.08, ack), (0.08, ack), *[(0.08, b) for b in _turn_lines("done")]])
+
+    async def _go() -> Any:
+        async with cog.session() as chat:
+            return _final(await _timed_turn(chat))
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.stop_reason == "complete", "a control response was treated as silence"
+
+
+def test_a_timed_out_turn_ends_the_session() -> None:
+    """Same standing as a cancel, for the same reason: the process is gone, so
+    there is no conversation left to continue. A later turn must refuse rather
+    than silently start a fresh one with no history."""
+    cog = ClaudeCliCognition(timeouts=CliTimeouts(startup=0.05))
+    proc = _timed([])
+
+    async def _go() -> tuple[Any, Any]:
+        async with cog.session() as chat:
+            first = _final(await _timed_turn(chat, "first"))
+            second = _final(await _timed_turn(chat, "second"))
+            return first, second
+
+    with _patched(proc):
+        first, second = asyncio.run(_go())
+
+    assert first.evals["stop_reason"] == "startup_timeout"
+    assert second.evals["stop_reason"] == "session_closed"
+
+
+def test_timeouts_off_leaves_a_session_unbounded() -> None:
+    """The other direction, so the bounds cannot be turned on by accident. A
+    default that kills a working conversation is worse than the hang it
+    prevents."""
+    cog = ClaudeCliCognition(timeouts=CliTimeouts.off())
+    proc = _timed([(0.15, b) for b in _turn_lines("slow")])
+
+    async def _go() -> Any:
+        async with cog.session() as chat:
+            return _final(await _timed_turn(chat))
+
+    with _patched(proc):
+        result = asyncio.run(_go())
+
+    assert result.stop_reason == "complete"

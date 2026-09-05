@@ -30,6 +30,8 @@ import os
 import shutil
 import subprocess
 import warnings
+from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -70,6 +72,31 @@ def _value_after(argv: tuple[str, ...], flag: str) -> str:
     return argv[argv.index(flag) + 1]
 
 
+def _argv_with(
+    cog: ClaudeCliCognition, *, prompt: str | None, inspect: Any
+) -> tuple[str, ...]:
+    """``_argv``, but ``inspect(argv)`` runs while the run is still in flight.
+
+    The scratch directory is deleted when ``drive`` returns, so anything that
+    needs to READ a generated file has to look before then."""
+    proc = _FakeProcess(stdout_lines=_happy_path_lines())
+    seen: dict[str, tuple[str, ...]] = {}
+    with patch(
+        "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
+        new=AsyncMock(return_value=proc),
+    ) as spawn:
+        agent = Agent(name="local", prompt=prompt, cognition=cog)
+
+        async def _go() -> None:
+            async for _ in cog.drive(agent, "do it", FakeCtx(), WorkingContext()):
+                if "argv" not in seen and spawn.await_args is not None:
+                    seen["argv"] = tuple(spawn.await_args.args)
+                    inspect(seen["argv"])
+
+        asyncio.run(_go())
+    return seen.get("argv", tuple(spawn.await_args.args))
+
+
 # ── 1. the system prompt is APPENDED, not substituted ───────────────────────
 
 
@@ -94,6 +121,129 @@ def test_no_prompt_means_no_flag() -> None:
     ``--system-prompt`` would blank the CLI's prompt with nothing in its place."""
     argv = _argv(ClaudeCliCognition(), prompt=None)
     assert "--append-system-prompt" not in argv and "--system-prompt" not in argv
+
+
+# ── 1b. a system prompt too big for argv goes to a file ─────────────────────
+#
+# The kernel copies argv AND the environment into the new process image, under
+# two caps: darwin allows 1 MiB for the pair COMBINED (measured — one
+# 1,000,000-byte argument is fine, twenty 100,000-byte ones are not, so it is a
+# shared pot rather than a per-argument limit), and Linux adds a 128 KiB cap on
+# any SINGLE argument on top of that.
+#
+# The system prompt was the last payload still travelling that way, and the one
+# most likely to grow: the task is usually a sentence, while the system prompt
+# is where a retrieved context or a compiled instruction set ends up. Measured
+# through the real cognition: 2,000,000 bytes came back ``spawn_failed`` /
+# ``OSError: [Errno 7] Argument list too long`` — thrown before the binary ran,
+# so with no stderr and an error blaming "the argument list" rather than naming
+# which of the four things in it was too big.
+
+
+_BIG = "You are terse. " * 4000  # 60,000 bytes — over the 32 KiB limit
+
+
+def _scratch_path(argv: tuple[str, ...], flag: str) -> Path:
+    assert flag in argv, f"{flag} not in argv: {argv}"
+    return Path(_value_after(argv, flag))
+
+
+def test_an_ordinary_system_prompt_still_travels_inline() -> None:
+    """The common case must be untouched.
+
+    Always writing a file would make every run depend on a writable temp dir to
+    do something that today needs no filesystem at all — trading a bug that
+    bites large prompts for a failure mode that could bite every locked-down
+    sandbox."""
+    argv = _argv(ClaudeCliCognition(), prompt="You are terse.")
+    assert _value_after(argv, "--append-system-prompt") == "You are terse."
+    assert "--append-system-prompt-file" not in argv
+
+
+def test_a_system_prompt_too_big_for_argv_is_passed_as_a_file() -> None:
+    holder: dict[str, str] = {}
+
+    def _capture(argv: tuple[str, ...]) -> None:
+        holder["path"] = _value_after(argv, "--append-system-prompt-file")
+        holder["content"] = Path(holder["path"]).read_text()
+        holder["mode"] = oct(os.stat(holder["path"]).st_mode)[-3:]
+
+    argv = _argv_with(ClaudeCliCognition(), prompt=_BIG, inspect=_capture)
+
+    assert "--append-system-prompt" not in argv, "the inline flag must not also be sent"
+    assert not any(_BIG[:200] in a for a in argv), "the prompt itself is still in argv"
+    assert holder["content"] == _BIG, "the file must carry the prompt VERBATIM"
+    # 0600: a system prompt is not a credential, but it is the caller's
+    # proprietary instructions and there is no reason to widen it.
+    assert holder["mode"] == "600", holder["mode"]
+
+
+def test_the_file_transport_tracks_system_prompt_mode() -> None:
+    """The trap in this change.
+
+    ``--system-prompt-file`` REPLACES the CLI's own prompt; the ``--append-``
+    form adds to it. Swapping the pair turns one into the other silently — the
+    run still succeeds, the argv still looks plausible, and every instruction
+    that makes the CLI's tools usable is gone."""
+    appended = _argv(ClaudeCliCognition(), prompt=_BIG)
+    assert "--append-system-prompt-file" in appended
+    assert "--system-prompt-file" not in appended
+
+    replaced = _argv(ClaudeCliCognition(system_prompt_mode="replace"), prompt=_BIG)
+    assert "--system-prompt-file" in replaced
+    assert "--append-system-prompt-file" not in replaced
+
+
+def test_the_threshold_is_measured_in_bytes_not_characters() -> None:
+    """``len(text)`` on a str understates what ``execve`` copies by up to 4x.
+
+    This prompt is comfortably under the limit counted in characters and over
+    it counted in UTF-8 bytes, which is the only count the kernel applies."""
+    prompt = "\u65e5" * 20_000  # 20,000 chars, 60,000 UTF-8 bytes
+    assert len(prompt) < 32 * 1024 < len(prompt.encode())
+
+    argv = _argv(ClaudeCliCognition(), prompt=prompt)
+    assert "--append-system-prompt-file" in argv, (
+        "counted in characters this looked small enough to inline"
+    )
+
+
+def test_the_prompt_file_is_cleaned_up_with_the_run() -> None:
+    seen: dict[str, str] = {}
+    _argv_with(
+        ClaudeCliCognition(),
+        prompt=_BIG,
+        inspect=lambda argv: seen.update(path=_value_after(argv, "--append-system-prompt-file")),
+    )
+    assert not os.path.exists(seen["path"])
+
+
+@real_cli
+def test_the_real_cli_honours_a_system_prompt_it_reads_from_a_file() -> None:
+    """Accepting a flag is not obeying it.
+
+    Neither ``--system-prompt-file`` nor ``--append-system-prompt-file``
+    appears in ``claude --help`` on 2.1.236, so "exit 0" alone would prove only
+    that the CLI tolerated an argument it ignored. This asserts the CONTENT
+    reached the model: a 2,000,000-byte prompt — an order of magnitude past
+    what argv can carry — whose persona comes back in the answer."""
+    persona = "You are a pirate. Always answer in pirate speak, starting with ARRR. "
+    prompt = persona + ("Ignore this filler sentence. " * 70_000)
+    assert len(prompt.encode()) > 2_000_000
+
+    cog = ClaudeCliCognition(max_turns=1)
+    agent = Agent(name="local", prompt=prompt, cognition=cog)
+
+    async def _go() -> str:
+        out = ""
+        async for ev in cog.drive(agent, "What is 2+2?", FakeCtx(), WorkingContext()):
+            if ev.type == "final":
+                assert ev.result.stop_reason == "complete", ev.result.evals
+                out = ev.result.output or ""
+        return out
+
+    answer = asyncio.run(_go())
+    assert "ARRR" in answer.upper(), f"the file's persona never reached the model: {answer!r}"
 
 
 # ── 2. session identity: three distinct things ──────────────────────────────
@@ -294,14 +444,21 @@ def test_a_fallback_chain_is_comma_joined() -> None:
 
 
 def test_mcp_servers_are_variadic_and_strictness_needs_them() -> None:
-    """``--mcp-config`` takes several entries, each a path or inline JSON.
+    """``--mcp-config`` takes several entries. A PATH is passed through; an
+    inline JSON blob is written to a 0600 file and replaced by its path,
+    because an argument list is world-readable and these blobs routinely carry
+    bearer tokens — see ``_materialise_secrets``.
+
     ``--strict-mcp-config`` on its own would leave the session with no MCP
     servers at all, which is not what anyone means by "strict"."""
     argv = _argv(
         ClaudeCliCognition(mcp_config=("/tmp/a.json", '{"b":1}'), strict_mcp_config=True)
     )
     i = argv.index("--mcp-config")
-    assert argv[i + 1 : i + 3] == ("/tmp/a.json", '{"b":1}')
+    passed_through, materialised = argv[i + 1 : i + 3]
+    assert passed_through == "/tmp/a.json", "a path is already a reference, not a value"
+    assert materialised != '{"b":1}', "the inline blob must not reach argv"
+    assert materialised.endswith(".json")
     assert "--strict-mcp-config" in argv
 
     with pytest.raises(ValueError, match="only means something alongside"):
@@ -329,7 +486,17 @@ def test_settings_agents_effort_and_session_persistence() -> None:
         no_session_persistence=True,
     )
     argv = _argv(cog)
-    assert _value_after(argv, "--settings") == '{"x":1}'
+    # Inline settings JSON is materialised to a 0600 file, not passed as an
+    # argument: ``settings`` can carry an ``apiKeyHelper`` — a credential — and
+    # an argument list is readable by every local account.
+    settings_arg = _value_after(argv, "--settings")
+    assert settings_arg != '{"x":1}', "the inline blob must not reach argv"
+    assert settings_arg.endswith(".json")
+    # ...and the file is gone once the run is over. A secret written to disk to
+    # keep it out of argv would be a poor trade if it outlived the process.
+    # Its CONTENT is asserted in the contract suite, which can look while the
+    # spawn is still in flight.
+    assert not Path(settings_arg).exists()
     assert json.loads(_value_after(argv, "--agents")) == {
         "reviewer": {"description": "d", "prompt": "p"}
     }
