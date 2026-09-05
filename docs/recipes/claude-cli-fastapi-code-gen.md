@@ -324,7 +324,7 @@ async with ApprovalServer(asker=my_asker, auto_allow=("Read", "Glob"),
                           timeout_s=300) as approvals:
     cognition = ClaudeCliCognition(
         model="claude-sonnet-4-6",
-        **approvals.cli_kwargs(),      # mcp_config + strict + permission_prompt_tool
+        **approvals.cli_kwargs(),      # MCP, prompt tool, and ambient-permission isolation
     )
     result = await Agent(name="dev", cognition=cognition).run(task, ctx)
 ```

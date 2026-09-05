@@ -394,6 +394,28 @@ def test_a_valid_schema_is_returned_unchanged() -> None:
     assert _validate_json_schema(schema, who="T") == schema
 
 
+def test_default_permission_mode_is_explicit_in_the_cli_contract() -> None:
+    """Print mode may otherwise resolve an omitted mode to ``auto``, bypassing
+    a configured permission prompt tool even though the cognition says default.
+    """
+    cog = ClaudeCliCognition(permission_mode="default")
+    argv = cog._build_argv("hello", system_prompt="")
+
+    position = argv.index("--permission-mode")
+    assert argv[position + 1] == "default"
+
+
+def test_an_empty_setting_source_list_is_an_explicit_isolation_flag() -> None:
+    """No sources is distinct from ``None``: it keeps subscription auth while
+    excluding ambient permission grants from user, project and local files.
+    """
+    cog = ClaudeCliCognition(setting_sources=())
+    argv = cog._build_argv("hello", system_prompt="")
+
+    position = argv.index("--setting-sources")
+    assert argv[position + 1] == ""
+
+
 def test_codex_closes_every_object_for_openai_strict_mode() -> None:
     """OpenAI's structured-output mode refuses a schema whose objects are open:
 

@@ -51,6 +51,14 @@ The first two are MCP servers, so they live with the [MCP
 integration](integrations.md). The middle two are plain configuration
 generators in `agentkit.integrations.claude_cli`. The last is a test double.
 
+`setting_sources=` controls the ambient Claude settings files separately from
+authentication. `None` keeps Claude's normal `user,project,local` lookup;
+`()` passes an empty `--setting-sources` value, so none of those permission
+grants can silently widen a service run. Unlike `bare=True`, this does not
+disable OAuth or keychain subscription credentials. `ApprovalServer.cli_kwargs()`
+selects the empty form automatically because a pre-approved ambient tool would
+otherwise bypass the reviewer entirely.
+
 ## Which credentials the CLI actually uses
 
 Setting `config_dir=` to isolate a tenant does not, on its own, isolate a

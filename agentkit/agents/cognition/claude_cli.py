@@ -113,6 +113,8 @@ PermissionMode = Literal[
     "dontAsk",
 ]
 
+SettingSource = Literal["user", "project", "local"]
+
 
 # Reasons this cognition emits that mean "the run ERRORED", as opposed to
 # "something stopped it deliberately". ``cli_exit_<n>`` is dynamic, which is
@@ -418,6 +420,12 @@ class ClaudeCliCognition:
     # ``--settings``: a settings file path or an inline JSON string, overriding
     # the same keys in the user's settings.json for this session only.
     settings: str | Path | None = None
+    # ``--setting-sources`` controls which ambient settings files the CLI may
+    # load. ``None`` preserves Claude's defaults; ``()`` emits an empty source
+    # list and is the service-safe spelling for ignoring user/project/local
+    # permission grants without using ``--bare`` (which would also disable
+    # subscription OAuth). Explicit ``settings=`` still applies.
+    setting_sources: tuple[SettingSource, ...] | None = None
     # ``--agents``: subagent definitions as JSON, serialised for you.
     agents: dict[str, Any] | None = None
     # ``--bare``: skip auto-discovery of hooks, skills, commands, subagents,
@@ -1452,12 +1460,18 @@ class ClaudeCliCognition:
         )
         if resolved_settings is not None:
             argv += ["--settings", resolved_settings]
+        if self.setting_sources is not None:
+            argv += ["--setting-sources", ",".join(self.setting_sources)]
         if self.agents is not None:
             argv += ["--agents", json.dumps(self.agents)]
         if self.no_session_persistence:
             argv += ["--no-session-persistence"]
-        if self.permission_mode != "default":
-            argv += ["--permission-mode", self.permission_mode]
+        # State the mode even when it is ``default``. In print mode Claude Code
+        # otherwise resolves an omitted flag to ``auto`` (observed on 2.1.226),
+        # which silently bypasses ``--permission-prompt-tool`` and lets a native
+        # Write run without consulting the configured approval server. A field
+        # whose value says ``default`` must not compile to a different policy.
+        argv += ["--permission-mode", self.permission_mode]
         if self.permission_prompt_tool is not None:
             argv += ["--permission-prompt-tool", self.permission_prompt_tool]
         if self.max_turns is not None:

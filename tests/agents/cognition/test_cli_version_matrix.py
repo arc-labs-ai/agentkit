@@ -122,6 +122,7 @@ def _claude_matrix(tmp: Path) -> dict[str, ClaudeCliCognition]:
             no_session_persistence=True,
             settings=str(tmp / "settings.json"),
         ),
+        "isolated_settings": ClaudeCliCognition(setting_sources=()),
         "mcp": ClaudeCliCognition(
             mcp_config=(str(tmp / "mcp.json"),), strict_mcp_config=True, tools=("",)
         ),
