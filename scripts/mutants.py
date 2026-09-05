@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import pathlib
+import shutil
 import subprocess
 import sys
 
@@ -1407,8 +1408,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clisession",
         why="a cancelled turn leaves the process alive with half an answer in its context",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="                if cancelled and proc is not None and proc.returncode is None:",
-        after="                if False:",
+        # The guard this used to anchor on became a multi-line condition that
+        # also covers a timeout, so the kill ITSELF is the anchor now: it is
+        # the one line whose removal leaves the process running.
+        before="                    await _terminate(proc, self._cog.terminate_grace_s)",
+        after="                    pass",
         tests=CLI_SESSION_TESTS,
     ),
     Mutant(
@@ -1542,7 +1546,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clibudget",
         why="CLI spend is invisible to every meter again ($50 run, $0.00 ledger)",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="        charge_error = await self._charge_meters(ctx, state.usage)",
+        before=(
+            "        charge_error = await _charge_meters("
+            "ctx, state.usage, enabled=self.meter_spend)"
+        ),
         after="        charge_error = None",
         tests=CLI_BUDGET_TESTS,
     ),
@@ -1581,32 +1588,38 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="the per-actor envelope is skipped, the bug ActorBudget already had once",
-        path="agentkit/agents/cognition/claude_cli.py",
-        before="        actor = getattr(ctx, \"actor_budget\", None)\n        if actor is not None:",
-        after="        actor = None\n        if actor is not None:",
+        # Moved: the two byte-identical `_charge_meters` copies were merged
+        # into one shared helper, so this invariant (and the two below) now
+        # live in `_cli_common.py` and are exercised through BOTH cognitions.
+        path="agentkit/agents/cognition/_cli_common.py",
+        before="    actor = getattr(ctx, \"actor_budget\", None)\n    if actor is not None:",
+        after="    actor = None\n    if actor is not None:",
         tests=CLI_BUDGET_TESTS,
     ),
     Mutant(
         tag="clibudget",
         why="a ceiling crossed by this very run raises, losing a result already paid for",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/agents/cognition/_cli_common.py",
         before=(
-            "            except Exception as exc:  # noqa: BLE001 — see docstring\n"
-            "                note = f\"{type(exc).__name__}: {exc}\""
+            "        except Exception as exc:  # noqa: BLE001 — see docstring\n"
+            "            note = f\"{type(exc).__name__}: {exc}\""
         ),
-        after="            except Exception:\n                raise",
+        after="        except Exception:\n            raise",
         tests=CLI_BUDGET_TESTS,
     ),
     Mutant(
         tag="clibudget",
         why="meter_spend=False still charges the shared envelope",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/agents/cognition/_cli_common.py",
+        # `self.meter_spend` arrives as the keyword-only `enabled` now. The
+        # `call = ...` line stays in the anchor: without it this is a prefix of
+        # `_budget_cap`'s identical guard and would match twice.
         before=(
-            "        if not self.meter_spend or ctx is None:\n"
-            "            return None\n"
-            "        call = _CliCall(ctx=ctx)"
+            "    if not enabled or ctx is None:\n"
+            "        return None\n"
+            "    call = _CliCall(ctx=ctx)"
         ),
-        after="        if ctx is None:\n            return None\n        call = _CliCall(ctx=ctx)",
+        after="    if ctx is None:\n        return None\n    call = _CliCall(ctx=ctx)",
         tests=CLI_BUDGET_TESTS,
     ),
     # ── output= types a CLI-delegated run too ───────────────────────────────
@@ -1654,7 +1667,10 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clischema",
         why="a value the Python type rejects is reported as a successful parse",
         path="agentkit/agents/cognition/claude_cli.py",
-        before="                if coercion_error is not None:",
+        # `_coerce_structured` returns a `(parsed, failure)` pair now instead
+        # of setting a `coercion_error` local; neutralising the check on the
+        # failure half is the same break.
+        before="                if structured_failure is not None:",
         after="                if False:",
         tests=CLI_SCHEMA_TESTS,
     ),
@@ -1670,8 +1686,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="clischema",
         why="the field-level coercion diagnostics are dropped, leaving only '1 error(s)'",
         path="agentkit/agents/cognition/_cli_common.py",
-        before='        detail = "; ".join(str(e) for e in getattr(exc, "errors", ()) or ())',
-        after='        detail = ""',
+        # The joined sentence became typed `violations` on
+        # `StructuredOutputFailure`; starving the list they are parsed from
+        # leaves the same bare "N error(s)" summary in `detail`.
+        before='        errors = [str(e) for e in (getattr(exc, "errors", None) or ())]',
+        after="        errors = []",
         tests=CLI_SCHEMA_TESTS,
     ),
     # ── the CLI cognition's flags mean what the CLI says they mean ──────────
@@ -1679,8 +1698,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="cliflags",
         why="agent.prompt REPLACES the CLI's system prompt, stripping its tool guidance",
         path="agentkit/agents/cognition/claude_cli.py",
-        before='            flag = "--system-prompt" if self.system_prompt_mode == "replace" else (',
-        after='            flag = "--system-prompt" if True else (',
+        # The mode is decided once now and consumed by both the inline and the
+        # `--system-prompt-file` branch, so forcing the decision covers the
+        # pair — the old anchor could only reach the inline one.
+        before='            replace = self.system_prompt_mode == "replace"',
+        after="            replace = True",
         tests=CLI_FLAG_TESTS,
     ),
     Mutant(
@@ -3533,8 +3555,20 @@ MUTANTS: tuple[Mutant, ...] = (
         "is the one argv layout `codex exec` cannot parse for both its global and its "
         "parent-only flags",
         path="agentkit/agents/cognition/codex_cli.py",
-        before='        argv: list[str] = [self.codex_bin, "exec"]',
-        after='        argv: list[str] = [self.codex_bin, "exec", *resume]',
+        # `--search` is the concrete global flag this is about: it is rejected
+        # by `codex exec` and accepted by `codex`, so hoisting the subcommand
+        # ahead of it is the exact argv layout the source comment warns about.
+        before=(
+            "        argv: list[str] = [self.codex_bin]\n"
+            "        if self.web_search:\n"
+            '            argv += ["--search"]\n'
+            '        argv += ["exec"]'
+        ),
+        after=(
+            '        argv: list[str] = [self.codex_bin, "exec"]\n'
+            "        if self.web_search:\n"
+            '            argv += ["--search"]'
+        ),
         tests=CODEX_FLAG_TESTS,
     ),
     Mutant(
@@ -3592,7 +3626,10 @@ MUTANTS: tuple[Mutant, ...] = (
         "$0.00 ledger the Claude cognition shipped once — the middleware that would "
         "have charged it never runs, because the Invoker is bypassed",
         path="agentkit/agents/cognition/codex_cli.py",
-        before="        charge_error = await self._charge_meters(ctx, usage)",
+        before=(
+            "        charge_error = await _charge_meters("
+            "ctx, usage, enabled=self.meter_spend)"
+        ),
         after="        charge_error = None",
         tests=CODEX_BUDGET_TESTS,
     ),
@@ -3601,8 +3638,10 @@ MUTANTS: tuple[Mutant, ...] = (
         why="an exhausted budget spawns anyway, and the resumable budget_exhausted stop "
         "reason becomes a completed run that overspent",
         path="agentkit/agents/cognition/codex_cli.py",
-        before="                self._refuse_if_budget_exhausted(ctx)",
-        after="                pass",
+        # Dedented: the pre-flight moved into the `_prepare` closure so a
+        # throw here still reaches the terminal event.
+        before="            self._refuse_if_budget_exhausted(ctx)",
+        after="            pass",
         tests=CODEX_BUDGET_TESTS,
     ),
     Mutant(
@@ -3769,6 +3808,21 @@ def main() -> int:
                 continue
             try:
                 target.write_text(original.replace(m.before, m.after, 1))
+                # Drop the compiled bytecode for the file we just rewrote.
+                #
+                # CPython invalidates a ``.pyc`` on (source mtime in WHOLE
+                # SECONDS, source size) — so two consecutive mutants that
+                # change a file by the same number of bytes within the same
+                # second are indistinguishable to it, and the second one runs
+                # against the FIRST one's bytecode. Not hypothetical: mutants
+                # 63/64/66 all rename a ``def`` in ``providers/base.py`` and
+                # all grow it by exactly 7 bytes, so ``_sse_decode`` was
+                # reported SURVIVED in a full run and killed when run alone.
+                #
+                # It lies in both directions — a mutant can also look KILLED
+                # because a neighbour's stale bytecode broke the tests — and
+                # it is timing-dependent, so it comes and goes between runs.
+                shutil.rmtree(target.parent / "__pycache__", ignore_errors=True)
                 survived = _run_tests(m.tests)
             finally:
                 target.write_text(original)

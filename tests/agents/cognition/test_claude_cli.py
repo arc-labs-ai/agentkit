@@ -405,6 +405,42 @@ def test_result_with_is_error_marks_partial_with_stop_reason() -> None:
     assert final.result.evals["stop_reason"] == "error_max_turns"
 
 
+def test_semantic_error_survives_a_positive_cli_exit_code() -> None:
+    """Claude CLI 2.1.251 exits 1 after publishing ``error_max_turns``.
+
+    The terminal payload is the specific diagnosis; the process status only
+    says that the already-described turn was unsuccessful.
+    """
+    proc = _FakeProcess(
+        stdout_lines=[
+            _line({"type": "system", "session_id": "sess-e"}),
+            _line(
+                {
+                    "type": "result",
+                    "is_error": True,
+                    "subtype": "error_max_turns",
+                    "session_id": "sess-e",
+                    "duration_ms": 100,
+                    "usage": {},
+                }
+            ),
+        ],
+        returncode=1,
+    )
+    with patch(
+        "agentkit.agents.cognition.claude_cli.asyncio.create_subprocess_exec",
+        new=AsyncMock(return_value=proc),
+    ):
+        cog = ClaudeCliCognition(max_turns=1)
+        events = _drain(cog, Agent(name="local", cognition=cog), FakeCtx())
+
+    final = events[-1].result
+    assert final.partial is True
+    assert final.evals["cli_return_code"] == 1
+    assert final.evals["stop_reason"] == "error_max_turns"
+    assert final.stop_reason == "terminated"
+
+
 def test_spawn_failure_yields_final_with_stop_reason_and_error() -> None:
     """If the claude binary isn't on PATH, create_subprocess_exec raises
     FileNotFoundError. drive() must still yield exactly one final event

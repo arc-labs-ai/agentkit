@@ -890,8 +890,8 @@ class ClaudeCliCognition:
         """
 
         # Decide terminal stop_reason + partial flag.
-        # Priority (highest first): cancellation → fatal exception → CLI
-        # non-zero exit → CLI semantic error (is_error) → success.
+        # Priority (highest first): cancellation → fatal exception → crash →
+        # CLI semantic error (is_error) → otherwise non-zero exit → success.
         # Cancellation is above fatal_exc because a cancel that races with
         # a fatal error should still surface as ``cancelled``.
         final_stop_reason: str | None
@@ -945,21 +945,32 @@ class ClaudeCliCognition:
             else:
                 final_stop_reason = "parse_failed"
             final_partial = True
-        elif return_code not in (0, None):
+        elif return_code is not None and return_code < 0:
             assert return_code is not None
             final_stop_reason = _exit_stop_reason(return_code, stderr_bytes)
             final_partial = True
         elif state.is_error:
-            # When the CLI signals ``is_error: true`` while exiting 0, the
-            # useful stop_reason is often on ``terminal_reason`` (e.g.,
-            # ``"api_error"``) rather than ``subtype`` (which can still
-            # read ``"success"``). We already prefer subtype in
+            # A terminal semantic error outranks a positive process exit code.
+            # Claude CLI versions do not agree that errors such as
+            # ``error_max_turns`` exit zero: 2.1.251 publishes the specific
+            # result and then exits 1. Replacing that result with
+            # ``cli_exit_1`` discards the only actionable diagnosis. A death
+            # by signal still wins above because no terminal payload can make
+            # a crashed process successful.
+            #
+            # The useful stop_reason is often on ``terminal_reason`` (e.g.,
+            # ``"api_error"``) rather than ``subtype`` (which can still read
+            # ``"success"``). We already prefer subtype in
             # ``_events_from_payload`` — but when subtype is the useless
             # ``"success"`` string, fall through to a generic marker.
             if state.stop_reason == "success" or state.stop_reason is None:
                 final_stop_reason = "cli_reported_error"
             else:
                 final_stop_reason = state.stop_reason
+            final_partial = True
+        elif return_code not in (0, None):
+            assert return_code is not None
+            final_stop_reason = _exit_stop_reason(return_code, stderr_bytes)
             final_partial = True
         elif spawned and not state.saw_terminal:
             # The process ended cleanly but never emitted its end-of-turn
