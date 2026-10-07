@@ -5,6 +5,13 @@ All notable changes to `arc-agentkit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1](https://github.com/arc-labs-ai/agentkit/compare/v0.1.0...v0.1.1) (2026-10-07)
+
+
+### Build and tooling
+
+* bring release automation up to the standard the SDKs use ([#4](https://github.com/arc-labs-ai/agentkit/issues/4)) ([e1e6337](https://github.com/arc-labs-ai/agentkit/commit/e1e633767034e757cf098db3508aa3bbc2c0077f))
+
 ## [0.1.0] — 2026-10-08
 
 Initial public release. Distributed on PyPI as `arc-agentkit`; imported as
