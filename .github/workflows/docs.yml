@@ -13,13 +13,18 @@ concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only at the top level; the one job that needs to push gh-pages opts in
+# below. A repo-wide `contents: write` here would hand that same write to every
+# step, including the third-party actions this workflow runs.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-deploy:
     name: build + deploy mkdocs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write # peaceiris/actions-gh-pages pushes the gh-pages branch
     steps:
       - name: Checkout
         uses: actions/checkout@v7

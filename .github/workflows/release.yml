@@ -1,25 +1,102 @@
 name: release
 
+# Publishes `arc-agentkit` to PyPI when a version tag is pushed.
+#
+# The tag normally comes from `release-please.yml`, not from a shell: merging
+# the Release PR it maintains bumps `version` in pyproject.toml, writes the
+# CHANGELOG, and creates the `vX.Y.Z` tag that this workflow triggers on.
+# Tagging by hand still works and is the escape hatch:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The version check below is what makes both paths safe — a tag that disagrees
+# with pyproject.toml cannot publish.
+#
+# Auth is OIDC **Trusted Publishing** — no PyPI token lives in this repo. The
+# publish job exchanges the workflow's short-lived GitHub OIDC identity for a
+# scoped, single-use credential, which is why it requests `id-token: write`.
+#
+# ONE-TIME registry setup (done on PyPI, not here) — register this repo and
+# this workflow as a Trusted Publisher:
+#   PyPI → project → Publishing → Add a GitHub publisher:
+#     owner arc-labs-ai, repo agentkit, workflow release.yml, environment pypi
+# Before the first ever upload this must be a PENDING publisher, since the
+# project does not exist yet. Until it is configured the publish step fails
+# closed — it never falls back to a token.
+#
+# The `pypi` environment gates the publish; add required reviewers to it
+# (Settings → Environments → pypi) for a manual approval before anything goes
+# public.
+
 on:
   push:
     tags:
       - "v*.*.*"
+  # Escape hatch. The tag these jobs key off is created by release-please; if
+  # that tag's run is lost, fails partway, or never fires at all, there is
+  # otherwise no way to publish without deleting and re-pushing a published
+  # tag. PyPI rejects a version it already holds, so re-running after a
+  # partial success is a no-op.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing version tag to publish (e.g. v0.1.0)"
+        required: true
+        type: string
+
+# No repo-wide write; the publish job opts into `id-token: write` for OIDC.
+permissions:
+  contents: read
+
+# Resolved once, read by both jobs. On a tag push `github.ref_name` is already
+# `vX.Y.Z`; on a manual dispatch it would be the branch the hatch was fired
+# from, which would make the tag-vs-manifest check compare a branch name
+# against a version and fail.
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
     name: build distributions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # On dispatch this is the tag to republish, not the branch the hatch
+          # was fired from.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
 
       - name: Set up Python
         run: uv python install 3.12
+
+      # A mistyped tag must not be able to publish a version nobody reviewed,
+      # and a tag that got ahead of the manifest must not publish the old one
+      # under the new name. Reading the version with tomllib rather than
+      # grepping keeps this honest if the field ever moves.
+      - name: Verify tag matches project version
+        run: |
+          TAG="${RELEASE_TAG#v}"
+          VER="$(python3 -c "import tomllib,sys; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          echo "tag=$TAG pyproject=$VER"
+          test "$TAG" = "$VER" || { echo "::error::tag $TAG != pyproject version $VER"; exit 1; }
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # The tag may sit on a commit CI never gated (a hand-cut tag, or a tag
+      # moved after the fact). Publishing is irreversible on PyPI, so the suite
+      # runs here too rather than being assumed from a green main.
+      - name: Test
+        run: uv run pytest -q
 
       - name: Build wheel + sdist
         run: |
@@ -40,12 +117,13 @@ jobs:
   publish:
     name: publish to PyPI (OIDC)
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment:
       name: pypi
       url: https://pypi.org/p/arc-agentkit
     permissions:
-      id-token: write
+      contents: read
+      id-token: write # OIDC → PyPI trusted publishing
     steps:
       - name: Download distributions
         uses: actions/download-artifact@v8
