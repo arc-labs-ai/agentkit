@@ -1,6 +1,6 @@
 [project]
 name = "arc-agentkit"
-version = "0.1.0" # x-release-please-version
+version = "0.1.1" # x-release-please-version
 description = "A low-level, async-first base framework for agentic AI — one runtime with opinion-free primitives and composable cross-cutting concerns."
 readme = "README.md"
 license = "Apache-2.0"
