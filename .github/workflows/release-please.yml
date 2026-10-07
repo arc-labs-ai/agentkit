@@ -1,0 +1,61 @@
+name: Release Please
+
+# Keeps the version, the CHANGELOG and the release tag in step, so none of
+# those is a thing anyone has to remember.
+#
+# How it works: on every push to `main`, release-please reads the conventional
+# commits since the last release and maintains a single open "Release PR" that
+# accumulates them. That PR bumps `version` in pyproject.toml and writes the
+# CHANGELOG. Merging it creates the `vX.Y.Z` tag, which is what `release.yml`
+# triggers on to publish to PyPI.
+#
+# The PR is the review step. A misconfigured version bump or a wrong changelog
+# shows up as a diff to approve, not as a bad release — nothing reaches PyPI
+# until that PR is merged and `release.yml`'s `pypi` environment gate is
+# passed. That matters more here than usual: PyPI never lets a version be
+# re-uploaded, only yanked.
+#
+# This workflow deliberately does NOT publish and holds no registry
+# credentials. `release.yml` does that over OIDC, and keeping a third-party
+# action out of the job that holds the publish identity is the point of the
+# split.
+
+on:
+  push:
+    branches: [main]
+  # Lets a maintainer force a refresh of the Release PR without a new commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release PR at a time; a second push supersedes the first rather than
+# racing it.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Maintain the release PR
+    runs-on: ubuntu-26.04
+    permissions:
+      # Create the tag + GitHub Release on merge, and open/update the PR.
+      contents: write
+      pull-requests: write
+    steps:
+      # The token matters. Events raised with the default GITHUB_TOKEN do not
+      # start workflow runs (GitHub's recursion guard), so a v* tag pushed
+      # under it would never reach release.yml and nothing would ever publish.
+      # brain-db hit exactly this on v0.1.0: the tag and GitHub Release were
+      # created and no image was ever built, and force-pushing the same tag by
+      # hand fired the workflow immediately. A PAT makes the tag push an
+      # ordinary user event, which does trigger release.yml.
+      # Falls back to GITHUB_TOKEN so the Release PR is still managed if the
+      # secret is absent — but then the tag will NOT publish and release.yml
+      # must be run by hand via its workflow_dispatch hatch.
+      - uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

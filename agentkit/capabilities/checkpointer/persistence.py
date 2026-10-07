@@ -125,9 +125,10 @@ def dict_to_prefix(d: dict[str, Any]) -> PrefixContext:
     (system prompt inline as the first ``messages`` entry) still resumed.
     That second shape has no writer: ``ReActCognition._save`` is the only
     thing in the tree that produces a ``{"messages": ...}`` state and it has
-    always emitted ``prefix`` since the split, which landed unreleased — the
-    only tagged version is 0.1.0 and it predates ``PrefixContext``
-    entirely. A decoder branch that no writer can reach is not tolerance,
+    always emitted ``prefix`` since the split, which landed before the first
+    release — 0.1.0 is the first published version and already contains
+    ``PrefixContext``, so no release ever wrote the older shape.
+    A decoder branch that no writer can reach is not tolerance,
     it is a silent default: a state that lost its ``prefix`` on the wire
     would have rehydrated with an EMPTY system prompt and re-run the agent
     with no instructions. Requiring the key turns that into a ``KeyError``

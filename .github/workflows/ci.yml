@@ -10,6 +10,13 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. Nothing here writes to the repo: the jobs lint,
+# typecheck, test and upload an artifact, and artifact upload needs no
+# `contents` write. Declaring it explicitly also stops a future workflow-level
+# default (or an org-wide permissive default) from silently widening these.
+permissions:
+  contents: read
+
 # Action majors are bumped together and deliberately: GitHub forced every
 # Node-20 action onto Node 24, which surfaced as a deprecation annotation on
 # every run. Our usage of each is limited to long-stable inputs
@@ -31,7 +38,7 @@ concurrency:
 jobs:
   check:
     name: check (py${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -84,7 +91,7 @@ jobs:
 
   mutants:
     name: mutation testing
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7

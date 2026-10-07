@@ -5,12 +5,17 @@ All notable changes to `arc-agentkit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] — 2026-10-08
 
-Four batches of work in this cycle: five gaps reported from production use, a
+Initial public release. Distributed on PyPI as `arc-agentkit`; imported as
+`agentkit`.
+
+The sections below are the development record that led to it, newest first.
+The final cycle was four batches: five gaps reported from production use, a
 follow-up sweep for other major issues, a thirteen-item programme closing the
 seams a CLI-driven application needs, and a second CLI-delegating cognition for
-OpenAI's `codex` — which also surfaced a bug in the first one.
+OpenAI's `codex` — which also surfaced a bug in the first one. Everything from
+"the framework itself" down is the original body of work, dated 2026-08-04.
 
 Everything is additive except three behaviour changes, each called out at its
 own entry: the concurrency-bound change below, a tool's model-facing
@@ -1367,12 +1372,7 @@ passes untouched.
   is O(n²) in response length. Left as-is deliberately; sample partials if it
   shows up in a profile.
 
-## [0.1.0] — 2026-08-04
-
-Initial public release. Distributed on PyPI as `arc-agentkit`; imported as
-`agentkit`.
-
-### Added
+### Added — the framework itself
 - Complete framework: `kernel/` (opinion-free value types, ports, middleware
   contract, resilience, concurrency, observation), `runtime/` (`RunContext`,
   `Invoker`, `Budget`, `Quota`, `EventBus`, `NullCtx`), `middlewares/` (the
