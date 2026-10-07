@@ -1130,11 +1130,19 @@ async def test_a_line_larger_than_the_default_buffer_survives(kind: str) -> None
     spawn asks for; a double would happily hand over a line of any length and
     prove nothing."""
     big = "x" * 200_000
+    # The 200 KB is assembled IN THE CHILD, from a repeat count, rather than
+    # baked into its ``-c`` program text. Linux caps a SINGLE argv argument at
+    # 128 KiB (``MAX_ARG_STRLEN``), so an inlined line this size fails the
+    # *spawn* with ``OSError: [Errno 7] Argument list too long`` — the run comes
+    # back ``spawn_failed`` and the reader under test is never reached. macOS
+    # has no per-argument cap, which is why that passed on a laptop and failed
+    # on CI. The marker keeps the payload shape in one place for both kinds.
+    MARK = "@BIG@"
     payload = (
-        {"type": "assistant", "message": {"content": [{"type": "text", "text": big}]}}
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": MARK}]}}
         if kind == "claude"
         else {"type": "item.completed",
-              "item": {"id": "i", "type": "agent_message", "text": big}}
+              "item": {"id": "i", "type": "agent_message", "text": MARK}}
     )
     tail = (
         {"type": "result", "subtype": "success", "is_error": False,
@@ -1144,7 +1152,9 @@ async def test_a_line_larger_than_the_default_buffer_survives(kind: str) -> None
     )
     prog = (
         "import sys\n"
-        f"sys.stdout.write({json.dumps(json.dumps(payload))} + chr(10))\n"
+        f"line = {json.dumps(json.dumps(payload))}.replace("
+        f"{json.dumps(MARK)}, 'x' * {len(big)})\n"
+        "sys.stdout.write(line + chr(10))\n"
         f"sys.stdout.write({json.dumps(json.dumps(tail))} + chr(10))\n"
     )
 
@@ -1177,15 +1187,20 @@ async def test_a_line_past_even_the_raised_limit_says_what_went_wrong(kind: str)
     operator hunting a corrupt payload when nothing was corrupt, and a message
     naming no limit, no payload and no fix. It reads like a bug in agentkit's
     parser rather than a buffer sized for a different protocol."""
+    # Built in the child rather than inlined, for the same reason as the test
+    # above: 200 KB in a single argv argument is past Linux's MAX_ARG_STRLEN and
+    # would fail the spawn instead of the read.
+    MARK = "@BIG@"
     payload = json.dumps(
-        {"type": "assistant", "message": {"content": [{"type": "text", "text": "y" * 200_000}]}}
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": MARK}]}}
         if kind == "claude"
         else {"type": "item.completed",
-              "item": {"id": "i", "type": "agent_message", "text": "y" * 200_000}}
+              "item": {"id": "i", "type": "agent_message", "text": MARK}}
     )
     prog = (
         "import sys\n"
-        f"sys.stdout.write({json.dumps(payload)} + chr(10))\n"
+        f"line = {json.dumps(payload)}.replace({json.dumps(MARK)}, 'y' * 200000)\n"
+        "sys.stdout.write(line + chr(10))\n"
     )
 
     async def spawn(*_a: Any, **_kw: Any) -> Any:
