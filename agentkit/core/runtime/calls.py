@@ -428,12 +428,21 @@ class CallRuntime:
                     attempts += 1
                     last_event, saw_event = time.monotonic(), False
                     turn_limits = limits
+                    if limits.max_cost_usd is not None:
+                        if total_cost is None:
+                            outcome = Outcome.LIMIT_REACHED
+                            break
+                        remaining_cost = limits.max_cost_usd - total_cost
+                        if remaining_cost <= 0:
+                            outcome = Outcome.LIMIT_REACHED
+                            break
+                        turn_limits = replace(turn_limits, max_cost_usd=remaining_cost)
                     if limits.max_output_tokens is not None:
                         remaining = limits.max_output_tokens - usage.output
                         if remaining <= 0:
                             outcome = Outcome.LIMIT_REACHED
                             break
-                        turn_limits = replace(limits, max_output_tokens=remaining)
+                        turn_limits = replace(turn_limits, max_output_tokens=remaining)
                     turn_settings = effective.settings
                     if turn_limits.max_output_tokens is not None:
                         cap = min(
@@ -444,6 +453,7 @@ class CallRuntime:
                         # usage is independently checked as soon as it arrives.
                         if binding.mode.is_api:
                             turn_settings = replace(turn_settings, max_output_tokens=cap)
+                    attempt_session = current_session
                     model_in_flight = True
                     await emit(EventKind.ATTEMPT_STARTED, attempt=attempts, mode=binding.mode, model=binding.model)
 
@@ -478,50 +488,53 @@ class CallRuntime:
                                 native_agents=agents_arg,
                                 workspace=workspace_arg,
                             )
-                        if self.acquire is not None:
-                            async with self.acquire(binding.mode):
-                                return cast(Turn, await cast(Any, adapter).turn(
-                                    binding,
-                                    prompt_arg,
-                                    settings=settings_arg,
-                                    limits=limits_arg,
-                                    schema=schema,
-                                    tools=tools,
-                                    session=session_arg,
-                                    cancel=cancel,
-                                    emit=mode_event,
-                                    call_id=call_id,
-                                    native_agents=agents_arg,
-                                    workspace=workspace_arg,
-                                    stable_prefix=stable_prefix_arg,
-                                    fork=fork_arg,
-                                ))
                         semaphore = self._cli_semaphores.setdefault(
                             binding.mode, asyncio.Semaphore(self.max_concurrent_cli)
                         )
                         async with semaphore:
-                            return cast(Turn, await cast(Any, adapter).turn(
-                                binding,
-                                prompt_arg,
-                                settings=settings_arg,
-                                limits=limits_arg,
-                                schema=schema,
-                                tools=tools,
-                                session=session_arg,
-                                cancel=cancel,
-                                emit=mode_event,
-                                call_id=call_id,
-                                native_agents=agents_arg,
-                                workspace=workspace_arg,
-                                stable_prefix=stable_prefix_arg,
-                                fork=fork_arg,
-                            ))
+                            if self.acquire is None:
+                                return cast(
+                                    Turn,
+                                    await cast(Any, adapter).turn(
+                                        binding,
+                                        prompt_arg,
+                                        settings=settings_arg,
+                                        limits=limits_arg,
+                                        schema=schema,
+                                        tools=tools,
+                                        session=session_arg,
+                                        cancel=cancel,
+                                        emit=mode_event,
+                                        call_id=call_id,
+                                        native_agents=agents_arg,
+                                        workspace=workspace_arg,
+                                        stable_prefix=stable_prefix_arg,
+                                        fork=fork_arg,
+                                    ),
+                                )
+                            async with self.acquire(binding.mode):
+                                return cast(
+                                    Turn,
+                                    await cast(Any, adapter).turn(
+                                        binding,
+                                        prompt_arg,
+                                        settings=settings_arg,
+                                        limits=limits_arg,
+                                        schema=schema,
+                                        tools=tools,
+                                        session=session_arg,
+                                        cancel=cancel,
+                                        emit=mode_event,
+                                        call_id=call_id,
+                                        native_agents=agents_arg,
+                                        workspace=workspace_arg,
+                                        stable_prefix=stable_prefix_arg,
+                                        fork=fork_arg,
+                                    ),
+                                )
 
-                    turn = await monitored(
-                        invoke_adapter()
-                    )
+                    turn = await monitored(invoke_adapter())
                     model_in_flight = False
-                    turns += 1
                     normalized = normalize_usage(binding.mode, turn.raw_usage)
                     if turn.usage_cumulative and current_session:
                         normalized = usage_delta(normalized, normalize_usage(binding.mode, current_session.raw_usage))
@@ -540,7 +553,7 @@ class CallRuntime:
                         if turn.reported_cost_cumulative and previous is not None and reported >= previous:
                             reported -= previous
                         amount, source = reported, CostSource.REPORTED
-                    incomplete_accounting = not turn.usage_complete or (
+                    incomplete_accounting = (not turn.usage_complete and turn.reported_cost is None) or (
                         not turn.raw_usage and turn.reported_cost is None
                     )
                     if incomplete_accounting:
@@ -623,6 +636,16 @@ class CallRuntime:
                         if failure.classification == FailureClass.TIMEOUT and not failure.retryable:
                             outcome = Outcome.LIMIT_REACHED
                             break
+                        if limits.max_cost_usd is not None and total_cost is None:
+                            outcome = Outcome.LIMIT_REACHED
+                            break
+                        if (
+                            limits.max_cost_usd is not None
+                            and total_cost is not None
+                            and total_cost >= limits.max_cost_usd
+                        ):
+                            outcome = Outcome.LIMIT_REACHED
+                            break
                         retry_allowed = (
                             failure.retryable
                             and retry_streak < self.retry.max_attempts
@@ -631,9 +654,7 @@ class CallRuntime:
                         if retry_allowed and failure.classification == FailureClass.AUTH:
                             prepare = getattr(adapter, "prepare_retry", None)
                             retry_allowed = bool(
-                                prepare
-                                and retry_streak == 1
-                                and await prepare(binding, failure, call_id=call_id)
+                                prepare and retry_streak == 1 and await prepare(binding, failure, call_id=call_id)
                             )
                         if not retry_allowed:
                             break
@@ -667,9 +688,25 @@ class CallRuntime:
                             )
                             break
                         if not binding.mode.is_api:
-                            # A transport retry is a fresh process and home.
-                            current_session = None
+                            # Retry the same provider conversation after a
+                            # failed process. The failed attempt may have
+                            # emitted a different/empty handle; only a
+                            # successful turn advances the resumable session.
+                            # Keep cumulative accounting baselines from the
+                            # failed attempt so resumed usage/cost is charged
+                            # exactly once.
+                            failed_session = current_session
+                            current_session = (
+                                replace(
+                                    attempt_session,
+                                    raw_usage=failed_session.raw_usage,
+                                    reported_cost=failed_session.reported_cost,
+                                )
+                                if attempt_session is not None and failed_session is not None
+                                else attempt_session
+                            )
                         continue
+                    turns += 1
                     failure = None
                     retry_streak = 0
                     if turn.limit_reached:
@@ -681,15 +718,17 @@ class CallRuntime:
                     if turn.truncated:
                         outcome = Outcome.TRUNCATED
                         break
-                    if (
-                        amount is None
-                        and not incomplete_accounting
-                        and self.unpriced_policy == UnpricedPolicy.REFUSE
-                    ):
-                        failure = Failure(
-                            FailureClass.INVALID_REQUEST, mode_detail={"reason": "usage contains unpriced token kinds"}
+                    if amount is None and not incomplete_accounting:
+                        await emit(
+                            EventKind.DEGRADED,
+                            setting="accounting",
+                            requested="fully priced usage",
+                            applied="answer preserved with unknown total cost",
+                            reason="provider reported a token category with no configured price",
                         )
-                        break
+                        if limits.max_cost_usd is not None and turn.tool_calls:
+                            outcome = Outcome.LIMIT_REACHED
+                            break
                     if (
                         limits.max_cost_usd is not None and (total_cost is None or total_cost >= limits.max_cost_usd)
                     ) or (limits.max_output_tokens is not None and usage.output > limits.max_output_tokens):
@@ -730,8 +769,8 @@ class CallRuntime:
                             preview_fields = {}
                             if self.result_masker is not None:
                                 preview = self.result_masker(call["name"], result.text)
-                                preview_fields["result_preview"] = (
-                                    preview.encode("utf-8")[:512].decode("utf-8", errors="ignore")
+                                preview_fields["result_preview"] = preview.encode("utf-8")[:512].decode(
+                                    "utf-8", errors="ignore"
                                 )
                             await emit(
                                 EventKind.TOOL_RESULT,
@@ -793,11 +832,7 @@ class CallRuntime:
                             value = validate_output(raw_value, output.schema)
                             if schema_adapter:
                                 value = schema_adapter.validate(value)
-                            validator_errors = [
-                                error
-                                for validator in output.validators
-                                for error in validator(value)
-                            ]
+                            validator_errors = [error for validator in output.validators for error in validator(value)]
                             if validator_errors:
                                 raise ValueError("; ".join(str(error) for error in validator_errors)[:2000])
                         except Exception as exc:
@@ -898,18 +933,15 @@ class CallRuntime:
         return answer
 
 
-def _mask_tool_arguments(name: str, arguments: Any, *, max_string_bytes: int = 4096) -> Any:
-    """Bound long strings in audited arguments while preserving their shape and digest."""
+def _mask_tool_arguments(name: str, arguments: Any) -> Any:
+    """Replace every string leaf before tool arguments enter the event journal."""
     if isinstance(arguments, str):
         raw = arguments.encode("utf-8")
-        return {"length": len(raw), "sha256": digest(arguments)} if len(raw) > max_string_bytes else arguments
+        return {"length": len(raw), "sha256": digest(arguments)}
     if isinstance(arguments, Mapping):
-        return {
-            str(key): _mask_tool_arguments(str(key), value, max_string_bytes=max_string_bytes)
-            for key, value in arguments.items()
-        }
+        return {str(key): _mask_tool_arguments(str(key), value) for key, value in arguments.items()}
     if isinstance(arguments, (tuple, list)):
-        return tuple(_mask_tool_arguments(name, item, max_string_bytes=max_string_bytes) for item in arguments)
+        return tuple(_mask_tool_arguments(name, item) for item in arguments)
     return arguments
 
 

@@ -120,9 +120,8 @@ async def test_agent_output_contract_survives_verifier_continuation():
     }
     adapter = ScriptedAdapter(
         Turn(("first submission",), value={"status": "review"}, raw_usage={"input_tokens": 1, "output_tokens": 1}),
-        Turn(
-            ("recovered submission",), value={"status": "accepted"}, raw_usage={"input_tokens": 1, "output_tokens": 1}
-        ),
+        Turn(("second submission",), value={"status": "review"}, raw_usage={"input_tokens": 1, "output_tokens": 1}),
+        Turn(("accepted submission",), value={"status": "accepted"}, raw_usage={"input_tokens": 1, "output_tokens": 1}),
     )
     context = WorkingContext()
     submissions = []
@@ -145,6 +144,6 @@ async def test_agent_output_contract_survives_verifier_continuation():
             call_id="typed-review",
         )
     assert answer.outcome == Outcome.ANSWERED and answer.value == {"status": "accepted"}
-    assert submissions == [{"status": "review"}, {"status": "accepted"}]
-    assert len(adapter.requests) == 2
+    assert submissions == [{"status": "review"}, {"status": "review"}, {"status": "accepted"}]
+    assert len(adapter.requests) == 3
     assert all(request[2]["schema"] == schema for request in adapter.requests)

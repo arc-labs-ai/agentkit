@@ -50,6 +50,7 @@ from agentkit.models.providers.cli._common import (
     _CliDeadline,
     _drain_stderr,
     _iter_stdout,
+    _system_argv_text_limit,
     _terminate,
     _validate_json_schema,
 )
@@ -59,6 +60,11 @@ from agentkit.state.context import WorkingContext
 from tests.source.unit.models.providers.cli.codex.test_codex_cli import CancellingCtx
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+
+
+def test_cli_argv_payload_limit_is_derived_from_system_arg_max(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "sysconf", lambda name: 256 * 1024)
+    assert _system_argv_text_limit() == 8 * 1024
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -105,10 +111,7 @@ async def _pid_alive(pid: int) -> bool:
 
 async def _drive(cog: Any, task: str = "the task") -> Any:
     agent = Agent(name="local", cognition=cog)
-    events = [
-        ev
-        async for ev in cog.drive(agent, task, FakeCtx(), WorkingContext())
-    ]
+    events = [ev async for ev in cog.drive(agent, task, FakeCtx(), WorkingContext())]
     return events[-1].result
 
 
@@ -640,9 +643,7 @@ async def test_a_cli_that_boots_but_never_answers_is_a_first_event_timeout(kind:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["claude", "codex"])
 async def test_a_run_that_is_merely_too_long_is_a_total_timeout(kind: str) -> None:
-    first, text = (
-        (_CLAUDE_INIT, _CLAUDE_TEXT) if kind == "claude" else (_CODEX_START, _CODEX_TEXT)
-    )
+    first, text = (_CLAUDE_INIT, _CLAUDE_TEXT) if kind == "claude" else (_CODEX_START, _CODEX_TEXT)
     spawn = _stalling_spawn([(0.0, first), (0.0, text), (0.0, text)])
     cog = _cog_for(kind, spawn, CliTimeouts(startup=5.0, total=0.05))
     result = await _drive(cog)
@@ -684,9 +685,7 @@ async def test_an_ordinary_warning_on_stderr_is_not_an_auth_failure(kind: str) -
     relabel every unrelated startup hang as a credential problem — the exact
     false diagnosis the refinement exists to prevent.
     """
-    spawn = _stalling_spawn(
-        [], stderr=b"warning: ANTHROPIC_API_KEY or another auth source takes precedence"
-    )
+    spawn = _stalling_spawn([], stderr=b"warning: ANTHROPIC_API_KEY or another auth source takes precedence")
     cog = _cog_for(kind, spawn, CliTimeouts(startup=0.05))
     result = await _drive(cog)
     assert result.evals["stop_reason"] == "startup_timeout"
@@ -832,9 +831,7 @@ async def test_a_silent_cli_is_still_cancellable(kind: str, session: bool) -> No
     first = _CLAUDE_INIT if kind == "claude" else _CODEX_START
     spawn = _stalling_spawn([(0.0, first)])
     cog = _cog_for(kind, spawn, CliTimeouts.off())
-    result, elapsed = await _cancel_after_first_line(
-        cog, session=session, ctx=CancellingCtx(after=10_000)
-    )
+    result, elapsed = await _cancel_after_first_line(cog, session=session, ctx=CancellingCtx(after=10_000))
 
     assert result.evals["stop_reason"] == "cancelled"
     assert result.stop_reason == "terminated", "somebody chose this; nothing failed"
@@ -875,9 +872,7 @@ async def test_the_poll_never_delays_a_bound(kind: str) -> None:
     elapsed = time.monotonic() - started
 
     assert result.evals["stop_reason"] == "startup_timeout"
-    assert elapsed < _CANCEL_POLL_S, (
-        f"a 0.05s bound took {elapsed:.2f}s — the poll cadence delayed it"
-    )
+    assert elapsed < _CANCEL_POLL_S, f"a 0.05s bound took {elapsed:.2f}s — the poll cadence delayed it"
 
 
 @pytest.mark.asyncio
@@ -919,7 +914,7 @@ async def test_ticks_arrive_while_the_stream_is_silent() -> None:
 
     assert seen[0] == _CLAUDE_INIT
     assert seen[1:] and all(x is None for x in seen[1:]), seen
-    assert len(seen) >= 4, f"expected repeated ticks at 0.05s, got {len(seen)-1}"
+    assert len(seen) >= 4, f"expected repeated ticks at 0.05s, got {len(seen) - 1}"
 
 
 @pytest.mark.asyncio
@@ -941,9 +936,7 @@ async def test_a_cancelled_read_does_not_lose_buffered_lines() -> None:
         "        sys.stdout.flush(); time.sleep(0.004)\n"
         "sys.stdout.flush()\n"
     )
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", producer, stdout=asyncio.subprocess.PIPE
-    )
+    proc = await asyncio.create_subprocess_exec(sys.executable, "-c", producer, stdout=asyncio.subprocess.PIPE)
     assert proc.stdout is not None
     deadline = _CliDeadline(CliTimeouts.off())
     got, ticks = [], 0
@@ -956,9 +949,7 @@ async def test_a_cancelled_read_does_not_lose_buffered_lines() -> None:
     await proc.wait()
 
     assert ticks > 0, "no read was actually cancelled — the test proved nothing"
-    assert got == [f"line-{i}" for i in range(2000)], (
-        f"{2000 - len(got)} lines lost across {ticks} cancelled reads"
-    )
+    assert got == [f"line-{i}" for i in range(2000)], f"{2000 - len(got)} lines lost across {ticks} cancelled reads"
 
 
 # ── metering: one implementation, and a test that says so ───────────────────
@@ -990,9 +981,15 @@ def _spend(kind: str, cost: float) -> Any:
                 [
                     {"type": "system", "subtype": "init", "session_id": "s"},
                     {"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}},
-                    {"type": "result", "subtype": "success", "is_error": False,
-                     "session_id": "s", "duration_ms": 5, "total_cost_usd": cost,
-                     "usage": {"input_tokens": 1000, "output_tokens": 500}},
+                    {
+                        "type": "result",
+                        "subtype": "success",
+                        "is_error": False,
+                        "session_id": "s",
+                        "duration_ms": 5,
+                        "total_cost_usd": cost,
+                        "usage": {"input_tokens": 1000, "output_tokens": 500},
+                    },
                 ]
             )
         )
@@ -1143,12 +1140,10 @@ async def test_a_line_larger_than_the_default_buffer_survives(kind: str) -> None
     payload = (
         {"type": "assistant", "message": {"content": [{"type": "text", "text": MARK}]}}
         if kind == "claude"
-        else {"type": "item.completed",
-              "item": {"id": "i", "type": "agent_message", "text": MARK}}
+        else {"type": "item.completed", "item": {"id": "i", "type": "agent_message", "text": MARK}}
     )
     tail = (
-        {"type": "result", "subtype": "success", "is_error": False,
-         "session_id": "s", "duration_ms": 1, "usage": {}}
+        {"type": "result", "subtype": "success", "is_error": False, "session_id": "s", "duration_ms": 1, "usage": {}}
         if kind == "claude"
         else {"type": "turn.completed", "usage": {}}
     )
@@ -1162,7 +1157,9 @@ async def test_a_line_larger_than_the_default_buffer_survives(kind: str) -> None
 
     async def spawn(*_a: Any, **kw: Any) -> Any:
         return await asyncio.create_subprocess_exec(
-            sys.executable, "-c", prog,
+            sys.executable,
+            "-c",
+            prog,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1196,8 +1193,7 @@ async def test_a_line_past_even_the_raised_limit_says_what_went_wrong(kind: str)
     payload = json.dumps(
         {"type": "assistant", "message": {"content": [{"type": "text", "text": MARK}]}}
         if kind == "claude"
-        else {"type": "item.completed",
-              "item": {"id": "i", "type": "agent_message", "text": MARK}}
+        else {"type": "item.completed", "item": {"id": "i", "type": "agent_message", "text": MARK}}
     )
     prog = (
         "import sys\n"
@@ -1209,7 +1205,9 @@ async def test_a_line_past_even_the_raised_limit_says_what_went_wrong(kind: str)
         # A 64 KiB reader against a 200 KB line: the same overrun the default
         # buffer used to hit, without needing an 8 MB fixture to provoke it.
         return await asyncio.create_subprocess_exec(
-            sys.executable, "-c", prog,
+            sys.executable,
+            "-c",
+            prog,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1426,13 +1424,13 @@ async def test_the_legacy_string_is_still_there(kind: str) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["claude", "codex"])
 async def test_no_raw_traceback_reaches_the_caller(kind: str) -> None:
-    """"Never show raw Pydantic tracebacks to application users." The message
+    """ "Never show raw Pydantic tracebacks to application users." The message
     is the adapter's own per-field diagnostics, not a stack."""
     result = await _typed_run(kind, {"vendor": 5})
     text = result.evals["structured_output_error"]
     assert "Traceback" not in text
     assert "pydantic_core" not in text
-    assert "File \"" not in text
+    assert 'File "' not in text
 
 
 @pytest.mark.asyncio
@@ -1529,8 +1527,10 @@ def test_a_message_containing_a_colon_keeps_its_whole_message() -> None:
 # and it is the same fix applied to a payload that IS the secret.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SECRET_MCP = '{"mcpServers":{"s":{"type":"http","url":"https://x/mcp",' \
-              '"headers":{"Authorization":"Bearer sk-SUPERSECRETVALUE123"}}}}'
+_SECRET_MCP = (
+    '{"mcpServers":{"s":{"type":"http","url":"https://x/mcp",'
+    '"headers":{"Authorization":"Bearer sk-SUPERSECRETVALUE123"}}}}'
+)
 
 
 @pytest.mark.asyncio

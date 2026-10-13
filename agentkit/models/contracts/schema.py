@@ -39,7 +39,7 @@ class OutputSpec:
 
 
 def tolerant_json_object(text: str) -> Any:
-    """Extract one unambiguous JSON object from a last-message response."""
+    """Extract the final complete top-level JSON object from a response."""
     candidate = text.strip()
     fence = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", candidate, flags=re.IGNORECASE)
     if fence:
@@ -100,9 +100,9 @@ def tolerant_json_object(text: str) -> Any:
                 depth -= 1
                 if depth == 0:
                     spans.append((starts.pop(), index + 1))
-    if len(spans) != 1:
-        raise ValueError("response does not contain one unambiguous JSON object")
-    start, end = spans[0]
+    if not spans:
+        raise ValueError("response does not contain a complete JSON object")
+    start, end = spans[-1]
     return json.loads(candidate[start:end])
 
 

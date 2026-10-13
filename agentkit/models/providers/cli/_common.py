@@ -930,13 +930,25 @@ _STDERR_DRAIN_S = 2.0
 #            design against: a payload that spawns happily on a Mac can be
 #            rejected outright on the CI runner.
 #
-# 32 KiB leaves 4x headroom under the per-argument cap, and leaves the shared
-# pot free for the payloads that have NO file transport to escape to —
+# The derived threshold reserves most of the shared pot for payloads that have
+# NO file transport to escape to —
 # ``--agents`` and ``--json-schema``, which the CLI will only accept inline.
 #
 # BYTES, not characters: ``len(text)`` on a str with any non-ASCII in it
 # understates what execve actually copies, by up to 4x.
-_ARGV_TEXT_LIMIT = 32 * 1024
+def _system_argv_text_limit() -> int:
+    """Reserve most of execve's shared argv/env budget for runtime overhead."""
+    try:
+        arg_max = int(os.sysconf("SC_ARG_MAX"))
+    except (AttributeError, OSError, ValueError):
+        arg_max = 128 * 1024
+    # Keep a thirty-second of the system limit for one payload. This remains
+    # conservative on both Darwin's shared ARG_MAX and Linux's single-argument
+    # ceiling, while adapting to the host's actual exec budget.
+    return max(4096, arg_max // 32)
+
+
+_ARGV_TEXT_LIMIT = _system_argv_text_limit()
 
 
 def _too_big_for_argv(text: str) -> bool:

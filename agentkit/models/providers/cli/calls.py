@@ -27,6 +27,7 @@ from agentkit.models.providers.auth import AuthKind, anthropic_credential
 
 _MCP_TIMEOUT_MARGIN_S = 5.0
 _CLAUDE_SCHEMA_PROMPT_MAX_BYTES = 256 * 1024
+_CLI_ENV_ALLOWLIST = frozenset({"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR", "TMPDIR", "TMP", "TEMP"})
 
 
 class CliAdapter:
@@ -48,12 +49,11 @@ class CliAdapter:
         self.working_dir = working_dir
         self.executable = {Mode(key): value for key, value in (executable or {}).items()}
         self.env = dict(env or {})
-        sensitive_terms = ("_API_KEY", "TOKEN", "SECRET", "CREDENTIAL", "PASSWORD", "AUTH")
-        forbidden_env = {key for key in self.env if any(term in key.upper() for term in sensitive_terms)}
-        if forbidden_env:
-            raise ValueError("CLI credentials must be supplied through CredentialRef, not adapter env")
         if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.env.items()):
             raise TypeError("CLI adapter env must map strings to strings")
+        forbidden_env = set(self.env) - _CLI_ENV_ALLOWLIST
+        if forbidden_env:
+            raise ValueError("CLI adapter env contains unsupported variables; use CredentialRef for credentials")
         self.home_parent = home_parent
         self.request_hook = request_hook
         self._homes: Any = None
@@ -121,8 +121,10 @@ class CliAdapter:
                     mode_detail={"reason": "native subagents are supported only by Claude Code"},
                 )
             )
-        if workspace is not None and binding.mode == Mode.CODEX and (
-            workspace.native_tools or workspace.hooks or workspace.permission_mode
+        if (
+            workspace is not None
+            and binding.mode == Mode.CODEX
+            and (workspace.native_tools or workspace.hooks or workspace.permission_mode)
         ):
             return Turn(
                 failure=Failure(
@@ -143,9 +145,7 @@ class CliAdapter:
             )
         if stable_prefix and binding.mode != Mode.CLAUDE_CODE:
             return Turn(
-                failure=Failure(
-                    FailureClass.INVALID_REQUEST, mode_detail={"reason": "unsupported stable prefix mode"}
-                )
+                failure=Failure(FailureClass.INVALID_REQUEST, mode_detail={"reason": "unsupported stable prefix mode"})
             )
         if fork and (session is None or not session.cli_session_id):
             return Turn(
@@ -237,6 +237,16 @@ class CliAdapter:
         if binding.mode == Mode.CLAUDE_CODE:
             auth = anthropic_credential(credentials)
             credentials = auth.cli_env() if auth else credentials
+            credential_env_allowlist = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
+        else:
+            credential_env_allowlist = {"OPENAI_API_KEY", "CODEX_API_KEY"}
+        if set(credentials) - credential_env_allowlist:
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "credential contains environment variables unsupported for this CLI mode"},
+                )
+            )
         assert home is not None
         image_paths = (
             await asyncio.to_thread(IsolatedHome.materialize_images, home, prompt.images)
@@ -262,8 +272,10 @@ class CliAdapter:
                 if not isinstance(updated, Mapping) or set(updated) - {"argv"}:
                     raise ValueError("CLI request_hook may only return a replacement argv")
                 new_argv = updated.get("argv", argv)
-                if not isinstance(new_argv, (tuple, list)) or not new_argv or not all(
-                    isinstance(arg, str) for arg in new_argv
+                if (
+                    not isinstance(new_argv, (tuple, list))
+                    or not new_argv
+                    or not all(isinstance(arg, str) for arg in new_argv)
                 ):
                     raise ValueError("CLI request_hook returned an invalid argv")
                 if new_argv[0] != argv[0]:
@@ -355,8 +367,7 @@ class CliAdapter:
                             "After completing any necessary tool work, return exactly one JSON value "
                             "that conforms to it, with no Markdown or surrounding prose. The host "
                             "will validate the result and may ask for a correction.\n\n"
-                            "JSON Schema:\n"
-                            + schema_json
+                            "JSON Schema:\n" + schema_json
                         )
                         prompt = replace(
                             prompt,
@@ -377,6 +388,8 @@ class CliAdapter:
                 wiring = (
                     spec.cli_kwargs(builtin_tools=False) if spec else {"tools": ("",), "disallowed_tools": ("mcp__*",)}
                 )
+                wiring.setdefault("mcp_config", ("{}",))
+                wiring["strict_mcp_config"] = True
                 if workspace and workspace.native_tools:
                     wiring["tools"] = workspace.native_tools
                 cognition = ClaudeCliCognition(
@@ -386,7 +399,8 @@ class CliAdapter:
                     bare=not bool(
                         credential.home
                         or (workspace and workspace.hooks)
-                        or auth is not None and auth.kind == AuthKind.BEARER
+                        or auth is not None
+                        and auth.kind == AuthKind.BEARER
                     ),
                     setting_sources=(),
                     agents=dict(native_agents) if native_agents else None,
@@ -394,9 +408,7 @@ class CliAdapter:
                     permission_mode=(
                         cast(
                             Any,
-                            workspace.permission_mode.value
-                            if workspace and workspace.permission_mode
-                            else "default",
+                            workspace.permission_mode.value if workspace and workspace.permission_mode else "default",
                         )
                     ),
                     settings=(json.dumps({"hooks": dict(workspace.hooks)}) if workspace and workspace.hooks else None),
@@ -411,14 +423,16 @@ class CliAdapter:
             else:
                 overrides = {}
                 if self.native_tool_policy == NativeToolPolicy.WARN:
-                    overrides.update({
-                        "features.shell_tool": False,
-                        "features.unified_exec": False,
-                        "features.apps": False,
-                        "features.plugins": False,
-                        "features.skill_mcp_dependency_install": False,
-                        "web_search": "disabled",
-                    })
+                    overrides.update(
+                        {
+                            "features.shell_tool": False,
+                            "features.unified_exec": False,
+                            "features.apps": False,
+                            "features.plugins": False,
+                            "features.skill_mcp_dependency_install": False,
+                            "web_search": "disabled",
+                        }
+                    )
                 if settings.verbosity:
                     overrides["model_verbosity"] = settings.verbosity
                 if settings.reasoning_summary:
@@ -519,19 +533,19 @@ class CliAdapter:
 
                 assert failure is not None
                 detail = {
-                        **dict(failure.mode_detail),
-                        "stop_reason": reason,
-                        "return_code": result.evals.get("cli_return_code"),
-                        "diagnostic": _redact_secrets(
-                            str(
-                                result.evals.get("stderr")
-                                or result.output
-                                or result.evals.get("cli_errors")
-                                or result.evals.get("error")
-                                or ""
-                            )
-                        )[:1000],
-                    }
+                    **dict(failure.mode_detail),
+                    "stop_reason": reason,
+                    "return_code": result.evals.get("cli_return_code"),
+                    "diagnostic": _redact_secrets(
+                        str(
+                            result.evals.get("stderr")
+                            or result.output
+                            or result.evals.get("cli_errors")
+                            or result.evals.get("error")
+                            or ""
+                        )
+                    )[:1000],
+                }
                 if failure.classification == FailureClass.AUTH:
                     self._auth_fingerprints[call_id] = _credential_digest(credential)
                 failure = Failure(
