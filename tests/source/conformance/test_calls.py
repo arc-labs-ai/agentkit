@@ -810,6 +810,73 @@ def test_cli_idle_deadline_pauses_during_a_hosted_tool():
     assert deadline.next_deadline() == ("idle_timeout", 0, 1)
 
 
+def test_cli_idle_deadline_resets_at_tool_completion_even_without_active_poll():
+    from agentkit.models.providers.cli._common import CliTimeouts, _CliDeadline
+
+    now = [0.0]
+    active = [False]
+    ended = [None]
+    deadline = _CliDeadline(
+        CliTimeouts(idle=1, startup=None, activity=lambda: active[0], activity_ended_at=lambda: ended[0]),
+        now=lambda: now[0],
+    )
+    deadline.note_line()
+    active[0] = True
+    now[0] = 1.5
+    ended[0] = now[0]
+    active[0] = False
+    now[0] = 1.7
+    assert deadline.next_deadline() == ("idle_timeout", pytest.approx(0.8), 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["anthropic_api", "openai_api"])
+async def test_api_rate_limit_without_usage_retries_under_cost_cap_and_keeps_cost_known(mode):
+    adapter = ScriptedAdapter(
+        Turn(failure=Failure(FailureClass.RATE_LIMITED, True)),
+        Turn(messages=("done",), raw_usage={"input_tokens": 1, "output_tokens": 1}),
+    )
+    async with CallRuntime(
+        adapters={mode: adapter}, pricing=PRICES, retry=RetryPolicy(base_s=0, cap_s=0)
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding(mode, "test"), "retry", limits=CallLimits(max_cost_usd=Decimal("1"), max_turns=1),
+            call_id=f"api-rate-limit-{mode}",
+        )
+    assert answer.outcome == "answered" and answer.attempts == 2
+    assert answer.cost_usd == Decimal("0.000006")
+    assert answer.cost_source == CostSource.PRICE_TABLE
+
+
+@pytest.mark.asyncio
+async def test_disallowed_credential_home_file_is_refused_before_cli_spawn():
+    spawned = 0
+
+    async def spawn(*args, **kwargs):
+        nonlocal spawned
+        spawned += 1
+        raise AssertionError("disallowed home file must be rejected before spawn")
+
+    binding = Binding("claude_code", "test", CredentialRef(lambda: Credential(home={".mcp.json": b"{}"})))
+    async with CallRuntime(adapters={"claude_code": CliAdapter(spawn=spawn)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(binding, "hello", call_id="disallowed-home-file")
+    assert answer.outcome == "failed"
+    assert spawned == 0
+
+
+@pytest.mark.asyncio
+async def test_adapter_native_deny_cannot_be_widened_by_runtime_warn():
+    cli = FakeClaudeCli.script([])
+    adapter = CliAdapter(spawn=cli, native_tool_policy="deny")
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})), "run bash",
+            workspace=Workspace(native_tools=("Bash",)), call_id="adapter-deny-ceiling",
+        )
+    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.INVALID_REQUEST
+    assert not cli.invocations
+
+
 @pytest.mark.asyncio
 async def test_codex_mcp_tool_timeout_is_derived_from_tool_policy() -> None:
     from agentkit.tools import FunctionTool, ToolRegistry

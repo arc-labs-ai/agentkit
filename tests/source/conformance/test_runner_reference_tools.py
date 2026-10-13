@@ -190,6 +190,7 @@ async def test_persona_screening_refusal_prevents_model_dispatch(tmp_path):
 
 @pytest.mark.asyncio
 async def test_load_skill_and_triggered_activation_each_emit_once(tmp_path):
+    from agentkit.core.events import EventHub
     from agentkit.models.contracts.types import CallEvent
 
     directory = tmp_path / "persona"
@@ -200,20 +201,24 @@ async def test_load_skill_and_triggered_activation_each_emit_once(tmp_path):
     source = FileSkillSource(tmp_path)
     approved = await source.get(SkillRef("filesystem", "persona"))
     adapter = ScriptedAdapter(
-        Turn(tool_calls=({"id": "load", "name": "load_skill", "arguments": {"name": "filesystem:persona"}},),
-             raw_usage={"input_tokens": 1, "output_tokens": 1}),
         Turn(("done",), raw_usage={"input_tokens": 1, "output_tokens": 1}),
         Turn(("done",), raw_usage={"input_tokens": 1, "output_tokens": 1}),
     )
     events = []
+    hub = EventHub()
+
+    async def collect(event):
+        events.append(event)
+
+    hub.subscribe("skill-run", collect, call_id="skill-load")
     async with CallRuntime(adapters={"openai_api": adapter}, pricing=PRICES) as runtime:
         runner = AgentRunner(runtime, sources={"filesystem": source})
         load_definition = AgentDefinition(
-            "loader", "1", "Load the approved resource.", discoverable_skills=(approved.ref,),
+            "loader", "1", "Load the approved resource.", persona=(approved.ref,),
         )
         await runner.run_agent(
             load_definition, InstructionSet("Load it."), {}, binding=Binding("openai_api", "test"),
-            call_id="skill-load", events=events.append,
+            call_id="skill-load", events=hub,
         )
         trigger_definition = AgentDefinition(
             "triggered", "1", "Use the event-selected skill.",
@@ -224,10 +229,14 @@ async def test_load_skill_and_triggered_activation_each_emit_once(tmp_path):
             call_id="skill-trigger", events=events.append,
             triggering_events=(CallEvent("incident_opened", "host-event"),),
         )
+    await hub.aclose()
     loaded = [event for event in events if event.kind.value == "skill_loaded"]
     assert len(loaded) == 2
     assert [event.fields["agent_id"] for event in loaded] == ["loader", "triggered"]
     assert all(event.fields["digest"] == approved.ref.digest for event in loaded)
+    skill_stream = [event for event in events if event.call_id == "skill-load"]
+    assert [event.sequence for event in skill_stream] == list(range(1, len(skill_stream) + 1))
+    assert skill_stream[0].kind.value == "skill_loaded" and skill_stream[1].kind.value == "call_started"
 
 
 @pytest.mark.asyncio

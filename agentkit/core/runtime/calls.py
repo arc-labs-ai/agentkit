@@ -187,12 +187,17 @@ class CallRuntime:
         capture_text_for_call = self.capture_text if capture_text is None else capture_text
         if capture_text_for_call and self.result_masker is None:
             raise ValueError("capture_text requires a host result_masker so narration cannot disclose secrets")
-        effective_native_policy = self.native_tool_policy if native_tool_policy is None else NativeToolPolicy(
+        requested_native_policy = self.native_tool_policy if native_tool_policy is None else NativeToolPolicy(
             native_tool_policy
         )
         policy_rank = {NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}
-        if policy_rank[effective_native_policy] > policy_rank[self.native_tool_policy]:
+        if policy_rank[requested_native_policy] > policy_rank[self.native_tool_policy]:
             raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
+        adapter_policy = getattr(self.adapters.get(binding.mode), "native_tool_policy", requested_native_policy)
+        effective_native_policy = min(
+            (self.native_tool_policy, requested_native_policy, NativeToolPolicy(adapter_policy)),
+            key=policy_rank.__getitem__,
+        )
         scope = scope or Scope()
         if turns_per_slice is not None and turns_per_slice < 1:
             raise ValueError("turns_per_slice must be positive")
@@ -404,13 +409,20 @@ class CallRuntime:
         model_in_flight = False
         started_tools: set[str] = set()
         active_host_tools = 0
+        last_tool_activity_end: float | None = None
 
         def tool_activity(active: bool | None = None) -> bool:
-            nonlocal active_host_tools
+            nonlocal active_host_tools, last_tool_activity_end
             if active is None:
                 return active_host_tools > 0
+            previous = active_host_tools
             active_host_tools = max(0, active_host_tools + (1 if active else -1))
+            if previous > 0 and active_host_tools == 0:
+                last_tool_activity_end = time.monotonic()
             return active_host_tools > 0
+
+        def tool_activity_ended_at() -> float | None:
+            return last_tool_activity_end
         if (
             model_changed
             or context_changed
@@ -639,6 +651,7 @@ class CallRuntime:
                                             {
                                                 "native_tool_policy": effective_native_policy,
                                                 "tool_activity": tool_activity,
+                                                "tool_activity_ended_at": tool_activity_ended_at,
                                                 **(
                                                     {"context_policy": context_policy}
                                                     if context_policy is not None
@@ -673,6 +686,7 @@ class CallRuntime:
                                             {
                                                 "native_tool_policy": effective_native_policy,
                                                 "tool_activity": tool_activity,
+                                                "tool_activity_ended_at": tool_activity_ended_at,
                                                 **(
                                                     {"context_policy": context_policy}
                                                     if context_policy is not None
@@ -712,22 +726,23 @@ class CallRuntime:
                     )
                     if incomplete_accounting:
                         amount, source = None, CostSource.UNPRICED
-                    cli_failure_without_usage_or_cost = (
+                    retry_failure_without_usage_or_cost = (
                         turn.failure is not None
-                        and not binding.mode.is_api
                         and turn.reported_cost is None
                         and not any(bool(value) for value in turn.raw_usage.values())
                         and not any(message.strip() for message in turn.messages)
+                        and not turn.tool_calls
+                        and turn.failure.classification == FailureClass.RATE_LIMITED
                     )
-                    if cli_failure_without_usage_or_cost:
-                        # A pre-output CLI failure has done no billable work.
+                    if retry_failure_without_usage_or_cost:
+                        # A pre-output rate limit has done no billable work.
                         # Keep the monetary ledger known at zero for this
                         # attempt; token completeness remains an independent
                         # fact on Answer.
                         amount, source = Decimal(0), cost_source
                     if amount is None:
                         total_cost, cost_source = None, CostSource.UNPRICED
-                        if limits.max_cost_usd is not None and not cli_failure_without_usage_or_cost:
+                        if limits.max_cost_usd is not None and not retry_failure_without_usage_or_cost:
                             budget_unknown = True
                     elif total_cost is not None:
                         total_cost += amount

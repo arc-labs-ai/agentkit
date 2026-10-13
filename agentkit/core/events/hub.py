@@ -37,7 +37,8 @@ class EventHub:
     Handlers run in publication order, with a timeout and bounded queue. A
     handler can publish a follow-up event: it is queued after the current
     event, preventing recursive calls and lock deadlocks. External publishers
-    await delivery acknowledgement. Failures are surfaced, never dropped.
+    await delivery acknowledgement. Non-isolated failures are surfaced;
+    isolated subscriber failures are logged and contained.
 
     This is not distributed exactly-once delivery. Durable subscribers use
     event IDs for idempotence and a host journal/broker for restart recovery.
@@ -58,6 +59,8 @@ class EventHub:
         self._publication_lock = asyncio.Lock()
         self._sequences: dict[str, int] = {}
         self._explicit_streams: set[str] = set()
+        self._source_sequences: dict[str, int] = {}
+        self._source_offsets: dict[str, int] = {}
         self._in_handler: ContextVar[bool] = ContextVar("agentkit_event_handler", default=False)
 
     def subscribe(
@@ -103,14 +106,19 @@ class EventHub:
                         "use publish_reaction() or a distinct call_id"
                     )
                 event = replace(event, sequence=previous + 1)
-            elif event.sequence <= previous:
-                raise EventDeliveryError("event sequence must increase within a call")
+            else:
+                source_previous = self._source_sequences.get(event.call_id, 0)
+                if event.sequence <= source_previous:
+                    raise EventDeliveryError("event sequence must increase within a call")
+                offset = self._source_offsets.setdefault(event.call_id, previous)
+                event = replace(event, sequence=event.sequence + offset)
             if not event.timestamp:
                 event = replace(event, timestamp=datetime.now(UTC).isoformat())
             if self.journal is not None:
                 await self.journal.append(event)
             if source_sequenced:
                 self._explicit_streams.add(event.call_id)
+                self._source_sequences[event.call_id] = event.sequence - self._source_offsets[event.call_id]
             self._sequences[event.call_id] = event.sequence
             self._queue.put_nowait((event, future))
         if self._worker is None or self._worker.done():
@@ -165,8 +173,8 @@ class EventHub:
                         error = EventDeliveryError(
                             f"subscription {subscription.id!r} failed for {event.event_id}: {type(exc).__name__}"
                         )
-                        self._errors.append(error)
                         if not subscription.isolate:
+                            self._errors.append(error)
                             errors.append(error)
                         else:
                             logging.getLogger("agentkit.events").exception(
@@ -176,8 +184,8 @@ class EventHub:
                         error = EventDeliveryError(
                             f"subscription {subscription.id!r} failed for {event.event_id}: {type(exc).__name__}"
                         )
-                        self._errors.append(error)
                         if not subscription.isolate:
+                            self._errors.append(error)
                             errors.append(error)
                         else:
                             logging.getLogger("agentkit.events").exception(

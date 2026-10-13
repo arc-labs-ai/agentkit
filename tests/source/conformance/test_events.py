@@ -97,8 +97,7 @@ async def test_isolated_event_subscriber_does_not_fail_publication_or_skip_other
     await hub.publish(CallEvent(EventKind.USAGE, "isolated-run"))
     assert seen == [EventKind.USAGE]
     assert "isolated event subscriber failed" in caplog.text
-    with pytest.raises(ExceptionGroup):
-        await hub.drain()
+    await hub.drain()
     await hub.aclose()
 
 
@@ -114,6 +113,20 @@ async def test_runtime_events_are_published_through_event_hub():
     assert [e.sequence for e in replay] == list(range(1, len(replay) + 1))
     assert len({e.event_id for e in replay}) == len(replay)
     assert all(e.timestamp and e.schema_version == "1" for e in replay)
+    await hub.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hub_accepts_agent_event_prefix_before_runtime_source_sequence():
+    hub = EventHub()
+    seen = []
+    hub.subscribe("collect", lambda event: _record(seen, event), call_id="prefixed")
+    await hub.publish(CallEvent(EventKind.SKILL_LOADED, "prefixed", {"skill": "review"}))
+    runtime = CallRuntime(adapters={Mode.OPENAI_API: ScriptedAdapter(Turn(("done",)))}, pricing=PRICES)
+    answer = await runtime.ask(Binding(Mode.OPENAI_API, "test"), "continue", events=hub, call_id="prefixed")
+    assert answer.outcome is Outcome.ANSWERED
+    assert [event.sequence for event in seen] == list(range(1, len(seen) + 1))
+    assert seen[0].kind == EventKind.SKILL_LOADED and seen[1].kind == EventKind.CALL_STARTED
     await hub.aclose()
 
 

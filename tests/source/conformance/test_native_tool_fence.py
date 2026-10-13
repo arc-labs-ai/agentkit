@@ -207,13 +207,16 @@ async def test_missing_client_script_emits_explicit_deny_instead_of_nonblocking_
 
 
 @pytest.mark.asyncio
-async def test_mcp_tools_keep_existing_host_policy_without_native_callback():
+async def test_mcp_tools_require_the_native_authorization_callback():
+    calls = []
     async def policy(tool, arguments):
-        pytest.fail("MCP tools must use hosted tool authorization, not native policy")
+        calls.append((tool, arguments))
+        return Deny("no grant")
 
     events = []
     async with NativeToolFence(policy, events.append) as fence:
         command = fence.settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         result = await hook(command, {"tool_name": "mcp__agentkit__refund", "tool_input": {}})
-        assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
-    assert events == []
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert calls == [("mcp__agentkit__refund", {})]
+    assert events

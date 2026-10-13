@@ -142,6 +142,7 @@ class CliAdapter:
         stable_prefix: bool = False,
         fork: bool = False,
         tool_activity: Any = None,
+        tool_activity_ended_at: Any = None,
         native_tool_policy: NativeToolPolicy | None = None,
         context_policy: Any = None,
     ) -> Turn:
@@ -154,7 +155,10 @@ class CliAdapter:
         from agentkit.tools.execution.policy import serve
 
         scope = scope or Scope()
-        native_tool_policy = NativeToolPolicy(native_tool_policy or self.native_tool_policy)
+        native_tool_policy = min(
+            (NativeToolPolicy(native_tool_policy or self.native_tool_policy), self.native_tool_policy),
+            key={NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}.__getitem__,
+        )
         tool_timeout_s = getattr(tools, "effective_timeout_s", getattr(tools, "timeout_s", None)) if tools else None
         if session and session.history and not session.cli_session_id:
             prompt = replace(
@@ -425,6 +429,7 @@ class CliAdapter:
             timeouts=CliTimeouts(
                 total=limits.wall_clock_s, idle=limits.idle_s,
                 first_event=limits.first_event_s, activity=tool_activity,
+                activity_ended_at=tool_activity_ended_at,
             ),
             resume_session_id=native_session,
             meter_spend=binding.mode == Mode.CLAUDE_CODE,

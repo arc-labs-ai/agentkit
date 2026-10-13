@@ -673,6 +673,7 @@ class CliTimeouts:
     idle: float | None = None
     total: float | None = None
     activity: Callable[[], bool] | None = None
+    activity_ended_at: Callable[[], float | None] | None = None
 
     def __post_init__(self) -> None:
         for name in ("startup", "first_event", "idle", "total"):
@@ -783,7 +784,9 @@ class _CliDeadline:
     against a clock that started before the process did.
     """
 
-    __slots__ = ("_idle_from", "_now", "_seen_event", "_seen_line", "_started", "_t", "_was_active")
+    __slots__ = (
+        "_idle_from", "_now", "_seen_event", "_seen_line", "_started", "_t", "_was_active", "_last_activity_end"
+    )
 
     def __init__(self, timeouts: CliTimeouts, *, now: Callable[[], float] | None = None) -> None:
         self._t = timeouts
@@ -793,6 +796,7 @@ class _CliDeadline:
         self._seen_line = False
         self._seen_event = False
         self._was_active = False
+        self._last_activity_end: float | None = None
 
     def note_line(self) -> None:
         self._idle_from = self._now()
@@ -812,7 +816,11 @@ class _CliDeadline:
         line to enforce a bound nobody configured is pure overhead.
         """
         active = bool(self._t.activity and self._t.activity())
-        if self._was_active and not active:
+        ended_at = self._t.activity_ended_at() if self._t.activity_ended_at else None
+        if ended_at is not None and ended_at != self._last_activity_end:
+            self._idle_from = ended_at
+            self._last_activity_end = ended_at
+        elif self._was_active and not active:
             self._idle_from = self._now()
         self._was_active = active
         candidates: list[tuple[str, float, float]] = []

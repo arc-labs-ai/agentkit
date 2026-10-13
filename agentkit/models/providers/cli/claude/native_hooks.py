@@ -127,29 +127,25 @@ class NativeToolFence:
                 ):
                     raise ValueError("invalid hook payload")
                 name, arguments = payload["tool_name"], payload["tool_input"]
-                if name.startswith("mcp__"):
-                    # Hosted tools retain their ToolSet approval/grant checks.
-                    answer = _decision(True)
-                else:
-                    try:
-                        async with asyncio.timeout(_CALLBACK_TIMEOUT_S):
-                            result = await self.callback(name, deep_freeze(arguments))
-                        if not isinstance(result, (Allow, Deny)):
-                            raise TypeError("native callback must return Allow or Deny")
-                        refused = isinstance(result, Deny)
-                        reason = result.reason if isinstance(result, Deny) else ""
-                    except Exception:
-                        refused, reason = True, "native tool policy callback failed"
-                    answer = _decision(not refused, reason)
-                    await _emit(
-                        self.emit,
-                        EventKind.TOOL_CALL,
-                        name=name,
-                        tool_call_id=payload.get("tool_use_id"),
-                        refused=refused,
-                        native=True,
-                        reason=reason,
-                    )
+                try:
+                    async with asyncio.timeout(_CALLBACK_TIMEOUT_S):
+                        result = await self.callback(name, deep_freeze(arguments))
+                    if not isinstance(result, (Allow, Deny)):
+                        raise TypeError("native callback must return Allow or Deny")
+                    refused = isinstance(result, Deny)
+                    reason = result.reason if isinstance(result, Deny) else ""
+                except Exception:
+                    refused, reason = True, "native tool policy callback failed"
+                answer = _decision(not refused, reason)
+                await _emit(
+                    self.emit,
+                    EventKind.TOOL_CALL,
+                    name=name,
+                    tool_call_id=payload.get("tool_use_id"),
+                    refused=refused,
+                    native=True,
+                    reason=reason,
+                )
             writer.write(json.dumps(answer).encode() + b"\n")
             await writer.drain()
         except Exception:
