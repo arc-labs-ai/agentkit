@@ -37,6 +37,12 @@ version = "0.1.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
+calls = [
+    { name = "httpx", extra = ["http2"] },
+    { name = "jsonschema" },
+    { name = "mcp" },
+    { name = "pyyaml" },
+]
 fast = [
     { name = "orjson" },
 ]
@@ -76,20 +82,31 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pymdown-extensions" },
 ]
+eval = [
+    { name = "httpx", extra = ["http2"] },
+    { name = "jsonschema" },
+    { name = "mcp" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
+    { name = "httpx", extras = ["http2"], marker = "extra == 'calls'", specifier = ">=0.27" },
     { name = "httpx", extras = ["http2"], marker = "extra == 'http'", specifier = ">=0.27" },
+    { name = "jsonschema", marker = "extra == 'calls'", specifier = ">=4.23" },
+    { name = "mcp", marker = "extra == 'calls'", specifier = ">=1.28,<2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.28,<2" },
     { name = "opentelemetry-api", marker = "extra == 'observability'", specifier = ">=1.27" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'observability'", specifier = ">=1.27" },
     { name = "opentelemetry-sdk", marker = "extra == 'observability'", specifier = ">=1.27" },
     { name = "orjson", marker = "extra == 'fast'", specifier = ">=3.10" },
     { name = "pgvector", marker = "extra == 'postgres'", specifier = ">=0.2" },
+    { name = "pyyaml", marker = "extra == 'calls'", specifier = ">=6" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0" },
 ]
-provides-extras = ["http", "fast", "observability", "postgres", "redis", "mcp"]
+provides-extras = ["calls", "http", "fast", "observability", "postgres", "redis", "mcp"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -107,6 +124,13 @@ docs = [
     { name = "mkdocs-material", specifier = ">=9.5" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.26" },
     { name = "pymdown-extensions", specifier = ">=10.9" },
+]
+eval = [
+    { name = "httpx", extras = ["http2"], specifier = ">=0.27" },
+    { name = "jsonschema", specifier = ">=4.23" },
+    { name = "mcp", specifier = ">=1.28,<2" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6" },
 ]
 
 [[package]]

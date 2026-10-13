@@ -81,8 +81,8 @@ This runs as-is, offline, on a bare `pip install arc-agentkit`.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -121,10 +121,10 @@ later example:
   against a fake in a test and a real provider in production with no
   edit.
 - **`FakeLLM` is not a stub you have to write.** It ships in
-  `agentkit.testing`, it is the same double the framework's own test
+  `agentkit.core.testing`, it is the same double the framework's own test
   suite uses, and it charges a scripted `Usage` on every call — so cost,
   budget and metering code paths are exercised offline. It lives under
-  `agentkit.testing` rather than the top-level package on purpose: a
+  `agentkit.core.testing` rather than the top-level package on purpose: a
   `from agentkit import FakeLLM` shape would let production code pin a
   test double by accident.
 
@@ -150,10 +150,11 @@ Same `Agent`. Only the wiring of `ctx` changes.
     import asyncio
     import os
 
-    from agentkit import Agent, Scope
-    from agentkit.adapters.llm import providers
-    from agentkit.middlewares import meter, retry, tracing
-    from agentkit.runtime import Invoker, RunContext, Services
+    from agentkit.agents import Agent
+    from agentkit.core.contracts.types import Scope
+    from agentkit.models.providers import frontiers as providers
+    from agentkit.core.policies import meter, retry, tracing
+    from agentkit.core.runtime import Invoker, RunContext, Services
 
 
     async def main() -> None:
@@ -189,10 +190,11 @@ Same `Agent`. Only the wiring of `ctx` changes.
     import asyncio
     import os
 
-    from agentkit import Agent, Scope
-    from agentkit.adapters.llm import providers
-    from agentkit.middlewares import meter, retry, tracing
-    from agentkit.runtime import Invoker, RunContext, Services
+    from agentkit.agents import Agent
+    from agentkit.core.contracts.types import Scope
+    from agentkit.models.providers import frontiers as providers
+    from agentkit.core.policies import meter, retry, tracing
+    from agentkit.core.runtime import Invoker, RunContext, Services
 
 
     async def main() -> None:
@@ -228,9 +230,10 @@ Same `Agent`. Only the wiring of `ctx` changes.
     ```python
     import asyncio
 
-    from agentkit import Agent, Scope
-    from agentkit.agents.cognition import ClaudeCliCognition
-    from agentkit.runtime import RunContext, Services
+    from agentkit.agents import Agent
+    from agentkit.core.contracts.types import Scope
+    from agentkit.models.providers.cli.claude import ClaudeCliCognition
+    from agentkit.core.runtime import RunContext, Services
 
 
     async def main() -> None:
@@ -263,7 +266,7 @@ Two details worth noticing in the first two tabs:
   `retry()` are a plain Python list — reorder it by editing the line.
 - **`meter()` is what makes a `Budget` real.** A `Budget` on the
   `RunContext` with no `meter()` in the chain is never charged and never
-  halts anything. `make_test_ctx` and the presets in `agentkit.client`
+  halts anything. `make_test_ctx` and the presets in `agentkit.models.client.chat`
   wire it for you; hand-built `Invoker`s do not.
 
 ## Where to go next

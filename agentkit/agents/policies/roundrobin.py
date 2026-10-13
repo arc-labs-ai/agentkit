@@ -20,20 +20,15 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agentkit.agents.control.termination import MaxTurns, TerminationCondition
-from agentkit.agents.result import AgentResult, stop_reason_for
-from agentkit.capabilities.checkpointer import (
-    Checkpointer,
-    coord_state_from_dict,
-    coord_state_to_dict,
-    resolve_checkpointer,
-)
-from agentkit.context import WorkingContext
-from agentkit.kernel.ports import CheckpointStatus
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import Message, Usage
+from agentkit.agents.definitions.results import AgentResult, stop_reason_for
+from agentkit.core.contracts.ports import CheckpointStatus
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import Message, Usage
+from agentkit.state.checkpoints import Checkpointer, coord_state_from_dict, coord_state_to_dict, resolve_checkpointer
+from agentkit.state.context import WorkingContext
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
+    from agentkit.agents.execution.agent import Agent
 
 
 def _emit_policy_dispatch(ctx: Ctx, *, policy: str, child: str, reason: str) -> None:
@@ -154,14 +149,14 @@ def _coord_result(
     stop_reason: str,
 ) -> AgentResult:
     """Aggregate a coordinator run into a single ``AgentResult``. The transcript / per-
-    child results / stop reason ride in ``evals`` so callers that care about the inner
+    child results / stop reason ride in ``tests.evals`` so callers that care about the inner
     detail can introspect; ``output`` is the last assistant reply.
 
     ``stop_reason`` arrives free-form — the policy's own ceiling wording
     (``"max_turns"``) or a ``TerminationCondition``'s ``Stop.reason``, which may
-    be anything a user wrote. It rides in ``evals`` verbatim AND is mapped onto
+    be anything a user wrote. It rides in ``tests.evals`` verbatim AND is mapped onto
     the closed ``AgentResult.stop_reason`` taxonomy by
-    :func:`~agentkit.agents.result.stop_reason_for`. Skipping that mapping left
+    :func:`~agentkit.agents.definitions.results.stop_reason_for`. Skipping that mapping left
     the typed field at its ``"complete"`` default, so a coordinator that ran out
     of turns reported the same terminal state as one that finished its work.
     """

@@ -18,15 +18,15 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import StreamEvent
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import StreamEvent
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
     from agentkit.agents.control.termination import TerminationCondition
+    from agentkit.agents.execution.agent import Agent
     from agentkit.agents.policies.base import Policy
-    from agentkit.capabilities.checkpointer import Checkpointer
-    from agentkit.context import WorkingContext
+    from agentkit.state.checkpoints import Checkpointer
+    from agentkit.state.context import WorkingContext
 
 
 @dataclass(slots=True)

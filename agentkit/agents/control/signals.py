@@ -43,7 +43,7 @@ from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any, Final, Generic, TypeVar
 
-from agentkit.kernel._frozen import deep_freeze
+from agentkit.core.serialization._immutable import deep_freeze
 
 # ── Type variables ──────────────────────────────────────────────────
 

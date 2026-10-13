@@ -1,4 +1,4 @@
-# `agentkit.testing`
+# `agentkit.core.testing`
 
 Test doubles for every Protocol — `FakeLLM`, `FakeFetch`, `FakeSearch`,
 `FakeMemory`, `FakeTool`, `FakeCompactor`, `FakeGrounder`, `FakeClock`
@@ -11,7 +11,7 @@ subprocess itself (with the shared `CliRun` / `CliStderr` /
 Codex turn), so a test still runs the real parsing, event mapping and
 meter charging.
 
-::: agentkit.testing
+::: agentkit.core.testing
     options:
       show_root_heading: false
       show_source: false

@@ -9,7 +9,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/arc-agentkit)](https://pypi.org/project/arc-agentkit/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)
 
-[Docs](https://arc-labs-ai.github.io/agentkit/) · [Quickstart](#quickstart) · [Examples](./examples) · [Changelog](./CHANGELOG.md)
+[Docs](https://arc-labs-ai.github.io/agentkit/) · [Quickstart](#quickstart) · [Examples](./tests/examples) · [Changelog](./CHANGELOG.md)
 
 </div>
 
@@ -45,6 +45,7 @@ adapters live behind optional extras — install only what you use:
 
 ```bash
 pip install "arc-agentkit[http]"           # httpx-based LLM providers (OpenAI, Anthropic, DeepSeek, ...)
+pip install "arc-agentkit[calls]"          # model-neutral API/CLI calls, structured outputs, and MCP tools
 pip install "arc-agentkit[postgres]"       # Postgres checkpoint store + pgvector memory
 pip install "arc-agentkit[redis]"          # Redis-backed store
 pip install "arc-agentkit[observability]"  # OpenTelemetry metrics + tracing exporters
@@ -59,8 +60,8 @@ Define an agent, invoke it via a `Ctx` bound to a fake LLM, get a typed
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -84,7 +85,7 @@ Point the same code at a real provider by using the batteries-included
 `claude` chat directly:
 
 ```python
-from agentkit import claude
+from agentkit.models.client.chat import claude
 
 async with claude(api_key="sk-...", model="claude-sonnet-4-6") as chat:
     result = await chat("what is 6 * 7?", system="Answer in as few words as possible.")
@@ -92,43 +93,24 @@ async with claude(api_key="sk-...", model="claude-sonnet-4-6") as chat:
 ```
 
 More runnable examples — tool loops, streaming, composed middlewares —
-under [`examples/`](./examples).
+under [`tests/examples/`](./tests/examples).
 
 ## Concepts
 
-Five layers, one direction of dependency. Each is a link into the docs where
-depth lives:
+Agentkit has six public owners. Every owner root contains only `__init__.py`; implementation modules live in responsibility subpackages.
 
-- **[Kernel](https://arc-labs-ai.github.io/agentkit/concepts/kernel/)** — opinion-free
-  primitives: immutable value types (`Message`, `ToolCall`, `LLMResult`,
-  `Usage`), the port Protocols every seam (`LLMPort`, `StorePort`,
-  `VectorPort`, …) implements, the middleware contract, and concurrency +
-  resilience helpers. Zero third-party imports.
-- **[Runtime](https://arc-labs-ai.github.io/agentkit/concepts/runtime/)** —
-  `RunContext` (identity + services + cancel + budget), `Invoker` (the one
-  runner that walks the middleware chain to a terminal LLM/tool call),
-  `Budget` and `Quota` (spend meters that halt runs cleanly on overrun).
-- **[Agent + Cognition](https://arc-labs-ai.github.io/agentkit/concepts/agents/)** —
-  `Agent` is identity + chat-call config; `Cognition` is the pluggable
-  turn-taking strategy. Ships with `SingleCallCognition`, `ReActCognition`
-  (tool loop + HITL suspend + durable resume), `CoordinatorCognition`
-  (multi-agent orchestration), and two that hand the whole loop to a coding
-  CLI you installed yourself — `ClaudeCliCognition` and `CodexCliCognition`,
-  no server-side API key either way. Adding a new regime is one Protocol
-  impl — no `Agent` subclassing.
-- **[Middleware](https://arc-labs-ai.github.io/agentkit/concepts/middlewares/)** —
-  cross-cutting concerns as composable functions: `tracing`, `retry`,
-  `fallback`, `memoize`, `output_coerce`, `meter`, `compaction`, `egress`,
-  `audit`, `security`. Two ordered lists (chat + tool) handed to `Invoker`;
-  reorder or swap by editing the list.
-- **[Capabilities](https://arc-labs-ai.github.io/agentkit/concepts/capabilities/)** —
-  optional cross-cutting collaborators: `RequestBuilder` (prompt +
-  grounding), `Compactor` (four strategies), `Guardrail`, `Evaluator`,
-  `Checkpointer`, `SchemaAdapter` (structured outputs across Pydantic,
-  attrs, dataclass, or raw JSON Schema).
+| Package | Owns |
+| --- | --- |
+| `core` | Contracts, execution, runtime, events, serialization and telemetry |
+| `models` | Model contracts, catalog/pricing, adapters and `providers/frontiers` + `providers/cli` |
+| `agents` | Definitions, execution, minds, prompts, skills and workflows |
+| `state` | Context, memory, checkpoints and storage adapters |
+| `tools` | Declarations, registry, execution, filesystem tools and agent adapters |
+| `integrations` | MCP protocols and observability integrations |
 
-The bet: every seam is a typed `Protocol` injected at wire-up, so the loop
-stays legible and unit-testable, and swapping a backend never edits the loop.
+Start with the [public usage guide](./docs/concepts/using-agentkit.md) and the [support harness example](./tests/examples/support_harness/application.py). Use `AgentDefinition` + `AgentRunner` with `CallRuntime` for interchangeable API/CLI models. Working context, recalled memory and host execution context have distinct documented responsibilities.
+
+Validation lives under `tests/source`, real-model evaluations under `tests/evals`, and examples under `tests/examples`. The [architecture audit](./docs/design/duplication-audit.md) records remaining semantic differences and deployment responsibilities. Old import namespaces have been removed; this is a breaking layout change.
 
 ## What makes agentkit distinct
 
@@ -165,7 +147,7 @@ stays legible and unit-testable, and swapping a backend never edits the loop.
 ## Documentation
 
 - **Site**: [arc-labs-ai.github.io/agentkit](https://arc-labs-ai.github.io/agentkit/)
-- **Examples**: [`examples/`](./examples) — runnable, no API keys required.
+- **Examples**: [`tests/examples/`](./tests/examples) — runnable, offline and opt-in provider workflows.
 - **Mental models**: [`docs/mental-models/`](./docs/mental-models/) —
   four end-to-end use cases with narrative walkthroughs of internal state
   at each step (multi-tenant chat with docs, autonomous DevOps investigator,

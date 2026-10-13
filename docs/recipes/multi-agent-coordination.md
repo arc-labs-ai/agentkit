@@ -33,10 +33,10 @@ do not know they are in a team.
 
 import asyncio
 
-from agentkit import Agent
+from agentkit.agents import Agent
 from agentkit.agents.cognition import CoordinatorCognition
 from agentkit.agents.policies import PlanPolicy, StaticPlanner, Step
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 def team() -> dict[str, Agent]:
@@ -112,11 +112,11 @@ The shipped one reads the typed `Handoff` verb out of the last message:
 ```python
 import asyncio
 
-from agentkit import Agent
+from agentkit.agents import Agent
 from agentkit.agents.cognition import CoordinatorCognition
 from agentkit.agents.control import MaxTurns, TextMention, route_by_handoff
 from agentkit.agents.policies import SelectorPolicy
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 async def main() -> None:

@@ -1,6 +1,6 @@
 """``serve_registry`` — hand a ``ToolRegistry`` to the Claude CLI over MCP.
 
-:class:`~agentkit.agents.cognition.claude_cli.ClaudeCliCognition` delegates the
+:class:`~agentkit.models.providers.cli.claude.ClaudeCliCognition` delegates the
 whole loop to the CLI, and the CLI's only seam for a tool it did not ship with
 is ``--mcp-config``. Everything needed to DESCRIBE an agentkit tool was already
 here and already correct — ``FunctionTool`` derives a ``ToolSchema`` from a
@@ -25,7 +25,7 @@ defended at its site below:
 * ``ToolSchema.parameters`` becomes MCP ``inputSchema`` **unchanged**. Both are
   JSON Schema; a translation layer would be a second description of one thing
   and would drift.
-* A :class:`~agentkit.tools.errors.ToolArgumentError` becomes an MCP **tool**
+* A :class:`~agentkit.tools.declarations.errors.ToolArgumentError` becomes an MCP **tool**
   error, never a transport error. A bad call is reflected to the model, which
   authored it and is the only party that can fix it; a transport error ends the
   session instead and the model never learns what it got wrong.
@@ -67,12 +67,15 @@ import re
 import shutil
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal
 
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.execution.concurrency import Cancelled
+from agentkit.core.serialization._json import dumps as _json_dumps
 from agentkit.integrations.mcp._transport import (
     LoopbackMcpTransport,
     McpAuth,
@@ -80,16 +83,12 @@ from agentkit.integrations.mcp._transport import (
     qualified_tool_name,
     validated_auth,
 )
-from agentkit.kernel._json import dumps as _json_dumps
-from agentkit.kernel.concurrency import Cancelled
-from agentkit.kernel.protocols import Ctx
-from agentkit.tools.base import Tool
-from agentkit.tools.errors import ToolArgumentError
-from agentkit.tools.registry import ToolRegistry
+from agentkit.tools.declarations.base import Tool
+from agentkit.tools.declarations.errors import ToolArgumentError
+from agentkit.tools.execution.cancellation import run_cancellable
+from agentkit.tools.registry.registry import ToolRegistry
 
-_MCP_INSTALL_HINT = (
-    'MCP integration requires the `mcp` package. Install with: pip install "arc-agentkit[mcp]"'
-)
+_MCP_INSTALL_HINT = 'MCP integration requires the `mcp` package. Install with: pip install "arc-agentkit[mcp]"'
 
 try:
     from mcp import types as mcp_types
@@ -292,6 +291,10 @@ class McpServerSpec:
     host: str
     port: int
 
+    result_hook: Callable[[str, Any], Any] | None = field(default=None, repr=False)
+    json_response: bool = False
+    tools_provider: Callable[[], Sequence[Tool]] | None = field(default=None, repr=False)
+
     _tools: Mapping[str, Tool] = field(repr=False, default_factory=dict)
     _ctx: Any = field(repr=False, default=None)
     _advertised: list[Any] = field(repr=False, default_factory=list)
@@ -299,6 +302,8 @@ class McpServerSpec:
     _owns_config_dir: bool = field(repr=False, default=True)
     _transport: LoopbackMcpTransport | None = field(default=None, repr=False)
     _calls: int = field(default=0, repr=False, init=False)
+    _invocations: set[asyncio.Task[Any]] = field(default_factory=set, repr=False, init=False)
+    _stopping: bool = field(default=False, repr=False, init=False)
 
     # ---- wiring ----------------------------------------------------------------------------
 
@@ -370,7 +375,7 @@ class McpServerSpec:
         rather than as a ``--mcp-config`` document, and an authenticated HTTP
         server's token travels in an environment variable it names rather than
         in a header. Both are handled by
-        :func:`agentkit.integrations.codex_cli.as_codex_mcp`; this method exists
+        :func:`agentkit.models.providers.cli.codex.as_codex_mcp`; this method exists
         so a reader who found ``cli_kwargs`` finds the counterpart in the same
         place instead of concluding there is none.
 
@@ -380,7 +385,7 @@ class McpServerSpec:
         nothing would be worse than its absence. What contains the CLI's own
         tools in a Codex session is ``sandbox=``.
         """
-        from agentkit.integrations.codex_cli import as_codex_mcp
+        from agentkit.models.providers.cli.codex import as_codex_mcp
 
         return as_codex_mcp(self, tool_timeout_s=tool_timeout_s)
 
@@ -406,19 +411,52 @@ class McpServerSpec:
         is the better one.
         """
         server: Any = LowLevelServer(self.name)
+        if self.tools_provider is not None:
+            from functools import partial
+
+            from mcp.server.lowlevel import NotificationOptions
+
+            server.create_initialization_options = partial(
+                server.create_initialization_options,
+                notification_options=NotificationOptions(tools_changed=True),
+            )
         advertised = self._advertised
 
         @server.list_tools()  # type: ignore[misc, no-untyped-call, untyped-decorator]
         async def _list() -> list[Any]:
+            if self.tools_provider is not None:
+                dynamic = _plan(list(self.tools_provider()))
+                if not set(dynamic).issubset(self._tools):
+                    raise ValueError("dynamic MCP catalogue cannot add unregistered tools")
+                return [_advertise(tool, mcp_name=n) for n, tool in sorted(dynamic.items())]
             return advertised
 
         @server.call_tool(validate_input=False)  # type: ignore[misc, no-untyped-call, untyped-decorator]
         async def _call(name: str, arguments: dict[str, Any]) -> Any:
-            return await self._dispatch(name, arguments)
+            before = tuple(tool.name for tool in self.tools_provider()) if self.tools_provider else ()
+            result = await self._dispatch(name, arguments)
+            after = tuple(tool.name for tool in self.tools_provider()) if self.tools_provider else ()
+            if before != after:
+                await server.request_context.session.send_tool_list_changed()
+            return result
 
         return server
 
     async def _dispatch(self, name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:
+        if self._stopping:
+            return _text_result("MCP server is stopping; tool was not run", is_error=True)
+        invocation = asyncio.create_task(self._invoke(name, arguments))
+        self._invocations.add(invocation)
+        try:
+            return await invocation
+        except asyncio.CancelledError:
+            if self._stopping:
+                return _text_result("MCP server stopped while tool was running", is_error=True)
+            raise
+        finally:
+            self._invocations.discard(invocation)
+
+    async def _invoke(self, name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:
         """One MCP tool call → one ``Tool.run`` → one text block.
 
         Never raises. Everything below returns an ``isError`` RESULT instead,
@@ -437,8 +475,7 @@ class McpServerSpec:
         tool = self._tools.get(name)
         if tool is None:
             return _text_result(
-                f"no tool named {name!r} on MCP server {self.name!r}. "
-                f"Available: {sorted(self._tools) or '<none>'}",
+                f"no tool named {name!r} on MCP server {self.name!r}. Available: {sorted(self._tools) or '<none>'}",
                 is_error=True,
             )
 
@@ -464,10 +501,10 @@ class McpServerSpec:
         deadline: asyncio.Timeout | None = None
         try:
             if self.timeout_s is None:
-                result = await tool.run(arguments, self._ctx)
+                result = await run_cancellable(tool.run(arguments, self._ctx), self._ctx)
             else:
                 async with asyncio.timeout(self.timeout_s) as deadline:
-                    result = await tool.run(arguments, self._ctx)
+                    result = await run_cancellable(tool.run(arguments, self._ctx), self._ctx)
         except ToolArgumentError as exc:
             # THE case this module exists to get right. A bad call is reflected
             # to the model verbatim: the message already names the tool, the
@@ -492,6 +529,12 @@ class McpServerSpec:
         except Exception as exc:  # noqa: BLE001 — see the docstring
             return _text_result(f"tool {name!r} failed: {type(exc).__name__}: {exc}", is_error=True)
 
+        if self.result_hook is not None:
+            result = self.result_hook(name, result)
+            if hasattr(result, "__await__"):
+                result = await result
+        if isinstance(result, mcp_types.CallToolResult):
+            return result
         return _text_result(_render(result), is_error=False)
 
     # ---- lifecycle -------------------------------------------------------------------------
@@ -518,11 +561,39 @@ class McpServerSpec:
         and whose ``cli_kwargs()`` named a path that no longer existed — a live
         server the CLI could not be pointed at, reported as success.
         """
+        self._stopping = False
         self._write_config()
         if self.transport != "http" or self._transport is None:
             return
-        await self._transport.start(self._asgi_app())
+        try:
+            await self._transport.start(self._asgi_app())
+        except BaseException:
+            # __aexit__ is not invoked when __aenter__ fails or is cancelled.
+            # This spec still owns its listener and credential file.
+            await self.stop()
+            raise
         self.port = self._transport.port
+
+    async def check_ready(self, *, timeout_s: float = 5) -> dict[str, Any]:
+        """Probe the protocol endpoint and tool catalogue before a model starts."""
+        if self.url is None:
+            raise ValueError("readiness probing requires the HTTP transport")
+        import httpx
+        headers = {**dict(self.auth_headers), "Accept": "application/json, text/event-stream",
+                   "MCP-Protocol-Version": "2025-11-25"}
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(self.url, headers=headers, json={
+                "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {},
+            })
+            response.raise_for_status()
+            if "text/event-stream" in response.headers.get("content-type", ""):
+                data = next((line[6:] for line in response.text.splitlines() if line.startswith("data: ")), "{}")
+                payload = json.loads(data)
+            else:
+                payload = response.json()
+            if payload.get("error"):
+                raise RuntimeError("MCP readiness protocol error")
+            return dict(payload.get("result") or {})
 
     async def stop(self) -> None:
         """Release the port and delete the config file. Idempotent, and safe on
@@ -546,7 +617,25 @@ class McpServerSpec:
         of passing ``config_path=``); the file is ours, we wrote it, and what we
         wrote into it is a secret.
         """
+        cleanup = asyncio.create_task(self._stop())
+        interrupted = False
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                interrupted = True
+        cleanup.result()
+        if interrupted:
+            raise asyncio.CancelledError
+
+    async def _stop(self) -> None:
+        self._stopping = True
         try:
+            pending = tuple(self._invocations)
+            for invocation in pending:
+                invocation.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
             if self._transport is not None:
                 await self._transport.stop()
         finally:
@@ -629,7 +718,10 @@ class McpServerSpec:
         from starlette.applications import Starlette
         from starlette.routing import Route
 
-        manager = StreamableHTTPSessionManager(app=self.build_server(), stateless=True)
+        manager = StreamableHTTPSessionManager(
+            app=self.build_server(), stateless=True, json_response=self.json_response
+        )
+        json_response = self.json_response
 
         class _Asgi:
             """A CLASS, not a function, because Starlette routes a callable
@@ -638,6 +730,10 @@ class McpServerSpec:
             otherwise be called with one ``Request``."""
 
             async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+                if json_response and scope.get("method") == "GET":
+                    from starlette.responses import Response
+                    await Response(status_code=405, headers={"Allow": "POST"})(scope, receive, send)
+                    return
                 await manager.handle_request(scope, receive, send)
 
         return Starlette(
@@ -654,6 +750,9 @@ def serve_registry(
     transport: Transport = "http",
     auth: McpAuth | None = None,
     timeout_s: float | None = None,
+    result_hook: Callable[[str, Any], Any] | None = None,
+    json_response: bool = False,
+    tools_provider: Callable[[], Sequence[Tool]] | None = None,
     config_path: Path | str | None = None,
     host: str = "127.0.0.1",
     port: int = 0,
@@ -727,9 +826,7 @@ def serve_registry(
     # Resolved before anything is built, so the refusal below lands in the
     # caller's own frame next to the wiring that caused it.
     mode: McpAuth = (
-        ("bearer" if transport == "http" else "none")
-        if auth is None
-        else validated_auth(auth, where="serve_registry")
+        ("bearer" if transport == "http" else "none") if auth is None else validated_auth(auth, where="serve_registry")
     )
     if transport == "stdio" and mode == "bearer":
         raise ValueError(
@@ -744,9 +841,7 @@ def serve_registry(
     advertised = [_advertise(tool, mcp_name=n) for n, tool in sorted(plan.items())]
     mcp_names = {tool.name: qualified_tool_name(name, n) for n, tool in plan.items()}
 
-    approval = tuple(
-        sorted(qualified_tool_name(name, n) for n, t in plan.items() if t.requires_approval)
-    )
+    approval = tuple(sorted(qualified_tool_name(name, n) for n, t in plan.items() if t.requires_approval))
     every = tuple(sorted(qualified_tool_name(name, n) for n in plan))
     caps: set[str] = set()
     for tool in plan.values():
@@ -796,6 +891,9 @@ def serve_registry(
         timeout_s=timeout_s,
         host=host,
         port=port,
+        result_hook=result_hook,
+        json_response=json_response,
+        tools_provider=tools_provider,
         _tools=plan,
         _ctx=ctx,
         _advertised=advertised,

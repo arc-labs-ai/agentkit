@@ -20,7 +20,7 @@ pip install arc-agentkit
 ```
 
 **You need no API key for steps 1–5.** They run against `FakeLLM`, the
-deterministic test double that ships in `agentkit.testing` — the same
+deterministic test double that ships in `agentkit.core.testing` — the same
 one the framework's own suite uses. That is on purpose: the subject of
 this tutorial is the machinery *around* the model (the tool loop, the
 event stream, the budget, the approval gate), and a scripted model makes
@@ -36,8 +36,8 @@ The smallest thing that runs: an `Agent`, a `RunContext`, one call.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -85,9 +85,11 @@ result → chat → final answer.
 ```python
 import asyncio
 
-from agentkit import Agent, ToolCall, tool
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False)
@@ -164,9 +166,11 @@ instead and you see every step as it happens.
 ```python
 import asyncio
 
-from agentkit import Agent, ToolCall, tool
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False)
@@ -253,10 +257,13 @@ Put one on the `RunContext` and put `meter()` in the chat chain.
 ```python
 import asyncio
 
-from agentkit import Agent, Budget, MeterExceeded, ToolCall, tool
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget, MeterExceeded
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.middlewares import meter
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.policies import meter
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False)
@@ -356,11 +363,13 @@ before dispatching that tool and hands the decision back to you.
 ```python
 import asyncio
 
-from agentkit import Agent, Suspended, ToolCall, tool
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.agents import Agent, Suspended
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
 from agentkit.agents.cognition import ReActCognition
-from agentkit.capabilities import Checkpointer
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False)
@@ -478,13 +487,16 @@ you build `Services` around a real provider yourself.
 import asyncio
 import os
 
-from agentkit import Agent, Budget, Scope, tool
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
-from agentkit.adapters.llm import providers
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget
+from agentkit.core.contracts.types import Scope
+from agentkit.tools import tool
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
+from agentkit.models.providers import frontiers as providers
 from agentkit.agents.cognition import ReActCognition
-from agentkit.capabilities import Checkpointer
-from agentkit.middlewares import meter, retry, tracing
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.core.policies import meter, retry, tracing
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 @tool(side_effecting=False)

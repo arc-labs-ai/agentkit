@@ -263,12 +263,12 @@ verify the test still asserts what its name claims.
 
 | Invariant | Concrete failure if violated | Locked by |
 |---|---|---|
-| **Scope partitions the cache key** — `(scope_key, query, k, where)` | Tenant B's identical query hits tenant A's cached items → cross-tenant read | `test_cache_is_partitioned_by_scope` in `tests/memory/test_cached_memory.py` |
-| **`ScopedMemory.enforce` cannot be bypassed** at wire-time | A caller layering `CachedMemory(VectorMemory)` without the outer guard reads every tenant's index | `test_scoped_memory_rejects_missing_scope` in `tests/memory/test_scoped_memory.py` |
+| **Scope partitions the cache key** — `(scope_key, query, k, where)` | Tenant B's identical query hits tenant A's cached items → cross-tenant read | `test_cache_is_partitioned_by_scope` in `tests/source/unit/state/memory/test_cached_memory.py` |
+| **`ScopedMemory.enforce` cannot be bypassed** at wire-time | A caller layering `CachedMemory(VectorMemory)` without the outer guard reads every tenant's index | `test_scoped_memory_rejects_missing_scope` in `tests/source/unit/state/memory/test_scoped_memory.py` |
 | **`where` dict may contain unhashable values** without crashing the cache | A filter like `{"tags": ["security","finance"]}` blows up the key lookup, forcing repeated round-trips | `test_cache_accepts_unhashable_where_values` |
 | **Cache reads return a defensive copy** | UI dedupes the returned list → mutates the cache → next tenant's read sees the dedup | `test_cached_result_is_isolated_from_caller_mutation` |
 | **Cache key stable across dict ordering** | Semantically-equal filters double-fetch → cost overrun + non-deterministic behaviour | `test_cache_key_stable_across_where_dict_ordering` |
-| **Per-tenant Quota clamps runaway spend** | A stuck retry loop on tenant B burns tenant A's budget | `test_quota_isolates_tenants_end_to_end_through_meter_middleware`, `test_budget_and_quota_both_engaged_through_meter_middleware` in `tests/runtime/test_meter.py` |
+| **Per-tenant Quota clamps runaway spend** | A stuck retry loop on tenant B burns tenant A's budget | `test_quota_isolates_tenants_end_to_end_through_meter_middleware`, `test_budget_and_quota_both_engaged_through_meter_middleware` in `tests/source/unit/core/runtime/test_meter.py` |
 | **Streaming per response is in-order** | Interleaved responses corrupt one user's transcript with another's tokens | Framework-level: `assemble_deltas` reducer + property tests on stream operators |
 | **`RunContext.child()` inherits scope** | A sub-agent runs without tenant identity; ScopedMemory then blocks it, but only after the child was already spawned | Structural — `RunContext.child` sets `scope=self.scope` |
 | **Every retrieval tool declares `caps=("private_data",)`** | Adding an egress tool later doesn't auto-flag the emergent trifecta | Needs a lint check — currently a gap; a `RunPolicy` panel test would cover it |
@@ -372,9 +372,9 @@ How to actually check the design is working — not just "tests pass" but
 
 ```bash
 cd agentkit
-uv run pytest tests/memory/test_cached_memory.py \
-              tests/memory/test_scoped_memory.py \
-              tests/runtime/test_meter.py
+uv run pytest tests/source/unit/state/memory/test_cached_memory.py \
+              tests/source/unit/state/memory/test_scoped_memory.py \
+              tests/source/unit/core/runtime/test_meter.py
 ```
 
 Expected: all pass. Any failure is a live invariant violation.
@@ -384,16 +384,16 @@ Expected: all pass. Any failure is a live invariant violation.
 ```bash
 cd agentkit
 # Every RunContext.child call must NOT drop scope.
-grep -n "RunContext(" agentkit/runtime/context.py
+grep -n "RunContext(" agentkit/core/runtime/context.py
 # Expected: only one production construction; child() passes scope=self.scope.
 
 # Every MemorySource impl reads ctx.scope in query/write.
-grep -rn "async def query" agentkit/memory/
-grep -rn "async def write" agentkit/memory/
+grep -rn "async def query" agentkit/state/memory/
+grep -rn "async def write" agentkit/state/memory/
 # Expected: every impl's signature takes `ctx: Ctx` and uses it.
 
 # CachedMemory._key includes scope_key.
-grep -n "def _key" agentkit/memory/decorators.py
+grep -n "def _key" agentkit/state/memory/decorators.py
 # Expected: signature has scope_key parameter and it's included in the tuple.
 ```
 
@@ -404,10 +404,12 @@ Build the smallest possible reproduction:
 ```python
 # Not committed — one-off verification script.
 import asyncio
-from agentkit import Agent, Budget, Scope
-from agentkit.memory import CachedMemory, ScopedMemory
-from agentkit.runtime import Invoker, Quota, RunContext, Services
-from agentkit.middlewares import meter, tracing
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import CachedMemory, ScopedMemory
+from agentkit.core.runtime import Invoker, Quota, RunContext, Services
+from agentkit.core.policies import meter, tracing
 
 quota = Quota(max_usd=0.05, clock=lambda: 1000.0)
 invoker = Invoker(llm=<FakeLLM>, chat_middleware=[meter()])
@@ -443,15 +445,15 @@ If this succeeds, the tenant-isolation story is holding structurally.
 
 When touching any of these files, re-verify against this use case:
 
-- `agentkit/memory/decorators.py` — `_key(...)` must always include the
+- `agentkit/state/memory/decorators.py` — `_key(...)` must always include the
   scope axis. Grep: `def _key`, verify signature carries a scope arg.
-- `agentkit/memory/decorators.py` — `ScopedMemory._check` runs BEFORE
+- `agentkit/state/memory/decorators.py` — `ScopedMemory._check` runs BEFORE
   any inner call in `query` / `write`. Grep: `self._check(ctx)` at
   entry of both methods.
-- `agentkit/adapters/store/*.py` — any `get`/`set` where key isn't
+- `agentkit/state/stores/*.py` — any `get`/`set` where key isn't
   scoped is a leak surface. All `StorePort` writes routed through
   `idempotency_key(scope, ...)` or an equivalent prefix.
-- `agentkit/runtime/context.py` — `RunContext.child()` inherits scope
+- `agentkit/core/runtime/context.py` — `RunContext.child()` inherits scope
   (verify), so a child agent operates on the same tenant.
 
 ## The primitives it exercises
@@ -509,11 +511,11 @@ things this design proves the framework must support:
 
 Last audited against the current tree:
 
-- **Automated invariant tests**: `pytest tests/memory/test_cached_memory.py
-  tests/memory/test_scoped_memory.py tests/runtime/test_meter.py` → 29
+- **Automated invariant tests**: `pytest tests/source/unit/state/memory/test_cached_memory.py
+  tests/source/unit/state/memory/test_scoped_memory.py tests/source/unit/core/runtime/test_meter.py` → 29
   passed, 0 failed.
 - **`RunContext.child()` inherits scope**: `scope=self.scope` (shared
-  reference, read-only) — verified in `agentkit/runtime/context.py:child`.
+  reference, read-only) — verified in `agentkit/core/runtime/context.py:child`.
 - **`CachedMemory._key` signature includes scope**: `_key(query, k, where,
   scope_key)` — the scope axis is a required positional argument, not
   optional.

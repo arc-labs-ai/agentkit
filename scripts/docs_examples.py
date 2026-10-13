@@ -3,7 +3,7 @@
 
 Two checks, both aimed at one failure mode this project keeps hitting: prose
 written from intent while the code moved underneath it. `mkdocs build --strict`
-proves the links resolve; `tests/meta/test_docs_match_code.py` proves the
+proves the links resolve; `tests/source/architecture/test_docs_match_code.py` proves the
 symbols are mentioned. Neither runs a single line of the code a reader copies.
 
     imports   every `from agentkit… import X` written in docs/ resolves.
@@ -28,7 +28,7 @@ Anything else is a real failure and exits non-zero.
 
 `mental-models/` is skipped: it is a design-narrative directory whose snippets
 use deliberate placeholders like ``llm=<FakeLLM>``, the same exclusion
-``tests/meta/test_docs_match_code.py`` makes and for the same reason.
+``tests/source/architecture/test_docs_match_code.py`` makes and for the same reason.
 """
 
 from __future__ import annotations

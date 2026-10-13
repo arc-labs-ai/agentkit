@@ -242,7 +242,7 @@ the framework's invariants slip.
 9. **`Budget.charge` skips its lock.** 8 concurrent charges each read
    `spent_usd` before any writes back → the run overshoots
    `max_cost_usd` by up to 8× the last delta. *Locked by
-   `test_concurrent_charges_serialize` in `tests/runtime/test_meter.py`.*
+   `test_concurrent_charges_serialize` in `tests/source/unit/core/runtime/test_meter.py`.*
 10. **`run_with_resilience` retries a PERMANENT class.** A 403 or
     content-filter refusal retries anyway, burning tokens and possibly
     banning the key. *Locked by
@@ -425,10 +425,10 @@ How to actually check the design is working — not just "tests pass" but
 
 ```bash
 cd agentkit
-uv run pytest tests/capabilities/test_checkpointer.py \
-              tests/agents/test_workflow.py \
-              tests/runtime/test_meter.py \
-              tests/kernel/test_kernel.py \
+uv run pytest tests/source/unit/state/checkpoints/test_checkpointer.py \
+              tests/source/unit/agents/test_workflow.py \
+              tests/source/unit/core/runtime/test_meter.py \
+              tests/source/unit/core/test_kernel.py \
               -k "usage or idempotency or gather"
 ```
 
@@ -442,20 +442,20 @@ adjacent properties.
 cd agentkit
 
 # Checkpointer.snapshot deep-copies BOTH state and metadata at the seam.
-grep -n "deepcopy" agentkit/capabilities/checkpointer/base.py
+grep -n "deepcopy" agentkit/state/checkpoints/base.py
 # Expected: at least two hits (state and metadata), both inside snapshot().
 
 # gather_bounded exists and is the only fan-out primitive used by run_agents.
-grep -n "gather_bounded\|max_concurrency" agentkit/kernel/concurrency.py
+grep -n "gather_bounded\|max_concurrency" agentkit/core/execution/concurrency.py
 # Expected: gather_bounded function definition + dispatch inside run_agents.
 # (max_concurrency lives in Budget, not concurrency.py — that's fine.)
 
 # idempotency_key composes with stable_hash; deterministic across processes.
-grep -n "def idempotency_key" agentkit/kernel/resilience.py
+grep -n "def idempotency_key" agentkit/core/execution/resilience.py
 # Expected: a single definition delegating to stable_hash on *parts.
 
 # Usage.__add__ is defined on the frozen dataclass.
-grep -n "def __add__\|frozen=True" agentkit/kernel/types.py
+grep -n "def __add__\|frozen=True" agentkit/core/contracts/types.py
 # Expected: __add__ on Usage, frozen=True on the dataclass.
 ```
 
@@ -466,12 +466,13 @@ Build the smallest possible reproduction:
 ```python
 # Not committed — one-off verification script.
 import asyncio
-from agentkit import Agent, Budget, RunContext, Services
-from agentkit.adapters.store import InMemoryStore
-from agentkit.capabilities.checkpointer import Checkpointer
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
-from agentkit.kernel.resilience import idempotency_key
-from agentkit.kernel.concurrency import run_agents
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget, RunContext, Services
+from agentkit.state.stores import InMemoryStore
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
+from agentkit.core.execution.resilience import idempotency_key
+from agentkit.core.execution.concurrency import run_agents
 
 async def enrich_batch(rows, ctx):
     done_ids = []
@@ -634,7 +635,7 @@ snapshots periodically.
   contract holds.** A transient error on row N must not poison the
   cache; the next attempt should re-run. Verified by
   `test_inmemory_get_or_set_raising_fn_does_not_cache_and_next_call_retries`
-  in `tests/adapters/test_stores.py`.
+  in `tests/source/unit/state/adapters/test_stores.py`.
 - **Concurrent snapshots of the same run_id assign distinct versions.**
   `test_concurrent_snapshots_of_same_run_id_produce_distinct_versions`
   locks this; if that ever breaks, resume becomes non-deterministic.
@@ -706,22 +707,22 @@ The specific things this design proves the framework must support:
 
 Last audited against the current tree:
 
-- **Automated invariant tests**: `pytest tests/capabilities/test_checkpointer.py
-  tests/agents/test_workflow.py tests/runtime/test_meter.py
-  tests/kernel/test_kernel.py -k "usage or idempotency or gather"` →
+- **Automated invariant tests**: `pytest tests/source/unit/state/checkpoints/test_checkpointer.py
+  tests/source/unit/agents/test_workflow.py tests/source/unit/core/runtime/test_meter.py
+  tests/source/unit/core/test_kernel.py -k "usage or idempotency or gather"` →
   12 passed, 0 failed, 104 deselected.
 - **`Checkpointer.snapshot` deep-copies both state and metadata**:
-  `grep -n "deepcopy" agentkit/capabilities/checkpointer/base.py` returns
+  `grep -n "deepcopy" agentkit/state/checkpoints/base.py` returns
   two hits (state at line 93, metadata at line 96) — both inside
   `snapshot()`, exactly as required.
 - **`gather_bounded` is the fan-out primitive under `run_agents`**:
-  `grep -n "gather_bounded\|max_concurrency" agentkit/kernel/concurrency.py`
+  `grep -n "gather_bounded\|max_concurrency" agentkit/core/execution/concurrency.py`
   returns two hits — the function definition (line 62) and its dispatch
   inside `run_agents` (line 97). `max_concurrency` itself lives on
-  `Budget` in `agentkit/runtime/meter.py` (expected — the semaphore is
+  `Budget` in `agentkit/core/runtime/meter.py` (expected — the semaphore is
   owned by the run-wide meter, not the fan-out primitive).
 - **`idempotency_key` is defined once and delegates to `stable_hash`**:
-  `grep -n "def idempotency_key" agentkit/kernel/resilience.py` returns
+  `grep -n "def idempotency_key" agentkit/core/execution/resilience.py` returns
   one hit (line 249), body is `"idem:" + stable_hash(parts, length=24)`.
 
 All three load-bearing structural checks pass, and the 12 invariant tests

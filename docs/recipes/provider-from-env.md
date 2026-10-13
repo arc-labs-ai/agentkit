@@ -33,17 +33,11 @@ one table: the **model registry**.
 
 import asyncio
 
-from agentkit import Agent, Scope
-from agentkit.adapters.llm import (
-    Capability,
-    CapabilityMismatch,
-    ModelCapabilities,
-    ModelEntry,
-    register_model,
-    resolve_llm,
-)
-from agentkit.client import from_env
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
+from agentkit.models import Capability, CapabilityMismatch, ModelCapabilities, ModelEntry, register_model, resolve_llm
+from agentkit.models.client.chat import from_env
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 async def main() -> None:
@@ -97,7 +91,7 @@ asyncio.run(main())
    a prefix table:
 
    ```python
-   from agentkit.adapters.llm import register_rule
+   from agentkit.models import register_rule
    register_rule(lambda name: "openai" if name.startswith("acme-") else None)
    ```
 4. The provider's environment variables are checked in order
@@ -130,8 +124,8 @@ production service that pins its models — it turns "we don't know"
 into a deployment-time stop:
 
 ```python
-from agentkit import Agent
-from agentkit.adapters.llm import CapabilityMismatch
+from agentkit.agents import Agent
+from agentkit.models import CapabilityMismatch
 
 try:
     Agent("ocr", "our-finetune-v2", requires=("vision",), on_unknown_capability="refuse")

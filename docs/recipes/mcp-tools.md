@@ -43,18 +43,13 @@ from __future__ import annotations
 
 import asyncio
 
-from agentkit import Agent, Scope
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
 from agentkit.agents.cognition import ReActCognition
-from agentkit.integrations.mcp import (
-    MCPClient,
-    StdioServer,
-    mcp_prompts,
-    mcp_resources,
-    mcp_tools,
-)
-from agentkit.kernel.types import ToolCall
-from agentkit.runtime import Invoker, RunContext, Services
-from agentkit.testing import FakeLLM, Turn
+from agentkit.integrations.mcp import MCPClient, StdioServer, mcp_prompts, mcp_resources, mcp_tools
+from agentkit.core.contracts.types import ToolCall
+from agentkit.core.runtime import Invoker, RunContext, Services
+from agentkit.core.testing import FakeLLM, Turn
 
 
 async def main() -> None:

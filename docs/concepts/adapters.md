@@ -22,9 +22,8 @@ touching code you did not write. The version of this that actually hurts
 is quieter: your test suite now needs an API key, so nobody runs it, so
 the integration path rots.
 
-agentkit's answer is a hard rule. `agentkit.kernel` defines the
-**Port** protocols; `agentkit.adapters` implements them; nothing in the
-core imports a provider client. Importing `agentkit.kernel` never
+agentkit's answer is a hard rule. `agentkit.core` defines the
+**Port** protocols. Concrete implementations live with their domain: model transports in `agentkit.models`, storage in `agentkit.state`, and external service adapters in `agentkit.integrations`. Core runtime dispatch loads provider transports lazily. Importing `agentkit.core` never
 triggers an import of `httpx`, an SDK, or a database driver. Everything
 outside is behind an opt-in extra, and every seam has an offline
 implementation you can run in a unit test.
@@ -38,12 +37,12 @@ changed:
 import asyncio
 import tempfile
 
-from agentkit import Agent
-from agentkit.adapters.store import FileStore, InMemoryStore
+from agentkit.agents import Agent
+from agentkit.state.stores import FileStore, InMemoryStore
 from agentkit.agents.cognition import ReActCognition
-from agentkit.kernel.types import ToolCall
-from agentkit.middlewares import memoize
-from agentkit.testing import FakeLLM, FakeTool, Turn, make_test_ctx
+from agentkit.core.contracts.types import ToolCall
+from agentkit.core.policies import memoize
+from agentkit.core.testing import FakeLLM, FakeTool, Turn, make_test_ctx
 
 
 async def run_twice(store) -> int:
@@ -94,7 +93,7 @@ strict, and it is easy to get wrong:
   ports. They are middlewares and meters *backed by* a port. There is
   no `CachePort`; there is `memoize()` riding on `StorePort`.
 
-This is why `agentkit.kernel.ports` is small and stable. A signature
+This is why `agentkit.core.contracts.ports` is small and stable. A signature
 change there is a deliberate, reviewed event, because every adapter in
 the ecosystem implements it.
 
@@ -108,8 +107,8 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
-from agentkit.adapters.store import InMemoryStore
-from agentkit.kernel.ports import StorePort
+from agentkit.state.stores import InMemoryStore
+from agentkit.core.contracts.ports import StorePort
 
 
 class CountingStore:
@@ -195,7 +194,7 @@ dependency.
 ### One reference implementation per seam
 
 Every family ships an in-process adapter that is not a toy — it is the
-**contract** the durable backends are held to. `tests/meta/test_protocol_conformance.py`
+**contract** the durable backends are held to. `tests/source/architecture/test_protocol_conformance.py`
 runs one contract per Protocol against *every* implementation, so a new
 adapter either passes that file or is not a conforming implementation.
 That is what stops four adapters answering the same question four
@@ -211,9 +210,9 @@ and you have an `LLMPort`:
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.adapters.llm import CallableLLM
-from agentkit.testing import make_test_ctx
+from agentkit.agents import Agent
+from agentkit.models import CallableLLM
+from agentkit.core.testing import make_test_ctx
 
 
 def my_provider_sdk(*, system, user, model, **_kw):
@@ -281,7 +280,7 @@ hits, `cache_write_tokens` are cache creation — so
 
 !!! warning "The price table will go stale"
 
-    `adapters/llm/providers/pricing.py` holds best-effort public list
+    `models/providers/pricing.py` holds best-effort public list
     prices, USD per 1M tokens as `(input, output, cache_read,
     cache_write)`. An unknown model costs `0.0` — no guessing. If
     money matters contractually, inject your own `pricing=` callable
@@ -295,7 +294,7 @@ checkpoint and audit. The contract is small and precise:
 ```python
 import asyncio
 
-from agentkit.adapters.store import InMemoryStore
+from agentkit.state.stores import InMemoryStore
 
 
 async def main() -> None:
@@ -394,8 +393,8 @@ moment the budget ran out.
 ```python
 import asyncio
 
-from agentkit import StoreValueError
-from agentkit.adapters.store import InMemoryStore
+from agentkit.core.contracts.errors import StoreValueError
+from agentkit.state.stores import InMemoryStore
 
 
 async def main() -> None:
@@ -504,8 +503,8 @@ that cannot tell null from absent and so has to accept both.
 ```python
 import asyncio
 
-from agentkit.adapters.vector import InMemoryVector
-from agentkit.kernel.types import Chunk, Scope
+from agentkit.state.vectors import InMemoryVector
+from agentkit.core.contracts.types import Chunk, Scope
 
 
 async def main() -> None:
@@ -550,8 +549,8 @@ import asyncio
 import dataclasses
 import json
 
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
-from agentkit.kernel.ports import Checkpoint, CheckpointStatus
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
+from agentkit.core.contracts.ports import Checkpoint, CheckpointStatus
 
 
 async def main() -> None:
@@ -595,7 +594,7 @@ against the four things these payloads actually have to do:
 `Checkpoint.state` is `json.dumps`'d into a JSONB column and
 `AgentResult` round-trips through `dataclasses.asdict`, so a proxy would
 have traded a mutability bug for a data-path outage. `FrozenDict`
-(`agentkit.kernel._frozen`) is a `dict` **subclass**, so every consumer
+(`agentkit.core.serialization._immutable`) is a `dict` **subclass**, so every consumer
 keeps working — serialisers, `isinstance` checks, equality against plain
 dicts — while refusing mutation. The freeze runs on *every*
 construction, including `PostgresCheckpointStore._row_to_checkpoint`, so
@@ -621,8 +620,8 @@ Terminal sinks and cadence wrappers, composable in any order:
 ```python
 import asyncio
 
-from agentkit.adapters.observer import CollectingObserver, Hooks, PolicyObserver
-from agentkit.testing import make_test_ctx
+from agentkit.integrations.observers import CollectingObserver, Hooks, PolicyObserver
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -738,13 +737,7 @@ factory. Resolution and capability checking read the same rows.
 ### Capability is three-valued, and the third value is the point
 
 ```python
-from agentkit.adapters.llm import (
-    Capability,
-    ModelCapabilities,
-    ModelEntry,
-    default_registry,
-    normalize_model_name,
-)
+from agentkit.models import Capability, ModelCapabilities, ModelEntry, default_registry, normalize_model_name
 
 reg = default_registry()
 
@@ -807,7 +800,7 @@ into `UNKNOWN` and silently never check anything.
 ```python
 import warnings
 
-from agentkit.adapters.llm import CapabilityMismatch, default_registry
+from agentkit.models import CapabilityMismatch, default_registry
 
 reg = default_registry()
 
@@ -856,7 +849,7 @@ pins its models), or `"allow"` (verified out of band).
 ### Resolving a provider from the environment
 
 ```python
-from agentkit.adapters.llm import ProviderNotConfigured, default_registry
+from agentkit.models import ProviderNotConfigured, default_registry
 
 reg = default_registry()
 
@@ -933,7 +926,7 @@ the shared one.
 
 ## Writing your own adapter
 
-1. **Pick the port.** Read its Protocol in `agentkit/kernel/ports.py`
+1. **Pick the port.** Read its Protocol in `agentkit/core/contracts/ports.py`
    (or `observation.py` / `metrics.py` / `sampling.py` / `replay.py`).
    If the thing you are wrapping is a *feature* rather than an external
    system, you probably want a middleware instead — see
@@ -945,7 +938,7 @@ the shared one.
    the contract, not toys. Behavioural details like presence-vs-truthiness
    in `get_or_set` and never-storing-a-raised-producer are part of the
    port, not of that adapter.
-4. **Run the conformance suite.** `tests/meta/test_protocol_conformance.py`
+4. **Run the conformance suite.** `tests/source/architecture/test_protocol_conformance.py`
    holds one contract per Protocol, parametrised over every
    implementation. Add yours to the parameter list.
 5. **Keep the dependency optional.** If it needs a client library,
@@ -1013,7 +1006,7 @@ the shared one.
     rather than a callable — registering a provider must cost no
     import, or the registry itself would become unimportable on a
     zero-dependency install, which is the opposite of what it is for.
-    Importing `agentkit.adapters.llm` (the registry) is always safe.
+    Importing `agentkit.models` (the registry) is always safe.
 
 !!! warning "An adapter that retries is an adapter you cannot observe"
 

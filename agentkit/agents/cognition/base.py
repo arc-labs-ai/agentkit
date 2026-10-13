@@ -23,12 +23,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import StreamEvent
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import StreamEvent
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
-    from agentkit.context import WorkingContext
+    from agentkit.agents.execution.agent import Agent
+    from agentkit.state.context import WorkingContext
 
 
 @runtime_checkable

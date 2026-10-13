@@ -1,0 +1,70 @@
+"""Middlewares — the batteries. The app assembles two explicit, ordered chains (chat + tool) and hands
+them to the `Invoker`. There are two kinds:
+
+- **`BaseMiddleware` (transform / guard / observe)** — phase classes that don't control invoking `next`:
+  `MeterMiddleware`, `Compaction`, `Egress`, `Audit`, `SecurityMiddleware`. Lowercase factories
+  (`meter()`, `compaction()`, …) return instances. ``MeterMiddleware`` (the recording middleware) is
+  named to disambiguate from ``runtime.Meter`` (the Protocol it records into).
+- **Raw `(call, next)` (resilience / caching / instrumentation)** — must re-invoke, skip, or wrap-with-a-
+  context-manager `next`, which phase methods can't: `retry`/`fallback` (re-invoke), `memoize`/`idempotent`/
+  `semantic_memoize` (skip on hit), `tracing` (hold a span open across the call).
+
+Typical chat chain:  [tracing(), compaction(…), meter(), fallback([...]), retry(breaker=…)]
+Typical tool chain:  [tracing(), meter(), egress(guardrail), idempotent(), audit(), retry(breaker=…)]
+
+(`compaction` sits ahead of `meter` so the meter estimates tokens on the already-compacted transcript.)
+
+`audit()` vs `retry()` — pick the trail you want. In the tool chain above `retry()` is INSIDE `audit()`,
+so `Audit` sees one outcome per logical tool call: three retried executions of a side-effecting tool fold
+into ONE record. That is the right shape when the question is "what did this run ask the tool to do", and
+it is the only ordering in which an `idempotent()` replay can be recorded as `"deduped"` (a hit
+short-circuits everything inner). Swap to `[… idempotent(), retry(breaker=…), audit()]` when the question
+is "how many times did the side effect actually fire" — then every attempt gets its own record, and a
+deduped replay produces none at all because `audit()` is never reached. `Audit` records failures either
+way (`decision: "failed"`). It does not SEE the individual attempts it sits outside of, but it
+does report them: `retry()` stamps `call.meta["attempts"]` and `Audit` reads it onto the record, so
+one record covering three charges says `attempts=3` rather than reading exactly like one charge.
+
+.. note::
+   ``Egress`` / ``Audit`` live in ``egress_audit.py``, not ``security.py``. A
+   submodule named ``security`` shadowed the ``security()`` factory re-exported
+   here — importing a submodule binds its name onto the parent package, and
+   that binding happened AFTER the ``from .guard import security`` line, so
+   ``middlewares.security`` was the MODULE and ``security()`` raised
+   ``TypeError: 'module' object is not callable``. The module was renamed to
+   ``egress_audit`` rather than the binding patched, because reordering the
+   imports is undone by the formatter and an explicit re-bind is one more thing
+   to forget.
+   ``tests/source/architecture/test_public_surface.py`` now fails on any recurrence.
+"""
+
+from agentkit.core.policies.compaction import Compaction, compaction
+from agentkit.core.policies.egress_audit import Audit, Egress, audit, egress
+from agentkit.core.policies.guard import SecurityMiddleware, security
+from agentkit.core.policies.memoize import idempotent, memoize, semantic_memoize
+from agentkit.core.policies.meter import MeterMiddleware, meter
+from agentkit.core.policies.output_coerce import output_coerce
+from agentkit.core.policies.resilience import fallback, retry
+from agentkit.core.policies.tracing import tracing
+
+__all__ = [
+    # raw (call, next) — resilience / caching / instrumentation
+    "tracing",
+    "retry",
+    "fallback",
+    "memoize",
+    "idempotent",
+    "semantic_memoize",
+    "output_coerce",
+    # BaseMiddleware classes (+ lowercase factories) — transform / guard / observe
+    "MeterMiddleware",
+    "meter",
+    "Compaction",
+    "compaction",
+    "Egress",
+    "egress",
+    "Audit",
+    "audit",
+    "SecurityMiddleware",
+    "security",
+]

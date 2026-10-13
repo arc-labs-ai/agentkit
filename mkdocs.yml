@@ -123,12 +123,15 @@ nav:
   - Cheatsheet: cheatsheet.md
   - Glossary: glossary.md
   - Tutorial: tutorial.md
+  - Public usage guide: concepts/using-agentkit.md
   - Concepts:
       - Kernel: concepts/kernel.md
       - Runtime: concepts/runtime.md
       - Context: concepts/context.md
       - Capabilities: concepts/capabilities.md
       - Agents: concepts/agents.md
+      - Model-neutral calls: concepts/calls.md
+      - Building harnesses: concepts/harnesses.md
       - Tools: concepts/tools.md
       - Memory: concepts/memory.md
       - Skills: concepts/skills.md

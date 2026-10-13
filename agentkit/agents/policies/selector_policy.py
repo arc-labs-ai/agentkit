@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from agentkit.agents.control.selector import Selector
 from agentkit.agents.control.termination import MaxTurns, TerminationCondition
+from agentkit.agents.definitions.results import AgentResult
 from agentkit.agents.policies.roundrobin import (
     _coord_result,
     _emit_policy_dispatch,
@@ -29,15 +30,14 @@ from agentkit.agents.policies.roundrobin import (
     _run_local_termination,
     render_transcript,
 )
-from agentkit.agents.result import AgentResult
-from agentkit.capabilities.checkpointer import coord_state_from_dict, coord_state_to_dict
-from agentkit.context import WorkingContext
-from agentkit.kernel.ports import CheckpointStatus
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import Message, Usage
+from agentkit.core.contracts.ports import CheckpointStatus
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import Message, Usage
+from agentkit.state.checkpoints import coord_state_from_dict, coord_state_to_dict
+from agentkit.state.context import WorkingContext
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
+    from agentkit.agents.execution.agent import Agent
 
 
 def _selector_dispatch(ctx: Ctx, *, policy: str, child: str, reason: str) -> None:

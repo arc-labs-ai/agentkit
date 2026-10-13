@@ -14,14 +14,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from agentkit.agents.definitions.results import AgentResult, stop_reason_for
 from agentkit.agents.policies.roundrobin import _emit_policy_dispatch
-from agentkit.agents.result import AgentResult, stop_reason_for
-from agentkit.context import WorkingContext
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import Message, Usage
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import Message, Usage
+from agentkit.state.context import WorkingContext
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
+    from agentkit.agents.execution.agent import Agent
 
 
 def _ledger_dispatch(ctx: Ctx, *, policy: str, child: str, reason: str) -> None:

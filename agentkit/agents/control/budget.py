@@ -1,6 +1,6 @@
 """ActorBudget — per-agent envelope with reserve/charge/settle.
 
-Complements ``agentkit.runtime.meter.Budget`` (one global envelope
+Complements ``agentkit.core.runtime.meter.Budget`` (one global envelope
 per RUN). ``ActorBudget`` is the per-actor companion: one envelope
 per agent, with reservation accounting for child spawns. The two
 compose — run-wide ``Budget`` caps total cost; per-agent
@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable
 from decimal import Decimal
 
-from agentkit.runtime.meter import to_money
+from agentkit.core.runtime.meter import to_money
 
 
 class BudgetExhausted(RuntimeError):
@@ -99,6 +99,7 @@ class ActorBudget:
         "_reserved_cost",
         "_started_at",
         "_used_cost",
+        "_cost_complete",
         "max_cost_usd",
         "max_steps",
         "max_tokens",
@@ -123,11 +124,12 @@ class ActorBudget:
         self.max_tokens = max_tokens
         self._max_cost = to_money(max_cost_usd)
         self._used_cost = Decimal(0)
+        self._cost_complete = True
         self._reserved_cost = Decimal(0)
         self.max_steps = max_steps
         self.max_wall_seconds = max_wall_seconds
         self.used_tokens = 0
-        self.used_cost_usd = 0.0  # float MIRROR — see the module note
+        self.used_cost_usd: float | None = 0.0  # float MIRROR — see the module note
         self.used_steps = 0
         self.reserved_tokens = 0
         self.reserved_cost_usd = 0.0  # float MIRROR
@@ -146,12 +148,17 @@ class ActorBudget:
         ``remaining_cost_usd()``) and every existing reader are untouched.
         """
         self.max_cost_usd = float(self._max_cost)
-        self.used_cost_usd = float(self._used_cost)
+        self.used_cost_usd = float(self._used_cost) if self._cost_complete else None
         self.reserved_cost_usd = float(self._reserved_cost)
 
     def max_cost(self) -> Decimal:
         """The cap, exactly."""
         return self._max_cost
+
+    @property
+    def cost_complete(self) -> bool:
+        """Whether the known Decimal ledger accounts for every charge."""
+        return self._cost_complete
 
     def used_cost(self) -> Decimal:
         """Actual spend, exactly. THIS is the number to reconcile against."""
@@ -163,6 +170,8 @@ class ActorBudget:
 
     def remaining_cost(self) -> Decimal:
         """Headroom, exactly. Clamped at zero."""
+        if not self._cost_complete:
+            return Decimal(0)
         return max(Decimal(0), self._max_cost - self._used_cost - self._reserved_cost)
 
     # ── available / remaining ────────────────────────────────────────
@@ -198,7 +207,7 @@ class ActorBudget:
         self,
         *,
         tokens: int = 0,
-        cost_usd: float | int | str | Decimal = 0.0,
+        cost_usd: float | int | str | Decimal | None = 0.0,
         steps: int = 0,
     ) -> None:
         """Record actual spend. Soft-exceeds the cap (lets the
@@ -208,7 +217,10 @@ class ActorBudget:
         ``exhausted()`` and stops cleanly.
         """
         self.used_tokens += tokens
-        self._used_cost += to_money(cost_usd)
+        if cost_usd is None:
+            self._cost_complete = False
+        else:
+            self._used_cost += to_money(cost_usd)
         self.used_steps += steps
         self._sync_cost_mirrors()
 
@@ -272,7 +284,8 @@ class ActorBudget:
         reserved_cost_usd: float | int | str | Decimal,
         reserved_steps: int,
         used_tokens: int,
-        used_cost_usd: float | int | str | Decimal,
+        used_cost_usd: float | int | str | Decimal | None,
+        known_cost_usd: float | int | str | Decimal | None = None,
         used_steps: int,
     ) -> None:
         """Settle a child's reservation against its actual usage.
@@ -296,7 +309,12 @@ class ActorBudget:
         # Charge against the parent's used_* but never more than what
         # was reserved (over-spending is the child's problem).
         self.used_tokens += min(used_tokens, reserved_tokens)
-        self._used_cost += min(to_money(used_cost_usd), reserved_cost)
+        if used_cost_usd is None:
+            self._cost_complete = False
+            measured = Decimal(0) if known_cost_usd is None else to_money(known_cost_usd)
+        else:
+            measured = to_money(used_cost_usd)
+        self._used_cost += min(measured, reserved_cost)
         self.used_steps += min(used_steps, reserved_steps)
         self._sync_cost_mirrors()
 

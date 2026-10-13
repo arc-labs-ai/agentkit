@@ -14,13 +14,13 @@ re-run red builds, and it cannot make the interesting cases happen —
 you cannot ask a real model to please return malformed JSON, or to
 please time out.
 
-`agentkit.testing` gives you the seam. `FakeLLM` scripts the model;
+`agentkit.core.testing` gives you the seam. `FakeLLM` scripts the model;
 `make_test_ctx` builds a **real** `RunContext` around it, so everything
 between your code and the provider is the production code path.
 
-!!! note "`agentkit.testing` is deliberately not re-exported at the top level"
+!!! note "`agentkit.core.testing` is deliberately not re-exported at the top level"
     There is no `from agentkit import FakeLLM`. Test doubles live behind
-    `agentkit.testing` precisely so a production wiring cannot pick one
+    `agentkit.core.testing` precisely so a production wiring cannot pick one
     up by accident.
 
 ## Working code
@@ -30,11 +30,13 @@ between your code and the provider is the production code path.
 
 import pytest
 
-from agentkit import Agent, Budget, tool
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.kernel.types import ToolCall
-from agentkit.middlewares import meter
-from agentkit.testing import FakeLLM, FakeTool, RecordingTracer, Turn, make_test_ctx
+from agentkit.core.contracts.types import ToolCall
+from agentkit.core.policies import meter
+from agentkit.core.testing import FakeLLM, FakeTool, RecordingTracer, Turn, make_test_ctx
 
 
 @tool(side_effecting=False, idempotent=True)
@@ -114,8 +116,8 @@ All five pass in well under a second, with no network and no key.
 **`FakeLLM`** is an `LLMPort`. Several ways to say what it returns:
 
 ```python
-from agentkit.kernel.types import ToolCall, Usage
-from agentkit.testing import FakeLLM, Turn
+from agentkit.core.contracts.types import ToolCall, Usage
+from agentkit.core.testing import FakeLLM, Turn
 
 FakeLLM("always this string")                       # one fixed answer
 FakeLLM({"refund": "5 days", "ship": "Tuesday"})    # first key found in the user text wins

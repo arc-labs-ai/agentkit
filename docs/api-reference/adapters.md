@@ -1,4 +1,4 @@
-# `agentkit.adapters`
+# Domain adapters
 
 Concrete `Port` implementations: LLM providers (Claude, OpenAI,
 DeepSeek, OpenRouter), vector / store / checkpoint back-ends,
@@ -7,10 +7,9 @@ observer + replay tooling, and the OTel bridge.
 Most adapters are behind an opt-in extra (`http`, `postgres`, `redis`,
 `observability`) so the zero-dep core stays clean.
 
-`agentkit.adapters` itself re-exports nothing — each adapter lives in
-its own subpackage. Reference them directly:
+There is no separate adapter aggregate package. Each implementation lives with its model, state or integration domain. Reference its owning package directly:
 
-::: agentkit.adapters.llm
+::: agentkit.models
     options:
       show_root_heading: false
       show_source: false
@@ -25,37 +24,37 @@ refused at bind time rather than surfacing as a plausible empty
 answer. See the
 [recipe](../recipes/provider-from-env.md) for the mental model.
 
-::: agentkit.adapters.llm.model_registry
+::: agentkit.models.catalog.registry
     options:
       show_root_heading: false
       show_source: false
       members_order: source
 
-::: agentkit.adapters.store
+::: agentkit.state.stores
     options:
       show_root_heading: false
       show_source: false
       members_order: source
 
-::: agentkit.adapters.vector
+::: agentkit.state.vectors
     options:
       show_root_heading: false
       show_source: false
       members_order: source
 
-::: agentkit.adapters.checkpoint
+::: agentkit.state.checkpoints.adapters
     options:
       show_root_heading: false
       show_source: false
       members_order: source
 
-::: agentkit.adapters.observer
+::: agentkit.integrations.observers
     options:
       show_root_heading: false
       show_source: false
       members_order: source
 
-::: agentkit.adapters.observability
+::: agentkit.integrations.observability
     options:
       show_root_heading: false
       show_source: false
@@ -102,7 +101,7 @@ not ordinary cache misses increment `failed_reads`. Alert on those
 counters if replay data matters to you; a miss on its own is normal
 and is neither logged above `DEBUG` nor counted.
 
-::: agentkit.adapters.replay
+::: agentkit.state.replay
     options:
       show_root_heading: false
       show_source: false

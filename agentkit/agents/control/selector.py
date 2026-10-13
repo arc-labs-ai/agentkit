@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
-from agentkit.kernel.types import Message
+from agentkit.core.contracts.types import Message
 
 # Sync form. The `Sequence[Any]` for agents is intentional — the coordinator
 # carries duck-typed agents (anything with `.name` + `.run(...)`); the

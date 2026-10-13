@@ -17,8 +17,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import ToolSchema
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import ToolSchema
 
 if TYPE_CHECKING:
     from agentkit.integrations.mcp.client import MCPClient

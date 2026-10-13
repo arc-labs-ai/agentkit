@@ -32,6 +32,7 @@ Issues = "https://github.com/arc-labs-ai/agentkit/issues"
 Changelog = "https://github.com/arc-labs-ai/agentkit/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+calls = ["httpx[http2]>=0.27", "jsonschema>=4.23", "PyYAML>=6", "mcp>=1.28,<2"]
 http = ["httpx[http2]>=0.27"]
 fast = ["orjson>=3.10"]
 observability = [
@@ -73,7 +74,7 @@ ignore = ["UP046", "UP047"]
 # silently rather than to be pleasant.
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests"]
+testpaths = ["tests/source"]
 addopts = [
     # A mistyped marker (`@pytest.mark.asyncioo`) is a test that silently never
     # runs the way its author thought. Unknown markers are errors.
@@ -191,10 +192,14 @@ ignore_missing_imports = true
 # Disable warn_unused_ignores here to make the check pass in both worlds.
 [[tool.mypy.overrides]]
 module = [
-    "agentkit.adapters.*",
-    "agentkit.capabilities.output_schema.*",
+    "agentkit.models.providers.*",
+    "agentkit.state.stores.*",
+    "agentkit.state.vectors.*",
+    "agentkit.state.checkpoints.adapters.*",
+    "agentkit.integrations.observability.*",
+    "agentkit.models.output.*",
     "agentkit.integrations.mcp.*",
-    "agentkit.kernel._json",
+    "agentkit.core.serialization._json",
 ]
 warn_unused_ignores = false
 
@@ -203,6 +208,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
+eval = ["python-dotenv>=1.0", "httpx[http2]>=0.27", "jsonschema>=4.23", "PyYAML>=6", "mcp>=1.28,<2"]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",

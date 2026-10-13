@@ -49,7 +49,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:  # pragma: no cover — annotation-only, no runtime import
-    from agentkit.runtime.context import RunContext
+    from agentkit.core.runtime.context import RunContext
 
 # What a person can answer. ``modify`` carries replacement tool arguments;
 # ``value`` carries the elicited value; ``expired`` is produced by the runtime

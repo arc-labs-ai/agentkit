@@ -6,8 +6,7 @@ output, scores it, saves it, or turns it into a typed object.
 
 None of them are required. An agent with no capabilities is a valid
 agent. Each one is a small typed seam with implementations shipped in
-`agentkit.capabilities`, and the point of the seam is that swapping an
-implementation never means editing the loop.
+`agentkit.agents.requests` and `agentkit.agents.evaluation` for task collaborators, `agentkit.state.compaction` and `agentkit.state.checkpoints` for state, `agentkit.core.guardrails` for policy, and `agentkit.models.output` for typed model output. Swapping an implementation does not require editing the loop.
 
 !!! tip "Is this page for you?"
 
@@ -51,8 +50,11 @@ messages you send.
 ```python
 import asyncio
 
-from agentkit import Prompt, RequestBuilder, SlidingWindowCompactor, WorkingContext
-from agentkit.testing import make_test_ctx
+from agentkit.agents.prompts import Prompt
+from agentkit.agents.requests import RequestBuilder
+from agentkit.state.compaction import SlidingWindowCompactor
+from agentkit.state.context import WorkingContext
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -268,9 +270,12 @@ policy in once at wiring time:
 ```python
 import asyncio
 
-from agentkit import InMemoryFiles, Prompt, RequestBuilder, WorkingContext
-from agentkit.memory import FileMemory
-from agentkit.testing import make_test_ctx
+from agentkit.tools import InMemoryFiles
+from agentkit.agents.prompts import Prompt
+from agentkit.agents.requests import RequestBuilder
+from agentkit.state.context import WorkingContext
+from agentkit.state.memory import FileMemory
+from agentkit.core.testing import make_test_ctx
 
 files = InMemoryFiles()
 mem = FileMemory(files=files)
@@ -343,7 +348,7 @@ that requested it — an orphaned `tool` message is a provider 400.
 
 !!! warning "Token estimation used to be three separate copies, and they drifted"
     `RequestBuilder`, the compactors, and the `compaction()` middleware
-    now all delegate to one estimator in `agentkit.context.tokens`. When
+    now all delegate to one estimator in `agentkit.state.context.tokens`. When
     they were independent copies of `sum(len(content)) // 4`, none
     counted tool calls: a measured 80-message transcript carrying 324,420
     characters of tool arguments (~81,000 tokens) estimated at **20**, so
@@ -361,8 +366,9 @@ every producer does not re-derive "next version = latest + 1".
 ```python
 import asyncio
 
-from agentkit import CheckpointStatus, Checkpointer
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.core.contracts.ports import CheckpointStatus
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
 
 
 async def main() -> None:
@@ -430,7 +436,7 @@ concrete adapter.
 ```python
 from dataclasses import dataclass
 
-from agentkit import adapt
+from agentkit.models.output import adapt
 
 
 @dataclass

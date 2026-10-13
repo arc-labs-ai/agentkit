@@ -1,0 +1,2764 @@
+"""ClaudeCliCognition — delegate the agent loop to a locally-installed ``claude`` CLI.
+
+Zero pip dependency. Users install the ``claude`` CLI separately (from
+Anthropic) and this cognition subprocesses it per ``agent.run(...)`` /
+``agent.stream(...)`` with ``claude -p --input-format stream-json
+--output-format stream-json --verbose``, writing the task to the child's stdin
+as one stream-json user turn. The task is NOT an argv entry: the OS caps an
+argument list (measured: ``OSError`` E2BIG past ~1 MB on darwin, and Linux caps
+a single argument at 128 KiB), and an argv-carried prompt is readable by anyone
+who can run ``ps``.
+
+Auth is the CLI's to resolve, but WHICH auth it resolves is a choice this
+cognition makes explicitly — see ``env_policy``. The CLI prefers an ambient
+``ANTHROPIC_API_KEY`` over a signed-in profile and says so on its own stderr,
+so inheriting the parent environment wholesale would let a stray key override
+the ``config_dir`` a caller passed precisely to isolate a tenant. The default
+still inherits; setting ``config_dir=`` switches to ``"profile"``, which strips
+the ambient credentials and lets the configuration directory win. agentkit
+itself never reads or stores an API key.
+
+Wire it like any other cognition:
+
+    from agentkit.agents import Agent
+    from agentkit.models.providers.cli.claude import ClaudeCliCognition
+
+    agent = Agent(
+        name="local",
+        prompt="You are a concise assistant.",
+        cognition=ClaudeCliCognition(
+            model="claude-opus-4-5",
+            permission_mode="acceptEdits",
+            working_dir=Path("/tmp/sandbox"),
+            tools=("Read", "Grep"),           # the session HAS only these
+            allowed_tools=("Read", "Grep"),   # ...and runs them without prompting
+        ),
+    )
+    result = await agent.run("Summarize README.md", ctx)
+
+``tools`` and ``allowed_tools`` are different flags and mixing them up is the
+easy mistake: ``--tools`` restricts what the session has, ``--allowed-tools``
+auto-approves what it may run unprompted. Naming three tools in
+``allowed_tools`` alone leaves every other tool — Bash included — available.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import shutil
+import uuid
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+from agentkit.agents.control.safety import TRIFECTA
+from agentkit.agents.definitions.results import AgentResult
+from agentkit.agents.prompts.prompt import Prompt
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import StreamEvent, ToolCall, Usage
+from agentkit.models.providers.cli._common import (
+    _CANCEL_POLL_S,
+    _STDOUT_LINE_LIMIT,
+    START_NEW_SESSION,
+    CliLineTooLong,
+    CliSpawn,
+    CliTimedOut,
+    CliTimeouts,
+    EnvPolicy,
+    StructuredOutputFailure,
+    _as_cost,
+    _as_dict,
+    _as_int,
+    _as_list,
+    _build_child_env,
+    _charge_meters,
+    _cli_terminal_stop_reason,
+    _CliDeadline,
+    _CliLaunch,
+    _CliRunOutcome,
+    _coerce_structured,
+    _drain_stderr,
+    _get_semaphore,
+    _is_inline_json,
+    _is_working_dir_missing,
+    _iter_stdout,
+    _make_scratch,
+    _parse_line,
+    _process_exit_stop_reason,
+    _redact_secrets,
+    _require_working_dir,
+    _reraise_if_not_an_exception,
+    _run_cli_process,
+    _terminate,
+    _timeout_stop_reason,
+    _too_big_for_argv,
+    _tool_middleware_names,
+    _validate_json_schema,
+    _write_private,
+)
+from agentkit.models.providers.cli._messages import MessageLog
+
+if TYPE_CHECKING:
+    from agentkit.agents.execution.agent import Agent
+    from agentkit.state.context import WorkingContext
+
+
+PermissionMode = Literal[
+    "default",
+    "acceptEdits",
+    "plan",
+    "bypassPermissions",
+    "auto",
+    "manual",
+    "dontAsk",
+]
+
+SettingSource = Literal["user", "project", "local"]
+
+
+# Reasons this cognition emits that mean "the run ERRORED", as opposed to
+# "something stopped it deliberately". ``cli_exit_<n>`` is dynamic, which is
+# why the mapping lives here rather than in the framework-wide table: only this
+# module knows how it spells its own failures.
+_CLI_FAILURE_REASONS = frozenset(
+    {
+        "spawn_failed",
+        "parse_failed",
+        # A single NDJSON payload outgrew the reader's buffer. ``failed``, and
+        # deliberately NOT ``parse_failed``: the line was valid JSON, just too
+        # big to assemble, so the fix is a size rather than a corruption hunt.
+        "output_line_too_long",
+        "working_dir_missing",
+        "cli_reported_error",
+        # A turn sent into a dead session produced no answer. ``failed`` rather
+        # than ``terminated``: nobody chose to stop this, the process was
+        # already gone.
+        "session_closed",
+        # THIS TURN could not run — per-turn structured output, which is a
+        # process-level CLI flag — while the session itself is untouched. Kept
+        # distinct from ``session_closed`` because the fix differs: re-send the
+        # turn without the schema versus open a new session. Measured: the
+        # refusal used to report ``session_closed`` on a process that was still
+        # alive and still answering.
+        "turn_refused",
+        # ── liveness (see CliTimeouts) ──────────────────────────────────────
+        # ``failed`` and not ``expired``: in this framework ``expired`` means a
+        # human-gate deadline passed and the run DEGRADED AND CONTINUED, which
+        # is the opposite of what happens here — the process is killed and
+        # there is no answer. And not ``terminated`` either: nobody chose to
+        # stop this, a bound did.
+        "startup_timeout",
+        "first_event_timeout",
+        "idle_timeout",
+        "total_timeout",
+        # A ``startup_timeout`` whose stderr says the CLI could not
+        # authenticate. Same event, more specific name — see
+        # ``_classify_timeout``.
+        "authentication_failed",
+        # ── stream integrity ────────────────────────────────────────────────
+        # The stream ended without the CLI's own end-of-turn payload: a process
+        # killed from outside, a full disk, a broken pipe, a truncated final
+        # line. Measured before this reason existed — the run reported
+        # ``stop_reason="complete"``, ``partial=False``, and handed back half an
+        # answer as a finished one, which is the worst shape a failure can take.
+        "malformed_output",
+        # A death by signal rather than a chosen exit, and a schema the CLI
+        # refused at startup. Both are refinements of ``cli_exit_<n>``.
+        "process_crashed",
+        "schema_rejected",
+    }
+)
+
+# How long a session waits for the tail of a turn that failed on OUR side (a
+# parse bug) before declaring the stream unusable. The CLI is still writing an
+# answer nobody will read; we need the stream back at a turn boundary, but not
+# at the cost of blocking the caller for the whole of a turn that already
+# failed. Five seconds is the same grace the terminate path uses.
+_RESYNC_TIMEOUT_S = 5.0
+
+# Structured-output failures are ``invalid_output`` in the closed taxonomy —
+# the same category the tool loop uses when parse-and-repair is exhausted. They
+# are NOT ``failed``: the run itself worked, the shape did not.
+_CLI_INVALID_OUTPUT_REASONS = frozenset(
+    {
+        "error_max_structured_output_retries",
+        "structured_output_missing",
+        "structured_output_mismatch",
+    }
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Capability tags for the CLI's OWN built-in tools.
+#
+# ``RunPolicy`` refuses a tool set that can reach private data, untrusted
+# content and egress at once (the lethal trifecta). It reads ``tool.caps`` off
+# every tool it is handed — and this cognition had none, at all: ``grep -c caps
+# claude_cli.py`` returned 0. So a CLI session holding ``Read`` + ``WebFetch`` +
+# ``Bash`` — which IS that trifecta, exactly — sailed past the same check that
+# refuses the equivalent agentkit tool set. The gate was not bypassed; it had
+# nothing to look at.
+#
+# The vocabulary is ``TRIFECTA``, imported rather than re-spelled. A parallel
+# vocabulary would be worse than none: ``RunPolicy.capabilities`` intersects
+# with ``TRIFECTA`` and silently DROPS every tag outside it, so an invented tag
+# reads like protection and provides none.
+#
+# Two judgement calls worth defending, because both are the kind that get
+# "fixed" later by someone tightening the table:
+#
+# * ``Bash`` is ``private_data`` + ``egress`` and NOT ``untrusted_content``. It
+#   can read anything on the box and it can ``curl`` anywhere, so those two are
+#   not arguable. Adding the third would make every session that holds Bash a
+#   trifecta on its own, and a check that fires on ~every real configuration is
+#   a check people turn off. The spec's own framing — "a session with Read,
+#   WebFetch and Bash is that trifecta exactly" — has each tool contributing.
+# * ``Write`` / ``Edit`` / ``NotebookEdit`` carry NO tag. They are side
+#   effecting, which matters, but ``RunPolicy``'s vocabulary has exactly three
+#   words and none of them means "mutates local state" — that axis is
+#   ``FunctionTool.side_effecting``, and inventing a fourth tag here would put
+#   it somewhere ``RunPolicy`` cannot read it (see above).
+#
+# ``Task`` and ``SlashCommand`` carry all three because they are indirections
+# to the full tool set: a subagent, or a user-authored command body, can do
+# whatever the session can. Tagging them narrowly would let a caller launder
+# the trifecta through one innocuous-looking name.
+CLI_TOOL_CAPS: dict[str, tuple[str, ...]] = {
+    "Bash": ("private_data", "egress"),
+    "BashOutput": (),  # only reads shells ``Bash`` already started
+    "Edit": (),
+    "ExitPlanMode": (),
+    "Glob": ("private_data",),
+    "Grep": ("private_data",),
+    "KillShell": (),
+    "NotebookEdit": (),
+    "Read": ("private_data",),
+    "SlashCommand": TRIFECTA,
+    "Task": TRIFECTA,
+    "TodoWrite": (),
+    "WebFetch": ("untrusted_content", "egress"),
+    "WebSearch": ("untrusted_content", "egress"),
+    "Write": (),
+}
+
+
+@dataclass(slots=True)
+class ClaudeCliCognition:
+    """Delegates the agent loop to a locally-installed ``claude`` CLI.
+
+    Subprocesses ``claude -p "<task>" --output-format stream-json --verbose``
+    per ``agent.run(...)`` / ``agent.stream(...)``. Uses whatever auth the
+    CLI resolves — no API key handling on agentkit's side.
+
+    Read from the agent: ``prompt`` (APPENDED to the CLI's own system prompt
+    via ``--append-system-prompt``; set ``system_prompt_mode="replace"`` to
+    override the CLI's prompt entirely instead), ``model`` (via ``--model`` when set on the
+    cognition — the agent's ``model`` field is NOT consulted; the cognition's
+    own ``model`` wins so a caller can point the CLI at a different model
+    than the rest of the agentkit chain).
+
+    Emits: ``message_delta`` per completed assistant text block — or per TOKEN
+    with ``partial_messages=True``, which turns on the CLI's
+    ``--include-partial-messages`` and streams the provider's own deltas;
+    ``tool_call`` / ``tool_result`` for each CLI tool event; ``step`` for a
+    provider retry; exactly one terminal ``final`` event carrying
+    ``AgentResult(output=<accumulated assistant text>, usage=<Usage>,
+    tests.evals={"session_id": ..., "cli_duration_ms": ...})``.
+
+    ``Usage.cost_usd`` is populated from the CLI's ``result.total_cost_usd``.
+    Surface this as **a CLI-side estimate**, not a billed number — the CLI
+    computes it from published per-token prices and can drift from provider
+    invoices.
+
+    **The middleware chain does not apply to a native CLI tool call.** The CLI
+    bypasses the ``Invoker``, so for every ``Write`` / ``Edit`` / ``Bash`` /
+    ``WebFetch`` the CLI runs inside its own process there is no ``egress()``
+    URL check, no ``Guardrail.check_url`` SSRF or allowlist check, no
+    ``security()`` input guard, no ``audit()`` record, and no ``memoize()`` /
+    ``idempotent()`` key. Not "reduced" — absent. ``meter()`` had the identical
+    hole and was patched by hand (see ``_charge_meters``); the other five were
+    not, and a caller who reads agentkit's middleware documentation and wires
+    the documented tool chain gets a session where none of it applies, with
+    nothing saying so. That is a documented safety mechanism doing nothing,
+    five more times.
+
+    Two things are done about it here, neither of which is a fix — the CLI owns
+    its own tool loop and agentkit cannot reach into it:
+
+    * The first ``drive`` on a context that carries tool middleware, for a
+      session that has native tools, **warns and names the middlewares that
+      will not apply**. The failure is invisible by construction, so a generic
+      "middleware may not apply" would leave the reader no better off.
+    * The built-in tools carry ``caps`` (see :data:`CLI_TOOL_CAPS`), and
+      ``ClaudeCliCognition.caps`` is their union, so ``RunPolicy`` can refuse a
+      CLI session for the same lethal trifecta it refuses an agentkit tool set
+      for: ``RunPolicy(mode="deny").check([cognition, *other_tools])``.
+
+    Serving the tools over MCP instead — ``mcp_config=...`` with ``tools=("",)``
+    — routes every call back through agentkit's own tool path, where the chain
+    does apply. That is the configuration the warning is steering toward.
+    """
+
+    name: str = "claude_cli"
+    claude_bin: str = "claude"
+    model: str | None = None
+    # How ``agent.prompt`` reaches the CLI. ``--system-prompt`` REPLACES the
+    # entire Claude Code system prompt — tool guidance, environment info, the
+    # lot — so wiring an agentkit prompt straight into it turned a capable
+    # coding agent into a bare chat model that still had tools it no longer
+    # knew how to use. ``--append-system-prompt`` is what the CLI docs
+    # recommend for "add instructions while keeping Claude Code's default
+    # behavior", and is the default here. Choose ``"replace"`` deliberately.
+    system_prompt_mode: Literal["append", "replace"] = "append"
+    working_dir: Path | None = None
+    config_dir: Path | None = None  # → CLAUDE_CONFIG_DIR
+    # ``--allowed-tools``: tools that run WITHOUT a permission prompt. This is
+    # an auto-approve list, NOT a restriction — naming three tools here leaves
+    # every other tool available and merely prompting. To restrict what exists
+    # at all, use ``tools`` below. The CLI reference is explicit about the
+    # split ("To restrict which tools are available, use --tools instead") and
+    # conflating them is how a supposedly sandboxed agent keeps Bash.
+    allowed_tools: tuple[str, ...] = ()
+    disallowed_tools: tuple[str, ...] = ()
+    # ``--tools``: the built-in tools the session HAS. ``()`` (the default)
+    # passes the flag at all, leaving the CLI's own default set; ``("",)`` is
+    # the CLI's spelling of "disable all tools"; a tuple of names restricts to
+    # exactly those.
+    tools: tuple[str, ...] | None = None
+    permission_mode: PermissionMode = "default"
+    permission_prompt_tool: str | None = None  # → --permission-prompt-tool (an MCP tool)
+    max_turns: int | None = None
+
+    # ── structured output ───────────────────────────────────────────────────
+    # ``--json-schema``: the CLI validates its own final answer against this
+    # schema and returns it in the result payload's ``structured_output``
+    # field, re-prompting itself on a mismatch. Leave ``None`` and the schema
+    # is taken from ``agent.output`` when one is declared, so the same
+    # ``output=`` that types a normal agentkit run types a CLI-delegated one.
+    # Set explicitly to override, or to ``{}``-free JSON Schema for an agent
+    # that declares no ``output=``.
+    json_schema: dict[str, Any] | None = None
+
+    # ``--include-partial-messages``: token-level streaming. Without it the CLI
+    # emits one ``assistant`` message per completed block, so a
+    # ``message_delta`` arrives per PARAGRAPH, not per token — fine for a
+    # backend, wrong for a UI with a cursor in it. With it on, the deltas come
+    # from ``stream_event`` payloads and the completed ``assistant`` message is
+    # used only to accumulate the authoritative text (never re-emitted, or the
+    # consumer would see every sentence twice).
+    partial_messages: bool = False
+
+    # ── environment: what the session can reach ─────────────────────────────
+    # ``--add-dir``: directories outside ``working_dir`` the session may read
+    # and edit. Existence is checked at construction, matching what the CLI
+    # itself validates, because a typo'd path is otherwise a subprocess that
+    # dies three seconds in.
+    add_dirs: tuple[Path | str, ...] = ()
+    # ``--mcp-config``: MCP servers, as file paths or inline JSON strings.
+    # ``--strict-mcp-config`` ignores every other MCP configuration, which is
+    # what a service wants: the servers it declared, not the ones a developer
+    # happened to have in ``~/.claude``.
+    mcp_config: tuple[str | Path, ...] = ()
+    strict_mcp_config: bool = False
+    # ``--settings``: a settings file path or an inline JSON string, overriding
+    # the same keys in the user's settings.json for this session only.
+    settings: str | Path | None = None
+    # ``--setting-sources`` controls which ambient settings files the CLI may
+    # load. ``None`` preserves Claude's defaults; ``()`` emits an empty source
+    # list and is the service-safe spelling for ignoring user/project/local
+    # permission grants without using ``--bare`` (which would also disable
+    # subscription OAuth). Explicit ``settings=`` still applies.
+    setting_sources: tuple[SettingSource, ...] | None = None
+    # ``--agents``: subagent definitions as JSON, serialised for you.
+    agents: dict[str, Any] | None = None
+    # ``--bare``: skip auto-discovery of hooks, skills, commands, subagents,
+    # plugins, MCP servers, auto memory and CLAUDE.md. The CLI docs call this
+    # "the recommended mode for scripted and SDK calls" and say it will become
+    # the default for ``-p``. It is what makes a run reproducible across
+    # machines: without it, a hook in a teammate's ``~/.claude`` or an MCP
+    # server in the checked-out repo's ``.mcp.json`` executes inside your
+    # service. Left False here because turning it on changes what a run can
+    # see, which is not a default this cognition should flip under anyone.
+    #
+    # In bare mode the CLI never reads OAuth credentials or the keychain — set
+    # ``ANTHROPIC_API_KEY`` (or an ``apiKeyHelper`` in ``settings``).
+    bare: bool = False
+    # ``--exclude-dynamic-system-prompt-sections``: move per-machine sections
+    # (cwd, environment info, memory paths) out of the system prompt and into
+    # the first user message, so the cache-stable prefix is identical across
+    # users and machines running the same task. Documented for exactly this
+    # workload: "Use with -p for scripted, multi-user workloads".
+    stable_prompt_prefix: bool = False
+    fallback_model: str | tuple[str, ...] | None = None  # → --fallback-model (tried in order)
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    # ``--no-session-persistence``: sessions are not written to disk. For a
+    # multi-tenant service this is a containment control, not an optimisation.
+    no_session_persistence: bool = False
+
+    # ── spend ───────────────────────────────────────────────────────────────
+    # Two halves of one problem. ``--max-budget-usd`` hands the run's remaining
+    # headroom to the CLI so IT stops itself mid-flight; charging the meters
+    # afterwards puts what it actually spent on the framework's books. Before
+    # this the cognition was invisible to both: a $50 CLI run against a $1
+    # Budget completed happily and the ledger read $0.00, which the class
+    # docstring admitted ("callers who need a hard ceiling on CLI spend must
+    # impose it externally").
+    #
+    # Turn it off for a run that should not draw on the shared envelope at all
+    # — a warm-up call, an eval harness with its own accounting.
+    meter_spend: bool = True
+
+    # ── session identity ────────────────────────────────────────────────────
+    # Three DIFFERENT things the CLI keeps separate, and so must we:
+    #
+    #   session_id         --session-id <uuid>   NAME a fresh session
+    #   resume_session_id  --resume <id>         CONTINUE a specific session
+    #   continue_session   --continue            CONTINUE the latest one here
+    #
+    # ``session_id`` used to be documented as "resume an existing session",
+    # which it has never been: the CLI reference says "Use a specific session
+    # ID for the conversation (must be a valid UUID)", i.e. it names a NEW
+    # session. Passing a finished run's id back through it does not resume it.
+    session_id: str | None = None
+    resume_session_id: str | None = None
+    continue_session: bool = False
+    fork_session: bool = False  # → --fork-session (only with resume/continue)
+    extra_args: tuple[str, ...] = ()  # escape hatch for future CLI flags
+
+    # ── liveness ────────────────────────────────────────────────────────────
+    # Four bounds on a run that has stopped making progress, each with its own
+    # stop reason so an operator is told WHICH kind of stuck this is. Only
+    # ``startup`` is on by default — see :class:`CliTimeouts` for why the other
+    # three cannot be defaulted safely without knowing what the session does.
+    #
+    # This does not replace ``asyncio.wait_for`` around ``drive``; that still
+    # works and still raises ``TimeoutError``. It replaces having only that,
+    # which reports every hang identically.
+    #
+    # Applies to a :class:`ClaudeCliSession` too, per TURN — see that class for
+    # why ``total`` cannot mean the whole conversation. It did not once, which
+    # was the worse of the two possible bugs: the field is on the cognition a
+    # session holds, so a caller who set it was given no bounds and no warning.
+    timeouts: CliTimeouts = field(default_factory=CliTimeouts)
+    terminate_grace_s: float = 5.0
+    max_concurrent: int = 8  # class-level semaphore (see module doc)
+
+    # ── environment and authentication ──────────────────────────────────────
+    # WHICH auth the child resolves, stated rather than inherited. See
+    # ``_CLAUDE_AMBIENT_AUTH_ENV`` for the measurement that made this a field:
+    # the CLI prefers an ambient ``ANTHROPIC_API_KEY`` over the signed-in
+    # profile and says so on stderr, so ``config_dir=`` alone does not isolate
+    # a tenant — it only isolates the half the API key was not already
+    # overriding.
+    #
+    #   "inherit"   os.environ verbatim — the historical behaviour.
+    #   "profile"   os.environ minus the ambient auth/session variables, so the
+    #               CLI falls through to config_dir / its own login.
+    #   "isolated"  a fixed passthrough set (PATH, HOME, proxies, TLS) plus
+    #               ``env`` — nothing else about this process reaches the child.
+    #
+    # ``None`` resolves to "profile" when ``config_dir`` is set and "inherit"
+    # otherwise: setting a config dir IS the statement of intent to isolate, and
+    # inheriting a key that overrides it is never what that caller meant. A
+    # strip is warned about once, naming the variables, so a run that genuinely
+    # wanted the ambient key is told where it went.
+    env_policy: EnvPolicy | None = None
+    # Explicit environment for the child, layered over whatever the policy
+    # produced — including over a name the policy just removed. That ordering
+    # is what makes ``env_policy="profile"`` usable with per-tenant
+    # credentials: the strip removes the AMBIENT key, this puts back a CHOSEN
+    # one. Mirrors ``CodexCliCognition.env``.
+    env: Mapping[str, str] = field(default_factory=dict)
+
+    # ── native tool policy ──────────────────────────────────────────────────
+    # What to do about the middleware bypass this cognition documents at
+    # length: the CLI runs its own tools inside its own process, so no
+    # egress/SSRF check, input guard, audit record or idempotency key applies
+    # to any of them.
+    #
+    #   "warn"   the historical behaviour — warn once, naming what is bypassed.
+    #   "deny"   refuse at CONSTRUCTION if this session holds any native tool.
+    #            Satisfiable here: tools=("",) plus mcp_config= serves every
+    #            tool back through agentkit, where the chain does apply.
+    #   "allow"  silence. For a caller who has read the trade and accepted it.
+    #
+    # "warn" stays the default because "deny" changes whether existing code
+    # constructs at all. A service that means it sets deny and finds out at
+    # startup instead of never.
+    native_tool_policy: Literal["deny", "warn", "allow"] = "warn"
+
+    # ── the transport seam ──────────────────────────────────────────────────
+    # How the subprocess gets created. ``None`` — the default, and the only
+    # value production ever uses — means ``asyncio.create_subprocess_exec``,
+    # so nothing about a real run changes.
+    #
+    # It exists because the alternative is worse. Every CLI test in this repo
+    # reaches the same seam with
+    # ``patch("agentkit.models.providers.cli.claude.driver.asyncio.create_subprocess_exec")``,
+    # and that path resolves through this module's ``asyncio`` reference to the
+    # REAL ``asyncio`` module: the patch replaces the function process-wide, for
+    # every library in the interpreter, for as long as it is held. An explicit
+    # field scopes the substitution to one cognition instance, which is what
+    # lets a test run a faked CLI and a real subprocess side by side — see
+    # ``agentkit.core.testing.fakes.FakeClaudeCli``, which is the intended occupant.
+    #
+    # Injected here rather than one level up (a double that returns finished
+    # ``AgentResult``s) on purpose: everything this cognition has ever got wrong
+    # — line parsing, payload→event mapping, the stop-reason priority, the
+    # meter charge — lives BELOW this point, so a double above it tests none of
+    # it.
+    spawn: CliSpawn | None = None
+
+    # Latch for the middleware-bypass warning. Per INSTANCE, deliberately:
+    #
+    # * Not per ``drive`` — a warning that repeats every iteration is noise,
+    #   and noise is what teaches people to add a ``filterwarnings`` line,
+    #   which is how the NEXT silent misconfiguration gets through.
+    # * Not per process — two cognitions in one service are usually two
+    #   different configurations, and a module-level latch would suppress the
+    #   second one's warning. The second one is the one nobody has audited.
+    #
+    # Set only when a warning is actually emitted, so a cognition first driven
+    # on a middleware-free context still warns when it later meets one.
+    _bypass_warned: bool = field(default=False, init=False, repr=False, compare=False)
+    # Same latch discipline for the env-strip notice: once per instance, so a
+    # long-lived cognition does not narrate every spawn.
+    _env_warned: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """Refuse combinations the CLI itself refuses, at construction.
+
+        Every one of these is cheaper to catch here than as a subprocess that
+        exits non-zero three seconds later with a message the caller has to
+        parse out of stderr — and ``session_id`` in particular fails in the
+        least helpful way, because an invalid UUID is only rejected once the
+        binary starts.
+        """
+        if self.session_id is not None and self.resume_session_id is not None:
+            raise ValueError(
+                "ClaudeCliCognition: session_id names a NEW session and "
+                "resume_session_id continues an existing one — pass one, not both"
+            )
+        if self.continue_session and self.resume_session_id is not None:
+            raise ValueError(
+                "ClaudeCliCognition: continue_session resumes the latest session in "
+                "working_dir and resume_session_id resumes a specific one — pass one, not both"
+            )
+        if self.fork_session and not (self.continue_session or self.resume_session_id):
+            raise ValueError(
+                "ClaudeCliCognition: fork_session only applies when resuming "
+                "(set resume_session_id= or continue_session=True)"
+            )
+        if self.strict_mcp_config and not self.mcp_config:
+            raise ValueError(
+                "ClaudeCliCognition: strict_mcp_config only means something alongside "
+                "mcp_config= — on its own it would leave the session with no MCP servers "
+                "at all, which disallowed_tools=('mcp__*',) says more clearly"
+            )
+        if self.stable_prompt_prefix and self.system_prompt_mode == "replace":
+            raise ValueError(
+                "ClaudeCliCognition: stable_prompt_prefix has no effect with "
+                "system_prompt_mode='replace' — the CLI only moves the dynamic sections out "
+                "of ITS OWN default prompt, which a replacement discards anyway"
+            )
+        missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]
+        if missing_dirs:
+            raise ValueError(f"ClaudeCliCognition: add_dirs entries are not directories: {missing_dirs}")
+        if self.tools == ():
+            # ``--tools`` is variadic and needs at least one value, so an empty
+            # tuple would emit a bare flag the CLI rejects. It is also
+            # genuinely ambiguous between the two things a reader might mean.
+            raise ValueError(
+                "ClaudeCliCognition: tools=() is ambiguous — pass tools=None to leave the "
+                "CLI's default tool set alone, or tools=('',) to disable every tool"
+            )
+        if self.native_tool_policy == "deny":
+            held = self.native_tools()
+            if held:
+                raise ValueError(
+                    "ClaudeCliCognition(native_tool_policy='deny') but this session holds "
+                    f"native CLI tools: {', '.join(held)}. The CLI runs those inside its own "
+                    "process, so agentkit's tool middleware — egress/SSRF checks, input "
+                    "guards, audit records, idempotency keys — cannot reach them, and a deny "
+                    "policy says an ungovernable tool must not start. Serve the tools over "
+                    "MCP instead (tools=('',) with mcp_config=...), so every call comes back "
+                    "through the Invoker, or set native_tool_policy='warn' to accept the gap."
+                )
+        if self.env_policy is not None and self.env_policy not in (
+            "inherit",
+            "profile",
+            "isolated",
+        ):
+            raise ValueError(
+                f"ClaudeCliCognition: env_policy must be 'inherit', 'profile' or 'isolated', got {self.env_policy!r}"
+            )
+        if self.json_schema is not None:
+            # Before the spawn, not three seconds into it. See
+            # ``_validate_json_schema`` — the CLI's own rejection arrives on a
+            # subprocess's stderr, which this cognition surfaces only on a run
+            # that already failed.
+            _validate_json_schema(self.json_schema, who="ClaudeCliCognition")
+        if self.session_id is not None:
+            try:
+                uuid.UUID(str(self.session_id))
+            except ValueError:
+                raise ValueError(
+                    f"ClaudeCliCognition: session_id must be a valid UUID, got "
+                    f"{self.session_id!r}. To CONTINUE a previous run, use "
+                    "resume_session_id= instead — that is the flag that resumes."
+                ) from None
+
+    # ---- public surface --------------------------------------------------------------------
+
+    async def drive(
+        self,
+        agent: Agent,
+        task: str,
+        ctx: Ctx,
+        context: WorkingContext,
+    ) -> AsyncIterator[StreamEvent]:
+        """Run the CLI once, mapping its stream-json output to agentkit
+        ``StreamEvent``s.
+
+        **Terminal event guarantee.** Exactly one ``final`` event is yielded
+        on every exit path — success, cancellation, non-zero CLI exit,
+        CLI-signalled semantic error (``is_error: true`` in the result
+        payload, e.g., ``error_max_turns``), and any exception raised
+        before or during the spawn (e.g., ``FileNotFoundError`` if the
+        ``claude`` binary isn't on PATH). Callers may drive the loop
+        with ``async for ev in agent.stream(...)`` and rely on seeing
+        one and only one ``StreamEvent(type='final')`` regardless of
+        outcome. On failure paths, ``AgentResult.partial=True`` and
+        ``tests.evals["stop_reason"]`` names the failure mode.
+
+        The guarantee is about the ``final`` event, not about swallowing.
+        A ``BaseException`` that is not an ``Exception`` — ``KeyboardInterrupt``,
+        ``SystemExit``, a test double's contract violation — is delivered as a
+        terminal event AND THEN re-raised, the same order ``CancelledError``
+        uses. See :func:`_reraise_if_not_an_exception` for why swallowing
+        those was a bug and not a policy.
+
+        **`asyncio.CancelledError` semantics.** When the caller wraps this
+        in ``asyncio.wait_for(...)`` or a ``TaskGroup`` and cancels,
+        ``CancelledError`` is delivered mid-await. We terminate the
+        subprocess, yield the terminal ``final(stop_reason="cancelled")``,
+        AND re-raise ``CancelledError`` so the caller's cancel /
+        timeout mechanism sees the signal. Suppressing it (as
+        ``except BaseException`` would) breaks ``wait_for`` timeouts.
+
+        **What this cognition IGNORES from ``ctx`` and ``agent``.** By
+        design, this cognition delegates the whole loop to the CLI, so
+        several agentkit contracts do NOT apply:
+
+        - ``ctx.autonomy`` — the CLI's own ``permission_mode`` owns
+          permissions; agentkit's autonomy tier is not translated.
+        - ``ctx.invoker.tool_middleware`` — NOT RUN for a native CLI tool
+          call. No ``egress()`` URL check, no ``security()`` guard, no
+          ``audit()`` record, no ``memoize()`` key. The first drive on a
+          context that carries tool middleware warns and names them; see
+          the class docstring for why that is a warning and not a fix.
+        - ``agent.memory`` — the CLI manages its own context; the agent's
+          ``MemorySource`` (if any) is never queried.
+        - ``Agent.resume()`` — not supported (ReAct-only). For a CLI-native
+          resume, pass the ``tests.evals["session_id"]`` value back as
+          ``ClaudeCliCognition(resume_session_id=...)`` — NOT ``session_id=``,
+          which names a new session rather than continuing an old one.
+        - ``ctx.budget`` — CHARGED, as of the spend integration. The run's
+          remaining headroom goes out as ``--max-budget-usd`` so the CLI
+          stops itself mid-flight, and what it actually spent is charged
+          to every meter on the context plus the per-actor envelope once
+          the run ends. An already-exhausted budget refuses to spawn at
+          all, with the resumable ``budget_exhausted`` stop reason. Set
+          ``meter_spend=False`` to opt a run out of both ends.
+        """
+        del context  # unused — the CLI owns its own transcript
+
+        # Before anything else, including the spawn: the warning is worth more
+        # on the run that dies in ``create_subprocess_exec`` than on the one
+        # that works, because a mis-wired chain is a config problem and config
+        # problems are diagnosed from the first failed run.
+        self._warn_if_middleware_bypassed(ctx)
+
+        # Bounded-concurrency spawn guard, held for the whole CLI lifetime so
+        # concurrent drives don't race the subprocess table (SDK issue #728).
+        # The local reference keeps the WeakValueDictionary entry alive.
+        cfg_dir = str(self.config_dir) if self.config_dir is not None else None
+        sem = _get_semaphore(self.claude_bin, cfg_dir, self.max_concurrent)
+
+        state = _TurnState()
+        outcome = _CliRunOutcome()
+        # Set once the schema is resolved. Initialised False so a spawn that
+        # dies before resolution still reaches the terminal event. Assigned
+        # from inside ``_prepare`` because that is where resolution happens.
+        schema_requested = False
+        # Holds inline ``mcp_config`` / ``settings`` blobs written to 0600
+        # files so they never enter the argument list. Created only when
+        # something is actually inline; removed in the ``finally`` however the
+        # run ends, KeyboardInterrupt included.
+        scratch: str | None = None
+
+        def _prepare() -> _CliLaunch:
+            """argv/env resolution, inside the driver's guarded block.
+
+            Everything here can throw — ``Prompt.render()`` on a malformed
+            template, ``MeterExceeded`` from an exhausted budget, a schema the
+            adapter cannot render — and every one of those has to reach the
+            caller as a terminal event rather than as an exception out of a
+            generator that never yielded.
+            """
+            nonlocal schema_requested, scratch
+            system_prompt = self._resolve_system_prompt(agent.prompt)
+            schema = self._resolve_json_schema(agent)
+            schema_requested = schema is not None
+            budget_cap = self._budget_cap(ctx)
+            # ``stream_input=True``: the task goes over STDIN, not in argv. See
+            # ``_build_argv`` — an argv-carried prompt is capped by the OS
+            # (measured: OSError E2BIG past ~1 MB on darwin, and Linux caps a
+            # SINGLE argument at 128 KiB), is visible to anyone who can run
+            # ``ps``, and was a second transport to keep in step with the
+            # session path's.
+            # The scratch dir is shared with the credential materialisation
+            # below; either reason is enough to create it.
+            oversized_prompt = _too_big_for_argv(system_prompt)
+            if self._needs_scratch() or oversized_prompt:
+                scratch = _make_scratch()
+            system_prompt_path = (
+                str(_write_private(scratch, "system-prompt.txt", system_prompt))
+                if scratch is not None and oversized_prompt
+                else None
+            )
+            mcp_config, settings = (
+                self._materialise_secrets(scratch)
+                if scratch is not None
+                else (tuple(str(c) for c in self.mcp_config), str(self.settings) if self.settings is not None else None)
+            )
+            argv = self._build_argv(
+                "",
+                system_prompt=system_prompt,
+                json_schema=schema,
+                max_budget_usd=budget_cap,
+                stream_input=True,
+                mcp_config=mcp_config,
+                settings=settings,
+                system_prompt_path=system_prompt_path,
+            )
+            env = self._build_env(ctx=ctx)
+            # Pre-flight: a missing working_dir gets its own stop reason so an
+            # operator does not confuse it with a missing binary.
+            # ``create_subprocess_exec`` raises FileNotFoundError for both.
+            _require_working_dir(self.working_dir)
+            return _CliLaunch(
+                argv=argv,
+                env=env,
+                cwd=str(self.working_dir) if self.working_dir is not None else None,
+                # One stream-json user turn — the same encoding a session
+                # writes, which is what makes the two paths one transport.
+                stdin_payload=_user_turn(task).encode(),
+            )
+
+        async def _handle(payload: dict[str, Any]) -> AsyncIterator[StreamEvent]:
+            """One payload → its events, folding this run's state on the way."""
+            async for ev, delta in _events_from_payload(payload, partial=self.partial_messages):
+                state.fold(delta)
+                if ev is not None:
+                    yield ev
+
+        try:
+            async for event in _run_cli_process(
+                prepare=_prepare,
+                handle=_handle,
+                spawn=self.spawn,
+                semaphore=sem,
+                timeouts=self.timeouts,
+                terminate_grace_s=self.terminate_grace_s,
+                ctx=ctx,
+                outcome=outcome,
+            ):
+                yield event
+        finally:
+            if scratch is not None:
+                shutil.rmtree(scratch, ignore_errors=True)
+
+        result = await self._finalise(
+            agent=agent,
+            ctx=ctx,
+            state=state,
+            cancelled=outcome.cancelled,
+            fatal_exc=outcome.fatal_exc,
+            spawned=outcome.spawned,
+            return_code=outcome.return_code,
+            stderr_bytes=outcome.stderr_bytes,
+            schema_requested=schema_requested,
+            timed_out=outcome.timed_out,
+        )
+        yield StreamEvent("final", usage=state.usage, result=result)
+        if outcome.should_reraise_cancel:
+            # Terminal event delivered; now propagate the cancel so
+            # ``asyncio.wait_for(..., timeout=X)`` raises ``TimeoutError``
+            # and TaskGroup cancels propagate to siblings.
+            raise asyncio.CancelledError()
+        _reraise_if_not_an_exception(outcome.fatal_exc)
+
+    async def _finalise(
+        self,
+        *,
+        agent: Agent | None,
+        ctx: Ctx | None,
+        state: _TurnState,
+        cancelled: bool,
+        fatal_exc: BaseException | None,
+        spawned: bool,
+        return_code: int | None,
+        stderr_bytes: bytes,
+        schema_requested: bool,
+        timed_out: CliTimedOut | None = None,
+    ) -> AgentResult:
+        """Turn one completed turn's state into its terminal ``AgentResult``.
+
+        Shared by the one-shot ``drive`` and by a persistent
+        :class:`ClaudeCliSession` turn, which differ only in process
+        lifecycle. The stop-reason priority, the structured-output
+        decision, the ``tests.evals`` shape and the metering are identical
+        between them, and a second copy of that logic is precisely how the
+        two paths would drift apart.
+
+        ``return_code`` is ``None`` when the process is still ALIVE — a session
+        turn ends at its ``result`` payload, not at process exit — and ``-1``
+        when no process was ever spawned. Both mean "the exit code says
+        nothing about this turn", so neither is treated as a failure here.
+        """
+
+        # Decide terminal stop_reason + partial flag.
+        # Priority (highest first): cancellation → fatal exception → crash →
+        # CLI semantic error (is_error) → otherwise non-zero exit → success.
+        # Cancellation is above fatal_exc because a cancel that races with
+        # a fatal error should still surface as ``cancelled``.
+        final_stop_reason: str | None
+        final_partial: bool
+        if cancelled:
+            final_stop_reason = "cancelled"
+            final_partial = True
+        elif timed_out is not None:
+            # Above ``fatal_exc`` for the same reason ``cancelled`` is: the
+            # bound is WHY the run ended, and a parse error on the half-written
+            # line we cut off mid-flight would otherwise outrank it and report
+            # ``parse_failed`` for a hang.
+            final_stop_reason = _classify_timeout(timed_out, stderr_bytes)
+            final_partial = True
+        elif fatal_exc is not None:
+            # Distinguish working_dir_missing from spawn_failed for
+            # operator clarity (the CLI would raise FileNotFoundError for
+            # both, but the fix path differs).
+            if isinstance(fatal_exc, _SessionClosed):
+                # The process behind a persistent session is gone (or the turn
+                # asked for something only a fresh process can do). NOT
+                # ``spawn_failed``: nothing failed to start — a conversation
+                # ended. The caller's fix is a new session, not a retry.
+                final_stop_reason = "session_closed"
+                if isinstance(fatal_exc, _TurnRefused):
+                    # ...except a TURN-level refusal, which leaves the process
+                    # alive and the conversation intact. Reporting it as
+                    # ``session_closed`` is the same conflation that used to
+                    # kill the session: the caller re-sends this turn without
+                    # the schema, they do not open a new session.
+                    final_stop_reason = "turn_refused"
+            elif type(fatal_exc).__name__ == "MeterExceeded":
+                # The pre-flight refusal from ``_budget_cap``: no subprocess
+                # was spawned. ``budget_exhausted`` is a RESUMABLE stop reason,
+                # which is the honest one — raise the ceiling and run again.
+                # Matched by name so this module keeps its import of
+                # ``runtime.meter`` lazy.
+                final_stop_reason = "budget_exhausted"
+            elif not spawned:
+                if _is_working_dir_missing(fatal_exc):
+                    final_stop_reason = "working_dir_missing"
+                else:
+                    final_stop_reason = "spawn_failed"
+            elif isinstance(fatal_exc, CliLineTooLong):
+                # Its own reason, not ``parse_failed``. Nothing was malformed:
+                # the CLI emitted well-formed JSON that is simply bigger than
+                # the reader will assemble, and the fix is a size — read less
+                # per tool call, or raise the limit — where ``parse_failed``
+                # sends an operator looking for a corrupt payload.
+                final_stop_reason = "output_line_too_long"
+            else:
+                final_stop_reason = "parse_failed"
+            final_partial = True
+        elif return_code is not None and return_code < 0:
+            assert return_code is not None
+            final_stop_reason = _process_exit_stop_reason(return_code, stderr_bytes)
+            final_partial = True
+        elif state.is_error:
+            # A terminal semantic error outranks a positive process exit code.
+            # Claude CLI versions do not agree that errors such as
+            # ``error_max_turns`` exit zero: 2.1.251 publishes the specific
+            # result and then exits 1. Replacing that result with
+            # ``cli_exit_1`` discards the only actionable diagnosis. A death
+            # by signal still wins above because no terminal payload can make
+            # a crashed process successful.
+            #
+            # The useful stop_reason is often on ``terminal_reason`` (e.g.,
+            # ``"api_error"``) rather than ``subtype`` (which can still read
+            # ``"success"``). We already prefer subtype in
+            # ``_events_from_payload`` — but when subtype is the useless
+            # ``"success"`` string, fall through to a generic marker.
+            if state.stop_reason == "success" or state.stop_reason is None:
+                final_stop_reason = "cli_reported_error"
+            else:
+                final_stop_reason = state.stop_reason
+            final_partial = True
+        elif return_code not in (0, None):
+            assert return_code is not None
+            final_stop_reason = _process_exit_stop_reason(return_code, stderr_bytes)
+            final_partial = True
+        elif spawned and not state.saw_terminal:
+            # The process ended cleanly but never emitted its end-of-turn
+            # payload, so whatever text arrived is a fragment the CLI had not
+            # finished writing. Placed BELOW the ``is_error`` branch so a CLI
+            # that reported its own failure keeps saying so, and above plain
+            # success so a truncated stream can never be reported as complete.
+            final_stop_reason = "malformed_output"
+            final_partial = True
+        else:
+            final_stop_reason = state.stop_reason  # may still be None on clean success
+            final_partial = False
+
+        # ── structured output ───────────────────────────────────────────────
+        # A schema was requested. Three outcomes, and only the first is a
+        # success:
+        #
+        #   value present   → coerce to the declared type; ``parsed`` is typed
+        #   retries burnt   → subtype ``error_max_structured_output_retries``
+        #   absent, exit 0  → the docs are explicit that this is a failure too
+        #
+        # The third is the one worth spelling out: without this branch the run
+        # returns ``partial=False`` and ``parsed=None``, and a caller that
+        # declared ``output=Invoice`` reads the prose as if the object simply
+        # had not been wired. Treating it as a failure makes it visible.
+        parsed: Any = None
+        structured_failure: StructuredOutputFailure | None = None
+        if schema_requested:
+            if state.structured_output is not None:
+                parsed, structured_failure = _coerce_structured(agent, state.structured_output)
+                if structured_failure is not None:
+                    final_partial = True
+                    final_stop_reason = "structured_output_mismatch"
+            elif final_stop_reason == "error_max_structured_output_retries":
+                # The CLI validated against ``--json-schema`` itself, re-prompted
+                # itself, and gave up. agentkit never saw the attempts, so there
+                # are no per-field violations to report — naming the kind is the
+                # honest limit of what we know.
+                final_partial = True
+                structured_failure = StructuredOutputFailure(
+                    kind="retries_exhausted",
+                    detail=(
+                        "the CLI exhausted its own structured-output retries against "
+                        "--json-schema; the intermediate attempts are not visible to agentkit"
+                    ),
+                )
+            else:
+                final_partial = True
+                if final_stop_reason in (None, "success"):
+                    final_stop_reason = "structured_output_missing"
+                structured_failure = StructuredOutputFailure(
+                    kind="missing",
+                    detail="the CLI returned no structured_output despite --json-schema",
+                )
+
+        # Charge the framework's meters with what the CLI actually spent. After
+        # the stop-reason decision (so a charge cannot change it) and before the
+        # terminal event (so the books are straight by the time the caller sees
+        # the result).
+        charge_error = await _charge_meters(ctx, state.usage, enabled=self.meter_spend)
+
+        evals: dict[str, Any] = {
+            "session_id": state.session_id or "",
+            "cli_duration_ms": state.duration_ms or 0,
+            "cli_return_code": return_code if return_code is not None else 0,
+        }
+        # Bridge agentkit's correlation_id into the final result so downstream
+        # observability can join on it (matching the env var we set on the
+        # subprocess via `CLAUDE_TRACE_EXTERNAL_ID`).
+        evals["messages"] = tuple(state.messages.messages)
+        evals["raw_usage"] = state.raw_usage
+        external_id = getattr(ctx, "correlation_id", None)
+        if external_id:
+            evals["external_run_id"] = str(external_id)
+        if final_stop_reason is not None:
+            evals["stop_reason"] = final_stop_reason
+        if timed_out is not None:
+            # The number that fired, so the fix ("raise it" / "this was a real
+            # hang") does not need the cognition's construction site to hand.
+            evals["timeout_s"] = timed_out.limit_s
+            evals["timeout_kind"] = timed_out.reason
+        if state.init:
+            # Startup facts an operator needs when a run behaves oddly: which
+            # model actually ran, which MCP servers connected — and which were
+            # SKIPPED. ``mcp_server_errors`` / ``plugin_errors`` appear only
+            # when non-empty, so their presence is the CI gate the CLI docs
+            # recommend.
+            evals["cli_init"] = state.init
+        if state.api_retries:
+            # The CLI retried the provider. A run that took 40s with one API
+            # call is explained by this and nothing else in the result.
+            evals["api_retries"] = state.api_retries
+        if state.structured_output is not None:
+            # The RAW validated dict, alongside the typed ``parsed`` object. A
+            # caller that declared no Python type still wants the data.
+            evals["structured_output"] = state.structured_output
+        if structured_failure is not None:
+            # Two representations on purpose. The string is the shape callers
+            # and tests have always read; the dict is the one an application can
+            # branch on, via ``StructuredOutputFailure.of(result.evals)``. It is
+            # a DICT rather than the dataclass because ``tests.evals`` is deep-frozen,
+            # checkpointed and serialised — a dataclass in there would make a
+            # result that cannot round-trip through JSON.
+            evals["structured_output_error"] = str(structured_failure)
+            evals["structured_output_failure"] = structured_failure.to_dict()
+        if state.thinking:
+            # Reasoning chain from ``thinking`` blocks — separate from
+            # ``output`` (the final response). Live consumers already saw
+            # each chunk as a ``message_delta``; this is the folded copy for
+            # AgentResult callers.
+            evals["thinking"] = state.thinking
+        if fatal_exc is not None:
+            # Redacted like stderr: an exception message can carry a URL with a
+            # token in it, and this string is checkpointed and fanned out to
+            # observers exactly like the rest of ``tests.evals``.
+            evals["error"] = _redact_secrets(f"{type(fatal_exc).__name__}: {fatal_exc}")
+        if charge_error is not None:
+            # A meter refused the charge — almost always a ceiling crossed by
+            # this very run. The spend is on the books either way; this records
+            # that the ceiling is now behind us.
+            evals["meter_error"] = charge_error
+        if final_partial and stderr_bytes:
+            stderr_text = _redact_secrets(stderr_bytes.decode("utf-8", errors="replace").strip())
+            if stderr_text:
+                # The CLI's own diagnostics, verbatim except for
+                # credential-shaped runs. An ``AgentResult`` is checkpointed,
+                # logged and fanned out to observers, so a CLI that prints a
+                # failing request's Authorization header would otherwise have
+                # it persisted. Defence in depth, not a boundary — see
+                # ``_redact_secrets``.
+                evals["stderr"] = stderr_text
+
+        return AgentResult(
+            output=state.text,
+            usage=state.usage,
+            partial=final_partial,
+            evals=evals,
+            parsed=parsed,
+            # This cognition reports failures as DATA (a terminal event is
+            # guaranteed even when the subprocess never starts), so it is
+            # the one producer that can legitimately stamp ``"failed"``.
+            stop_reason=_cli_terminal_stop_reason(
+                final_stop_reason,
+                invalid_output_reasons=_CLI_INVALID_OUTPUT_REASONS,
+                failure_reasons=_CLI_FAILURE_REASONS,
+            ),
+        )
+
+    def session(self, *, agent: Agent | None = None) -> ClaudeCliSession:
+        """Open a persistent CLI session — one process, many turns.
+
+        ``drive()`` spawns a subprocess per turn, which costs two to five
+        seconds of CLI warm-up every time. A session pays that once and keeps
+        the CLI's own conversation context alive between turns::
+
+            async with cognition.session() as chat:
+                async for ev in chat.turn("Summarise README.md"):
+                    ...
+                async for ev in chat.turn("Now list the risks you skipped"):
+                    ...
+
+        See :class:`ClaudeCliSession` for what a shared process implies —
+        serialised turns, and a session that ends when its process does.
+        """
+        return ClaudeCliSession(self, agent=agent)
+
+    # ---- helpers ---------------------------------------------------------------------------
+
+    def _resolve_system_prompt(self, prompt: Prompt | str | None) -> str:
+        """Extract a rendered system-prompt string from ``agent.prompt``.
+
+        The agent's ``prompt`` field accepts three shapes: ``None``,
+        ``str``, or ``Prompt``. Match all three; render the ``Prompt``
+        via ``Prompt.render()`` for the versioned path.
+        """
+        if prompt is None:
+            return ""
+        if isinstance(prompt, Prompt):
+            return prompt.render()
+        return prompt
+
+    def native_tools(self) -> tuple[str, ...]:
+        """The CLI's OWN built-in tools this session actually holds, sorted.
+
+        Three flags interact and only two of them restrict:
+
+        * ``tools=None`` (the default) passes no ``--tools`` at all, leaving the
+          CLI's whole default set in place — every name in
+          :data:`CLI_TOOL_CAPS`, ``Bash`` included.
+        * ``tools=("",)`` is the CLI's spelling of "disable every tool"; a
+          restriction naming only MCP tools (``mcp__server__name``) leaves no
+          native tool behind either, and neither does one naming a tool this
+          table has never heard of.
+        * ``disallowed_tools`` subtracts. Covering the whole enabled set is
+          therefore equivalent to enabling none.
+
+        ``allowed_tools`` is deliberately NOT consulted. It is an auto-approve
+        list, not a grant: it decides which tools run without a permission
+        prompt, and it cannot hand back a tool ``--tools ''`` removed. Reading
+        it here would re-enable, on paper, tools the session does not have —
+        and it is already the flag callers most often confuse with ``tools``.
+
+        Matching is by exact name, which under-subtracts on purpose: a scoped
+        entry like ``disallowed_tools=("Bash(rm:*)",)`` restricts SOME Bash
+        invocations, so the session still holds Bash and the caps still say so.
+        Treating it as a full removal would quietly narrow the trifecta check.
+        """
+        if self.tools is None:
+            candidates = set(CLI_TOOL_CAPS)
+        else:
+            candidates = {t for t in self.tools if t in CLI_TOOL_CAPS}
+        # ``or ()`` for the same reason ``_tool_middleware_names`` reads
+        # defensively: this runs as the first statement of ``drive``, so an
+        # off-contract ``disallowed_tools=None`` — which every earlier version
+        # of this class simply ignored, since the argv builder only tests it for
+        # truthiness — must not turn a safety warning into a ``TypeError``
+        # raised out of the caller's first run.
+        return tuple(sorted(candidates - set(self.disallowed_tools or ())))
+
+    @property
+    def caps(self) -> tuple[str, ...]:
+        """Rule-of-Two tags for this session, in ``RunPolicy``'s vocabulary.
+
+        The union of :data:`CLI_TOOL_CAPS` over :meth:`native_tools`, which is
+        the shape ``RunPolicy.capabilities`` reads (``getattr(t, "caps", ())``).
+        So the cognition can be handed to the gate exactly like a tool::
+
+            RunPolicy(mode="deny").check([cognition, *agentkit_tools])
+
+        Mixing the two lists is the case that matters and the one a per-path
+        check misses: the CLI's ``Read`` + ``Bash`` supply private data and
+        egress, one MCP-served tool tagged ``untrusted_content`` completes the
+        trifecta, and only a check over BOTH sees it.
+
+        **Known under-approximation.** MCP tool names reaching the CLI as
+        ``mcp__server__tool`` contribute nothing here, because their caps live
+        on the MCP server's own tool definitions and this cognition never sees
+        them. Pass those tools' agentkit-side objects alongside the cognition
+        (as above) rather than assuming this property covers them.
+        """
+        tags: set[str] = set()
+        for name in self.native_tools():
+            tags.update(CLI_TOOL_CAPS[name])
+        return tuple(sorted(tags))
+
+    def _warn_if_middleware_bypassed(self, ctx: Ctx | None) -> None:
+        """Say which middlewares will not run, once, before the first spawn.
+
+        ``warnings.warn`` and not a log line or an ``Observation``, matching
+        ``_warn_if_bare_mode_has_no_credential``: this is a wiring mistake made
+        once at build time, and the audience is the developer at the REPL or in
+        CI, not the operator reading a run's telemetry. A log line needs a
+        configured logger to be seen at all; an ``Observation`` arrives on the
+        run's observer, i.e. inside the very machinery the caller has just been
+        told is not applying. ``warnings`` is also the only one of the three a
+        caller can promote to an error (``-W error``) or silence per-message.
+
+        Silent when the session has no native tools: everything then arrives
+        over MCP, through agentkit's own tool path, and the chain genuinely
+        does apply. Silent when the chain is empty or absent for the same
+        reason — there is nothing being skipped.
+        """
+        if self._bypass_warned:
+            return
+        names = _tool_middleware_names(ctx)
+        native = self.native_tools()
+        if not names or not native:
+            return
+        # Latch before warning, not after: ``warnings.warn`` can be promoted to
+        # an exception by the caller's filters, and an escaping error must not
+        # leave the latch unset so that the next drive raises again.
+        self._bypass_warned = True
+        # The prose shorthand is only true when the session really does hold
+        # every built-in tool. ``tools=None`` alone does not establish that:
+        # ``disallowed_tools=("Bash",)`` leaves ``tools`` None while removing
+        # the single most alarming name in the sentence, and a warning that
+        # tells a caller the chain "is not applied to every built-in CLI tool"
+        # about tools they explicitly locked down is the cry-wolf this feature
+        # exists to avoid. Fall through to the explicit list whenever anything
+        # was actually subtracted.
+        scope = (
+            "every built-in CLI tool (tools=None leaves the CLI's default set in place)"
+            if self.tools is None and set(native) == set(CLI_TOOL_CAPS)
+            else ", ".join(native)
+        )
+        import warnings
+
+        warnings.warn(
+            "ClaudeCliCognition bypasses the Invoker, so the tool middleware on this "
+            f"context does NOT run for a native CLI tool call. Not applied to {scope}: "
+            f"{', '.join(names)}. The CLI executes those tools inside its own process and "
+            "agentkit never sees the call, so there is no egress/SSRF or allowlist check, "
+            "no input guard, no audit record and no idempotency key for any of them — only "
+            "the run's total cost is reconciled afterwards. Serve the tools over MCP "
+            '(mcp_config=...) with tools=("",) so every call comes back through agentkit, '
+            'or accept the gap deliberately. RunPolicy(mode="deny").check([cognition]) '
+            "will refuse the lethal-trifecta configurations of it.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    def _warn_if_bare_mode_has_no_credential(self, env: dict[str, str]) -> None:
+        """Bare mode ignores OAuth and the keychain — say so before the CLI does.
+
+        Warned rather than refused: the credential may arrive through an
+        ``apiKeyHelper`` in ``settings``, or through a provider mechanism this
+        list does not know about, and refusing a run over an env-var heuristic
+        would be worse than the confusing message it replaces.
+        """
+        if self.settings is not None:
+            return
+        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):
+            return
+        import warnings
+
+        warnings.warn(
+            "ClaudeCliCognition(bare=True) but no API credential is in the environment "
+            f"({', '.join(_BARE_CREDENTIAL_ENV)}). Bare mode never reads OAuth credentials "
+            "or the system keychain, so a `claude` that works in your terminal will fail "
+            "here with an auth error ('Not logged in · Please run /login', or 'Invalid API "
+            "key' depending on state) that points at exactly the wrong fix. Set "
+            "ANTHROPIC_API_KEY, or supply an apiKeyHelper via settings=.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    def _resolve_json_schema(self, agent: Agent) -> dict[str, Any] | None:
+        """The JSON Schema to hand the CLI, or ``None``.
+
+        An explicit ``json_schema=`` wins. Otherwise the agent's own
+        ``output=`` schema is used, through the same ``SchemaAdapter`` the rest
+        of the framework uses — so declaring ``output=Invoice`` types a
+        CLI-delegated run exactly like it types a normal one, instead of being
+        silently ignored the way it was before this existed.
+
+        Reading the adapter defensively (``getattr``) keeps this working for
+        agent-likes in tests that don't build one.
+        """
+        if self.json_schema is not None:
+            # Already validated in ``__post_init__``; not re-checked here
+            # because a frozen field cannot have changed and a second identical
+            # refusal per drive would be noise.
+            return self.json_schema
+        adapter = getattr(agent, "_output_adapter", None)
+        if adapter is None:
+            return None
+        from agentkit.core.contracts.types import Mode
+        from agentkit.models.contracts.schema import compile_schema
+
+        return compile_schema(adapter.json_schema(), Mode.CLAUDE_CODE, self.model or getattr(agent, "model", "") or "")
+
+    def _budget_cap(self, ctx: Ctx | None) -> str | None:
+        """The run's remaining headroom, as the CLI's ``--max-budget-usd`` wants it.
+
+        ``None`` when metering is off, no budget is wired, or the budget has no
+        ceiling — in each case there is no number to enforce and the flag must
+        not appear, because passing one would invent a limit the caller never
+        set.
+
+        Raises :class:`MeterExceeded` when the headroom is already gone. That is
+        a pre-flight refusal on purpose: spawning a subprocess to be told what
+        we already know costs two to five seconds of CLI warm-up, and the
+        terminal event this produces (``budget_exhausted``) is the resumable
+        one — raise the ceiling and run again.
+        """
+        if not self.meter_spend or ctx is None:
+            return None
+        budget = getattr(ctx, "budget", None)
+        remaining = getattr(budget, "remaining", None)
+        if remaining is None:
+            return None
+        headroom = remaining()
+        if headroom is None:  # no ceiling configured
+            return None
+        if headroom <= 0:
+            from agentkit.core.runtime.meter import MeterExceeded
+
+            raise MeterExceeded(f"claude CLI not spawned: the run budget has {headroom} USD left")
+        return f"{headroom:f}"
+
+    def _build_argv(
+        self,
+        task: str,
+        *,
+        system_prompt: str,
+        json_schema: dict[str, Any] | None = None,
+        max_budget_usd: str | None = None,
+        stream_input: bool = False,
+        mcp_config: tuple[str, ...] | None = None,
+        settings: str | None = None,
+        system_prompt_path: str | None = None,
+    ) -> list[str]:
+        """Assemble the CLI argv. Order-independent; kept grouped by role
+        (identity → format → model → prompt → tools → permissions → resume →
+        extras) so a diff is legible."""
+        argv: list[str] = [self.claude_bin, "-p"]
+        if stream_input:
+            # Turns arrive over stdin as newline-delimited JSON, so there is no
+            # prompt ARGUMENT — passing one alongside ``--input-format
+            # stream-json`` would make the CLI run it as a first turn nobody
+            # asked for.
+            #
+            # BOTH paths use this now. A session always did; ``drive`` was
+            # migrated to it because an argv-carried prompt fails at the OS
+            # level on a large one (measured: ~1 MB on darwin, and Linux caps a
+            # single argument at 128 KiB), shows the whole task to any user who
+            # can run ``ps``, and made the one-shot and session paths two
+            # transports to keep in step. They are one now.
+            argv += ["--input-format", "stream-json"]
+        else:
+            argv += [task]
+        argv += ["--output-format", "stream-json", "--verbose"]
+        if self.model is not None:
+            argv += ["--model", self.model]
+        if system_prompt:
+            # A big system prompt is the LAST payload that still travelled in
+            # argv, and the one most likely to grow: it is where a retrieved
+            # context, a long persona or a compiled instruction set ends up,
+            # while the task is usually a sentence. Measured: 2,000,000 bytes
+            # came back ``spawn_failed`` / ``OSError: [Errno 7] Argument list
+            # too long`` — before the binary ran, so with no stderr, no CLI
+            # diagnostic, and an error naming "the argument list" rather than
+            # which of the four things in it was to blame.
+            #
+            # ``--system-prompt-file`` / ``--append-system-prompt-file`` take a
+            # path instead. Neither appears in ``claude --help`` on 2.1.236 and
+            # both work — verified not merely accepted but HONOURED, by giving
+            # the CLI a persona through each and getting it back.
+            #
+            # Only above ``_ARGV_TEXT_LIMIT``, so an ordinary prompt keeps the
+            # exact argv it has today. The alternative — always writing a file —
+            # would make every run depend on a writable temp dir to do something
+            # that currently needs no filesystem at all, which trades a bug that
+            # bites large prompts for a failure mode that could bite every
+            # locked-down sandbox.
+            replace = self.system_prompt_mode == "replace"
+            if system_prompt_path is not None:
+                # The pair has to track ``system_prompt_mode``. Swapping them
+                # silently turns "replace Claude Code's system prompt" into
+                # "add to it" — a behaviour change nothing would fail on.
+                flag = "--system-prompt-file" if replace else "--append-system-prompt-file"
+                argv += [flag, system_prompt_path]
+            else:
+                flag = "--system-prompt" if replace else "--append-system-prompt"
+                argv += [flag, system_prompt]
+        if self.allowed_tools:
+            argv += ["--allowed-tools", ",".join(self.allowed_tools)]
+        if self.disallowed_tools:
+            argv += ["--disallowed-tools", ",".join(self.disallowed_tools)]
+        if self.tools is not None:
+            # ``--tools`` is variadic on the CLI; each name is its own argv
+            # entry. ``("",)`` — the documented "disable all tools" spelling —
+            # therefore survives as a single empty argument.
+            argv += ["--tools", *self.tools]
+        if self.partial_messages:
+            argv += ["--include-partial-messages"]
+        if self.bare:
+            argv += ["--bare"]
+        if self.stable_prompt_prefix:
+            argv += ["--exclude-dynamic-system-prompt-sections"]
+        if self.fallback_model is not None:
+            models = self.fallback_model if isinstance(self.fallback_model, str) else ",".join(self.fallback_model)
+            argv += ["--fallback-model", models]
+        if self.effort is not None:
+            argv += ["--effort", self.effort]
+        for d in self.add_dirs:
+            argv += ["--add-dir", str(d)]
+        # ``mcp_config`` / ``settings`` arrive already materialised: an inline
+        # JSON blob has been written to a 0600 file and replaced by its path,
+        # because an argument list is world-readable and these blobs routinely
+        # carry bearer tokens. See ``_materialise_secrets``. ``None`` means the
+        # caller did not materialise (argv-shape tests, the flags matrix), so
+        # fall back to the declared values.
+        resolved_mcp = mcp_config if mcp_config is not None else tuple(str(c) for c in self.mcp_config)
+        if resolved_mcp:
+            # Variadic: every entry after the flag.
+            argv += ["--mcp-config", *resolved_mcp]
+        if self.strict_mcp_config:
+            argv += ["--strict-mcp-config"]
+        resolved_settings = (
+            settings if settings is not None else (str(self.settings) if self.settings is not None else None)
+        )
+        if resolved_settings is not None:
+            argv += ["--settings", resolved_settings]
+        if self.setting_sources is not None:
+            argv += ["--setting-sources", ",".join(self.setting_sources)]
+        if self.agents is not None:
+            argv += ["--agents", json.dumps(self.agents)]
+        if self.no_session_persistence:
+            argv += ["--no-session-persistence"]
+        # State the mode even when it is ``default``. In print mode Claude Code
+        # otherwise resolves an omitted flag to ``auto`` (observed on 2.1.226),
+        # which silently bypasses ``--permission-prompt-tool`` and lets a native
+        # Write run without consulting the configured approval server. A field
+        # whose value says ``default`` must not compile to a different policy.
+        argv += ["--permission-mode", self.permission_mode]
+        if self.permission_prompt_tool is not None:
+            argv += ["--permission-prompt-tool", self.permission_prompt_tool]
+        if self.max_turns is not None:
+            argv += ["--max-turns", str(self.max_turns)]
+        if max_budget_usd is not None:
+            argv += ["--max-budget-usd", max_budget_usd]
+        if json_schema is not None:
+            # The CLI parses this argument as JSON and rejects an invalid
+            # schema at startup ("Error: --json-schema is not a valid JSON
+            # Schema"), so a malformed one fails the run rather than silently
+            # returning prose — which is what it did before CLI v2.1.205.
+            argv += ["--json-schema", json.dumps(json_schema)]
+        if self.session_id is not None:
+            argv += ["--session-id", self.session_id]
+        if self.resume_session_id is not None:
+            argv += ["--resume", self.resume_session_id]
+        if self.continue_session:
+            argv += ["--continue"]
+        if self.fork_session:
+            argv += ["--fork-session"]
+        argv += list(self.extra_args)
+        return argv
+
+    def _materialise_secrets(self, scratch: str) -> tuple[tuple[str, ...], str | None]:
+        """Move inline ``mcp_config`` / ``settings`` blobs out of argv.
+
+        Both options accept a path OR inline JSON, and the inline form is the
+        convenient one this class advertises — so a caller who wires an HTTP
+        MCP server the documented way puts its ``Authorization`` header into
+        the process argument list, where every local account can read it with
+        ``ps``. Measured: two argv entries carrying a bearer token from an
+        ordinary ``mcp_config=`` / ``settings=`` pair.
+
+        This is the same fix as moving the prompt to stdin, applied to a
+        payload that IS the secret rather than merely private. A path is left
+        alone — it is already a reference rather than a value.
+
+        Returns ``(mcp_config_values, settings_value)`` ready for ``_build_argv``.
+        """
+        mcp: list[str] = []
+        for index, entry in enumerate(self.mcp_config):
+            text = str(entry)
+            if _is_inline_json(text):
+                mcp.append(str(_write_private(scratch, f"mcp-{index}.json", text)))
+            else:
+                mcp.append(text)
+        settings: str | None = None
+        if self.settings is not None:
+            text = str(self.settings)
+            settings = str(_write_private(scratch, "settings.json", text)) if _is_inline_json(text) else text
+        return tuple(mcp), settings
+
+    def _needs_scratch(self) -> bool:
+        """Is anything about this configuration inline (and therefore a leak)?"""
+        if self.settings is not None and _is_inline_json(str(self.settings)):
+            return True
+        return any(_is_inline_json(str(c)) for c in self.mcp_config)
+
+    @property
+    def effective_env_policy(self) -> EnvPolicy:
+        """The policy actually in force, with ``None`` resolved.
+
+        ``config_dir=`` implies ``"profile"``. A caller who points the CLI at a
+        specific configuration directory has stated the intent this policy
+        exists to honour, and the measured behaviour of the binary is that an
+        ambient ``ANTHROPIC_API_KEY`` overrides it — so "inherit" there is a
+        default that silently defeats the flag it accompanies.
+        """
+        if self.env_policy is not None:
+            return self.env_policy
+        return "profile" if self.config_dir is not None else "inherit"
+
+    def _build_env(self, *, ctx: Ctx | None = None) -> dict[str, str]:
+        """The child's environment, under :attr:`effective_env_policy`.
+
+        Layers ``CLAUDE_CONFIG_DIR`` on top when the cognition was constructed
+        with a ``config_dir`` (isolated auth / settings, e.g. a per-tenant
+        server-side wrapper), and defaults ``CLAUDE_ENABLE_STREAM_WATCHDOG=1``
+        to mitigate long-tail SSE hangs (SDK issue #33949) unless the caller
+        already set it explicitly.
+
+        When ``ctx`` carries a ``correlation_id``, bridges it into the child as
+        ``CLAUDE_TRACE_EXTERNAL_ID`` so operators can join agentkit and CLI
+        traces on a single id. Idempotent under nested drives — a caller-set
+        value wins.
+
+        The bare-mode credential check runs LAST, on the environment the child
+        will actually get. It used to run on the raw ``os.environ`` copy, which
+        under a stripping policy would clear a run that has no credential left.
+        """
+        env, removed = _build_child_env(
+            policy=self.effective_env_policy,
+            credential_vars=_CLAUDE_AMBIENT_AUTH_ENV,
+            overrides=self.env,
+        )
+        # Only the AUTH half is worth a warning; see ``_CLAUDE_SESSION_ENV``.
+        notable = tuple(n for n in removed if n in _CLAUDE_AUTH_ENV)
+        if notable:
+            self._warn_env_stripped(notable)
+        if self.config_dir is not None:
+            env["CLAUDE_CONFIG_DIR"] = str(self.config_dir)
+        env.setdefault("CLAUDE_ENABLE_STREAM_WATCHDOG", "1")
+        if ctx is not None:
+            correlation_id = getattr(ctx, "correlation_id", None)
+            if correlation_id:
+                env.setdefault("CLAUDE_TRACE_EXTERNAL_ID", str(correlation_id))
+        if self.bare:
+            self._warn_if_bare_mode_has_no_credential(env)
+        return env
+
+    def _warn_env_stripped(self, removed: tuple[str, ...]) -> None:
+        """Name what the policy removed, once.
+
+        A silent strip is the same class of invisible behaviour as the silent
+        inherit it replaces: the run that used to work on an ambient key now
+        fails to authenticate, and nothing connects that to a default the
+        caller never typed. Naming the variables and the way back makes it a
+        one-line fix instead of an investigation.
+        """
+        if self._env_warned:
+            return
+        self._env_warned = True
+        import warnings
+
+        warnings.warn(
+            f"ClaudeCliCognition(env_policy={self.effective_env_policy!r}) removed "
+            f"{', '.join(removed)} from the CLI's environment"
+            + (" (implied by config_dir=)" if self.env_policy is None else "")
+            + ". The CLI prefers an ambient API key over a signed-in profile, so leaving "
+            "these in place would silently override the configuration directory this run "
+            "was pointed at. Pass env_policy='inherit' to keep the ambient values, or "
+            "env={...} to supply the credential explicitly.",
+            UserWarning,
+            stacklevel=4,
+        )
+
+
+class ClaudeCliSession:
+    """One `claude` process, many turns.
+
+    ``ClaudeCliCognition.drive`` spawns a subprocess per turn, which costs two
+    to five seconds of CLI warm-up EVERY time — measured on a two-turn
+    conversation, 4.2s for the first turn and 1.1s for the second when they
+    share a process. For a chat UI or an agent that iterates with a person,
+    that difference is the whole interaction.
+
+    A session holds the process open and feeds turns over stdin as
+    newline-delimited JSON (``--input-format stream-json``), so the CLI keeps
+    its own conversation context in memory. Verified against the binary: the
+    model recalls a number from turn 1 in turn 2, one session id spans both,
+    and closing stdin exits 0.
+
+    ::
+
+        async with cognition.session() as chat:
+            async for ev in chat.turn("Summarise README.md"):
+                ...
+            async for ev in chat.turn("Now list the risks you skipped"):
+                ...
+
+    Every per-turn contract of ``drive`` holds unchanged, because both go
+    through the same ``_TurnState`` and ``_finalise``: exactly one terminal
+    ``final`` event, the same stop-reason taxonomy, the same structured-output
+    handling, the same metering. What differs is only what a shared process
+    implies, and each of those is a real trade:
+
+    * **Turns are serialised.** One stdin, one transcript, so a second
+      concurrent ``turn()`` on the same session would interleave two
+      conversations into one context. A lock makes the second caller wait.
+    * **A dead process stays dead.** The CLI exiting mid-session (a crash, an
+      OOM kill, ``--max-turns`` reached) ends the session; the turn that
+      noticed reports it and every later ``turn()`` refuses rather than
+      silently starting a fresh conversation with no history. A TURN failing is
+      not that: a refused turn (``output=`` per turn) or a parse bug leaves the
+      process alive, so it costs one turn and the conversation continues —
+      measured, the turn after a refusal answers normally where it used to come
+      back ``failed session_closed`` from a healthy CLI.
+    * **Cancelling a turn ends the session.** There is no way to tell the CLI
+      "forget the turn you were mid-way through" over this protocol, so the
+      process is terminated. That is the honest outcome: the alternative is a
+      session whose context contains half an answer nobody saw. A crossed
+      ``timeouts`` bound is the same situation arriving by itself and ends the
+      session the same way.
+    * **``timeouts`` are per TURN**, measured from the write to stdin. Reading
+      ``total`` as a ceiling on the whole conversation would kill the thing
+      this class is for, so it bounds the longest single turn instead;
+      ``startup`` bounds each turn's first line rather than only the first
+      turn's, which is the right shape anyway, since the turn that pays the
+      CLI's warm-up is the slowest one.
+
+    The POLICIES are the cognition's, unchanged, and that is deliberate. The
+    process lifecycle differs — which is why this class has its own read loop
+    rather than going through ``_run_cli_process`` — but nothing about holding
+    a process open makes a credential safer in argv or a hang more acceptable.
+    Both were once true here and both were wrong in the same direction: a
+    session is the LONGER-lived process, so a leak sits in ``ps`` for the whole
+    conversation and an unbounded hang never ends.
+    """
+
+    def __init__(self, cognition: ClaudeCliCognition, *, agent: Agent | None = None) -> None:
+        self._cog = cognition
+        self._agent = agent
+        self._proc: asyncio.subprocess.Process | None = None
+        self._lock = asyncio.Lock()
+        self._closed = False
+        self._sem_holder: Any = None
+        # The system prompt this session's PROCESS was spawned with, rendered.
+        # ``--system-prompt`` is fixed at spawn, so this is the one the whole
+        # conversation runs under and the value a later turn's agent has to
+        # match — see ``_turn``.
+        self._system_prompt = ""
+        # Where this session's materialised secrets live, if it had any. Owned
+        # by the SESSION rather than by a turn: the CLI may re-read an
+        # ``--mcp-config`` file at any point while it is alive, so the
+        # directory has to outlast every turn and is torn down in ``close``.
+        self._scratch: str | None = None
+        self.session_id: str | None = None  # populated from the first turn's init payload
+        # Control requests are answered on the SAME stdout the turn reader is
+        # consuming, so the reader routes each ``control_response`` to the
+        # future waiting on it. Keyed by request id.
+        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._control_seq = 0
+        # Set while a turn is streaming. ``interrupt()`` needs to know whether
+        # anyone is reading — a control request with no reader never gets an
+        # answer, so it would hang instead of failing.
+        self._turn_active = False
+        self._interrupted = False
+        self._capabilities: frozenset[str] = frozenset()
+
+    @property
+    def name(self) -> str:
+        """``"claude_cli_session"`` — the cognition's name, marked as a session.
+
+        Required, not decorative. ``Agent._span_attrs`` reads ``cognition.name``
+        for the ``agentkit.agent.cognition`` trace attribute on EVERY run, so a
+        session without one raised ``AttributeError: 'ClaudeCliSession' object has no
+        attribute 'name'`` straight out of ``agent.run(...)`` — which is
+        precisely the usage :meth:`drive` exists for and this class's docstring
+        advertises. Measured; the one-shot cognition has had the field since it
+        was written and the session never did.
+
+        Suffixed rather than delegated verbatim so a trace distinguishes the two
+        regimes. They have genuinely different behaviour to debug — one
+        conversation across many turns versus a fresh one each time — and
+        ``agentkit.agent.cognition`` is the attribute that is supposed to say
+        which turn-taking regime ran.
+        """
+        return f"{self._cog.name}_session"
+
+    # ---- lifecycle -------------------------------------------------------------------------
+
+    async def __aenter__(self) -> ClaudeCliSession:
+        await self.start()
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
+    async def start(self) -> None:
+        """Spawn the CLI. Idempotent; ``__aenter__`` calls it for you."""
+        if self._proc is not None:
+            return
+        cog = self._cog
+        # The spawn semaphore is held for the WHOLE session, not per turn: the
+        # bound exists because the SDK hangs at ~200 live subprocesses, and a
+        # session's subprocess is live the entire time.
+        sem = _get_semaphore(
+            cog.claude_bin,
+            str(cog.config_dir) if cog.config_dir is not None else None,
+            cog.max_concurrent,
+        )
+        self._sem_holder = sem
+        await sem.acquire()
+        try:
+            # Inline ``mcp_config`` / ``settings`` blobs are written to 0600
+            # files and referenced by path, exactly as ``drive`` does — see
+            # ``_materialise_secrets``. A session needs this MORE than a
+            # one-shot run does, not less: the leak is an argument list any
+            # local account can read with ``ps``, and this process carries it
+            # for the whole conversation rather than for one turn.
+            #
+            # Passing the pair explicitly is also what stops ``_build_argv``
+            # falling back to the DECLARED values. That fallback exists for
+            # argv-shape tests; reaching it here is how the session shipped the
+            # token it was supposed to hide.
+            # ``agent.prompt`` IS the system prompt, and the session used to
+            # drop it: ``_build_argv`` was called with ``system_prompt=""`` and
+            # nothing ever supplied one, so an agent handed to ``session()``
+            # kept its schema, its meters and its name — and silently lost the
+            # instructions that say what it IS. Measured, same agent both ways:
+            # ``drive()`` answered in the configured persona and the session
+            # answered as a bare assistant, with no error and nothing missing
+            # from the result to notice.
+            self._system_prompt = cog._resolve_system_prompt(self._agent.prompt if self._agent is not None else None)
+            oversized_prompt = _too_big_for_argv(self._system_prompt)
+            if cog._needs_scratch() or oversized_prompt:
+                self._scratch = _make_scratch()
+            system_prompt_path = (
+                str(_write_private(self._scratch, "system-prompt.txt", self._system_prompt))
+                if self._scratch is not None and oversized_prompt
+                else None
+            )
+            mcp_config, settings = (
+                cog._materialise_secrets(self._scratch)
+                if self._scratch is not None
+                else (
+                    tuple(str(c) for c in cog.mcp_config),
+                    str(cog.settings) if cog.settings is not None else None,
+                )
+            )
+            argv = cog._build_argv(
+                "",
+                system_prompt=self._system_prompt,
+                stream_input=True,
+                mcp_config=mcp_config,
+                settings=settings,
+                system_prompt_path=system_prompt_path,
+            )
+            self._proc = await (cog.spawn or asyncio.create_subprocess_exec)(
+                *argv,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(cog.working_dir) if cog.working_dir is not None else None,
+                env=cog._build_env(),
+                start_new_session=START_NEW_SESSION,
+                limit=_STDOUT_LINE_LIMIT,
+            )
+        except BaseException:
+            self._system_prompt = ""
+            self._discard_scratch()
+            sem.release()
+            self._sem_holder = None
+            raise
+
+    def _discard_scratch(self) -> None:
+        """Delete this session's generated files, if it made any."""
+        scratch, self._scratch = self._scratch, None
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+    async def close(self) -> None:
+        """Close stdin and wait for the CLI to exit, then release the permit.
+
+        Closing stdin is the protocol's own end-of-conversation signal and the
+        CLI exits 0 on it, so this is a clean shutdown rather than a kill. A
+        process that ignores it is terminated after the usual grace.
+        """
+        self._closed = True
+        proc, self._proc = self._proc, None
+        if proc is not None:
+            with contextlib.suppress(Exception):
+                if proc.stdin is not None and not proc.stdin.is_closing():
+                    proc.stdin.close()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=self._cog.terminate_grace_s)
+            except TimeoutError:
+                await _terminate(proc, self._cog.terminate_grace_s)
+        # After the process is gone, never before: the CLI may read an
+        # ``--mcp-config`` file at any point while it is alive, and pulling it
+        # out from under a still-running child would break the session in a way
+        # that looks like a config error.
+        self._discard_scratch()
+        if self._sem_holder is not None:
+            self._sem_holder.release()
+            self._sem_holder = None
+
+    # ---- control protocol ------------------------------------------------------------------
+
+    async def interrupt(self, *, cancel_queued: bool = False, ack_timeout_s: float = 5.0) -> InterruptReceipt:
+        """Stop the turn that is currently streaming, keeping the session alive.
+
+        This is the piece a chat UI needs and cancellation cannot give you.
+        Cancelling a turn terminates the process — no protocol message retracts
+        a half-finished turn, so the conversation ends with it. An interrupt is
+        the CLI's own verb for the same intent: the in-flight turn stops, the
+        process stays up, and the next ``turn()`` continues the SAME
+        conversation. Verified against the binary — an interrupted turn is
+        followed by a normal one in the same process, which then exits 0.
+
+        The interrupted turn still yields exactly one terminal ``final`` event,
+        with ``stop_reason="interrupted"`` (``terminated`` in the closed
+        taxonomy — somebody stopped this deliberately; nothing failed).
+
+        ``cancel_queued`` also drops messages the CLI has queued but not yet
+        dispatched. Requires the ``interrupt_cancel_queued_v1`` capability,
+        which is checked before the request is sent rather than after it is
+        ignored.
+
+        Returns an :class:`InterruptReceipt`. ``still_queued`` names the queued
+        messages that will run anyway, which is the difference between "the
+        agent stopped" and "the agent stopped and has three more things to do".
+
+        Safe to call when no turn is running: there is nothing to interrupt, so
+        it returns an empty receipt rather than sending a request nobody would
+        answer — the reader that resolves it only exists during a turn.
+
+        Safe to call as the turn ENDS, too. A stop button raced by the last
+        token is the same no-op arriving a few milliseconds later: the receipt
+        comes back ``delivered=False`` with an ``error`` saying the turn had
+        already finished. It is not an exception — this used to raise the
+        module-private ``_SessionClosed`` out of the caller's stop button,
+        which is precisely the try block this method exists to spare a UI.
+
+        **The interrupt is delivered synchronously; the RECEIPT is best-effort.**
+        The CLI answers on the same stdout the turn reader consumes, so the
+        acknowledgement only arrives while somebody is draining the stream. Call
+        this from a separate task — a UI's stop button, which is the natural
+        shape — and it returns promptly with the full receipt::
+
+            stop = asyncio.create_task(chat.interrupt())
+
+        Call it inline from the loop consuming ``turn()`` and that loop is
+        suspended at a yield, so nothing is reading and the acknowledgement
+        cannot arrive. ``ack_timeout_s`` bounds that into a wait rather than a
+        deadlock: the receipt comes back ``delivered=True`` with an ``error``
+        noting the missing acknowledgement, and the interrupt still takes effect
+        because the WRITE already happened. Getting this wrong should cost a
+        field on a receipt, not a hung application.
+        """
+        proc = self._proc
+        if proc is None or proc.returncode is not None or not self._turn_active:
+            return InterruptReceipt(delivered=False)
+
+        subtype = "interrupt"
+        if cancel_queued:
+            if not self.supports("interrupt_cancel_queued_v1"):
+                raise ValueError(
+                    "this claude CLI does not advertise 'interrupt_cancel_queued_v1'; "
+                    f"it reports {sorted(self.capabilities) or '<none>'}. Call interrupt() "
+                    "without cancel_queued, or upgrade the CLI."
+                )
+            subtype = "interrupt_cancel_queued"
+
+        self._control_seq += 1
+        request_id = f"agentkit-{self._control_seq}"
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        self._pending[request_id] = future
+
+        # Set BEFORE the write. The turn's terminal event is assembled by
+        # whichever coroutine is reading, and it may reach that point before
+        # this one resumes from the await below.
+        self._interrupted = True
+        try:
+            assert proc.stdin is not None  # PIPE
+            proc.stdin.write(
+                (
+                    json.dumps(
+                        {
+                            "type": "control_request",
+                            "request_id": request_id,
+                            "request": {"subtype": subtype},
+                        }
+                    )
+                    + "\n"
+                ).encode()
+            )
+            await proc.stdin.drain()
+            try:
+                payload = await asyncio.wait_for(future, timeout=ack_timeout_s)
+            except TimeoutError:
+                return InterruptReceipt(
+                    delivered=True,  # the request was written; the answer was not read
+                    error=(
+                        f"no acknowledgement within {ack_timeout_s}s — nothing was draining "
+                        "the CLI's output. Call interrupt() from a separate task "
+                        "(asyncio.create_task) rather than from inside the loop consuming "
+                        "turn()."
+                    ),
+                )
+            except _SessionClosed as exc:
+                # The turn ended while this request was in flight, so
+                # ``_fail_pending`` resolved the future with the reason nobody
+                # will ever answer it. That is a NORMAL race — a stop button
+                # pressed as the answer lands — and the private exception used
+                # to escape the caller verbatim: measured, ``interrupt()``
+                # raised ``_SessionClosed: the turn ended before the CLI
+                # answered`` straight out of the stop button. A receipt says the
+                # same thing without asking every UI to catch it.
+                return InterruptReceipt(
+                    delivered=False,  # nothing was stopped; the turn had already finished
+                    error=f"{exc} — the turn had already finished, so nothing was interrupted",
+                )
+        finally:
+            self._pending.pop(request_id, None)
+
+        response = _as_dict(payload.get("response"))
+        inner = _as_dict(response.get("response"))
+        return InterruptReceipt(
+            delivered=response.get("subtype") == "success",
+            still_queued=tuple(inner.get("still_queued") or ()),
+            cancelled=tuple(inner.get("cancelled") or ()),
+            error=str(response.get("error") or "") or None,
+        )
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        """Protocol behaviours this CLI advertises on ``system/init``.
+
+        Feature-detect against this instead of comparing version strings — it
+        is what the field exists for, and the set is open, so an unrecognised
+        value is not an error.
+
+        Empty until the first turn has produced its init payload.
+        """
+        return frozenset(self._capabilities)
+
+    def supports(self, capability: str) -> bool:
+        """Whether the CLI advertised ``capability``."""
+        return capability in self._capabilities
+
+    @property
+    def caps(self) -> tuple[str, ...]:
+        """Rule-of-Two tags for this session — the cognition's, unchanged.
+
+        A session can BE an agent's cognition (see :meth:`drive`), so it can be
+        handed to ``RunPolicy.check`` in exactly the place the cognition would
+        be. Without this delegation ``getattr(session, "caps", ())`` returns the
+        empty tuple and the gate sees a tool-less run — which is the same
+        shape of silent hole ``ClaudeCliCognition.caps`` was added to close, one
+        object further out.
+
+        Not to be confused with :attr:`capabilities` above: that is the CLI's
+        own control-protocol feature set, negotiated at ``system/init``. The
+        short name here is not a style choice — ``caps`` is the attribute name
+        ``RunPolicy.capabilities`` reads, and renaming it would make the tags
+        invisible again.
+        """
+        return self._cog.caps
+
+    def _absorb_init(self, init: dict[str, Any]) -> None:
+        """Record what the ``system/init`` payload said about this CLI."""
+        advertised = init.get("capabilities")
+        if advertised:
+            self._capabilities = frozenset(advertised)
+
+    def _resolve_control(self, payload: dict[str, Any]) -> None:
+        """Hand a ``control_response`` to whoever is awaiting it.
+
+        An unmatched id is dropped rather than raised: the CLI may answer
+        something a previous turn abandoned, and a stray reply must not take
+        down the turn currently streaming.
+        """
+        response = _as_dict(payload.get("response"))
+        request_id = str(response.get("request_id") or payload.get("request_id") or "")
+        future = self._pending.get(request_id)
+        if future is not None and not future.done():
+            future.set_result(payload)
+
+    async def _resync(self, proc: asyncio.subprocess.Process) -> bool:
+        """Read the rest of a half-consumed turn, up to its ``result`` payload.
+
+        Called when a turn failed for a reason that is NOT the process dying —
+        a parse bug, a fold that raised. The CLI does not know anything went
+        wrong and keeps writing that turn's answer, so the lines still in the
+        pipe belong to the turn that failed. Leaving them there is how a
+        healthy-looking session returns somebody else's answer: the next turn
+        reads this one's tail and ends at its stale ``result``.
+
+        Returns whether the stream is back at a turn boundary. ``False`` means
+        the session is genuinely over — an unsynchronised stdout cannot carry
+        another turn, and guessing is worse than saying so.
+        """
+        if proc.stdout is None or proc.returncode is not None:
+            return False
+
+        async def _drain() -> bool:
+            assert proc.stdout is not None
+            async for line in proc.stdout:
+                payload = _parse_line(line)
+                if payload is None:
+                    continue
+                # Everything here is discarded, control responses included:
+                # ``_fail_pending`` has already run, so there is no waiter left
+                # for a late acknowledgement to reach.
+                if payload.get("type") == "result":
+                    return True
+            return False  # EOF: the CLI is gone, not merely mid-turn
+
+        try:
+            return await asyncio.wait_for(_drain(), timeout=_RESYNC_TIMEOUT_S)
+        except Exception:
+            # Includes the timeout: a CLI still grinding through a turn we have
+            # already given up on. Bounded, because the alternative is a caller
+            # blocked on the answer to a turn that already failed.
+            return False
+
+    def _fail_pending(self, reason: str) -> None:
+        """Fail every outstanding control request.
+
+        Called when a turn ends: the reader is gone, so nothing will ever
+        resolve these, and an awaiting caller would hang forever otherwise.
+        """
+        for future in list(self._pending.values()):
+            if not future.done():
+                future.set_exception(_SessionClosed(reason))
+        self._pending.clear()
+
+    # ---- turns -----------------------------------------------------------------------------
+
+    async def turn(
+        self,
+        task: str,
+        *,
+        agent: Agent | None = None,
+        ctx: Ctx | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Send one user turn and stream its events, ending at exactly one ``final``.
+
+        ``agent`` supplies the output schema (and is required for one, since the
+        schema is a property of the AGENT, not the session); ``ctx`` supplies
+        the meters and the cancel token. Both may be omitted for a bare
+        conversational session.
+        """
+        async for ev in self._turn(task, agent=agent or self._agent, ctx=ctx):
+            yield ev
+
+    async def drive(
+        self,
+        agent: Agent,
+        task: str,
+        ctx: Ctx,
+        context: WorkingContext,
+    ) -> AsyncIterator[StreamEvent]:
+        """``Cognition``-shaped entry point, so a session can BE an agent's
+        cognition and consecutive ``agent.run(...)`` calls share one process and
+        one CLI-side conversation."""
+        del context  # the CLI owns its own transcript
+        async for ev in self._turn(task, agent=agent, ctx=ctx):
+            yield ev
+
+    async def _turn(self, task: str, *, agent: Agent | None, ctx: Ctx | None) -> AsyncIterator[StreamEvent]:
+        # Same bypass, same warning. A session reuses ONE cognition, so the
+        # latch on it makes this fire on the first turn and never again —
+        # which is the right cadence for a long conversation.
+        self._cog._warn_if_middleware_bypassed(ctx)
+        state = _TurnState()
+        cancelled = False
+        timed_out: CliTimedOut | None = None
+        fatal_exc: BaseException | None = None
+        should_reraise_cancel = False
+        stderr_bytes = b""
+        schema_requested = False
+        # Did this turn reach the CLI, and did we read it to its ``result``?
+        # Together they say whether the stdout stream is parked at a turn
+        # boundary — which is what decides whether the SESSION survives a
+        # failure, see the ``finally`` below.
+        sent = False
+        turn_complete = False
+        # Serialise turns: one stdin and one transcript mean two concurrent
+        # turns would interleave into a single conversation.
+        async with self._lock:
+            proc = self._proc
+            try:
+                if self._closed or proc is None:
+                    raise _SessionClosed(
+                        "the CLI session is closed — start a new one; its conversation context is gone with the process"
+                    )
+                if proc.returncode is not None:
+                    raise _SessionClosed(
+                        f"the CLI process exited with code {proc.returncode}; its "
+                        "conversation context is gone, so this turn was not sent"
+                    )
+                if agent is not None:
+                    # ``--system-prompt`` is fixed at spawn like ``--json-schema``
+                    # below, so a turn whose agent carries a DIFFERENT one cannot
+                    # be honoured. Refusing beats the alternative this replaced:
+                    # the prompt was silently discarded and the turn answered as
+                    # whatever the process was spawned as, which reads like the
+                    # model ignoring its instructions rather than like a wiring
+                    # mistake.
+                    #
+                    # Compared against what the PROCESS was spawned with, not
+                    # against "has a prompt at all" — the ordinary
+                    # ``session(agent=a)`` then ``turn(t, agent=a)`` pattern
+                    # passes the same agent through both doors and must not
+                    # refuse itself. Rendered on both sides, because a ``Prompt``
+                    # is a versioned object and two equivalent ones are not the
+                    # same instance.
+                    turn_prompt = self._cog._resolve_system_prompt(agent.prompt)
+                    if turn_prompt != self._system_prompt:
+                        raise _TurnRefused(
+                            "the system prompt is a process-level flag on the CLI, so it "
+                            "cannot be changed per turn. This session was started with "
+                            + (f"{self._system_prompt[:60]!r}..." if self._system_prompt else "no system prompt")
+                            + ". Pass the agent when you OPEN the session "
+                            "(cognition.session(agent=...)) so its prompt is set at spawn, "
+                            "or use ClaudeCliCognition.drive() for a per-run prompt."
+                        )
+                    schema_requested = self._cog._resolve_json_schema(agent) is not None
+                    if schema_requested:
+                        # ``--json-schema`` is a process-level flag, fixed at
+                        # spawn. Saying so beats silently returning prose for an
+                        # ``output=`` the caller believes is wired.
+                        #
+                        # ``_TurnRefused``, not ``_SessionClosed``: nothing was
+                        # written and the process never noticed, so THIS TURN is
+                        # refused and the conversation carries on.
+                        raise _TurnRefused(
+                            "structured output is a process-level flag on the CLI, so it "
+                            "cannot be turned on per turn. Use ClaudeCliCognition.drive() "
+                            "for a typed run, or pass json_schema= on the cognition before "
+                            "opening the session."
+                        )
+                assert proc.stdin is not None  # PIPE
+                self._interrupted = False
+                self._turn_active = True
+                proc.stdin.write(_user_turn(task).encode())
+                await proc.stdin.drain()
+                sent = True
+
+                assert proc.stdout is not None  # PIPE
+                # One deadline per TURN, constructed here rather than at
+                # ``start``, so every bound is measured from the moment this
+                # turn reached the CLI.
+                #
+                # That makes ``total`` a per-turn ceiling on a session, which
+                # is the only reading that can work: a session exists in order
+                # to outlive its turns, so a bound on the whole conversation
+                # would kill the thing the class is for. ``startup`` likewise
+                # applies to each turn's first line rather than only the first
+                # turn's — the right shape anyway, since the first turn pays
+                # the CLI's warm-up and a later one answers sooner, so a bound
+                # that clears the former clears the latter with room to spare.
+                #
+                # ``_iter_stdout`` notes EVERY line against ``idle``, control
+                # responses included. That is deliberate: an in-flight
+                # ``interrupt()`` is the CLI talking, and counting it as
+                # silence would let a stop button trip an idle bound on a turn
+                # that is working perfectly well.
+                deadline = _CliDeadline(self._cog.timeouts)
+                # See the driver: poll for the cancellation token only when a
+                # ctx carries one. A session needs this at least as much — the
+                # process it holds is the one most likely to be sitting in a
+                # long tool call when somebody presses stop.
+                poll_s = _CANCEL_POLL_S if ctx is not None else None
+                async for line in _iter_stdout(proc.stdout, deadline, poll_s=poll_s):
+                    if ctx is not None:
+                        try:
+                            ctx.check_cancelled()
+                        except Exception:
+                            cancelled = True
+                            break
+                    if line is None:
+                        continue  # a poll tick — the check above was the point
+                    payload = _parse_line(line)
+                    if payload is None:
+                        continue
+                    if payload.get("type") == "control_response":
+                        # Not turn content: the CLI's answer to something we
+                        # asked out-of-band. Routing it here is what makes
+                        # ``interrupt()`` awaitable at all — nothing else reads
+                        # this stream while a turn is in flight.
+                        self._resolve_control(payload)
+                        continue
+                    async for ev, delta in _events_from_payload(payload, partial=self._cog.partial_messages):
+                        if ev is not None:
+                            # ``first_event`` measures time to turn CONTENT.
+                            # A ``system/init`` is the CLI talking to itself
+                            # and a ``control_response`` never gets here, so
+                            # neither one satisfies the bound.
+                            deadline.note_event()
+                            yield ev
+                        state.fold(delta)
+                        # Capabilities are folded LIVE, not after the turn:
+                        # ``interrupt()`` is called mid-turn and feature-detects
+                        # against them, so a capability that only lands at the
+                        # terminal event is one nobody can act on.
+                        if delta.init:
+                            self._absorb_init(delta.init)
+                    # A turn ends at its ``result`` payload — NOT at EOF, which
+                    # is what a one-shot drive waits for. The process stays
+                    # alive for the next turn.
+                    if payload.get("type") == "result":
+                        break
+                else:
+                    # stdout ended without a result: the CLI died mid-turn.
+                    raise _SessionClosed("the CLI closed its output mid-turn; the session is over")
+                if not cancelled:
+                    # We left the loop on the turn's ``result`` payload, so the
+                    # stream is parked exactly at the next turn's first line.
+                    # (A cancel breaks out of the same loop mid-answer, which is
+                    # the opposite situation.)
+                    turn_complete = True
+            except CliTimedOut as exc:
+                # Same standing as a cancel, and for the same reason: the CLI
+                # is mid-turn and no protocol message retracts a half-finished
+                # one, so the process — and with it the conversation — ends
+                # here. Reported as data through ``_finalise``, which already
+                # ranks a crossed bound above the parse error that cutting the
+                # stream mid-line can produce.
+                timed_out = exc
+            except asyncio.CancelledError:
+                cancelled = True
+                should_reraise_cancel = True
+            except BaseException as exc:  # noqa: BLE001 — terminal-event guarantee
+                fatal_exc = exc
+            finally:
+                self._turn_active = False
+                self._fail_pending("the turn ended before the CLI answered")
+                if (cancelled or timed_out is not None) and proc is not None and proc.returncode is None:
+                    # No protocol message retracts a half-finished turn, so the
+                    # session ends with it. The GROUP, not the pid: a turn that
+                    # stopped reporting is exactly the one whose CLI may have
+                    # forked something expensive.
+                    await _terminate(proc, self._cog.terminate_grace_s)
+                # ── does THIS turn's failure end the SESSION? ───────────────
+                # It used to: any exception at all set ``_closed``, so a
+                # per-turn refusal killed a healthy process. Measured before
+                # this fix — turn 1 'reply1' complete; turn 2 refused for
+                # carrying ``output=`` → ``_closed=True`` with the process
+                # still alive; turn 3, a plain valid turn, ``failed
+                # session_closed`` with no output. Only a dead process — or a
+                # stream we can no longer line up with a turn boundary — is a
+                # dead session.
+                session_over = cancelled or timed_out is not None or proc is None or proc.returncode is not None
+                if isinstance(fatal_exc, _SessionClosed) and not isinstance(fatal_exc, _TurnRefused):
+                    # The pre-flight checks and the mid-turn EOF: the process,
+                    # or its stdout, is gone. There is no conversation left to
+                    # continue, so every later turn must refuse rather than
+                    # silently start a fresh one.
+                    session_over = True
+                elif fatal_exc is not None and not session_over and sent and not turn_complete and proc is not None:
+                    # A turn-level failure (a parse bug in ``_events_from_payload``,
+                    # a fold that raised) left the CLI's answer half-read. Those
+                    # lines belong to the turn that just failed: leaving them
+                    # would make the NEXT turn read this one's tail and stop at
+                    # its stale ``result``. Read to the boundary before letting
+                    # the session live on — and if we cannot get there, the
+                    # stream is unusable and the session really is over.
+                    session_over = not await self._resync(proc)
+                if session_over:
+                    self._closed = True
+                if (cancelled or timed_out is not None or fatal_exc is not None) and proc is not None:
+                    if proc.stderr is not None:
+                        # Short, because a session's process may still be ALIVE
+                        # here — a refused turn leaves it running, and an
+                        # unbounded read on a live pipe never returns. Chunked
+                        # via ``_drain_stderr`` so hitting the bound costs the
+                        # chunk in flight rather than the whole diagnostic.
+                        stderr_bytes = await _drain_stderr(proc.stderr, 0.5)
+
+            if state.session_id:
+                self.session_id = state.session_id
+
+            if self._interrupted:
+                # The CLI ends an interrupted turn as ``error_during_execution``
+                # — the same subtype it uses for a genuine execution failure, so
+                # the payload alone cannot tell them apart. WE know: we sent the
+                # interrupt. Stamping it here beats inferring it from an
+                # ambiguous field.
+                #
+                # ``is_error`` stays TRUE so the terminal event is marked
+                # ``partial``: the turn stopped mid-answer and whatever text
+                # arrived is a fragment. Only the reason changes, from "the CLI
+                # hit a problem" to "we stopped it".
+                state.stop_reason = "interrupted"
+
+            result = await self._cog._finalise(
+                agent=agent,
+                ctx=ctx,
+                state=state,
+                cancelled=cancelled,
+                fatal_exc=fatal_exc,
+                spawned=proc is not None,
+                # ``None`` = the process is still alive, which is the normal
+                # end of a turn.
+                return_code=proc.returncode if proc is not None else -1,
+                stderr_bytes=stderr_bytes,
+                schema_requested=schema_requested,
+                timed_out=timed_out,
+            )
+            yield StreamEvent("final", usage=state.usage, result=result)
+            if should_reraise_cancel:
+                raise asyncio.CancelledError()
+            _reraise_if_not_an_exception(fatal_exc)
+
+
+@dataclass(frozen=True, slots=True)
+class InterruptReceipt:
+    """What an interrupt actually achieved.
+
+    ``delivered`` is False when there was nothing to interrupt — no live turn,
+    or a process that has already exited. It is not an error: "stop" with
+    nothing running is a no-op, and raising would make every UI wrap its stop
+    button in a try block.
+
+    ``still_queued`` names messages the CLI had queued and will still run, which
+    is the difference between "the agent stopped" and "the agent stopped and
+    has three more things to do". ``cancelled`` is populated only by an
+    interrupt that asked to drop them.
+    """
+
+    delivered: bool
+    still_queued: tuple[str, ...] = ()
+    cancelled: tuple[str, ...] = ()
+    error: str | None = None
+
+
+class _SessionClosed(RuntimeError):
+    """The session's process is gone (or was never usable for this turn).
+
+    Surfaced through the normal terminal event as ``session_closed`` rather
+    than raised at the caller, so a session turn keeps the same
+    exactly-one-``final`` contract as a one-shot drive.
+    """
+
+
+class _TurnRefused(_SessionClosed):
+    """THIS turn cannot run; the session is fine.
+
+    Per-turn structured output is the case: ``--json-schema`` is fixed at
+    spawn, so the turn is refused with an explanation — but nothing was written
+    and the process never heard about it, so the conversation is intact and the
+    next turn answers normally. Measured before the two were distinguished: the
+    refusal closed the session, and the following plain turn came back ``failed
+    session_closed`` from a CLI that was alive and idle.
+
+    A subclass of :class:`_SessionClosed` so it keeps that class's
+    "not a spawn failure, no retry will help THIS turn" handling in
+    ``_finalise``; the extra type is what lets the terminal event say
+    ``turn_refused`` and the session stay open.
+    """
+
+
+def _user_turn(text: str) -> str:
+    """One NDJSON user message for ``--input-format stream-json``.
+
+    The shape is the SDK's own (``parent_tool_use_id`` marks a subagent turn;
+    ``None`` is the main conversation) and was confirmed against the binary.
+    """
+    return (
+        json.dumps(
+            {
+                "type": "user",
+                "message": {"role": "user", "content": text},
+                "parent_tool_use_id": None,
+            }
+        )
+        + "\n"
+    )
+
+
+# Credential env vars that make ``--bare`` viable. In bare mode the CLI never
+# reads OAuth credentials or the system keychain, so a developer whose
+# ``claude`` works perfectly in a terminal gets "Not logged in · Please run
+# /login" the first time their service turns bare mode on — a message that
+# points at exactly the wrong fix. The check below is deliberately
+# conservative: any one of these, or a ``settings`` blob (which may carry an
+# ``apiKeyHelper``), and we stay quiet.
+# Everything ambient that decides WHICH identity the CLI runs as. Removed by
+# ``env_policy="profile"`` and absent under ``"isolated"``.
+#
+# The first half is auth proper, and the reason this field exists at all.
+# Measured against claude 2.1.236, which announces it on stderr:
+#
+#     ⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another
+#       auth source is set and takes precedence over your claude.ai login
+#
+# The provider switches are in the same list because they redirect where auth
+# is resolved from entirely: an inherited ``CLAUDE_CODE_USE_BEDROCK=1`` sends a
+# run configured for a signed-in Anthropic profile to AWS instead.
+#
+# The second half is SESSION linkage, and it is not hypothetical — every one of
+# these is set in the environment of any process started from inside a running
+# Claude Code session, which is exactly where a developer first runs an
+# agentkit script. ``CLAUDE_CODE_MESSAGING_TOKEN`` is a live credential for the
+# PARENT session's IPC socket; inheriting the set makes the spawned CLI present
+# itself as a child of a conversation it has nothing to do with.
+_CLAUDE_AUTH_ENV: tuple[str, ...] = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+)
+
+# The session half. Stripped by the same policies and deliberately NOT warned
+# about: removing them cannot surprise anyone. They decide nothing about which
+# credentials are used, so a caller debugging an auth failure gains nothing
+# from the name, and every process started from inside a Claude Code session
+# has all of them — so warning would mean warning on essentially every
+# developer machine, every run, about something that was never going to be
+# wanted. The auth half above is the half where silence would cost something.
+_CLAUDE_SESSION_ENV: tuple[str, ...] = (
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_BRIDGE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+)
+
+_CLAUDE_AMBIENT_AUTH_ENV: tuple[str, ...] = _CLAUDE_AUTH_ENV + _CLAUDE_SESSION_ENV
+
+# Phrases the ``claude`` CLI prints when authentication has FAILED. Lower-case;
+# matched as substrings against stderr. Deliberately excludes the "takes
+# precedence over your claude.ai login" warning, which this CLI prints on
+# perfectly successful runs — see ``_timeout_stop_reason``.
+_CLAUDE_AUTH_FAILURE_STDERR: tuple[str, ...] = (
+    "invalid api key",
+    "please run /login",
+    "not logged in",
+    "authentication_error",
+    "oauth token has expired",
+    "invalid bearer token",
+    "401",
+)
+
+
+def _classify_timeout(exc: CliTimedOut, stderr_bytes: bytes) -> str:
+    """This CLI's spelling of :func:`_timeout_stop_reason`."""
+    return _timeout_stop_reason(exc, stderr_bytes, _CLAUDE_AUTH_FAILURE_STDERR)
+
+
+_BARE_CREDENTIAL_ENV = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stream-JSON parsing
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class _TurnState:
+    """Everything one turn accumulates from the CLI's stream.
+
+    Extracted so a persistent session and a one-shot drive fold the stream the
+    same way. It is a plain accumulator: no decisions live here, only the
+    "last value wins / text concatenates" rules the payload sequence implies.
+    """
+
+    messages: MessageLog = field(default_factory=MessageLog)
+    text: str = ""
+    thinking: str = ""
+    usage: Usage = field(default_factory=Usage)
+    raw_usage: dict[str, Any] = field(default_factory=dict)
+    session_id: str | None = None
+    duration_ms: int | None = None
+    is_error: bool = False
+    stop_reason: str | None = None
+    structured_output: Any = None
+    init: dict[str, Any] = field(default_factory=dict)
+    api_retries: list[dict[str, Any]] = field(default_factory=list)
+    saw_terminal: bool = False
+
+    def fold(self, delta: _EventDelta) -> None:
+        """Apply one payload's state delta. ``None`` means "this payload said
+        nothing about that field", which is why every branch is a guard rather
+        than an assignment."""
+        if delta.message_done:
+            self.text = self.messages.record(delta.text, delta.message_id, append=True)
+        if delta.authoritative_text is not None:
+            self.text = delta.authoritative_text
+        if delta.thinking:
+            self.thinking += delta.thinking
+        if delta.usage is not None:
+            self.usage = delta.usage
+        if delta.raw_usage is not None:
+            self.raw_usage = delta.raw_usage
+        if delta.session_id is not None:
+            self.session_id = delta.session_id
+        if delta.duration_ms is not None:
+            self.duration_ms = delta.duration_ms
+        if delta.is_error:
+            self.is_error = True
+        if delta.saw_terminal:
+            self.saw_terminal = True
+        if delta.stop_reason is not None:
+            self.stop_reason = delta.stop_reason
+        if delta.structured_output is not None:
+            self.structured_output = delta.structured_output
+        if delta.init:
+            self.init = delta.init
+        if delta.api_retry is not None:
+            self.api_retries.append(delta.api_retry)
+
+
+@dataclass(slots=True)
+class _EventDelta:
+    """Small state-delta value returned alongside each yielded event so the
+    drive loop can fold ``usage`` / ``session_id`` / ``text`` / ``thinking``
+    / ``is_error`` without a second parsing pass."""
+
+    message_id: str | None = None
+    message_done: bool = False
+    authoritative_text: str | None = None
+    text: str = ""
+    thinking: str = ""
+    usage: Usage | None = None
+    raw_usage: dict[str, Any] | None = None
+    session_id: str | None = None
+    duration_ms: int | None = None
+    # Populated by the ``result`` payload — the CLI can exit 0 with
+    # ``is_error: true`` and a ``subtype`` like ``error_max_turns`` /
+    # ``error_during_execution``. Surface both so ``drive()`` can flip the
+    # ``AgentResult.partial`` flag and stamp a stop_reason.
+    is_error: bool = False
+    stop_reason: str | None = None
+    # The CLI's validated structured answer, present on the ``result`` payload
+    # only when ``--json-schema`` was passed AND the run produced a conforming
+    # value. A ``success`` result WITHOUT it is a failure the docs call out
+    # explicitly, so ``None`` here is meaningful and the drive loop needs to
+    # distinguish "never asked for one" from "asked and did not get one".
+    structured_output: Any = None
+    init: dict[str, Any] | None = None  # ``system/init`` startup metadata
+    api_retry: dict[str, Any] | None = None  # one ``system/api_retry`` payload
+    # Did the CLI reach its OWN end-of-turn payload? Tracked explicitly rather
+    # than inferred, because a SUCCESSFUL terminal payload leaves
+    # ``stop_reason`` at ``None`` — exactly the value a stream that stopped
+    # early also has, so the two were indistinguishable. Measured before this
+    # existed: stdout truncated mid-object reported ``stop_reason="complete"``,
+    # ``partial=False``, and handed back half an answer as a finished one.
+    saw_terminal: bool = False
+
+
+async def _events_from_payload(
+    payload: dict[str, Any], *, partial: bool = False
+) -> AsyncIterator[tuple[StreamEvent | None, _EventDelta]]:
+    """Translate one stream-json payload into zero or more
+    ``(StreamEvent | None, _EventDelta)`` tuples.
+
+    Yields ``(None, delta)`` when the payload carries state (usage /
+    session_id / duration) but no user-facing event — e.g., the ``system``
+    init message.
+    """
+    ptype = payload.get("type")
+
+    if ptype == "system":
+        sid = payload.get("session_id")
+        subtype = payload.get("subtype")
+        if subtype == "api_retry":
+            # The CLI retrying a failed API request. Surfaced as a ``step`` so
+            # an operator watching a stream sees WHY a run went quiet for
+            # thirty seconds instead of guessing.
+            attempt = payload.get("attempt")
+            retries = payload.get("max_retries")
+            reason = payload.get("error") or "unknown"
+            yield (
+                StreamEvent("step", text=f"api_retry:{reason} ({attempt}/{retries})"),
+                _EventDelta(session_id=str(sid) if sid else None, api_retry=dict(payload)),
+            )
+            return
+        if subtype == "init":
+            # Startup metadata: which model, which MCP servers connected, which
+            # ones were SKIPPED. The error keys are omitted entirely when empty,
+            # so their presence is the signal — that is what the CLI docs
+            # recommend gating CI on.
+            yield (
+                None,
+                _EventDelta(
+                    session_id=str(sid) if sid else None,
+                    init={
+                        k: payload[k]
+                        for k in (
+                            "model",
+                            "capabilities",
+                            "mcp_servers",
+                            "mcp_server_errors",
+                            "plugin_errors",
+                            "claude_code_version",
+                            "permissionMode",
+                            "apiKeySource",
+                        )
+                        if k in payload
+                    },
+                ),
+            )
+            return
+        yield None, _EventDelta(session_id=str(sid) if sid else None)
+        return
+
+    if ptype == "stream_event":
+        # Only present with ``--include-partial-messages``. One payload per
+        # provider SSE event; the only ones a consumer can render are the
+        # content deltas (``signature_delta`` / ``input_json_delta`` carry
+        # cryptographic and tool-argument fragments, which are not text).
+        event = _as_dict(payload.get("event"))
+        if event.get("type") != "content_block_delta":
+            return
+        delta = _as_dict(event.get("delta"))
+        dtype = delta.get("type")
+        if dtype == "text_delta":
+            chunk = str(delta.get("text") or "")
+            if chunk:
+                # NOT accumulated: the completed ``assistant`` message is the
+                # authoritative copy and folds the same text once.
+                yield StreamEvent("message_delta", text=chunk), _EventDelta()
+        elif dtype == "thinking_delta":
+            chunk = str(delta.get("thinking") or "")
+            if chunk:
+                yield StreamEvent("message_delta", text=chunk), _EventDelta()
+        return
+
+    if ptype == "assistant":
+        msg = _as_dict(payload.get("message"))
+        for block in _as_list(msg.get("content")):
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if btype == "text":
+                text = str(block.get("text") or "")
+                if text:
+                    # Under partial streaming the consumer has already seen
+                    # this text token by token; re-emitting the whole block
+                    # would show every sentence twice. The state delta still
+                    # flows, because this message is the authoritative copy.
+                    yield (
+                        None if partial else StreamEvent("message_delta", text=text),
+                        _EventDelta(),
+                    )
+            elif btype == "thinking":
+                # Extended-thinking blocks (Opus / Sonnet with thinking on).
+                # Surface as a ``message_delta`` so live consumers see the
+                # reasoning chain in real time, but do NOT fold into
+                # ``accumulated_text`` — that's the response, not the
+                # reasoning. The drive loop tracks thinking separately and
+                # hands it back via ``AgentResult.evals["thinking"]``.
+                thinking = str(block.get("thinking") or "")
+                if thinking:
+                    yield (
+                        None if partial else StreamEvent("message_delta", text=thinking),
+                        _EventDelta(thinking=thinking),
+                    )
+            elif btype == "tool_use":
+                tc = ToolCall(
+                    id=str(block.get("id") or ""),
+                    name=str(block.get("name") or ""),
+                    arguments=dict(_as_dict(block.get("input"))),
+                )
+                yield StreamEvent("tool_call", tool_call=tc), _EventDelta()
+        texts = [
+            str(b.get("text") or "")
+            for b in _as_list(msg.get("content"))
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        if texts:
+            yield (
+                None,
+                _EventDelta(
+                    text="".join(texts),
+                    message_id=str(msg["id"]) if msg.get("id") else None,
+                    message_done=True,
+                ),
+            )
+        return
+
+    if ptype == "user":
+        # ``user`` messages in stream-json carry echoed tool_result blocks
+        # (the CLI's post-execution reply to its own tool_use). Surface each
+        # as a ``tool_result`` event so downstream observers see the pairing.
+        msg = _as_dict(payload.get("message"))
+        for block in _as_list(msg.get("content")):
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_result":
+                continue
+            tool_use_id = block.get("tool_use_id")
+            content = block.get("content")
+            # ``content`` may be a string or a list of {type,text} blocks —
+            # collapse to a plain string for the StreamEvent payload.
+            result_text = _flatten_tool_result_content(content)
+            tc = ToolCall(id=str(tool_use_id or ""), name="", arguments={})
+            yield (
+                StreamEvent("tool_result", tool_call=tc, tool_result=result_text),
+                _EventDelta(),
+            )
+        return
+
+    if ptype == "result":
+        usage_obj = _as_dict(payload.get("usage"))
+        # Match Anthropic wire shape: `usage.input_tokens` /
+        # `usage.output_tokens` / `usage.cache_read_input_tokens` /
+        # `usage.cache_creation_input_tokens`. All optional; default to 0.
+        usage = Usage(
+            input_tokens=_as_int(usage_obj.get("input_tokens")),
+            output_tokens=_as_int(usage_obj.get("output_tokens")),
+            cost_usd=_as_cost(payload.get("total_cost_usd")) if payload.get("total_cost_usd") is not None else None,
+            cache_read_tokens=_as_int(usage_obj.get("cache_read_input_tokens")),
+            cache_write_tokens=_as_int(usage_obj.get("cache_creation_input_tokens")),
+        )
+        duration = payload.get("duration_ms")
+        session_id = payload.get("session_id")
+        # The CLI can exit 0 with ``is_error: true`` and a ``subtype`` like
+        # ``error_max_turns`` / ``error_during_execution``. Surface both so
+        # ``drive()`` can honour the semantic outcome, not just the exit code.
+        is_error = bool(payload.get("is_error"))
+        subtype = payload.get("subtype")
+        stop_reason = str(subtype) if is_error and isinstance(subtype, str) else None
+        # ``error_max_structured_output_retries`` arrives as a subtype and is
+        # NOT flagged ``is_error`` in every version, so key off the subtype
+        # directly: the run produced no valid structured output and the caller
+        # must not read the prose as if it were the object.
+        if subtype == "error_max_structured_output_retries":
+            stop_reason = str(subtype)
+        yield (
+            None,
+            _EventDelta(
+                usage=usage,
+                raw_usage=dict(usage_obj),
+                session_id=str(session_id) if session_id else None,
+                duration_ms=_as_int(duration) if duration is not None else None,
+                is_error=is_error,
+                stop_reason=stop_reason,
+                authoritative_text=payload.get("result") if isinstance(payload.get("result"), str) else None,
+                structured_output=payload.get("structured_output"),
+                # The CLI's own end-of-turn marker. Reaching it is what
+                # separates "the run finished" from "the stream stopped".
+                saw_terminal=True,
+            ),
+        )
+        return
+
+    # Unknown type — ignore. The CLI can add new event types over time;
+    # forward-compat is "don't crash".
+    return
+
+
+def _flatten_tool_result_content(content: Any) -> str:
+    """Fold the CLI's tool_result content (string OR list of {type, text}
+    blocks) into a single string."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text") or ""))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "".join(parts)
+    return str(content)
+
+
+__all__ = [
+    "ClaudeCliCognition",
+    "ClaudeCliSession",
+    "CliSpawn",
+    "InterruptReceipt",
+    "PermissionMode",
+]

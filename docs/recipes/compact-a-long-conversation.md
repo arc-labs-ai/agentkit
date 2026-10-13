@@ -30,11 +30,12 @@ Both take the same `Compactor`, so you pick the shape once.
 
 import asyncio
 
-from agentkit import ChatRequest, Message, Scope, SlidingWindowCompactor
-from agentkit.context.tokens import estimate_message_tokens
-from agentkit.middlewares import compaction, meter, tracing
-from agentkit.runtime import Budget, Invoker, RunContext, Services
-from agentkit.testing import FakeLLM
+from agentkit.core.contracts.types import ChatRequest, Message, Scope
+from agentkit.state.compaction import SlidingWindowCompactor
+from agentkit.state.context.tokens import estimate_message_tokens
+from agentkit.core.policies import compaction, meter, tracing
+from agentkit.core.runtime import Budget, Invoker, RunContext, Services
+from agentkit.core.testing import FakeLLM
 
 
 async def main() -> None:
@@ -109,8 +110,9 @@ point is spending a little to save a lot:
 ```python
 import asyncio
 
-from agentkit import Message, SummarizationCompactor
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import Message
+from agentkit.state.compaction import SummarizationCompactor
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -147,10 +149,10 @@ Earlier: the user
 **In the chat chain**, ahead of `meter()`:
 
 ```python
-from agentkit import SlidingWindowCompactor
-from agentkit.middlewares import compaction, meter, retry, tracing
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM
+from agentkit.state.compaction import SlidingWindowCompactor
+from agentkit.core.policies import compaction, meter, retry, tracing
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM
 
 invoker = Invoker(
     llm=FakeLLM("ok"),
@@ -169,8 +171,10 @@ charges the budget for tokens that were never sent.
 **On one agent**, through its `RequestBuilder`:
 
 ```python
-from agentkit import Agent, Prompt, SlidingWindowCompactor
-from agentkit.capabilities import RequestBuilder
+from agentkit.agents import Agent
+from agentkit.agents.prompts import Prompt
+from agentkit.state.compaction import SlidingWindowCompactor
+from agentkit.agents.requests import RequestBuilder
 
 agent = Agent(
     name="support",
@@ -196,7 +200,8 @@ same `TokenCounter` protocol and both are `async`:
 ```python
 import asyncio
 
-from agentkit import ApproxTokenCounter, Message, WorkingContext
+from agentkit.state.context import ApproxTokenCounter, WorkingContext
+from agentkit.core.contracts.types import Message
 
 
 async def main() -> None:

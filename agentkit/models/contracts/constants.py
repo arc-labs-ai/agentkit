@@ -1,0 +1,90 @@
+"""Closed domain vocabularies shared by callers, adapters and event consumers."""
+
+from enum import StrEnum
+
+from agentkit.core.contracts.types import CostSource as CostSource
+from agentkit.models.providers.auth import AuthKind
+
+
+class NativeToolPolicy(StrEnum):
+    DENY = "deny"
+    WARN = "warn"
+    ALLOW = "allow"
+
+
+class ModelSelection(StrEnum):
+    INHERIT = "inherit"
+
+
+class Outcome(StrEnum):
+    ANSWERED = "answered"
+    REFUSED = "refused"
+    TRUNCATED = "truncated"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    LIMIT_REACHED = "limit_reached"
+
+
+class FailureClass(StrEnum):
+    RATE_LIMITED = "rate_limited"
+    OVERLOADED = "overloaded"
+    TRANSIENT_NETWORK = "transient_network"
+    TIMEOUT = "timeout"
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    AUTH = "auth"
+    INVALID_REQUEST = "invalid_request"
+    REFUSED = "refused"
+    CONTEXT_EXCEEDED = "context_exceeded"
+    TOOL_ERROR = "tool_error"
+    CANCELLED = "cancelled"
+    UNKNOWN = "unknown"
+
+
+class EventKind(StrEnum):
+    CALL_STARTED = "call_started"
+    MESSAGE_DELTA = "message_delta"
+    MESSAGE_DONE = "message_done"
+    REASONING = "reasoning"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    USAGE = "usage"
+    RETRY = "retry"
+    DEGRADED = "degraded"
+    CALL_FINISHED = "call_finished"
+    CACHE_INVALIDATED = "cache_invalidated"
+    SKILL_LOADED = "skill_loaded"
+    UNKNOWN_MODE_EVENT = "unknown_mode_event"
+    TRANSPORT = "transport"
+
+
+class Effort(StrEnum):
+    NONE = "none"
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+    MAX = "max"
+    ULTRA = "ultra"
+
+
+class MindKind(StrEnum):
+    SINGLE_CALL = "single_call"
+    REACT = "react"
+    CHAIN_OF_THOUGHT = "chain_of_thought"
+
+
+CALL_EVENT_SCHEMA_VERSION = "1"
+
+__all__ = [
+    "CALL_EVENT_SCHEMA_VERSION",
+    "AuthKind",
+    "ModelSelection",
+    "NativeToolPolicy",
+    "CostSource",
+    "Effort",
+    "EventKind",
+    "FailureClass",
+    "MindKind",
+    "Outcome",
+]

@@ -1,4 +1,4 @@
-# `agentkit.middlewares`
+# `agentkit.core.policies`
 
 The standard middleware set: `tracing`, `meter`, `retry`, `fallback`,
 `memoize`, `idempotent`, `semantic_memoize`, `output_coerce`,
@@ -7,7 +7,7 @@ The standard middleware set: `tracing`, `meter`, `retry`, `fallback`,
 See the [Middlewares concept](../concepts/middlewares.md) for the
 mental model.
 
-::: agentkit.middlewares
+::: agentkit.core.policies
     options:
       show_root_heading: false
       show_source: false

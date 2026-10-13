@@ -22,7 +22,7 @@ straight.
     touching the middleware code.
 
     To run it with **no key at all**, replace the `providers.claude(...)`
-    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    call with `FakeLLM("a short answer")` from `agentkit.core.testing`. Every
     other line is identical — that substitution is how this snippet is
     verified.
 
@@ -37,18 +37,11 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from agentkit import (
-    BaseMiddleware,
-    Call,
-    ChatRequest,
-    Handler,
-    Message,
-    MiddlewareContext,
-    Scope,
-)
-from agentkit.adapters.llm import providers
-from agentkit.middlewares import tracing
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.core.contracts.middleware import BaseMiddleware, Call, Handler, MiddlewareContext
+from agentkit.core.contracts.types import ChatRequest, Message, Scope
+from agentkit.models.providers import frontiers as providers
+from agentkit.core.policies import tracing
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 # ── Style 1: BaseMiddleware — for transform / guard / observe.
@@ -188,8 +181,8 @@ you have to override — the app owns the list.
 
 - [Concepts · Middlewares](../concepts/middlewares.md) — the mental
   model of the chain, and the shipped middlewares.
-- [Example 03](https://github.com/arc-labs-ai/agentkit/blob/main/examples/03_composed_middlewares.py)
+- [Example 03](https://github.com/arc-labs-ai/agentkit/blob/main/tests/examples/03_composed_middlewares.py)
   — the canonical `tracing → retry → output_coerce` composition in a
   runnable script.
-- `agentkit.kernel.middleware` module docstring — the contract, in
+- `agentkit.core.contracts.middleware` module docstring — the contract, in
   code.

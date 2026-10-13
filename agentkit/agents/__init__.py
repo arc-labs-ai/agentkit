@@ -21,7 +21,6 @@ for the typed ``Handoff`` verb; ``handoff_selector`` for the marker-only legacy 
 and ``llm_selector`` for fully emergent "ask a model" routing.
 """
 
-from agentkit.agents.agent import Agent
 from agentkit.agents.control import (
     ActorBudget,
     Asker,
@@ -51,16 +50,14 @@ from agentkit.agents.control import (
     ask_human_tool,
     elicit,
 )
-from agentkit.agents.policies import (
-    LedgerPolicy,
-    PlanPolicy,
-    RoundRobinPolicy,
-    SelectorPolicy,
-)
-from agentkit.agents.result import AgentResult, Suspended, WorkflowResult
-from agentkit.agents.workflow import Workflow
+from agentkit.agents.definitions.results import AgentResult, Suspended, WorkflowResult
+from agentkit.agents.execution.agent import Agent
+from agentkit.agents.policies import LedgerPolicy, PlanPolicy, RoundRobinPolicy, SelectorPolicy
+from agentkit.agents.workflows.graph import Workflow
 
 __all__ = [
+    "AgentDefinition", "AgentRunner", "AgentStore", "MemoryAgentStore",
+    "InstructionSet", "ToolGrant", "DelegationPolicy", "TriggeredSkill",
     "ActorBudget",
     "Agent",
     "AgentResult",
@@ -98,3 +95,8 @@ __all__ = [
     "Workflow",
     "WorkflowResult",
 ]
+
+from agentkit.agents.definitions.agent import AgentDefinition, DelegationPolicy, ToolGrant, TriggeredSkill
+from agentkit.agents.definitions.instructions import InstructionSet
+from agentkit.agents.definitions.store import AgentStore, MemoryAgentStore
+from agentkit.agents.execution.runner import AgentRunner

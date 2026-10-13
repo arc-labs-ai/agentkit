@@ -24,7 +24,7 @@ from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
-from agentkit.kernel._frozen import deep_freeze
+from agentkit.core.serialization._immutable import deep_freeze
 
 _MCP_INSTALL_HINT = 'MCP integration requires the `mcp` package. Install with: pip install "arc-agentkit[mcp]"'
 
@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover — older ``mcp`` within the pinned rang
     _OWNS_HTTP_CLIENT = False
 
 if TYPE_CHECKING:
-    from agentkit.kernel.protocols import Ctx
+    from agentkit.core.contracts.protocols import Ctx
 
 
 # ─────────────────────────────────────────────────────────────────────────────

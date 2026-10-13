@@ -26,7 +26,7 @@ from collections.abc import Callable
 from typing import Any, Generic, TypeVar
 
 from agentkit.agents.control.signals import ControlSignal, DataSignal
-from agentkit.kernel.observation import Observation
+from agentkit.core.telemetry.observation import Observation
 
 logger = logging.getLogger(__name__)
 

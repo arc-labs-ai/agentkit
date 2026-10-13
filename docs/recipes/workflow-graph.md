@@ -34,10 +34,10 @@ inside a node can be as emergent as you like.
 import asyncio
 import dataclasses
 
-from agentkit import Agent, Workflow
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
-from agentkit.capabilities import Checkpointer
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent, Workflow
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 def build() -> Workflow:
@@ -180,8 +180,8 @@ back to an ancestor to loop:
 ```python
 import asyncio
 
-from agentkit import Agent, Workflow
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent, Workflow
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 def revise_until_clean() -> Workflow:

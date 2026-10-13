@@ -31,7 +31,7 @@ and calls `gather_bounded(...)` under the parent's semaphore.
     `OPENAI_API_KEY`) if that's what you have.
 
     To run it with **no key at all**, replace the `providers.claude(...)`
-    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    call with `FakeLLM("a short answer")` from `agentkit.core.testing`. Every
     other line is identical — that substitution is how this snippet is
     verified.
 
@@ -44,9 +44,11 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 
-from agentkit import Agent, CancellationToken, Scope, StreamEvent, run_agents
-from agentkit.adapters.llm import providers
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.agents import Agent
+from agentkit.core.execution.concurrency import CancellationToken, run_agents
+from agentkit.core.contracts.types import Scope, StreamEvent
+from agentkit.models.providers import frontiers as providers
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 class FailingCognition:
@@ -95,7 +97,7 @@ async def demo_best_effort() -> None:
 
 async def demo_external_cancel() -> None:
     """External signal trips the token; the agent unwinds cooperatively."""
-    from agentkit.kernel.concurrency import Cancelled
+    from agentkit.core.execution.concurrency import Cancelled
 
     ctx = RunContext(
         correlation_id="run-3",
@@ -156,7 +158,7 @@ into an `ExceptionGroup` you catch with `except*`.
 **`run_agents(pairs, ctx, best_effort=True)`** — for batches where one
 failure must NOT sink the others. Each slot in the returned list is
 either an `AgentResult` or a `Failure` (from
-`agentkit.kernel.errors`). `Failure` carries the exception on
+`agentkit.core.contracts.errors`). `Failure` carries the exception on
 `.cause`, the classified category on `.category`, and a `source` string
 naming the slot — so a caller can retry, route around, or escalate
 uniformly instead of guessing what a raw exception meant.
@@ -192,5 +194,5 @@ parent cancels the subtree.
   fits alongside `Workflow` and the coordinator cognitions.
 - [Cap spend with Budget and Quota](spend-budget-and-quota.md) — the
   ceiling that stops a runaway fan-out.
-- `agentkit.kernel.concurrency` module docstring — the full concurrency
+- `agentkit.core.execution.concurrency` module docstring — the full concurrency
   surface (`gather_bounded`, `gather_best_effort`, `run_sync`).

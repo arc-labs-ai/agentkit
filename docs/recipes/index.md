@@ -5,7 +5,7 @@ the title, why you'd be here, one runnable script, what's actually
 happening, and the things that bite people.
 
 Every snippet on these pages runs. Where a specific provider isn't the
-point of the page, the model is a `FakeLLM` from `agentkit.testing`, so
+point of the page, the model is a `FakeLLM` from `agentkit.core.testing`, so
 you can paste and run with no API key. Where a key really is required,
 the page says so on its first line.
 

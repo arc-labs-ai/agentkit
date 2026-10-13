@@ -80,20 +80,23 @@ This works. It's small. It's yours. Then production happens.
 
 import asyncio
 
-from agentkit import Agent, RunContext, Scope, Services, tool
+from agentkit.agents import Agent
+from agentkit.core.runtime import RunContext, Services
+from agentkit.core.contracts.types import Scope
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.middlewares import meter, retry, tracing
-from agentkit.runtime import Invoker
+from agentkit.core.policies import meter, retry, tracing
+from agentkit.core.runtime import Invoker
 
 
 # Your LLMPort of choice. Batteries-included:
-# from agentkit.adapters.llm import providers
+# from agentkit.models.providers import frontiers as providers
 # llm = providers.openai(api_key=os.environ["OPENAI_API_KEY"], model="gpt-4o-mini")
 # Or roll your own — LLMPort is three methods: stream (returns an
 # async iterator), plus async def chat and async def complete.
 # Any LLMPort works here — a real provider, the claude CLI cognition, or
 # the shipped fake so this page runs as written.
-from agentkit.testing import FakeLLM
+from agentkit.core.testing import FakeLLM
 
 llm = FakeLLM("Paris is the capital of France.")
 
@@ -142,7 +145,7 @@ zero or one lines to add on top of the agentkit version above.
 Hand the run a token; flip it from anywhere.
 
 ```python
-from agentkit import CancellationToken
+from agentkit.core.execution.concurrency import CancellationToken
 
 token = CancellationToken()
 ctx = RunContext(correlation_id="run-1", scope=Scope(), services=svc, cancel=token)
@@ -160,7 +163,7 @@ Your hand-rolled loop had no cancel. The `for` loop over
 Overspend raises `MeterExceeded` and the loop unwinds cleanly.
 
 ```python
-from agentkit import Budget, MeterExceeded
+from agentkit.core.runtime import Budget, MeterExceeded
 
 ctx = RunContext(
     correlation_id="run-1",
@@ -187,8 +190,8 @@ optional circuit breaker. It sits inside `meter()` so every attempt
 still counts against the budget.
 
 ```python
-from agentkit.middlewares import retry
-from agentkit.kernel.resilience import CircuitBreaker
+from agentkit.core.policies import retry
+from agentkit.core.execution.resilience import CircuitBreaker
 
 chat_middleware = [
     tracing(),
@@ -207,9 +210,9 @@ whole run.
 approves or denies per pending tool call. Fresh process can resume.
 
 ```python
-from agentkit import Suspended
-from agentkit.capabilities import Checkpointer
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.agents import Suspended
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
 
 @tool(side_effecting=True)
 async def publish(title: str) -> str:
@@ -240,7 +243,7 @@ and cancel by reference. Structured concurrency: the first failure
 cancels the siblings.
 
 ```python
-from agentkit import run_agents
+from agentkit.core.execution.concurrency import run_agents
 
 results = await run_agents(
     [(researcher_agent, "sub-question-1"),
@@ -259,7 +262,7 @@ hit. Free RUM for a chat call your test suite repeats a hundred
 times.
 
 ```python
-from agentkit.middlewares import memoize
+from agentkit.core.policies import memoize
 
 chat_middleware = [tracing(), meter(), retry(), memoize()]
 ```
@@ -272,9 +275,7 @@ gets a histogram observation. No callback plumbing.
 
 ```python
 # pip install "arc-agentkit[observability]"
-from agentkit.adapters.observability import (
-    otel_tracer, otel_meter, otel_exporter_otlp_http, otel_metrics_exporter_otlp_http,
-)
+from agentkit.integrations.observability import otel_tracer, otel_meter, otel_exporter_otlp_http, otel_metrics_exporter_otlp_http
 
 otel_exporter_otlp_http()
 otel_metrics_exporter_otlp_http(interval_ms=15_000)
@@ -294,7 +295,7 @@ parse failures repair up to `max_repairs` times.
 
 ```python
 from pydantic import BaseModel
-from agentkit import adapt
+from agentkit.models.output import adapt
 
 class Brief(BaseModel):
     summary: str
@@ -330,7 +331,7 @@ overspend.
 
 1. **Wrap the LLM.** Point an `LLMPort` at whatever provider client
    you already have. The batteries-included presets under
-   `agentkit.adapters.llm.providers` are the easiest starting point.
+   `agentkit.models.providers` are the easiest starting point.
 2. **Rewrite each tool.** `@tool(side_effecting=...)` + a docstring;
    test each in isolation. Existing `async def` functions are already
    the right shape.

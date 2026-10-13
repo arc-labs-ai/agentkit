@@ -47,7 +47,7 @@ the whole thing runs offline. Pointing the real CLI at it is one line —
 import asyncio
 
 from agentkit.integrations.mcp import MCPClient, StreamableHttpServer, serve_registry
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 from agentkit.tools import ToolRegistry, tool
 
 

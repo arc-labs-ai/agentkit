@@ -28,9 +28,11 @@ never learns where they came from.
 
 import asyncio
 
-from agentkit import Agent, MemoryItem, Scope, VectorMemory
-from agentkit.adapters.vector import InMemoryVector
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.state.memory import MemoryItem, VectorMemory
+from agentkit.core.contracts.types import Scope
+from agentkit.state.vectors import InMemoryVector
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 HANDBOOK = [
     MemoryItem(
@@ -120,10 +122,12 @@ The auto-wiring is one `k` and one rendering. Build the
 `RequestBuilder` yourself when you need more:
 
 ```python
-from agentkit import Agent, Prompt, VectorMemory
-from agentkit.adapters.vector import InMemoryVector
-from agentkit.capabilities import RequestBuilder
-from agentkit.memory import as_grounder
+from agentkit.agents import Agent
+from agentkit.agents.prompts import Prompt
+from agentkit.state.memory import VectorMemory
+from agentkit.state.vectors import InMemoryVector
+from agentkit.agents.requests import RequestBuilder
+from agentkit.state.memory import as_grounder
 
 memory = VectorMemory(vector=InMemoryVector(), name="handbook")
 
@@ -170,9 +174,10 @@ The backends are small and they nest:
 | `CompactedMemory` | shrink each item's content through a `Compactor` |
 
 ```python
-from agentkit import CompositeMemory, InMemoryFiles, VectorMemory
-from agentkit.adapters.vector import InMemoryVector
-from agentkit.memory import CachedMemory, FileMemory, score_sort_rerank
+from agentkit.state.memory import CompositeMemory, VectorMemory
+from agentkit.tools import InMemoryFiles
+from agentkit.state.vectors import InMemoryVector
+from agentkit.state.memory import CachedMemory, FileMemory, score_sort_rerank
 
 everything = CompositeMemory(
     [

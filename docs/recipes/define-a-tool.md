@@ -24,10 +24,11 @@ you define the tool, not at the point it fires.
 
 import asyncio
 
-from agentkit import Agent, ToolArgumentError, tool
+from agentkit.agents import Agent
+from agentkit.tools import ToolArgumentError, tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.kernel.types import ToolCall
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.contracts.types import ToolCall
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False, idempotent=True)
@@ -140,8 +141,8 @@ into it. It is not advertised to the model, so it never appears in the
 schema and the model cannot pass one:
 
 ```python
-from agentkit import tool
-from agentkit.runtime import RunContext
+from agentkit.tools import tool
+from agentkit.core.runtime import RunContext
 
 
 @tool(side_effecting=False)
@@ -164,7 +165,7 @@ class and the result is validated on every call:
 ```python
 from pydantic import BaseModel
 
-from agentkit import ToolShapeError, tool
+from agentkit.tools import ToolShapeError, tool
 
 
 class Quote(BaseModel):
@@ -197,7 +198,7 @@ named lookup surface — a plug-in system, tools assembled from several
 modules — use the registry:
 
 ```python
-from agentkit import ToolRegistry, tool
+from agentkit.tools import ToolRegistry, tool
 
 
 @tool(side_effecting=False, idempotent=True)
@@ -234,7 +235,8 @@ it.
 delegating agent is just an agent with one more tool:
 
 ```python
-from agentkit import Agent, as_tool
+from agentkit.agents import Agent
+from agentkit.tools import as_tool
 
 researcher = Agent(name="researcher", model="claude-sonnet-4-6", prompt="Research briefly.")
 research = as_tool(

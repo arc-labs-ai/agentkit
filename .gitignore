@@ -1,5 +1,5 @@
 # What belongs in this repo: everything needed to build, test, document, and
-# release the package from a fresh clone — sources, tests, docs, examples,
+# release the package from a fresh clone — sources, tests, docs, tests.examples,
 # `scripts/`, `uv.lock`, and `agentkit/py.typed`. Nothing below should ever
 # match one of those; `make check` and a clean `git status` after a full run
 # are the two things that prove it.
@@ -101,3 +101,10 @@ Desktop.ini
 *.orig
 *.rej
 *.bak
+
+# Local environment files
+.env*
+
+# Live eval artifacts may contain model output and local paths.
+tests/evals/reports/*
+!tests/evals/reports/.gitkeep

@@ -4,7 +4,9 @@ The kernel is agentkit's vocabulary: the small set of data shapes every
 other part of the framework passes around, the interfaces to the outside
 world, and the one way a cross-cutting concern wraps a call.
 
-It contains no provider client, no policy, and no loop. Nothing in it
+The foundational `core.contracts` and `core.serialization` modules contain no
+provider client, policy or execution loop. The broader `core` namespace also
+owns execution, runtime enforcement and telemetry. Nothing in these contracts
 decides *how* to use a model — it only says what a message, a request, a
 result, a cost and a tool call **are**.
 
@@ -26,7 +28,7 @@ for everything above it, and swapping it later means touching every
 layer. The same happens with policy: once the core owns a retry loop,
 every consumer inherits the core's opinion about retries.
 
-agentkit's rule is narrow and enforced: `agentkit.kernel` imports no
+agentkit's rule is narrow and enforced: `agentkit.core` imports no
 provider, holds no policy, and grows no loop. That is what makes the
 other packages substitutable rather than merely configurable. A tracing
 adapter, a Postgres checkpoint store and a fake LLM all satisfy kernel
@@ -41,13 +43,13 @@ that appears on the invoice.
 ## The smallest thing that works
 
 Everything below runs offline — `FakeLLM` and `make_test_ctx` come from
-`agentkit.testing` and need no API key.
+`agentkit.core.testing` and need no API key.
 
 ```python
 import asyncio
 
-from agentkit import ChatRequest, Message
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -177,7 +179,7 @@ authority over a `run_id`; two producers sharing one would collide on
 instead of `time.time()` / `asyncio.sleep` anywhere inside a middleware.
 
 There is one more structural protocol that is not a port: `Ctx`, in
-`agentkit.kernel.protocols`. It is the slice of a `RunContext` that
+`agentkit.core.contracts.protocols`. It is the slice of a `RunContext` that
 capabilities and agents actually read, and it exists so those layers can
 type-annotate the context without importing the runtime (which sits
 above them). `RunContext` satisfies it by duck typing; so does a test
@@ -195,8 +197,9 @@ That is the entire reason this contract exists, and why it is this
 small:
 
 ```python
-from agentkit import Call, ChatRequest, Message
-from agentkit.testing import make_test_ctx
+from agentkit.core.contracts.middleware import Call
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.testing import make_test_ctx
 
 call = Call(
     kind="chat",                                     # "chat" | "tool"
@@ -261,7 +264,7 @@ correlation id propagate into fan-out.
     not a deadline: releasing a semaphore or flushing a span is
     sub-millisecond.
 
-`Failure` (from `agentkit.kernel.errors`) is the "error as data" type
+`Failure` (from `agentkit.core.contracts.errors`) is the "error as data" type
 these return: a category from `classify()`, a `source` naming the slot, a
 `cause`, an optional `partial_output`, and `children` when it aggregates.
 A `Failure` is a value a parent can route around; an exception is control
@@ -274,7 +277,7 @@ the field *reference* — a frozen dataclass holding a plain `dict` still
 lets you rewrite the dict. Twelve public types had exactly that hole:
 
 ```python
-from agentkit import Checkpoint, CheckpointStatus
+from agentkit.core.contracts.ports import Checkpoint, CheckpointStatus
 
 cp = Checkpoint(
     run_id="r1", version=1, state={"turn": 3},
@@ -299,7 +302,7 @@ against the four things these payloads have to do:
 | `FrozenDict` | ok | ok | ok | ok | `True` |
 
 So the container payloads are `dict` and `list` **subclasses** that refuse
-mutation (`agentkit.kernel._frozen`). Serialisers, `isinstance` checks
+mutation (`agentkit.core.serialization._immutable`). Serialisers, `isinstance` checks
 and equality against plain dicts all keep working; `checkpoint.state` is
 still `json.dumps`-able into a JSONB column, and an `AgentResult` still
 round-trips through `dataclasses.asdict`.
@@ -309,7 +312,7 @@ import copy
 import json
 import pickle
 
-from agentkit import ChatRequest, Message, ToolCall
+from agentkit.core.contracts.types import ChatRequest, Message, ToolCall
 
 tc = ToolCall(id="c1", name="search", arguments={"q": "octopus", "filters": {"tags": ["marine"]}})
 
@@ -460,7 +463,7 @@ Every typed error the framework raises inherits `AgentkitError`, so an
 application that wants a single boundary can catch that one name:
 
 ```python
-from agentkit import AgentkitError, StoreUnavailable
+from agentkit.core.contracts.errors import AgentkitError, StoreUnavailable
 
 try:
     ...
@@ -482,7 +485,7 @@ not an integer — either a `by` that is not a whole number, or a key that
 already holds a JSON document, a string or `null`:
 
 ```python
-from agentkit import StoreValueError
+from agentkit.core.contracts.errors import StoreValueError
 
 try:
     remaining = await store.increment("ratelimit:user-7", 1, ttl=60)
@@ -527,7 +530,7 @@ attempt that completed, produced an answer, and did not achieve the goal.
 `attempt_until_stuck` is the other half.
 
 ```python
-from agentkit import attempt_until_stuck
+from agentkit.core.execution.recurrence import attempt_until_stuck
 
 result = await attempt_until_stuck(
     lambda: run_one(),
@@ -597,13 +600,15 @@ of these fail, and what do I raise" without inventing its own shape.
 
 ## The invariants it enforces
 
-1. **No provider dependency.** Importing `agentkit.kernel` never triggers
+1. **No provider dependency.** Importing `agentkit.core` never triggers
    an import of `httpx`, a vendor SDK, or a database driver.
 2. **Values are immutable, payloads included.** Middleware constructs a
    new value and forwards; it never edits one in place.
-3. **One vocabulary.** Every layer that talks about a usage or a scope
-   reuses the kernel type. There is no parallel `Usage` in `runtime/` or
-   `middlewares/`.
+3. **Explicit accounting contracts.** Legacy cognition and middleware use
+   `core.Usage`; model-neutral calls use `models.contracts.types.Usage`, with Decimal
+   costs and separate cache TTL buckets. These result conventions require
+   explicit conversion before sharing a budget ledger. Scope and canonical
+   message values remain shared core contracts.
 4. **Additive fields only.** A new field carries a default and changes
    nothing for a consumer that does not read it —
    `StreamEvent.partial_output` is `None` for every unstructured run.

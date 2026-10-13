@@ -35,8 +35,8 @@ tool rather than guessed at when it runs.
 ```python
 import asyncio
 
-from agentkit.kernel.types import ToolRequest
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import ToolRequest
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import ToolRegistry, tool
 
 
@@ -84,9 +84,10 @@ model so it runs with no API key:
 ```python
 import asyncio
 
-from agentkit import Agent, ToolCall
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import ToolCall
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 from agentkit.tools import tool
 
 
@@ -256,7 +257,7 @@ already refuses a missing `side_effecting=` and a thin docstring, so the
 consistent move would have been to refuse a multi-paragraph docstring
 too, and make the author say out loud which audience the tail was for.
 
-The measurement killed it. Across `agentkit/`, `tests/`, `examples/` and
+The measurement killed it. Across `agentkit/`, `tests/`, `tests/examples/` and
 `docs/` there are **139 tools**. **Six** have a multi-paragraph
 docstring, and in **all six** the second paragraph is model-facing
 guidance — *"Use this whenever the user mentions an order number."* —
@@ -305,7 +306,7 @@ vendor lies about 404s` — none of that was visible before, and all of it
 is now text inside the tool's instructions, competing for attention with
 the sentence that actually tells the model when to call.
 
-There is no length cap. Nothing in `agentkit/tools/schema.py` trims a
+There is no length cap. Nothing in `agentkit/tools/declarations/schema.py` trims a
 long description or warns about one; what you write is what ships, on
 every request, for the whole run. Two escape hatches exist instead, and
 they are deliberately different sizes.
@@ -403,7 +404,7 @@ line is exactly what the marker is for, and is left alone.
 #### The 30-character floor, and what it now measures
 
 `@tool` still refuses a description shorter than **30 characters**
-(`_MIN_DESCRIPTION_LEN` in `agentkit/tools/schema.py`). What changed is
+(`_MIN_DESCRIPTION_LEN` in `agentkit/tools/declarations/schema.py`). What changed is
 the thing being measured: the floor applies to the **whole chosen
 text**, not to line one. The total is what the model is shown, so the
 total is what has to clear the bar.
@@ -549,9 +550,11 @@ autonomy only *adds* gating.
 ```python
 import asyncio
 
-from agentkit import Agent, Suspended, ToolCall, tool
+from agentkit.agents import Agent, Suspended
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=True, requires_approval=True)
@@ -603,10 +606,10 @@ single run.
 ```python
 import asyncio
 
-from agentkit.adapters.store.memory import InMemoryStore
-from agentkit.kernel.types import Scope, ToolRequest
-from agentkit.middlewares import idempotent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.state.stores.memory import InMemoryStore
+from agentkit.core.contracts.types import Scope, ToolRequest
+from agentkit.core.policies import idempotent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import tool
 
 sent: list[str] = []
@@ -647,7 +650,7 @@ emails actually sent: 1
 
 **3. `memoize()` refuses.** The general-purpose cache reads the same flag
 and declines side-effecting calls outright. The comment in
-`agentkit/middlewares/memoize.py` records the measured failure that made
+`agentkit/core/policies/memoize.py` records the measured failure that made
 this the default: `send_email(to=…)` invoked twice sent **one** email and
 the second caller was handed the first call's stored `{'sent': True}`.
 Caching a side effect reports success for an action that never happened;
@@ -675,8 +678,8 @@ the tenant scope, the budget, the trace, or `ctx.emit`.
 ```python
 import asyncio
 
-from agentkit.kernel.types import Scope
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import Scope
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import tool
 
 
@@ -795,9 +798,10 @@ is rendered back to text for the outer loop.
 ```python
 import asyncio
 
-from agentkit import Agent, ToolCall
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import ToolCall
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 from agentkit.tools import as_tool
 
 researcher = Agent(
@@ -866,7 +870,7 @@ even when the return type looks enforceable.
 import asyncio
 from dataclasses import dataclass
 
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import ToolShapeError, tool
 
 
@@ -973,7 +977,7 @@ back as something actionable.
 ```python
 import asyncio
 
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import ToolArgumentError, tool
 
 
@@ -1017,7 +1021,7 @@ then extras are passed through instead of rejected:
 ```python
 import asyncio
 
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import tool
 
 
@@ -1052,7 +1056,7 @@ recovery.
 
 !!! note "`FileTool` advertises itself as `memory`, and that is deliberate"
     `FileTool().schema.name` is `"memory"`, which reads like a clash with
-    the `agentkit.memory` package. It is not a naming slip: this is
+    the `agentkit.state.memory` package. It is not a naming slip: this is
     agentkit's implementation of Anthropic's client-side memory tool, and
     four things are fixed by that contract — the name, the six commands
     (`view`, `create`, `str_replace`, `insert`, `delete`, `rename`),
@@ -1068,7 +1072,7 @@ tree — `view` · `create` · `str_replace` · `insert` · `delete` ·
 side of the same tree is `FileMemory`; see [Memory](memory.md).
 
 ```python
-from agentkit import FileTool
+from agentkit.tools import FileTool
 
 ft = FileTool()
 print(ft.name, ft.side_effecting, ft.requires_approval)

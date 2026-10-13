@@ -18,9 +18,9 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agentkit.kernel._frozen import deep_freeze
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import Message
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import Message
+from agentkit.core.serialization._immutable import deep_freeze
 
 
 @dataclass(frozen=True)

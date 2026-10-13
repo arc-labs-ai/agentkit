@@ -16,7 +16,7 @@ their question.
 | Shape | an ordered stream of `Observation` records | spans with attributes and events | a `Decimal` ledger with ceilings |
 | Always on? | yes — the default just drops everything | no — sampled, off by default | yes — `Budget` is always on the context |
 | Seam | `ObserverPort` on `Services.observer` | `TracePort` on `Services.trace` | `ctx.budget` and `ctx.meters` |
-| Wire it with | `agentkit.adapters.observer` | `agentkit.adapters.observability` | `Budget` / `Quota` + the `meter()` middleware |
+| Wire it with | `agentkit.integrations.observers` | `agentkit.integrations.observability` | `Budget` / `Quota` + the `meter()` middleware |
 
 The one-line test: **if a user should see it, it is an observation. If
 an operator should see it, it is a trace. If an accountant should see
@@ -50,8 +50,8 @@ An observation stream, with nothing else configured:
 ```python
 import asyncio
 
-from agentkit.adapters.observer import CollectingObserver
-from agentkit.testing import make_test_ctx
+from agentkit.integrations.observers import CollectingObserver
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -143,7 +143,7 @@ machine-readable record — rewrote what the other two sinks had already
 queued.
 
 ```python
-from agentkit.kernel.observation import Observation
+from agentkit.core.telemetry.observation import Observation
 
 obs = Observation(kind="summary", render="wrote intro", payload={"words": 120})
 print(type(obs.payload).__name__, obs.payload["words"])
@@ -200,7 +200,7 @@ just land in one bucket, which is what a bucket is for.
 
 ### Cadence: how much of the stream reaches the consumer
 
-Four adapters live in `agentkit.adapters.observer`. Two are terminal
+Four adapters live in `agentkit.integrations.observers`. Two are terminal
 sinks, two are cadence wrappers you compose in front of them.
 
 - `CollectingObserver` — appends to `.items`. Unbounded. Tests and
@@ -218,8 +218,8 @@ visible in one run:
 ```python
 import asyncio
 
-from agentkit.adapters.observer import CollectingObserver, PolicyObserver, RollupObserver
-from agentkit.testing import make_test_ctx
+from agentkit.integrations.observers import CollectingObserver, PolicyObserver, RollupObserver
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -298,8 +298,8 @@ never count against the bound:
 ```python
 import asyncio
 
-from agentkit.adapters.observer import Hooks, QueueObserver
-from agentkit.testing import make_test_ctx
+from agentkit.integrations.observers import Hooks, QueueObserver
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -351,7 +351,7 @@ how long did each part take". `TracePort` is the seam:
 ```python
 from typing import Any
 
-from agentkit.kernel.observation import TraceContext
+from agentkit.core.telemetry.observation import TraceContext
 
 
 class TracePort:  # the real one is a runtime_checkable Protocol
@@ -373,9 +373,9 @@ exporter without translation.
 ```python
 import asyncio
 
-from agentkit import ChatRequest, Message
-from agentkit.middlewares import tracing
-from agentkit.testing import FakeLLM, RecordingTracer, make_test_ctx
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.policies import tracing
+from agentkit.core.testing import FakeLLM, RecordingTracer, make_test_ctx
 
 
 async def main() -> None:
@@ -411,7 +411,7 @@ chat chat
     events: ['gen_ai.user.message', 'gen_ai.choice']
 ```
 
-`RecordingTracer` is a real `TracePort` from `agentkit.testing` — the
+`RecordingTracer` is a real `TracePort` from `agentkit.core.testing` — the
 same object the framework's own tests assert against.
 
 ### What the middleware stamps, and the caps it respects
@@ -480,11 +480,12 @@ nothing.
 import asyncio
 from typing import Any
 
-from agentkit import ChatRequest, Message, RunContext, Scope, Services
-from agentkit.adapters.observability import otel_sampler
-from agentkit.middlewares import tracing
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM, RecordingTracer
+from agentkit.core.contracts.types import ChatRequest, Message, Scope
+from agentkit.core.runtime import RunContext, Services
+from agentkit.integrations.observability import otel_sampler
+from agentkit.core.policies import tracing
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM, RecordingTracer
 
 
 class RecordingMetrics:
@@ -561,7 +562,7 @@ consumer abandons or cancels a stream, which is not a provider fault.
 
 ### Wiring OpenTelemetry
 
-`agentkit.adapters.observability` bridges both ports to the OTel SDK.
+`agentkit.integrations.observability` bridges both ports to the OTel SDK.
 Install `pip install "arc-agentkit[observability]"`; the factories raise
 `ImportError` naming the extra if you have not.
 
@@ -574,10 +575,10 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from agentkit import ChatRequest, Message
-from agentkit.adapters.observability import otel_tracer
-from agentkit.middlewares import tracing
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.integrations.observability import otel_tracer
+from agentkit.core.policies import tracing
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -672,11 +673,11 @@ stops a float creeping back in:
 import asyncio
 from decimal import Decimal
 
-from agentkit import ChatRequest, Message
-from agentkit.kernel.types import Usage
-from agentkit.middlewares import meter
-from agentkit.runtime import Budget
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.contracts.types import Usage
+from agentkit.core.policies import meter
+from agentkit.core.runtime import Budget
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -780,12 +781,12 @@ rate limit.
 ```python
 import asyncio
 
-from agentkit import ChatRequest, Message, Scope
-from agentkit.kernel.types import Usage
-from agentkit.middlewares import meter
-from agentkit.runtime import Quota
-from agentkit.runtime.meter import MeterExceeded
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import ChatRequest, Message, Scope
+from agentkit.core.contracts.types import Usage
+from agentkit.core.policies import meter
+from agentkit.core.runtime import Quota
+from agentkit.core.runtime.meter import MeterExceeded
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -863,8 +864,8 @@ the open span, so the trace timeline is complete on its own.
 ```python
 import asyncio
 
-from agentkit.adapters.observer import CollectingObserver
-from agentkit.testing import RecordingTracer, make_test_ctx
+from agentkit.integrations.observers import CollectingObserver
+from agentkit.core.testing import RecordingTracer, make_test_ctx
 
 
 async def main() -> None:

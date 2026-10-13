@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from agentkit.prompts.prompt import Prompt
+from agentkit.agents.prompts.prompt import Prompt
 
 if TYPE_CHECKING:
     from mcp import types as mcp_types

@@ -1,11 +1,11 @@
 """Test-tree pytest config.
 
-Adds the agentkit project root to `sys.path` so the `examples/` top-level (which is NOT a
+Adds the agentkit project root to `sys.path` so the `tests/examples/` top-level (which is NOT a
 distributed package — it's a runnable-demo dir intentionally kept out of the wheel) can be
-imported as `examples.multi_agent` from `tests/test_examples.py`. Without this, pytest invoked
-from any working directory other than `/agentkit/` itself can't resolve the `examples` import
-and `tests/test_examples.py` errors out at collection. Keeping examples out of the wheel and
-on the test sys.path captures the intent: examples ship with the source tree, never with the
+imported as `tests.examples.multi_agent` from `tests/test_examples.py`. Without this, pytest invoked
+from any working directory other than `/agentkit/` itself can't resolve the `tests.examples` import
+and `tests/test_examples.py` errors out at collection. Keeping tests.examples out of the wheel and
+on the test sys.path captures the intent: tests.examples ship with the source tree, never with the
 installed package.
 """
 
@@ -25,7 +25,7 @@ if str(_AGENTKIT_ROOT) not in sys.path:
 # same-named test modules coexist in different packages, and it is worth
 # keeping. Helper modules are underscore-prefixed so pytest never collects
 # them as tests.
-_TESTS_DIR = Path(__file__).resolve().parent
+_TESTS_DIR = Path(__file__).resolve().parent / "source"
 if str(_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_DIR))
 
@@ -35,12 +35,12 @@ if str(_TESTS_DIR) not in sys.path:
 # is resolved at CONFIG time, before any test file is imported.
 #
 # Only ``deep`` is registered. An earlier version also overrode the DEFAULT
-# profile to 250 examples, which silently made every other property test in
+# profile to 250 tests.examples, which silently made every other property test in
 # the repo search 2.5x harder and added ~12s to the full run — a cost that
 # unrelated files paid for a convenience in one of them. The ordinary run
 # therefore uses Hypothesis's own default; ``deep`` is for a pre-release sweep:
 #
-#     pytest tests/agents/cognition/test_cli_parser_properties.py \
+#     pytest tests/source/unit/models/providers/cli/test_cli_parser_properties.py \
 #         --hypothesis-profile=deep
 from hypothesis import HealthCheck
 from hypothesis import settings as _hypothesis_settings

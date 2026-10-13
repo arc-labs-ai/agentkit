@@ -49,7 +49,7 @@ This page is what fills them.
 
 The first two are MCP servers, so they live with the [MCP
 integration](integrations.md). The middle two are plain configuration
-generators in `agentkit.integrations.claude_cli`. The last is a test double.
+generators in `agentkit.models.providers.cli.claude`. The last is a test double.
 
 `setting_sources=` controls the ambient Claude settings files separately from
 authentication. `None` keeps Claude's normal `user,project,local` lookup;
@@ -359,7 +359,7 @@ thrown away, so an application that wanted to mark the offending field in a form
 had to parse the sentence back apart.
 
 ```python
-from agentkit.agents.cognition import StructuredOutputFailure
+from agentkit.models.providers.cli._common import StructuredOutputFailure
 
 result = await agent.run(task, ctx)
 failure = StructuredOutputFailure.of(result.evals)
@@ -574,7 +574,7 @@ calls out to a script, which can refuse. `hook_settings` generates one from the
 same middleware chain your `Invoker` would use.
 
 ```python
-from agentkit.integrations.claude_cli import hook_settings
+from agentkit.models.providers.cli.claude import hook_settings
 
 async with hook_settings(
     middleware=tool_chain,          # the chain the Invoker would use
@@ -624,7 +624,7 @@ and restating one as the other by hand is the second description of one thing
 that the rest of agentkit is careful to avoid.
 
 ```python
-from agentkit.integrations.claude_cli import as_cli_agents
+from agentkit.models.providers.cli.claude import as_cli_agents
 
 cognition = ClaudeCliCognition(
     agents=as_cli_agents([reviewer_skill, repairer_skill]),
@@ -655,7 +655,7 @@ the cognition declared no capabilities. It does now:
 
 ```python
 from agentkit.agents import RunPolicy
-from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 
 
 class _Session:
@@ -702,7 +702,7 @@ nothing noticed until a run died with a usage message.
 | `codex --search` moved to the parent command | exit 2, every `web_search=True` run |
 | legacy `task_complete` vocabulary | complete runs read as `malformed_output` |
 
-`tests/agents/cognition/test_cli_version_matrix.py` builds argv for ~20
+`tests/source/unit/models/providers/cli/test_cli_version_matrix.py` builds argv for ~20
 representative configurations and asks the **installed binary** to parse each
 one. The prompt is empty and stdin closes immediately, so a CLI that gets past
 parsing has nothing to do and exits — argument parsing happens before any work,
@@ -729,8 +729,8 @@ budget charging and the real event mapping — which is where every bug on this
 path has actually lived.
 
 ```python
-from agentkit.testing import FakeClaudeCli
-from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.core.testing import FakeClaudeCli
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 
 cli = FakeClaudeCli.script([
     {"type": "result", "subtype": "success", "result": "done"},

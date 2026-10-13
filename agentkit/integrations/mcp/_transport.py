@@ -26,7 +26,7 @@ at the ASGI layer, before the MCP app exists for it. ``host`` still defaults to
 authorisation check, loopback is defence in depth, and neither replaces the
 other. Do not bind a routable address.
 
-``hook_settings`` in :mod:`agentkit.integrations.claude_cli.hooks` solves the
+``hook_settings`` in :mod:`agentkit.models.providers.cli.claude.hooks` solves the
 same problem better, with an ``AF_UNIX`` socket in a ``0700`` directory and the
 filesystem as the check. That is not available here and the reason is the
 client, not the taste: measured against ``claude`` 2.1.251, ``--transport``
@@ -50,6 +50,7 @@ import json
 import secrets
 import socket
 import weakref
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import parse_qsl
@@ -435,7 +436,16 @@ class LoopbackMcpTransport:
             port=self.port,
             log_level="error",  # the app's own logs are the interesting ones
         )
-        self._server = uvicorn.Server(config)
+        class _EmbeddedServer(uvicorn.Server):
+            @contextlib.contextmanager
+            def capture_signals(self) -> Iterator[None]:
+                # The hosting application owns process signals. Besides
+                # overwriting its handlers, uvicorn's default makes the SSE
+                # shutdown watcher attach to this short-lived listener; its
+                # closure then permanently poisons later MCP SSE responses.
+                yield
+
+        self._server = _EmbeddedServer(config)
         self._task = asyncio.create_task(self._server.serve(sockets=[self._socket]))
         # Wait for serving to actually begin: handing the CLI a URL that is not
         # answering yet turns into a startup timeout thirty seconds later,
@@ -463,6 +473,20 @@ class LoopbackMcpTransport:
         afterwards covers the reserve-but-never-start path, where uvicorn never
         took ownership of the socket at all.
         """
+        cleanup = asyncio.create_task(self._stop())
+        interrupted = False
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                # Cancelling our caller must not cancel uvicorn before it has
+                # joined the lifespan and released the socket it owns.
+                interrupted = True
+        cleanup.result()
+        if interrupted:
+            raise asyncio.CancelledError
+
+    async def _stop(self) -> None:
         if self._server is not None:
             self._server.should_exit = True
         if self._task is not None:

@@ -21,8 +21,8 @@ and when it is finished. Your application starts it and reads what comes back.
 ```python
 from pathlib import Path
 
-from agentkit import Agent
-from agentkit.agents.cognition import CodexCliCognition
+from agentkit.agents import Agent
+from agentkit.models.providers.cli.codex import CodexCliCognition
 
 agent = Agent(
     name="local",
@@ -78,6 +78,16 @@ service it should be `"never"` — there is nobody at the terminal to answer —
 which makes `sandbox` the only thing standing between the model and the
 machine.
 
+AgentKit's default `native_tool_policy="warn"` adds a narrower CLI
+configuration on top of the read-only sandbox: it disables Codex shell tools,
+unified exec, apps, plugins, skill dependency installation, and web search.
+When AgentKit supplies host MCP tools, their explicit server and tool grants
+remain available. This reduces distractions from ungoverned native tools; it
+does not prove complete isolation, which Codex does not currently expose as a
+host-enforced tool allow-list. Use `native_tool_policy="deny"` when dispatch
+must be refused unless only host-governed tools can be used. `"allow"` leaves
+the Codex native toolbox available.
+
 !!! note "This is a stronger guarantee than a tool list, on one axis"
 
     A tool allow-list is enforced by the CLI deciding not to offer a tool. A
@@ -111,7 +121,7 @@ Claude Code's result payload carries `total_cost_usd`. Codex's `turn.completed`
 carries token counts and nothing else. So `Usage.cost_usd` is **computed**:
 
 ```python
-from agentkit.agents.cognition import CodexCliCognition
+from agentkit.models.providers.cli.codex import CodexCliCognition
 
 cognition = CodexCliCognition(
     model="gpt-5-codex",
@@ -121,8 +131,8 @@ cognition = CodexCliCognition(
 ```
 
 Without a `pricing=` the framework's own best-effort table is used, and it
-returns `0.00` for a model it has never heard of — which is most Codex models.
-Every result carries `evals["cost_source"] == "estimated"` so nobody reads the
+preserves `cost_usd=None` with `CostSource.UNPRICED` when its model or accounting facts cannot be priced.
+Every result carries a `CostSource` provenance value (`PRICE_TABLE`, `HOST_PRICING` or `UNPRICED`) so callers can interpret the
 field as a billed number.
 
 One more consequence, and it is the one to watch: **there is no
@@ -140,7 +150,7 @@ learned from turn one:
 ```python
 import asyncio
 
-from agentkit.agents.cognition import CodexCliCognition
+from agentkit.models.providers.cli.codex import CodexCliCognition
 
 
 async def main() -> None:
@@ -207,7 +217,7 @@ than a tool table:
 
 ```python
 from agentkit.agents.control.safety import RunPolicy
-from agentkit.agents.cognition import CodexCliCognition
+from agentkit.models.providers.cli.codex import CodexCliCognition
 
 for kwargs in [{"sandbox": "read-only"}, {"sandbox": "read-only", "web_search": True}]:
     cognition = CodexCliCognition(**kwargs)
@@ -242,8 +252,8 @@ Code's `--mcp-config` document; Codex reads MCP servers out of `config.toml`.
 `as_codex_mcp` is that translation:
 
 ```python
-from agentkit.agents.cognition import CodexCliCognition
-from agentkit.integrations.codex_cli import as_codex_mcp
+from agentkit.models.providers.cli.codex import CodexCliCognition
+from agentkit.models.providers.cli.codex import as_codex_mcp
 from agentkit.integrations.mcp import serve_registry
 
 
@@ -273,8 +283,8 @@ the real parsing, the real token split, the real cost computation and the real
 meter charge:
 
 ```python
-from agentkit.agents.cognition import CodexCliCognition
-from agentkit.testing import FakeCodexCli, codex_turn
+from agentkit.models.providers.cli.codex import CodexCliCognition
+from agentkit.core.testing import FakeCodexCli, codex_turn
 
 cli = FakeCodexCli.script(codex_turn(text="done", usage=(1200, 1000, 40)))
 cognition = CodexCliCognition(spawn=cli)
@@ -302,7 +312,7 @@ session, where a spawn is a turn.
   and leaves the sandbox as the only control. Set both.
 - **A read-only sandbox with `web_search=True` is the lethal trifecta**, and it
   is the most innocuous-looking configuration Codex has.
-- **`usage.cost_usd` is an estimate and is `0.00` for an unpriced model.** Check
+- **`usage.cost_usd` is an estimate when priced and `None` for an unpriced model.** Check
   `evals["cost_source"]`, and pass `pricing=` if the number matters.
 - **The budget is not an in-flight ceiling.** It refuses before and charges
   after; nothing stops a run mid-flight.

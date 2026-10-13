@@ -75,7 +75,7 @@ import logging
 import sys
 
 from agentkit.integrations.mcp import MCPClient, StdioServer, mcp_tools
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 
 logging.disable(logging.INFO)  # the mcp SDK narrates every request at INFO
 
@@ -127,11 +127,11 @@ import asyncio
 import logging
 import sys
 
-from agentkit import Agent
+from agentkit.agents import Agent
 from agentkit.agents.cognition import ReActCognition
 from agentkit.integrations.mcp import MCPClient, StdioServer, mcp_tools
-from agentkit.kernel.types import ToolCall
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.contracts.types import ToolCall
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 logging.disable(logging.INFO)
 
@@ -319,7 +319,7 @@ import logging
 import sys
 
 from agentkit.integrations.mcp import MCPClient, StdioServer, mcp_prompts, mcp_resources
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 
 logging.disable(logging.INFO)
 
@@ -531,8 +531,8 @@ In real use you never call `approve` yourself. You hand
 `cli_kwargs()` straight to the cognition:
 
 ```python
-from agentkit import Agent
-from agentkit.agents.cognition.claude_cli import ClaudeCliCognition
+from agentkit.agents import Agent
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 from agentkit.integrations.mcp import ApprovalServer
 
 
@@ -661,7 +661,7 @@ import json
 import logging
 
 from agentkit.integrations.mcp import MCPClient, StreamableHttpServer, serve_registry
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 from agentkit.tools import ToolRegistry, tool
 
 logging.disable(logging.INFO)
@@ -761,8 +761,8 @@ to the cognition, exactly as with `ApprovalServer`:
 ```python
 """The shape a real caller writes."""
 
-from agentkit import Agent
-from agentkit.agents.cognition.claude_cli import ClaudeCliCognition
+from agentkit.agents import Agent
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 from agentkit.integrations.mcp import serve_registry
 
 
@@ -905,7 +905,7 @@ import asyncio
 
 from agentkit.agents.control.safety import RunPolicy
 from agentkit.integrations.mcp import serve_registry, stdio_command
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 from agentkit.tools import ToolRegistry, tool
 
 
@@ -1018,7 +1018,7 @@ import asyncio
 import json
 
 from agentkit.integrations.mcp import serve_registry, stdio_command
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 from agentkit.tools import tool
 
 
@@ -1065,7 +1065,7 @@ differing only in which pipe carries it:
 import asyncio
 
 from agentkit.integrations.mcp import serve_registry_stdio
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 from agentkit.tools import tool
 
 
@@ -1113,8 +1113,8 @@ MCP servers out of `config.toml` instead, addressed as
 `mcp_servers.<name>.<key>`, so the same spec has a second projection:
 
 ```python
-from agentkit.agents.cognition import CodexCliCognition
-from agentkit.integrations.codex_cli import as_codex_mcp
+from agentkit.models.providers.cli.codex import CodexCliCognition
+from agentkit.models.providers.cli.codex import as_codex_mcp
 
 
 async def wire(spec):
@@ -1179,7 +1179,7 @@ import asyncio
 import logging
 
 from agentkit.integrations.mcp import MCPClient, StreamableHttpServer, serve_registry
-from agentkit.testing import make_test_ctx
+from agentkit.core.testing import make_test_ctx
 from agentkit.tools import tool
 
 logging.disable(logging.INFO)

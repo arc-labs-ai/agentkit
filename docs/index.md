@@ -40,10 +40,13 @@ bare `pip install arc-agentkit`.
 ```python
 import asyncio
 
-from agentkit import Agent, Budget, ToolCall, tool
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.middlewares import meter
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.policies import meter
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False)
@@ -145,7 +148,7 @@ needed is always further down than that.
 
 | You want to&nbsp;…                                            | Reach for&nbsp;…                                            |
 |---------------------------------------------------------------|-------------------------------------------------------------|
-| Unit-test an agent end to end with no API key                 | `agentkit.testing` — `FakeLLM` + `make_test_ctx(...)`       |
+| Unit-test an agent end to end with no API key                 | `agentkit.core.testing` — `FakeLLM` + `make_test_ctx(...)`       |
 | Do the same for the `claude` CLI path, offline and free       | `FakeClaudeCli.script([...])` + `ClaudeCliCognition(spawn=...)` |
 | …and for the `codex` one                                      | `FakeCodexCli.script(codex_turn(...))` + `CodexCliCognition(spawn=...)` |
 

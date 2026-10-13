@@ -1,65 +1,37 @@
-# agentkit tests
+# Validation and usage
 
-The test tree mirrors the production package layout under `agentkit/`.
-When you're about to touch code, look at the same-named test folder —
-that's where you'll find the invariants for the module you're editing,
-and where any new test you write belongs.
+The tree separates source-code verification, real-model evaluation, and runnable examples.
 
-## Layout
-
-```
+```text
 tests/
-├── kernel/         primitives — value types, resilience, streams, ports, middleware contract
-├── runtime/        RunContext · Invoker · Budget/Quota · EventBus · cancellation
-├── middlewares/    tracing · output_coerce · hooks — the chat/tool chain middlewares
-├── capabilities/   Compactor · Checkpointer · RequestBuilder · output_schema adapters
-├── context/        WorkingContext — the in-flight reasoning-state seam
-├── tools/          Tool Protocol · FunctionTool · ToolRegistry · tool conventions
-├── agents/         Agent · Cognition (single-call / ReAct / Coordinator) · Policy · signals · handoff · Workflow
-├── memory/         MemorySource · Cached · Scoped · Compacted · Vector · File · Journal · Scratchpad · Tool
-├── skills/         Skill Facade (prompt + cognition + memory + model)
-├── adapters/       concrete Port impls — LLM providers · stores · replay
-├── observability/  tracing spans · metrics · rollups · trace linkage · policy-dispatch events
-├── meta/           packaging · public-API surface · non-functional / cross-cutting
-└── testing/        the framework's own test doubles (FakeLLM, FakeCtx, …)
+  source/
+    unit/
+      core/ models/ agents/ state/ tools/ integrations/
+    conformance/   shared runtime/provider contracts
+    integration/   external backend acceptance
+    architecture/ package ownership, exports, docs and value invariants
+    evaluation/   tests of the eval engine, graders and sandbox
+    fixtures/     recorded source-test inputs
+  evals/
+    engine/       typed contracts, configuration, runner and reporting
+    suites/       application workflows and provider conformance
+    graders/      independent acceptance oracles
+    fixtures/     attributed datasets, business records and source regressions
+    sandbox/      bounded workspace and process tools
+    reports/      retained redacted run artifacts
+  examples/       executable public API composition
 ```
 
-## Test-file distribution (at a glance)
+Pytest defaults to `tests/source`. It does not collect deliberately failing coding fixtures, call real model APIs, or execute examples simply because they live under `tests`.
 
-Rough counts — run `pytest tests/<dir> --collect-only -q` for exact numbers.
+```bash
+AGENTKIT_SKIP_REAL_CLI=1 uv run pytest
+uv run mypy --strict agentkit
+uv run ruff check agentkit tests
+python -m tests.evals --list
+python -m tests.examples.support_harness --help
+```
 
-| Folder | Files | Tests |
-|---|---:|---:|
-| kernel | 11 | ~178 |
-| agents | 14 | ~157 |
-| capabilities | 12 | ~124 |
-| memory | 10 | ~65 |
-| observability | 15 | ~64 |
-| runtime | 7 | ~58 |
-| adapters | 8 | ~56 |
-| tools | 5 | ~47 |
-| context | 5 | ~44 |
-| meta | 4 | ~38 |
-| middlewares | 4 | ~16 |
-| testing | 1 | ~12 |
-| skills | 1 | ~9 |
+Run live evaluations explicitly through `python -m tests.evals`; see [the eval guide](evals/README.md) for credentials, model selection, bounds and reports. Framework source tests should mirror the owning package and assert behavior rather than import compatibility. Evaluation-engine tests verify graders and failure handling; they are not substitutes for live application evidence.
 
-The distribution reflects where the framework's complexity lives —
-kernel + agents + capabilities carry most of the invariants.
-
-## Adding a new test
-
-1. Find the production module you're testing (e.g., `agentkit/agents/cognition/react.py`).
-2. Open the mirror folder (`tests/agents/`).
-3. Extend the existing file that covers that module (`tests/agents/test_agent_loop.py`
-   for the ReAct loop) — or create a new file if the concern doesn't fit.
-4. Prefer property + adversarial coverage where the invariant benefits (see
-   `tests/kernel/test_kernel.py` for Hypothesis-based examples).
-
-## Related docs
-
-- `docs/mental-models/` — narrative use cases with invariant tables. Each
-  invariant names the test file that locks it in. Read these first
-  when auditing a subsystem for correctness.
-- The top-level docstring in `agentkit/__init__.py` sketches the
-  peer-package discipline at 10,000 ft.
+Keep original failed reports. Count paired success/failure coverage only when both workflows pass on the same supported backend. Unsupported modes, missing credentials and budget exhaustion are distinct from observed model failures.

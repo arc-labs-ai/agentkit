@@ -42,9 +42,11 @@ A leaf agent with one tool, driven by `FakeLLM`, so it runs offline:
 ```python
 import asyncio
 
-from agentkit import Agent, ToolCall, tool
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import ToolCall
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 
 @tool(side_effecting=False)
@@ -103,9 +105,11 @@ Agent  ── identity + chat config (name, model, prompt, output, memory)
 ### `Agent`
 
 ```python
-from agentkit import Agent, InMemoryFiles, Prompt, tool
+from agentkit.agents import Agent
+from agentkit.tools import InMemoryFiles, tool
+from agentkit.agents.prompts import Prompt
 from agentkit.agents.cognition import ReActCognition
-from agentkit.memory import FileMemory
+from agentkit.state.memory import FileMemory
 
 
 @tool(side_effecting=False)
@@ -348,7 +352,7 @@ own vocabulary is richer than the taxonomy — a plan says
 `awaiting_decision`, a ledger says `max_rounds`, a round-robin says
 `max_turns` — so each keeps its exact word in `evals["stop_reason"]` and
 maps the category onto the typed field with
-`agentkit.agents.result.stop_reason_for`. The mapping is *total*: an
+`agentkit.agents.definitions.results.stop_reason_for`. The mapping is *total*: an
 unrecognised reason (a custom `TerminationCondition`'s wording) becomes
 `terminated` rather than a guess.
 

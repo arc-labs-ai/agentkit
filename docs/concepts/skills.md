@@ -36,9 +36,9 @@ threads. Each use *materialises* a fresh `Agent` from it.
 ```python
 import asyncio
 
-from agentkit import Skill
+from agentkit.agents.skills import Skill
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import tool
 
 
@@ -115,7 +115,7 @@ memory.
 ## `as_agent()` deep-copies the cognition
 
 ```python
-from agentkit import Skill
+from agentkit.agents.skills import Skill
 from agentkit.agents.cognition import ReActCognition
 from agentkit.agents.control.termination import MaxTurns
 from agentkit.tools import tool
@@ -169,7 +169,7 @@ Everything else is pinned at construction. Only `model` can be
 overridden per call:
 
 ```python
-from agentkit import Skill
+from agentkit.agents.skills import Skill
 
 researcher = Skill(
     name="researcher",
@@ -198,9 +198,11 @@ a `ctx.child()`, so budget, cancellation and observation flow through.
 ```python
 import asyncio
 
-from agentkit import Agent, Skill, ToolCall
+from agentkit.agents import Agent
+from agentkit.agents.skills import Skill
+from agentkit.core.contracts.types import ToolCall
 from agentkit.agents.cognition import ReActCognition
-from agentkit.testing import FakeLLM, Turn, make_test_ctx
+from agentkit.core.testing import FakeLLM, Turn, make_test_ctx
 
 researcher = Skill(
     name="researcher",
@@ -251,7 +253,7 @@ labels in different registries.
 `set`, which is what a registry keyed on skill identity needs.
 
 ```python
-from agentkit import Skill
+from agentkit.agents.skills import Skill
 
 a = Skill("researcher", "Research a topic against the paper index and summarise it.")
 b = Skill("critic", "Critique a draft against the house style guide, in detail.")

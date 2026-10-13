@@ -29,11 +29,11 @@ driver code, which decides whether to resume with `"approve"`,
     `OPENAI_API_KEY`) if that's what you have — nothing else changes.
 
     To run it with **no key at all**, replace the `providers.claude(...)`
-    call with a scripted `FakeLLM` from `agentkit.testing`:
+    call with a scripted `FakeLLM` from `agentkit.core.testing`:
 
     ```python
-    from agentkit.kernel.types import ToolCall
-    from agentkit.testing import FakeLLM, Turn
+    from agentkit.core.contracts.types import ToolCall
+    from agentkit.core.testing import FakeLLM, Turn
 
     llm = FakeLLM.script([
         Turn(tool_calls=(ToolCall(id="c1", name="send_email", arguments={"to": "team@example.com", "subject": "Octopus brief"}),)),
@@ -52,12 +52,14 @@ driver code, which decides whether to resume with `"approve"`,
 import asyncio
 import os
 
-from agentkit import Agent, Scope, Suspended, tool
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
-from agentkit.adapters.llm import providers
+from agentkit.agents import Agent, Suspended
+from agentkit.core.contracts.types import Scope
+from agentkit.tools import tool
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
+from agentkit.models.providers import frontiers as providers
 from agentkit.agents.cognition import ReActCognition
-from agentkit.capabilities import Checkpointer
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 @tool(side_effecting=True)

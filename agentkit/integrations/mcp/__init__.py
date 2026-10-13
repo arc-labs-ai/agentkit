@@ -8,7 +8,7 @@ This module is opt-in. Install the ``mcp`` extra:
 
 Then wire an MCP server the same way you wire any other agentkit collaborator:
 
-    from agentkit import Agent
+    from agentkit.agents import Agent
     from agentkit.agents.cognition import ReActCognition
     from agentkit.integrations.mcp import MCPClient, StdioServer, mcp_tools
 
@@ -29,20 +29,11 @@ error surfaces only when a caller actually reaches for this integration.
 
 from __future__ import annotations
 
-from agentkit.integrations.mcp.approvals import (
-    ApprovalDecision,
-    ApprovalServer,
-    ApprovalSource,
-)
+from agentkit.integrations.mcp.approvals import ApprovalDecision, ApprovalServer, ApprovalSource
 from agentkit.integrations.mcp.client import MCPClient, StdioServer, StreamableHttpServer
 from agentkit.integrations.mcp.memory import mcp_resources
 from agentkit.integrations.mcp.prompts import mcp_prompts
-from agentkit.integrations.mcp.serve import (
-    McpServerSpec,
-    serve_registry,
-    serve_registry_stdio,
-    stdio_command,
-)
+from agentkit.integrations.mcp.serve import McpServerSpec, serve_registry, serve_registry_stdio, stdio_command
 from agentkit.integrations.mcp.tools import mcp_tools
 
 __all__ = [

@@ -22,7 +22,7 @@ p99 first-token latency doing?". You almost always want both.
     `pip install "arc-agentkit[observability]"`.
 
     To run it with **no key at all**, replace the `providers.claude(...)`
-    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    call with `FakeLLM("a short answer")` from `agentkit.core.testing`. Every
     other line is identical — that substitution is how this snippet is
     verified.
 
@@ -39,11 +39,12 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from agentkit import ChatRequest, Message, RunContext, Scope, Services
-from agentkit.adapters.llm import providers
-from agentkit.adapters.observability import otel_tracer
-from agentkit.middlewares import meter, tracing
-from agentkit.runtime import Invoker
+from agentkit.core.contracts.types import ChatRequest, Message, Scope
+from agentkit.core.runtime import RunContext, Services
+from agentkit.models.providers import frontiers as providers
+from agentkit.integrations.observability import otel_tracer
+from agentkit.core.policies import meter, tracing
+from agentkit.core.runtime import Invoker
 
 
 async def main() -> None:
@@ -89,13 +90,8 @@ if __name__ == "__main__":
 At process startup:
 
 ```python
-from agentkit.adapters.observability import (
-    otel_exporter_otlp_http,
-    otel_meter,
-    otel_metrics_exporter_otlp_http,
-    otel_tracer,
-)
-from agentkit.runtime import Services
+from agentkit.integrations.observability import otel_exporter_otlp_http, otel_meter, otel_metrics_exporter_otlp_http, otel_tracer
+from agentkit.core.runtime import Services
 
 # One-call SDK setup. Reads OTEL_EXPORTER_OTLP_ENDPOINT etc. from env.
 otel_exporter_otlp_http()
@@ -165,8 +161,8 @@ replay write) is skipped — but the underlying handler still runs.
 
 - [Concepts · Middlewares](../concepts/middlewares.md) — where
   `tracing()` sits in the chain.
-- `agentkit.adapters.observability` — the full public surface
+- `agentkit.integrations.observability` — the full public surface
   (`otel_tracer`, `otel_meter`, `otel_sampler`, one-call exporter
   setups).
-- `agentkit.kernel.observation` module docstring — the split between
+- `agentkit.core.telemetry.observation` module docstring — the split between
   observations (product-facing) and traces (operational).

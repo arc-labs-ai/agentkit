@@ -38,10 +38,11 @@ themselves.
 ```python
 import asyncio
 
-from agentkit import Budget, ChatRequest, Message, MeterExceeded, Usage
-from agentkit.middlewares import meter
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.runtime import Budget, MeterExceeded
+from agentkit.core.contracts.types import ChatRequest, Message, Usage
+from agentkit.core.policies import meter
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -93,8 +94,8 @@ cancelling a parent cancels its subtree.
 ```python
 import asyncio
 
-from agentkit import CancellationToken, Cancelled
-from agentkit.testing import make_test_ctx
+from agentkit.core.execution.concurrency import CancellationToken, Cancelled
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -163,9 +164,9 @@ The one entry point for model and tool calls. It wraps each request in a
 that calls the actual seam.
 
 ```python
-from agentkit.middlewares import meter, retry, tracing
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM
+from agentkit.core.policies import meter, retry, tracing
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM
 
 invoker = Invoker(
     llm=FakeLLM("ok"),
@@ -244,7 +245,8 @@ agent tree, because the budget is shared by reference across
 ```python
 import asyncio
 
-from agentkit import Budget, Usage
+from agentkit.core.runtime import Budget
+from agentkit.core.contracts.types import Usage
 
 
 async def main() -> None:
@@ -279,7 +281,7 @@ to check between units of work.
 
 Two exception types are easy to confuse:
 
-- `MeterExceeded` (`agentkit.runtime`) — a `Budget` or `Quota` ceiling.
+- `MeterExceeded` (`agentkit.core.runtime`) — a `Budget` or `Quota` ceiling.
   Also raised by `ctx.child()` when the next depth would exceed
   `budget.max_depth`.
 - `BudgetExhausted` (`agentkit.agents`) — a per-actor `ActorBudget`
@@ -358,7 +360,7 @@ not cross a wire on its own.
 ```python
 import asyncio
 
-from agentkit import EventBus
+from agentkit.core.events.bus import EventBus
 
 
 async def main() -> None:
@@ -419,7 +421,7 @@ single-shot planner that only needs `RequestBuilder.build`'s prompt
 assembly, for instance. It is explicitly **not** for production use
 inside the invoker pipeline: there is no budgeting, no tracing, no
 cancellation. For tests that want a real context with fakes behind it,
-use `make_test_ctx()` from `agentkit.testing` instead.
+use `make_test_ctx()` from `agentkit.core.testing` instead.
 
 ## What bites people
 

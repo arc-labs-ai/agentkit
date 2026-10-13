@@ -32,8 +32,8 @@ same mutable list, you will invalidate the cache constantly without ever
 noticing:
 
 ```python
-from agentkit.adapters.llm.providers.pricing import cost
-from agentkit.kernel.types import Usage
+from agentkit.models.catalog.compact import cost
+from agentkit.core.contracts.types import Usage
 
 # A 20k-token grounding prefix, re-sent on every turn of a 30-turn run.
 fresh = Usage(input_tokens=20_000, output_tokens=200)
@@ -50,8 +50,8 @@ print(round(cost("claude-sonnet-4-6", cached) * 30, 4))   # 0.27
 ```python
 import asyncio
 
-from agentkit.context import PrefixContext, WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import PrefixContext, WorkingContext
+from agentkit.core.contracts.types import Message
 
 ctx = WorkingContext(
     prefix=PrefixContext(system_prompt="You are a careful research assistant."),
@@ -70,7 +70,7 @@ actually sees: the prefix rendered to messages, then the tail.
 
 !!! note "`WorkingContext` is not `RunContext`"
 
-    `RunContext` (from [`agentkit.runtime`](runtime.md)) is *execution
+    `RunContext` (from [`agentkit.core.runtime`](runtime.md)) is *execution
     wiring* — correlation id, scope, budget, services, cancellation.
     `WorkingContext` is *what the agent knows*. A run has one
     `RunContext`; the agents inside it may hold many
@@ -112,8 +112,8 @@ rendered schema block. It is `@dataclass(frozen=True)`, and that is a
 guarantee rather than a style choice:
 
 ```python
-from agentkit.context import PrefixContext, WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import PrefixContext, WorkingContext
+from agentkit.core.contracts.types import Message
 
 prefix = PrefixContext(
     system_prompt="You are a careful research assistant.",
@@ -157,8 +157,8 @@ hash equal — usable as a recall-cache key. See
 ### `fork()` — an independent copy
 
 ```python
-from agentkit.context import WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import WorkingContext
+from agentkit.core.contracts.types import Message
 
 parent = WorkingContext()
 parent.append(Message("user", "Summarise the incident."))
@@ -181,8 +181,8 @@ and keeps the cache key identical across the fork. The token counter,
 ### `merge()` — fan-in
 
 ```python
-from agentkit.context import WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import WorkingContext
+from agentkit.core.contracts.types import Message
 
 hit = Message("tool", "cert expired 2026-08-01", name="lookup")
 
@@ -218,8 +218,8 @@ matching messages; prefix, scratchpad and journal are inherited
 unchanged, and the copy is private (`shared=False`) by default.
 
 ```python
-from agentkit.context import LastNTurns, Not, RoleFilter, WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import LastNTurns, Not, RoleFilter, WorkingContext
+from agentkit.core.contracts.types import Message
 
 ctx = WorkingContext()
 ctx.append(Message("system", "House rules."))
@@ -269,7 +269,7 @@ one job: letting a child stream progress upward without re-shipping
 entries the parent has already absorbed.
 
 ```python
-from agentkit.context import MutationJournal, WorkingContext
+from agentkit.state.context import MutationJournal, WorkingContext
 
 ctx: WorkingContext = WorkingContext()
 ctx.journal.record({"kind": "row_written", "id": 1, "agent_id": "enricher-a"})
@@ -318,8 +318,8 @@ the failure to the first nested write rather than fix it.
 import copy
 import pickle
 
-from agentkit.context import WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import WorkingContext
+from agentkit.core.contracts.types import Message
 
 ctx = WorkingContext()
 ctx.append(Message("user", "hello"))
@@ -361,8 +361,8 @@ tight loop, hold the key instead of recomputing it.
 `diff(other)` computes `self - other` for replay and debugging:
 
 ```python
-from agentkit.context import WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import WorkingContext
+from agentkit.core.contracts.types import Message
 
 before = WorkingContext().append(Message("user", "q1")).note("stage", "plan")
 after = before.fork().append(Message("assistant", "a1")).note("stage", "act")
@@ -414,10 +414,10 @@ They had to be made to agree:
 ```python
 import asyncio
 
-from agentkit.capabilities.compaction.base import _approx_tokens
-from agentkit.context import ApproxTokenCounter, WorkingContext
-from agentkit.context.tokens import estimate_message_tokens
-from agentkit.kernel.types import Message, ToolCall
+from agentkit.state.compaction.base import _approx_tokens
+from agentkit.state.context import ApproxTokenCounter, WorkingContext
+from agentkit.state.context.tokens import estimate_message_tokens
+from agentkit.core.contracts.types import Message, ToolCall
 
 transcript = [
     Message("user", "check the cert"),
@@ -474,18 +474,18 @@ mechanism — the caller's policy still owns the abort.
 
 ## Scope and tenant isolation
 
-`Scope` lives in `agentkit.kernel.types`, not here, but it is the reason
+`Scope` lives in `agentkit.core.contracts.types`, not here, but it is the reason
 several context operations are safe to share. It is the tenant key
 threaded through every memory recall, cache key, meter and callback.
 
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.adapters.store import InMemoryStore
-from agentkit.kernel.types import Scope
-from agentkit.middlewares import memoize
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.state.stores import InMemoryStore
+from agentkit.core.contracts.types import Scope
+from agentkit.core.policies import memoize
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -536,8 +536,8 @@ read-modify-write must not be lost:
 ```python
 import asyncio
 
-from agentkit.context import WorkingContext
-from agentkit.kernel.types import Message
+from agentkit.state.context import WorkingContext
+from agentkit.core.contracts.types import Message
 
 
 async def main() -> None:
@@ -587,8 +587,8 @@ public primitive and the boundary is explicit on purpose.
     the right thing to do:
 
     ```python
-    from agentkit.context import AllOf, LastNTurns, Not, RoleFilter, WorkingContext
-    from agentkit.kernel.types import Message
+    from agentkit.state.context import AllOf, LastNTurns, Not, RoleFilter, WorkingContext
+    from agentkit.core.contracts.types import Message
 
     ctx = WorkingContext()
     ctx.append(Message("system", "House rules."))
@@ -623,7 +623,7 @@ public primitive and the boundary is explicit on purpose.
     tracks the live context:
 
     ```python
-    from agentkit.context import WorkingContext
+    from agentkit.state.context import WorkingContext
 
     ctx = WorkingContext().note("plan", {"steps": ["a"]})
     snap = ctx.freeze()

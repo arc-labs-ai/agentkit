@@ -25,7 +25,7 @@ compaction step when the chunks are bigger than the budget, and often a
 plain search tool that already exists. Wire those as five bespoke hooks
 and every backend swap becomes surgery.
 
-`agentkit.memory` is one Protocol with many backends. `MemorySource`
+`agentkit.state.memory` is one Protocol with many backends. `MemorySource`
 has two methods. Everything else in the package — vector store, files,
 journal, cache, tenant guard, tool adapter, fan-out, fallback chain — is
 either an implementation of it or a decorator over it, so they nest
@@ -36,10 +36,10 @@ arbitrarily and the agent is wired the same way regardless.
 ```python
 import asyncio
 
-from agentkit.adapters.vector.in_memory import InMemoryVector
-from agentkit.kernel.types import Scope
-from agentkit.memory import MemoryItem, VectorMemory
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.state.vectors.in_memory import InMemoryVector
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import MemoryItem, VectorMemory
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -76,11 +76,11 @@ from what you wrote.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.adapters.vector.in_memory import InMemoryVector
-from agentkit.kernel.types import Scope
-from agentkit.memory import MemoryItem, VectorMemory
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.state.vectors.in_memory import InMemoryVector
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import MemoryItem, VectorMemory
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 memory = VectorMemory(vector=InMemoryVector())
 
@@ -154,13 +154,13 @@ The default rendering is one `[source] content` line per item, `k=5`, no
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.adapters.vector.in_memory import InMemoryVector
-from agentkit.capabilities.request_builder import RequestBuilder
-from agentkit.kernel.types import Scope
-from agentkit.memory import MemoryItem, VectorMemory, as_grounder
-from agentkit.prompts import Prompt
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.state.vectors.in_memory import InMemoryVector
+from agentkit.agents.requests import RequestBuilder
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import MemoryItem, VectorMemory, as_grounder
+from agentkit.agents.prompts import Prompt
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 memory = VectorMemory(vector=InMemoryVector())
 
@@ -235,7 +235,7 @@ and an in-memory dict can all satisfy it, so the agent is wired the same
 way no matter what is actually behind it.
 
 ```python
-from agentkit.memory import MemorySource
+from agentkit.state.memory import MemorySource
 
 print(sorted(MemorySource.__annotations__))
 print(sorted(m for m in dir(MemorySource) if not m.startswith("_")))
@@ -274,7 +274,7 @@ came from pgvector, a filesystem, or an HTTP search API.
 ```python
 import dataclasses
 
-from agentkit.memory import MemoryItem
+from agentkit.state.memory import MemoryItem
 
 item = MemoryItem(content="Refunds take 5 days.", source="handbook", metadata={"path": "/a"})
 print(item.content, "|", item.source, "|", item.score, "|", item.metadata)
@@ -353,10 +353,10 @@ and stops once `k` items are collected.
 ```python
 import asyncio
 
-from agentkit.adapters.vector.in_memory import InMemoryVector
-from agentkit.kernel.types import Scope
-from agentkit.memory import CompositeMemory, MemoryItem, SequentialMemory, VectorMemory
-from agentkit.testing import FakeLLM, FakeMemory, make_test_ctx
+from agentkit.state.vectors.in_memory import InMemoryVector
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import CompositeMemory, MemoryItem, SequentialMemory, VectorMemory
+from agentkit.core.testing import FakeLLM, FakeMemory, make_test_ctx
 
 vector = VectorMemory(vector=InMemoryVector(), name="handbook")
 cache = FakeMemory(
@@ -416,9 +416,9 @@ flattened:
 ```python
 import asyncio
 
-from agentkit.memory import MemoryItem
-from agentkit.memory.composite import CompositeMemory, CompositeWriteError
-from agentkit.testing import FakeLLM, FakeMemory, make_test_ctx
+from agentkit.state.memory import MemoryItem
+from agentkit.state.memory.composite import CompositeMemory, CompositeWriteError
+from agentkit.core.testing import FakeLLM, FakeMemory, make_test_ctx
 
 
 class BrokenMemory(FakeMemory):
@@ -528,9 +528,9 @@ complained.
 ```python
 import asyncio
 
-from agentkit.memory import CompositeMemory, MemoryItem, MemoryWriteRefused, ReadOnlyMemory
-from agentkit.memory.composite import CompositeWriteError
-from agentkit.testing import FakeLLM, FakeMemory, make_test_ctx
+from agentkit.state.memory import CompositeMemory, MemoryItem, MemoryWriteRefused, ReadOnlyMemory
+from agentkit.state.memory.composite import CompositeWriteError
+from agentkit.core.testing import FakeLLM, FakeMemory, make_test_ctx
 
 registry = FakeMemory(
     name="registry",
@@ -699,10 +699,10 @@ source at all unless the scope is populated. The default policy requires
 ```python
 import asyncio
 
-from agentkit.adapters.vector.in_memory import InMemoryVector
-from agentkit.kernel.types import Scope
-from agentkit.memory import MemoryItem, ScopedMemory, VectorMemory
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.state.vectors.in_memory import InMemoryVector
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import MemoryItem, ScopedMemory, VectorMemory
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 guarded = ScopedMemory(inner=VectorMemory(vector=InMemoryVector(), name="handbook"))
 
@@ -757,9 +757,9 @@ fallback — lists are not hashable.
 ```python
 import asyncio
 
-from agentkit.kernel.types import Scope
-from agentkit.memory import CachedMemory, MemoryItem, ScopedMemory
-from agentkit.testing import FakeLLM, FakeMemory, make_test_ctx
+from agentkit.core.contracts.types import Scope
+from agentkit.state.memory import CachedMemory, MemoryItem, ScopedMemory
+from agentkit.core.testing import FakeLLM, FakeMemory, make_test_ctx
 
 slow = FakeMemory(name="handbook", items=[MemoryItem(content="Refunds take 5 days.", source="x")])
 memory = ScopedMemory(inner=CachedMemory(inner=slow, ttl_seconds=30.0))
@@ -789,8 +789,8 @@ intuitive precedence.
 ```python
 import asyncio
 
-from agentkit.memory import ToolMemory
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.state.memory import ToolMemory
+from agentkit.core.testing import FakeLLM, make_test_ctx
 from agentkit.tools import tool
 
 

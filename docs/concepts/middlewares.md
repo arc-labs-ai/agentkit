@@ -38,10 +38,11 @@ read it.
 ```python
 import asyncio
 
-from agentkit import Blocked, ChatRequest, Message
-from agentkit.middlewares import security, tracing
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.middleware import Blocked
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.policies import security, tracing
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -105,9 +106,9 @@ value on its way past.
 Everything reaches the chain through the `Invoker`, so you build it once:
 
 ```python
-from agentkit.middlewares import meter, retry, tracing
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM
+from agentkit.core.policies import meter, retry, tracing
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM
 
 invoker = Invoker(
     llm=FakeLLM("ok"),
@@ -130,9 +131,10 @@ guarantees `on_request` is paired with exactly one `on_response` *or*
 ```python
 import asyncio
 
-from agentkit import BaseMiddleware, ChatRequest, Message, MiddlewareContext
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.middleware import BaseMiddleware, MiddlewareContext
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 class Redact(BaseMiddleware):
@@ -193,9 +195,10 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from agentkit import Call, ChatRequest, Handler, Message
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.middleware import Call, Handler
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def stopwatch(call: Call, nxt: Handler) -> AsyncIterator[Any]:
@@ -311,10 +314,10 @@ Each position is a decision:
 ```python
 import asyncio
 
-from agentkit import ChatRequest, Message
-from agentkit.middlewares import retry
-from agentkit.runtime import Invoker
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.core.contracts.types import ChatRequest, Message
+from agentkit.core.policies import retry
+from agentkit.core.runtime import Invoker
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:

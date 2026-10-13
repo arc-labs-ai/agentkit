@@ -18,25 +18,15 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from agentkit.agents._agent_helpers import (
-    _exhausted_ceiling,
-    _final_events,
-    _last_assistant,
-)
-from agentkit.agents.result import AgentResult
-from agentkit.capabilities.output_schema import OutputCoercionError
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import (
-    ChatRequest,
-    Message,
-    StreamEvent,
-    Usage,
-    assemble_deltas,
-)
+from agentkit.agents.definitions.results import AgentResult
+from agentkit.agents.execution._helpers import _exhausted_ceiling, _final_events, _last_assistant
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import ChatRequest, Message, StreamEvent, Usage, assemble_deltas
+from agentkit.models.output import OutputCoercionError
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
-    from agentkit.context import WorkingContext
+    from agentkit.agents.execution.agent import Agent
+    from agentkit.state.context import WorkingContext
 
 
 @dataclass(slots=True)

@@ -5,6 +5,20 @@ All notable changes to `arc-agentkit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- Added `agentkit.calls` with a common call contract for OpenAI Responses,
+  Anthropic Messages, Codex, and Claude Code, canonical structured output,
+  explicit settings, normalized usage, and versioned host-supplied pricing.
+- Added separate `agentkit.agents.minds` strategies and `agentkit.core.events` subscriptions,
+  journals, and adapters for the existing event bus and tracing ports.
+- Added agent definitions, skill composition, scoped tool grants, delegation,
+  portable conversation context, and isolated CLI session state.
+- Added opt-in API/CLI evaluations, bounded spend accounting, incremental reports,
+  and offline conformance tests. Live credentials remain in host resolvers.
+- Fixed CLI final-answer selection and preserved message content blocks and
+  metadata through durable checkpoints.
+
 ## [0.1.0] — 2026-10-08
 
 Initial public release. Distributed on PyPI as `arc-agentkit`; imported as
@@ -28,7 +42,7 @@ MCP servers now requiring a bearer token by default.
 `CodexCliCognition` does the same for OpenAI's `codex`, and everything a caller
 relies on is identical: exactly one terminal `final` event on every exit path,
 the same `AgentResult` and stop-reason taxonomy, the same `spawn=` seam for
-tests, the same `evals` keys where the same fact exists. Auth stays the CLI's
+tests, the same `tests.evals` keys where the same fact exists. Auth stays the CLI's
 problem — whatever `CODEX_API_KEY`, `OPENAI_API_KEY` or `$CODEX_HOME` login it
 would find on its own.
 
@@ -49,7 +63,7 @@ nothing:
   In a session the prepended prompt goes out on the first turn only.
 - **The CLI reports no cost.** `Usage.cost_usd` is computed from
   `pricing.cost` (or an injected `pricing=`) and every result carries
-  `evals["cost_source"] == "estimated"`, because an unpriced model costs $0.00
+  `tests.evals["cost_source"] == "estimated"`, because an unpriced model costs $0.00
   and a caller must not read that as a bill. There is also no
   `--max-budget-usd`: an exhausted budget refuses to spawn (resumable
   `budget_exhausted`) and the spend is charged afterwards, but nothing stops a
@@ -135,7 +149,7 @@ definitions you restated by hand.
   something that looks similar and behaves differently.
 
 - **`FakeClaudeCli`** and the `spawn=` seam make the CLI path testable offline.
-  Every other double in `agentkit.testing` fakes a PORT, and none helped here
+  Every other double in `agentkit.core.testing` fakes a PORT, and none helped here
   because the CLI is a subprocess emitting stream-json. This one sits at the
   spawn seam, so a test still exercises the real parsing, budget charging and
   event mapping — a double returning finished `AgentResult`s would test none of
@@ -431,10 +445,10 @@ An audit of every concrete, checkable claim in `docs/` against the code. This
 failure mode had already produced five bugs earlier in this release, so it was
 worth hunting systematically rather than opportunistically.
 
-- **`resume-after-crash.md` and `examples/06` were stale because of a change in
+- **`resume-after-crash.md` and `tests/examples/06` were stale because of a change in
   this same release.** Slots are namespaced per producer now
   (`{run_id}:agent:{name}`), so `port.list_versions(run_id)` returns `[]` for a
-  leaf agent — the recipe printed exactly that and `examples/06` failed on an
+  leaf agent — the recipe printed exactly that and `tests/examples/06` failed on an
   `AssertionError`. Both fixed, and the recipe gained the slot table. Every
   example now runs.
 - **`capabilities.md` claimed "each capability is a small, typed Protocol".**
@@ -442,7 +456,7 @@ worth hunting systematically rather than opportunistically.
   `Evaluator` and `Checkpointer` are concrete classes. Replaced with a table
   saying which is which and how each is substituted.
 - **`from-langchain.md` told users to implement `Evaluator.evaluate()`.** No
-  such method exists and nothing calls it — the real surface is `code_evals()`
+  such method exists and nothing calls it — the real surface is `code_tests.evals()`
   plus `judge(ctx, *, goal, output)`. Rewritten against the actual class.
 - **`spend-budget-and-quota.md` said `register_model` fixes `$0.00` spend.** It
   does not: `ModelEntry` has no price field and the price table is separate, so
@@ -461,7 +475,7 @@ Each corrected claim was re-verified by running it, not by re-reading it.
 
 Two documented entry points that failed on first contact.
 
-- **`from agentkit.middlewares import security; security()` raised
+- **`from agentkit.core.policies import security; security()` raised
   `TypeError: 'module' object is not callable`.** `middlewares/__init__.py`
   imported the factory from `guard.py`, then a later line's
   `from ...security import Audit, Egress` bound the SUBMODULE onto the package
@@ -473,7 +487,7 @@ Two documented entry points that failed on first contact.
 
   This was the THIRD instance of a module shadowing a same-named callable in
   this codebase (`registry.py`/`registry()`, `elicit.py`/`elicit()` were the
-  first two). `tests/meta/test_public_surface.py` now walks every public
+  first two). `tests/source/architecture/test_public_surface.py` now walks every public
   package and fails on any recurrence. Writing it taught the precise rule:
   `tracing`, `memoize`, `meter`, `compaction` and `output_coerce` are the same
   collision and are all SAFE, because their factory lives in the same-named
@@ -609,14 +623,14 @@ trade:
   `AgentResult.output` is written once. Non-text deltas (`signature_delta`,
   `input_json_delta`) are ignored rather than rendered as assistant text.
 
-- **`evals["cli_init"]`** carries the `system/init` startup facts: the model
+- **`tests.evals["cli_init"]`** carries the `system/init` startup facts: the model
   that actually ran, which MCP servers connected, and — only when non-empty —
   `mcp_server_errors` / `plugin_errors`. The CLI validates each `--mcp-config`
   entry, skips the invalid ones and runs anyway, exiting cleanly, so their
   presence is the signal and the CI gate the CLI docs recommend. All of it was
   previously discarded.
 
-- **`evals["api_retries"]`** records each `system/api_retry`, and each one is
+- **`tests.evals["api_retries"]`** records each `system/api_retry`, and each one is
   also emitted live as a `step` event — the only thing in the payload that
   explains a run which went quiet for forty seconds.
 
@@ -667,7 +681,7 @@ ceiling on CLI spend must impose it externally") — the same shape as the
   the context and to `ctx.actor_budget`. A `Quota` is charged through a minimal
   call shim, since it partitions on `call.ctx.scope.key()` and a bare `None`
   would have crashed it.
-- A ceiling crossed by *this* run lands in `evals["meter_error"]` rather than
+- A ceiling crossed by *this* run lands in `tests.evals["meter_error"]` rather than
   raising: the money is spent, the answer exists, and converting the charge
   into an exception would lose a result the caller already paid for — and break
   the terminal-event guarantee on the way.
@@ -685,12 +699,12 @@ The CLI has first-class support for this. The agent's schema now goes out as
 framework), the CLI validates its own final answer against it and re-prompts
 itself on a mismatch, and the validated value comes back through that adapter
 as a real Python object on `AgentResult.parsed`. The raw dict stays on
-`evals["structured_output"]`.
+`tests.evals["structured_output"]`.
 
 Three outcomes, and only the first is a success — the other two previously
 looked like one:
 
-| Outcome | `evals["stop_reason"]` | typed |
+| Outcome | `tests.evals["stop_reason"]` | typed |
 |---|---|---|
 | A conforming value | *(clean)* | `complete` |
 | Retries exhausted | `error_max_structured_output_retries` | `invalid_output` |
@@ -874,7 +888,7 @@ accepts the argv — the one thing a mocked subprocess can never tell us.
 - **A gate reached with no seam wired suspended in silence,** handing back a run
   id whose every `resume` raises. It now warns, exactly as `Workflow` does.
 
-- A child result whose `evals` / `parsed` cannot be serialized no longer takes
+- A child result whose `tests.evals` / `parsed` cannot be serialized no longer takes
   the run down at the gate: those two fields are dropped with a warning, since
   losing the whole run is strictly worse than losing them.
 
@@ -885,7 +899,7 @@ accepts the argv — the one thing a mocked subprocess can never tell us.
   earlier groups had run and spent money, and with their results unreachable,
   because the accumulator is a local of `_run_groups`. Under `best_effort=True`
   that also broke the mode's one promise: partial progress survives. Unknown
-  children now either refuse up front (fail-fast) or land in `evals["errors"]`
+  children now either refuse up front (fail-fast) or land in `tests.evals["errors"]`
   as a `PERMANENT` `Failure` while the rest of the plan runs (best-effort).
   `resume` re-validates too, since the roster is re-supplied by the caller.
 
@@ -905,7 +919,7 @@ accepts the argv — the one thing a mocked subprocess can never tell us.
   `AgentResult.stop_reason` is the closed taxonomy a caller branches on, and
   `is_suspended` / `is_resumable` derive from it — but only the tool loop ever
   set it. Every coordinator policy (round-robin, selector, ledger, plan) wrote
-  its real reason into `evals["stop_reason"]` and left the typed field at its
+  its real reason into `tests.evals["stop_reason"]` and left the typed field at its
   `"complete"` default. So a suspended plan read back as
   `is_suspended is False` with its checkpoint sitting in the store: an
   application branching on the typed field never prompted its human and never
@@ -1225,7 +1239,7 @@ passes untouched.
   `None` forever while `AgentResult.parsed` kept working, so nothing looked
   broken. `Invoker` now exposes `chat_middleware` / `tool_middleware` so the
   chain is introspectable.
-- **`agentkit.adapters.llm.model_registry`** — one table mapping a model name
+- **`agentkit.models.catalog.registry`** — one table mapping a model name
   to the provider that serves it *and* the capabilities it declares.
   `resolve_llm(model)` / `client.from_env(model)` read credentials from the
   environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`,
@@ -1260,9 +1274,9 @@ passes untouched.
 - **`AgentResult.stop_reason`** — a closed `Literal` (`complete`, `suspended`,
   `expired`, `budget_exhausted`, `max_iterations`, `invalid_output`,
   `terminated`) plus `is_suspended` / `is_resumable`. A suspended run is now
-  distinguishable from a failed one without parsing the `evals` bag; a failed
+  distinguishable from a failed one without parsing the `tests.evals` bag; a failed
   run still raises and produces no `AgentResult` at all. The free-form detail
-  string stays in `evals["stop_reason"]`.
+  string stays in `tests.evals["stop_reason"]`.
 - **`agentkit.agents.control.elicit`** — human-in-the-loop as value
   elicitation. `Elicitation` names what the run needs and `Decision` carries
   what a person supplied, with `actor` and `at` for the audit trail. An
@@ -1416,7 +1430,7 @@ passes untouched.
   chat, autonomous DevOps investigator, long-running enrichment,
   coordinated research), each stressing a distinct set of framework
   invariants.
-- Runnable examples under `examples/` — every example uses `FakeLLM` and
+- Runnable tests.examples under `tests/examples/` — every example uses `FakeLLM` and
   needs no API key: `01_single_agent.py`, `02_streaming_and_tools.py`,
   `03_composed_middlewares.py`.
 - Optional-extras: `http`, `postgres`, `redis`, `observability`, `fast`.
@@ -1429,7 +1443,7 @@ passes untouched.
   drift from a third caller passing arbitrary objects, and pins the
   suspend/resume handshake at both ends of the wire.
 - `ProviderAuthError` multi-inherits from
-  `agentkit.kernel.errors.ProviderAuthError` (kernel taxonomy) and the
+  `agentkit.core.contracts.errors.ProviderAuthError` (kernel taxonomy) and the
   transport-level `ProviderError`, so raised instances satisfy
   `except AgentkitError`, `except ProviderAuthError`, and legacy
   `except ProviderError` blocks simultaneously.

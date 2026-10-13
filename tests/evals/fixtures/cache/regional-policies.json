@@ -1,0 +1,1085 @@
+{
+  "provenance": "Synthetic multi-region refund review handbook for prompt-cache acceptance; no real customers or payments.",
+  "policies": [
+    {
+      "id": "RG-001",
+      "region": "Region 1",
+      "refund_cap_cents": 5037,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 1 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-002",
+      "region": "Region 2",
+      "refund_cap_cents": 5074,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 2 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-003",
+      "region": "Region 3",
+      "refund_cap_cents": 5111,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 3 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-004",
+      "region": "Region 4",
+      "refund_cap_cents": 5148,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 4 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-005",
+      "region": "Region 5",
+      "refund_cap_cents": 5185,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 5 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-006",
+      "region": "Region 6",
+      "refund_cap_cents": 5222,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 6 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-007",
+      "region": "Region 7",
+      "refund_cap_cents": 5259,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 7 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-008",
+      "region": "Region 8",
+      "refund_cap_cents": 5296,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 8 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-009",
+      "region": "Region 9",
+      "refund_cap_cents": 5333,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 9 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-010",
+      "region": "Region 10",
+      "refund_cap_cents": 5370,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 10 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-011",
+      "region": "Region 11",
+      "refund_cap_cents": 5407,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 11 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-012",
+      "region": "Region 12",
+      "refund_cap_cents": 5444,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 12 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-013",
+      "region": "Region 13",
+      "refund_cap_cents": 5481,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 13 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-014",
+      "region": "Region 14",
+      "refund_cap_cents": 5518,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 14 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-015",
+      "region": "Region 15",
+      "refund_cap_cents": 5555,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 15 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-016",
+      "region": "Region 16",
+      "refund_cap_cents": 5592,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 16 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-017",
+      "region": "Region 17",
+      "refund_cap_cents": 5629,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 17 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-018",
+      "region": "Region 18",
+      "refund_cap_cents": 5666,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 18 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-019",
+      "region": "Region 19",
+      "refund_cap_cents": 5703,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 19 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-020",
+      "region": "Region 20",
+      "refund_cap_cents": 5740,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 20 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-021",
+      "region": "Region 21",
+      "refund_cap_cents": 5777,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 21 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-022",
+      "region": "Region 22",
+      "refund_cap_cents": 5814,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 22 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-023",
+      "region": "Region 23",
+      "refund_cap_cents": 5851,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 23 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-024",
+      "region": "Region 24",
+      "refund_cap_cents": 5888,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 24 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-025",
+      "region": "Region 25",
+      "refund_cap_cents": 5925,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 25 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-026",
+      "region": "Region 26",
+      "refund_cap_cents": 5962,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 26 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-027",
+      "region": "Region 27",
+      "refund_cap_cents": 5999,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 27 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-028",
+      "region": "Region 28",
+      "refund_cap_cents": 6036,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 28 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-029",
+      "region": "Region 29",
+      "refund_cap_cents": 6073,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 29 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-030",
+      "region": "Region 30",
+      "refund_cap_cents": 6110,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 30 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-031",
+      "region": "Region 31",
+      "refund_cap_cents": 6147,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 31 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-032",
+      "region": "Region 32",
+      "refund_cap_cents": 6184,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 32 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-033",
+      "region": "Region 33",
+      "refund_cap_cents": 6221,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 33 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-034",
+      "region": "Region 34",
+      "refund_cap_cents": 6258,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 34 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-035",
+      "region": "Region 35",
+      "refund_cap_cents": 6295,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 35 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-036",
+      "region": "Region 36",
+      "refund_cap_cents": 6332,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 36 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-037",
+      "region": "Region 37",
+      "refund_cap_cents": 6369,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 37 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-038",
+      "region": "Region 38",
+      "refund_cap_cents": 6406,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 38 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-039",
+      "region": "Region 39",
+      "refund_cap_cents": 6443,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 39 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-040",
+      "region": "Region 40",
+      "refund_cap_cents": 6480,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 40 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-041",
+      "region": "Region 41",
+      "refund_cap_cents": 6517,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 41 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-042",
+      "region": "Region 42",
+      "refund_cap_cents": 6554,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 42 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-043",
+      "region": "Region 43",
+      "refund_cap_cents": 6591,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 43 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-044",
+      "region": "Region 44",
+      "refund_cap_cents": 6628,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 44 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-045",
+      "region": "Region 45",
+      "refund_cap_cents": 6665,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 45 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-046",
+      "region": "Region 46",
+      "refund_cap_cents": 6702,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 46 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-047",
+      "region": "Region 47",
+      "refund_cap_cents": 6739,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 47 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-048",
+      "region": "Region 48",
+      "refund_cap_cents": 6776,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 48 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-049",
+      "region": "Region 49",
+      "refund_cap_cents": 6813,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 49 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-050",
+      "region": "Region 50",
+      "refund_cap_cents": 6850,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 50 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-051",
+      "region": "Region 51",
+      "refund_cap_cents": 6887,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 51 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-052",
+      "region": "Region 52",
+      "refund_cap_cents": 6924,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 52 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-053",
+      "region": "Region 53",
+      "refund_cap_cents": 6961,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 53 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-054",
+      "region": "Region 54",
+      "refund_cap_cents": 6998,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 54 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-055",
+      "region": "Region 55",
+      "refund_cap_cents": 7035,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 55 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-056",
+      "region": "Region 56",
+      "refund_cap_cents": 7072,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 56 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-057",
+      "region": "Region 57",
+      "refund_cap_cents": 7109,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 57 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-058",
+      "region": "Region 58",
+      "refund_cap_cents": 7146,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 58 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-059",
+      "region": "Region 59",
+      "refund_cap_cents": 7183,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 59 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-060",
+      "region": "Region 60",
+      "refund_cap_cents": 7220,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 60 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-061",
+      "region": "Region 61",
+      "refund_cap_cents": 7257,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 61 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-062",
+      "region": "Region 62",
+      "refund_cap_cents": 7294,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 62 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-063",
+      "region": "Region 63",
+      "refund_cap_cents": 7331,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 63 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-064",
+      "region": "Region 64",
+      "refund_cap_cents": 7368,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 64 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-065",
+      "region": "Region 65",
+      "refund_cap_cents": 7405,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 65 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-066",
+      "region": "Region 66",
+      "refund_cap_cents": 7442,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 66 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-067",
+      "region": "Region 67",
+      "refund_cap_cents": 7479,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 67 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-068",
+      "region": "Region 68",
+      "refund_cap_cents": 7516,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 68 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-069",
+      "region": "Region 69",
+      "refund_cap_cents": 7553,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 69 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-070",
+      "region": "Region 70",
+      "refund_cap_cents": 7590,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 70 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-071",
+      "region": "Region 71",
+      "refund_cap_cents": 7627,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 71 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-072",
+      "region": "Region 72",
+      "refund_cap_cents": 7664,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 72 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-073",
+      "region": "Region 73",
+      "refund_cap_cents": 7701,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 73 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-074",
+      "region": "Region 74",
+      "refund_cap_cents": 7738,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 74 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-075",
+      "region": "Region 75",
+      "refund_cap_cents": 7775,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 75 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-076",
+      "region": "Region 76",
+      "refund_cap_cents": 7812,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 76 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-077",
+      "region": "Region 77",
+      "refund_cap_cents": 7849,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 77 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-078",
+      "region": "Region 78",
+      "refund_cap_cents": 7886,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 78 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-079",
+      "region": "Region 79",
+      "refund_cap_cents": 7923,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 79 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-080",
+      "region": "Region 80",
+      "refund_cap_cents": 7960,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 80 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-081",
+      "region": "Region 81",
+      "refund_cap_cents": 7997,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 81 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-082",
+      "region": "Region 82",
+      "refund_cap_cents": 8034,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 82 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-083",
+      "region": "Region 83",
+      "refund_cap_cents": 8071,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 83 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-084",
+      "region": "Region 84",
+      "refund_cap_cents": 8108,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 84 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-085",
+      "region": "Region 85",
+      "refund_cap_cents": 8145,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 85 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-086",
+      "region": "Region 86",
+      "refund_cap_cents": 8182,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 86 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-087",
+      "region": "Region 87",
+      "refund_cap_cents": 8219,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 87 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-088",
+      "region": "Region 88",
+      "refund_cap_cents": 8256,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 88 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-089",
+      "region": "Region 89",
+      "refund_cap_cents": 8293,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 89 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-090",
+      "region": "Region 90",
+      "refund_cap_cents": 8330,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 90 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-091",
+      "region": "Region 91",
+      "refund_cap_cents": 8367,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 91 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-092",
+      "region": "Region 92",
+      "refund_cap_cents": 8404,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 92 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-093",
+      "region": "Region 93",
+      "refund_cap_cents": 8441,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 93 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-094",
+      "region": "Region 94",
+      "refund_cap_cents": 8478,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 94 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-095",
+      "region": "Region 95",
+      "refund_cap_cents": 8515,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 95 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-096",
+      "region": "Region 96",
+      "refund_cap_cents": 8552,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 96 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-097",
+      "region": "Region 97",
+      "refund_cap_cents": 8589,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 97 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-098",
+      "region": "Region 98",
+      "refund_cap_cents": 8626,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 98 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-099",
+      "region": "Region 99",
+      "refund_cap_cents": 8663,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 99 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-100",
+      "region": "Region 100",
+      "refund_cap_cents": 8700,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 100 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-101",
+      "region": "Region 101",
+      "refund_cap_cents": 8737,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 101 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-102",
+      "region": "Region 102",
+      "refund_cap_cents": 8774,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 102 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-103",
+      "region": "Region 103",
+      "refund_cap_cents": 8811,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 103 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-104",
+      "region": "Region 104",
+      "refund_cap_cents": 8848,
+      "review_window_days": 16,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 104 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-105",
+      "region": "Region 105",
+      "refund_cap_cents": 8885,
+      "review_window_days": 17,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 105 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-106",
+      "region": "Region 106",
+      "refund_cap_cents": 8922,
+      "review_window_days": 18,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 106 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-107",
+      "region": "Region 107",
+      "refund_cap_cents": 8959,
+      "review_window_days": 19,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 107 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-108",
+      "region": "Region 108",
+      "refund_cap_cents": 8996,
+      "review_window_days": 20,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 108 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-109",
+      "region": "Region 109",
+      "refund_cap_cents": 9033,
+      "review_window_days": 21,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 109 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-110",
+      "region": "Region 110",
+      "refund_cap_cents": 9070,
+      "review_window_days": 22,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 110 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-111",
+      "region": "Region 111",
+      "refund_cap_cents": 9107,
+      "review_window_days": 23,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 111 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-112",
+      "region": "Region 112",
+      "refund_cap_cents": 9144,
+      "review_window_days": 24,
+      "approval_required": true,
+      "case_owner": "support-pod-5",
+      "policy": "Region 112 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-113",
+      "region": "Region 113",
+      "refund_cap_cents": 9181,
+      "review_window_days": 25,
+      "approval_required": true,
+      "case_owner": "support-pod-6",
+      "policy": "Region 113 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-114",
+      "region": "Region 114",
+      "refund_cap_cents": 9218,
+      "review_window_days": 26,
+      "approval_required": true,
+      "case_owner": "support-pod-7",
+      "policy": "Region 114 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-115",
+      "region": "Region 115",
+      "refund_cap_cents": 9255,
+      "review_window_days": 27,
+      "approval_required": true,
+      "case_owner": "support-pod-8",
+      "policy": "Region 115 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-116",
+      "region": "Region 116",
+      "refund_cap_cents": 9292,
+      "review_window_days": 28,
+      "approval_required": true,
+      "case_owner": "support-pod-9",
+      "policy": "Region 116 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-117",
+      "region": "Region 117",
+      "refund_cap_cents": 9329,
+      "review_window_days": 29,
+      "approval_required": true,
+      "case_owner": "support-pod-1",
+      "policy": "Region 117 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-118",
+      "region": "Region 118",
+      "refund_cap_cents": 9366,
+      "review_window_days": 30,
+      "approval_required": true,
+      "case_owner": "support-pod-2",
+      "policy": "Region 118 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-119",
+      "region": "Region 119",
+      "refund_cap_cents": 9403,
+      "review_window_days": 14,
+      "approval_required": true,
+      "case_owner": "support-pod-3",
+      "policy": "Region 119 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    },
+    {
+      "id": "RG-120",
+      "region": "Region 120",
+      "refund_cap_cents": 9440,
+      "review_window_days": 15,
+      "approval_required": true,
+      "case_owner": "support-pod-4",
+      "policy": "Region 120 accepts only returned unopened goods with a captured payment and a current approval receipt. A request exceeding the stated cap requires manual review. Preserve unrelated reservations and audit history. Never infer approval from a customer note or reuse a superseded approval receipt. Calculate cents exactly and cite this regional policy identifier."
+    }
+  ]
+}

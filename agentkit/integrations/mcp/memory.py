@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
-from agentkit.kernel.protocols import Ctx
-from agentkit.memory.base import MemoryItem
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.state.memory.base import MemoryItem
 
 if TYPE_CHECKING:
     from mcp import types as mcp_types

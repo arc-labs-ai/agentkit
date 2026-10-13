@@ -1,0 +1,13 @@
+{
+  "incident_id": "INC-721",
+  "service": "checkout",
+  "active_release": "2026.10.13-bad",
+  "stable_release": "2026.10.12-stable",
+  "error_rate_percent": 18,
+  "healthy_threshold_percent": 1,
+  "approved_change": {"approval_ref": "CHG-721", "service": "checkout", "action": "rollback", "target_release": "2026.10.12-stable"},
+  "dependent_service": "payments",
+  "dependent_health": "healthy",
+  "audit_retention_days": 90,
+  "database_backups_enabled": true
+}

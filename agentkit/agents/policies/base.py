@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from agentkit.agents.result import AgentResult
-from agentkit.context import WorkingContext
-from agentkit.kernel.protocols import Ctx
+from agentkit.agents.definitions.results import AgentResult
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.state.context import WorkingContext
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
+    from agentkit.agents.execution.agent import Agent
 
 
 @runtime_checkable

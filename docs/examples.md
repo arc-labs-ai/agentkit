@@ -1,7 +1,7 @@
 # Examples
 
 Six self-contained scripts live in the
-[`examples/`](https://github.com/arc-labs-ai/agentkit/tree/main/examples)
+[`tests/examples/`](https://github.com/arc-labs-ai/agentkit/tree/main/tests/examples)
 folder of the repo. Unlike the [Tutorial](tutorial.md), which builds one
 agent across six steps, each of these is a standalone demonstration of
 one thing you can read top to bottom.
@@ -39,7 +39,7 @@ the docs otherwise only assert:
 git clone https://github.com/arc-labs-ai/agentkit
 cd agentkit
 uv sync
-uv run python examples/01_single_agent.py
+uv run python tests/examples/01_single_agent.py
 ```
 
 `uv sync` is enough for every example except `04` and `07`. It installs

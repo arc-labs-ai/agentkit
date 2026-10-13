@@ -38,7 +38,7 @@ summing.
     have — the rest of the wiring is unchanged.
 
     To run it with **no key at all**, replace the `providers.claude(...)`
-    call with `FakeLLM("a short answer")` from `agentkit.testing`. Every
+    call with `FakeLLM("a short answer")` from `agentkit.core.testing`. Every
     other line is identical — that substitution is how this snippet is
     verified.
 
@@ -54,10 +54,11 @@ per-call ceiling reliably trips on the second `invoker.chat(...)`."""
 import asyncio
 import os
 
-from agentkit import Budget, ChatRequest, Message, MeterExceeded, Quota, Scope
-from agentkit.adapters.llm import providers
-from agentkit.middlewares import meter
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.core.runtime import Budget, MeterExceeded, Quota
+from agentkit.core.contracts.types import ChatRequest, Message, Scope
+from agentkit.models.providers import frontiers as providers
+from agentkit.core.policies import meter
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 async def main() -> None:
@@ -260,7 +261,7 @@ child is granted exactly what was reserved for it and no more.
   a naive "count on success" surface lets a broken client hammer the
   provider.
 - **`MeterExceeded` vs `BudgetExhausted` are two different signals.**
-  `MeterExceeded` (from `agentkit.runtime.meter`) is the per-run
+  `MeterExceeded` (from `agentkit.core.runtime.meter`) is the per-run
   ceiling; `BudgetExhausted` (from `agentkit.agents.control.budget`)
   is the per-actor `ActorBudget` signal. Catch each where it fires.
 - **A budget is always overrun by at most one call's cost.** `_check`

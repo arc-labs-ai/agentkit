@@ -76,17 +76,20 @@ DeepSeek, OpenRouter, or any LLMPort works the same way)."""
 
 import asyncio
 
-from agentkit import Agent, RunContext, Scope, Services, tool
+from agentkit.agents import Agent
+from agentkit.core.runtime import RunContext, Services
+from agentkit.core.contracts.types import Scope
+from agentkit.tools import tool
 from agentkit.agents.cognition import ReActCognition
-from agentkit.middlewares import meter, retry, tracing
-from agentkit.runtime import Invoker
+from agentkit.core.policies import meter, retry, tracing
+from agentkit.core.runtime import Invoker
 
 # Your LLMPort of choice — batteries-included providers or your own.
-# from agentkit.adapters.llm import providers
+# from agentkit.models.providers import frontiers as providers
 # llm = providers.openai(api_key=os.environ["OPENAI_API_KEY"], model="gpt-4o-mini")
 # Any LLMPort works here — a real provider, the claude CLI cognition, or
 # the shipped fake so this page runs as written.
-from agentkit.testing import FakeLLM
+from agentkit.core.testing import FakeLLM
 
 llm = FakeLLM("Paris is the capital of France.")
 
@@ -208,7 +211,7 @@ plus the [Tutorial](../tutorial.md).
 
 1. **Wrap the LLM.** Point an `LLMPort` at whatever provider client
    you already have. The batteries-included presets under
-   `agentkit.adapters.llm.providers` (`claude` / `openai` /
+   `agentkit.models.providers` (`claude` / `openai` /
    `deepseek` / `openrouter`) are the easiest place to start.
 2. **Move one tool at a time.** Rewrite each `@tool` decorator (state
    `side_effecting=`), test in isolation with `make_test_ctx`.
@@ -273,7 +276,7 @@ to remember.
 
 ```python
 # agentkit — Scope threads through everything scope-aware:
-from agentkit import Scope
+from agentkit.core.contracts.types import Scope
 
 for tenant in tenants:
     ctx = RunContext(
@@ -299,7 +302,7 @@ chain = prompt | llm | parser
 
 # agentkit:
 from pydantic import BaseModel
-from agentkit import Agent
+from agentkit.agents import Agent
 
 class Brief(BaseModel):
     summary: str
@@ -337,7 +340,7 @@ whether it's the same worker or a fresh process weeks later.
 llm.with_fallbacks([alt_llm_1, alt_llm_2])
 
 # agentkit:
-from agentkit.middlewares import fallback
+from agentkit.core.policies import fallback
 chat_middleware = [tracing(), meter(), fallback(models=["gpt-4o", "gpt-4o-mini"]), retry()]
 ```
 
@@ -354,7 +357,7 @@ from langchain_core.caches import InMemoryCache
 llm.cache = InMemoryCache()
 
 # agentkit:
-from agentkit.middlewares import memoize
+from agentkit.core.policies import memoize
 chat_middleware = [tracing(), meter(), retry(), memoize()]
 ```
 
@@ -369,7 +372,7 @@ similarity threshold.
 # LangChain (LangSmith): hosted, external.
 # agentkit: Evaluator is a CONCRETE class you configure, not a Protocol.
 # It runs `code_checks` (cheap, deterministic) and an optional LLM judge.
-from agentkit import Evaluator
+from agentkit.agents.evaluation import Evaluator
 
 evaluator = Evaluator(
     code_checks={

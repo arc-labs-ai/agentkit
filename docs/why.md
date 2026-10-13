@@ -204,7 +204,7 @@ schema the tool does not validate against.
 `RecordingTracer`,
 `FakeCtx`, and `make_test_ctx(...)` — the same doubles the framework's
 own suite uses. Zero API keys required to unit-test your agents end
-to end. Test doubles live under `agentkit.testing.*` and are
+to end. Test doubles live under `agentkit.core.testing.*` and are
 **deliberately** not re-exported from the top-level package: a
 `from agentkit import FakeLLM` shape would let production code accidentally
 pin a test double. The boundary is enforced.
@@ -376,8 +376,8 @@ runs offline on `arc-agentkit[http]`; only an actual call needs the
 matching key.
 
 ```python
-from agentkit.adapters.llm import providers
-from agentkit.runtime import Invoker, Services
+from agentkit.models.providers import frontiers as providers
+from agentkit.core.runtime import Invoker, Services
 
 # Pick one. The only line that differs is the preset and the model name.
 llm = providers.claude(api_key="sk-placeholder", model="claude-sonnet-4-6")
@@ -397,7 +397,7 @@ OpenAICompatibleLLM
 `providers.*` return an `LLMPort` for you to wire yourself.
 
 If you want the batteries-included version instead, reach for
-`agentkit.client`: `claude()` / `openai()` / `deepseek()` /
+`agentkit.models.client.chat`: `claude()` / `openai()` / `deepseek()` /
 `openrouter()` return a `Chat` that has already wrapped the same port in
 an `Invoker` with `tracing → meter → retry`. It is also an async context
 manager, so the HTTP pool closes on exit.
@@ -408,15 +408,15 @@ wrapper. The `Agent` doesn't care.
 ### Swap the checkpoint store from in-memory to Postgres
 
 ```python
-from agentkit import Checkpointer
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
 
 port = InMemoryCheckpointStore()
 
 # Production (arc-agentkit[postgres]) — same object, different backing:
 #
 #   import asyncpg
-#   from agentkit.adapters.checkpoint import PostgresCheckpointStore
+#   from agentkit.state.checkpoints.adapters import PostgresCheckpointStore
 #
 #   pool = await asyncpg.create_pool("postgresql://…")
 #   port = PostgresCheckpointStore(pool)
@@ -443,7 +443,7 @@ InMemoryCheckpointStore
 tests and local runs need no wiring at all:
 
 ```python
-from agentkit.runtime import Services
+from agentkit.core.runtime import Services
 
 services = Services()
 print(type(services.trace).__name__)
@@ -457,8 +457,8 @@ In production, hand it a real tracer (needs
 `arc-agentkit[observability]`):
 
 ```python
-from agentkit.adapters.observability import otel_exporter_otlp_http, otel_tracer
-from agentkit.runtime import Services
+from agentkit.integrations.observability import otel_exporter_otlp_http, otel_tracer
+from agentkit.core.runtime import Services
 
 otel_exporter_otlp_http()   # reads OTEL_EXPORTER_OTLP_ENDPOINT etc.
 services = Services(trace=otel_tracer())
@@ -483,7 +483,7 @@ backend.
 | Tenant burned the shared limit                                     | No per-scope quota                                  | `Quota(max_rpm=..., max_tpm=..., max_usd=...)` on `ctx.meters`   |
 | Cancel from the UI didn't stop anything                            | No cooperative cancel                               | `CancellationToken` on `RunContext`, checked at safe points      |
 | Fan-out kept running after one child raised                        | Naive `asyncio.gather`                              | `run_agents(...)` — `TaskGroup` cancels siblings on first fail   |
-| Test fixtures pulled in real API keys                              | No test doubles                                     | `agentkit.testing.*` — `FakeLLM` + `make_test_ctx()`             |
+| Test fixtures pulled in real API keys                              | No test doubles                                     | `agentkit.core.testing.*` — `FakeLLM` + `make_test_ctx()`             |
 | Cost from cache hits was double-counted                            | Meter after cache                                   | Middleware order: `meter` above `memoize` in the chain           |
 | Structured output silently drifted from the schema                 | No coercion in the loop                             | `Agent(output=MyPydanticModel)` + `output_coerce` middleware     |
 | CLI session's `WebFetch` ignored the egress allowlist              | Native CLI tools never reach the `Invoker`          | `hook_settings(...)` → `ClaudeCliCognition(settings=...)`        |

@@ -318,7 +318,7 @@ Return AgentResult(output=<final brief>, usage=<merged>)
 | **`Handoff` / `handoff_tool` accepts a non-dict `Mapping`** | Tool receives arguments that are a `Mapping` but not a `dict`; `isinstance(dict)` fails → every handoff rejected as "unknown target" | `test_handoff_tool_accepts_mappingproxy_arguments` |
 | **`as_tool` extracts `task` from a non-dict `Mapping`** | Skill invoked as a tool receives `str(args)` instead of the task string → sub-run gets garbage | `test_as_tool_forwards_task_from_mappingproxy_arguments` |
 | **`ActorBudget` clamps overspend at the reservation** | A child spends beyond its reservation → the parent's budget bookkeeping goes negative | `test_actor_budget_settle_capped_at_reservation` |
-| **Cancellation propagates via `ctx.cancel`** | Aborting the coordinator leaves 5 researchers running | `test_cancellation_mid_flight_propagates_to_children` (live coordinator dispatch) + `test_cancel_token_is_shared_reference_across_ctx_child` (structural invariant) in `tests/agents/test_coordinator_agent.py` |
+| **Cancellation propagates via `ctx.cancel`** | Aborting the coordinator leaves 5 researchers running | `test_cancellation_mid_flight_propagates_to_children` (live coordinator dispatch) + `test_cancel_token_is_shared_reference_across_ctx_child` (structural invariant) in `tests/source/unit/agents/test_coordinator_agent.py` |
 | **`StreamEvent.type` is a `Literal`** | A typo in a consumer's branch (`"finl"` vs `"final"`) silently misses the terminal event | Type-level: `StreamEventType` Literal + mypy exhaustiveness on consumer branches |
 
 ## Correctness checklist (for future changes)
@@ -356,7 +356,7 @@ the framework's or the wiring's invariants slip.
    researchers race on `MaxTurns.turn`. *Locked by
    `test_as_agent_cognitions_are_independent_instances` and
    `test_concurrent_as_agent_calls_do_not_share_termination_state` in
-   `tests/skills/test_skill.py`.*
+   `tests/source/unit/agents/skills/test_skill.py`.*
 2. **`ReActCognition.drive` reassigns `self.termination` instead of
    using a local.** Under parallel dispatch of one shared Agent, two
    drives race on `self.termination = deepcopy(...)` — one clobbers
@@ -370,7 +370,7 @@ the framework's or the wiring's invariants slip.
    audit and merge-loop disagree on identity. *Locked by
    `test_channel_emit_does_not_mutate_caller_signal` and
    `test_channel_emit_produces_same_stamped_copy_for_outbox_and_parent`
-   in `tests/agents/test_signal_protocol.py`.*
+   in `tests/source/unit/agents/test_signal_protocol.py`.*
 4. **`SignalEnvelope` becomes non-frozen.** A helper adds a
    `set_sender` method → downstream code mutates `sender_id` post-emit
    → cascade attribution rewritten silently. *Locked by
@@ -379,7 +379,7 @@ the framework's or the wiring's invariants slip.
    `planner.plan(...)` directly → an async planner returns a coroutine
    → `for step in coroutine` raises `TypeError`. *Locked by
    `test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating`
-   in `tests/agents/test_workflow.py`.*
+   in `tests/source/unit/agents/test_workflow.py`.*
 6. **`run_agents` drops the semaphore.** Concurrency bound collapses;
    under load the coordinator spawns thousands of parallel researchers
    and hits the provider's rate limit. *Locked structurally by
@@ -389,7 +389,7 @@ the framework's or the wiring's invariants slip.
    An over-spending child pushes the parent's `used_*` past its cap →
    downstream `exhausted()` never trips. *Locked by
    `test_actor_budget_settle_capped_at_reservation` in
-   `tests/agents/test_signal_protocol.py`.*
+   `tests/source/unit/agents/test_signal_protocol.py`.*
 8. **`merge` deadlocks on early consumer exit.** A pump's `finally`
    awaits a `queue.put` with a full queue and no reader → hang. *Locked
    by the dual-sentinel pattern in `streams.py:merge` (cancelled →
@@ -625,20 +625,20 @@ How to actually check the design is working — not just "tests pass" but
 
 ```bash
 cd agentkit
-uv run pytest tests/skills/test_skill.py \
-              tests/agents/test_signal_protocol.py \
-              tests/agents/test_coordinator_agent.py \
-              tests/agents/test_agent_loop.py \
+uv run pytest tests/source/unit/agents/skills/test_skill.py \
+              tests/source/unit/agents/test_signal_protocol.py \
+              tests/source/unit/agents/test_coordinator_agent.py \
+              tests/source/unit/agents/test_agent_loop.py \
               -k "as_agent or termination or channel or signal or coordinator"
 ```
 
 Expected: all pass. Any failure is a live invariant violation. Adjacent
 files that lock further invariants:
 
-- `tests/agents/test_workflow.py` — `test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating`.
-- `tests/agents/test_handoff.py` — `test_handoff_tool_accepts_mappingproxy_arguments`.
-- `tests/tools/test_function_tool.py` — `test_as_tool_forwards_task_from_mappingproxy_arguments`.
-- `tests/agents/test_actor_budget.py` and `test_signal_protocol.py` —
+- `tests/source/unit/agents/test_workflow.py` — `test_workflow_with_async_planner_via_planpolicy_awaits_before_iterating`.
+- `tests/source/unit/agents/test_handoff.py` — `test_handoff_tool_accepts_mappingproxy_arguments`.
+- `tests/source/unit/tools/test_function_tool.py` — `test_as_tool_forwards_task_from_mappingproxy_arguments`.
+- `tests/source/unit/agents/test_actor_budget.py` and `test_signal_protocol.py` —
   ActorBudget reservation + settle behaviour.
 
 ### 2. Structural: grep for load-bearing patterns
@@ -647,7 +647,7 @@ files that lock further invariants:
 cd agentkit
 
 # Per-spawn cognition isolation (Skill.as_agent deep-copy).
-grep -n "deepcopy" agentkit/skills/skill.py
+grep -n "deepcopy" agentkit/agents/skills/skill.py
 # Expected: line 106 — cognition=copy.deepcopy(self.cognition),
 
 # Per-drive termination isolation (drive-local clone).
@@ -666,7 +666,7 @@ grep -n "isawaitable" agentkit/agents/policies/plan.py
 # Expected: 'steps = await plan if inspect.isawaitable(plan) else plan'
 
 # run_agents grabs the tree semaphore.
-grep -n "ctx.semaphore" agentkit/kernel/concurrency.py
+grep -n "ctx.semaphore" agentkit/core/execution/concurrency.py
 # Expected: sem = ctx.semaphore() inside run_agents.
 ```
 
@@ -680,7 +680,7 @@ Agent instance:
 # Not committed — one-off verification script.
 import asyncio
 import copy
-from agentkit import Skill
+from agentkit.agents.skills import Skill
 from agentkit.agents.cognition import ReActCognition
 from agentkit.agents.control.termination import MaxTurns
 
@@ -804,12 +804,12 @@ proves the framework must support:
 
 Last audited against the current tree:
 
-- **Automated invariant tests**: `pytest tests/skills/test_skill.py
-  tests/agents/test_signal_protocol.py tests/agents/test_coordinator_agent.py
-  tests/agents/test_agent_loop.py -k "as_agent or termination or channel
+- **Automated invariant tests**: `pytest tests/source/unit/agents/skills/test_skill.py
+  tests/source/unit/agents/test_signal_protocol.py tests/source/unit/agents/test_coordinator_agent.py
+  tests/source/unit/agents/test_agent_loop.py -k "as_agent or termination or channel
   or signal or coordinator"` → **44 passed, 0 failed**.
 - **`Skill.as_agent()` deep-copies cognition**: `grep -n "deepcopy"
-  agentkit/skills/skill.py` returns line 106 —
+  agentkit/agents/skills/skill.py` returns line 106 —
   `cognition=copy.deepcopy(self.cognition),`. Present as expected.
 - **`ReActCognition.drive` uses a drive-local termination clone**: `grep
   -n "termination" agentkit/agents/cognition/react.py` returns 17 matches;

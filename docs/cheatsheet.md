@@ -7,7 +7,9 @@ need; go. This page has no prose. For the *why*, follow the links to
 ## Boot
 
 ```python
-from agentkit import Agent, Scope, RunContext, Services
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
+from agentkit.core.runtime import RunContext, Services
 from agentkit.agents.cognition import SingleCallCognition, ReActCognition
 
 # The composition: identity + prompt + cognition + tools.
@@ -31,7 +33,7 @@ async for ev in agent.stream("hello", ctx): ...  # or handle StreamEvents live
 
 # `Services(store=...)` is the one KV seam. Cache half: get / set / get_or_set /
 # delete / append / list. Coordination half below.
-from agentkit.adapters.store import InMemoryStore  # FileStore / RedisStore / PostgresStore
+from agentkit.state.stores import InMemoryStore
 
 store = InMemoryStore()
 
@@ -54,13 +56,9 @@ async for key in store.scan("run-42:", limit=100): ...
 ## Cognition
 
 ```python
-from agentkit.agents.cognition import (
-    SingleCallCognition,
-    ReActCognition,
-    CoordinatorCognition,
-    ClaudeCliCognition,
-    CodexCliCognition,
-)
+from agentkit.agents.cognition import SingleCallCognition, ReActCognition, CoordinatorCognition
+from agentkit.models.providers.cli.codex import CodexCliCognition
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 
 # One chat call + optional parse-and-repair.
 SingleCallCognition()
@@ -98,16 +96,14 @@ CodexCliCognition(
 # No --append-system-prompt exists: agent.prompt is PREPENDED to the task
 # (system_prompt_mode="replace" writes an instructions file instead). No cost is
 # reported by the CLI, so usage.cost_usd is computed and evals["cost_source"] is
-# always "estimated". No --max-budget-usd either: the budget refuses before and
+# identifies PRICE_TABLE, HOST_PRICING or UNPRICED. No --max-budget-usd either: the budget refuses before and
 # charges after, but nothing stops a run mid-flight.
 ```
 
 ## Tools
 
 ```python
-from agentkit import (
-    tool, FunctionTool, ToolRegistry, FileTool, InMemoryFiles, ToolArgumentError,
-)
+from agentkit.tools import tool, FunctionTool, ToolRegistry, FileTool, InMemoryFiles, ToolArgumentError
 
 # The 90% case. `side_effecting=` is REQUIRED — decoration-time
 # ToolDefinitionError (a ValueError) otherwise.
@@ -146,7 +142,7 @@ the `output=` path uses). Anything else degrades to `string`.
 ## Prompts
 
 ```python
-from agentkit import Prompt
+from agentkit.agents.prompts import Prompt
 
 p = Prompt(
     id="briefer.system",
@@ -165,14 +161,9 @@ Agent(name="briefer", prompt=p, cognition=SingleCallCognition())
 ## Memory
 
 ```python
-from agentkit import (
-    CompositeMemory,
-    SequentialMemory,
-    VectorMemory,
-    ScopedMemory,
-)
-from agentkit.memory import CachedMemory, JournalMemory, FileMemory, ScratchpadMemory
-from agentkit.memory import MemoryItem, MemoryWriteRefused, ReadOnlyMemory
+from agentkit.state.memory import CompositeMemory, SequentialMemory, VectorMemory, ScopedMemory
+from agentkit.state.memory import CachedMemory, JournalMemory, FileMemory, ScratchpadMemory
+from agentkit.state.memory import MemoryItem, MemoryWriteRefused, ReadOnlyMemory
 
 # Vector store adapter (any VectorPort — pgvector, qdrant, memory-backed, ...).
 memory = VectorMemory(vector=my_vector_port)
@@ -211,14 +202,11 @@ Agent(name="researcher", cognition=ReActCognition(tools=[search]), memory=memory
 ## Middleware chain
 
 ```python
-from agentkit import chain, BaseMiddleware, Call, Handler, MiddlewareContext
-from agentkit.middlewares import (
-    tracing, retry, meter, fallback, memoize, semantic_memoize,
-    output_coerce, compaction, security, egress, audit,
-)
+from agentkit.core.contracts.middleware import chain, BaseMiddleware, Call, Handler, MiddlewareContext
+from agentkit.core.policies import tracing, retry, meter, fallback, memoize, semantic_memoize, output_coerce, compaction, security, egress, audit
 
 # The canonical chat chain. Order is deterministic — outermost first.
-from agentkit import SlidingWindowCompactor
+from agentkit.state.compaction import SlidingWindowCompactor
 
 chat_middleware = [
     tracing(),                                          # outermost: one span across everything below
@@ -243,20 +231,12 @@ async def stopwatch(call: Call, nxt: Handler):
 ## Capabilities
 
 ```python
-from agentkit import (
-    RequestBuilder,
-    Grounder,
-    GroundingSource,
-    render_grounding,
-    Checkpointer,
-    Guardrail,
-    Evaluator,
-    SlidingWindowCompactor,
-    TruncationCompactor,
-    SummarizationCompactor,
-    ImportanceFilteringCompactor,
-)
-from agentkit.adapters.checkpoint import InMemoryCheckpointStore
+from agentkit.agents.requests import RequestBuilder, Grounder, GroundingSource, render_grounding
+from agentkit.state.checkpoints import Checkpointer
+from agentkit.core.guardrails import Guardrail
+from agentkit.agents.evaluation import Evaluator
+from agentkit.state.compaction import SlidingWindowCompactor, TruncationCompactor, SummarizationCompactor, ImportanceFilteringCompactor
+from agentkit.state.checkpoints.adapters import InMemoryCheckpointStore
 
 # Compactors (fold the transcript before it hits the model window).
 compactor = SlidingWindowCompactor(keep_recent=10)       # dep-free
@@ -274,7 +254,7 @@ checkpointer = Checkpointer(port=InMemoryCheckpointStore())
 # `grounder=` returns TEXT, so by the time it reaches the prefix the item is gone —
 # and a memory a MODEL wrote is no longer distinguishable from a recorded fact.
 # `grounding=` returns the MemoryItems, so provenance survives to the prompt.
-from agentkit.memory import as_grounding_source
+from agentkit.state.memory import as_grounding_source
 
 source: GroundingSource = as_grounding_source(memory, k=5)  # (ctx, task) -> Sequence[MemoryItem]
 builder = RequestBuilder(
@@ -292,13 +272,9 @@ builder = RequestBuilder(
 ## Concurrency
 
 ```python
-from agentkit import (
-    CancellationToken, Cancelled,
-    gather_bounded, gather_best_effort,
-    run_agents, run_sync,
-    attempt_until_stuck, Stuck,
-)
-from agentkit.agents.workflow import MapExpansionChanged, Workflow
+from agentkit.core.execution.concurrency import CancellationToken, Cancelled, gather_bounded, gather_best_effort, run_agents, run_sync
+from agentkit.core.execution.recurrence import attempt_until_stuck, Stuck
+from agentkit.agents.workflows.graph import MapExpansionChanged, Workflow
 import asyncio
 
 # Fan-out N children, bounded by a semaphore. One failure cancels the rest.
@@ -349,12 +325,7 @@ result = run_sync(agent.run("hi", ctx))
 ## Signals + control (multi-agent)
 
 ```python
-from agentkit import (
-    Suspended, Handoff, DoneSignal, ProgressSignal, EscalateSignal,
-    CancelSignal, BudgetReducedSignal, RedirectSignal, ContextUpdateSignal,
-    MergeWithPeerSignal, BlockedSignal, SignalChannel, SignalEnvelope,
-    ActorBudget, BudgetExhausted,
-)
+from agentkit.agents import Suspended, Handoff, DoneSignal, ProgressSignal, EscalateSignal, CancelSignal, BudgetReducedSignal, RedirectSignal, ContextUpdateSignal, MergeWithPeerSignal, BlockedSignal, SignalChannel, SignalEnvelope, ActorBudget, BudgetExhausted
 
 # Frozen result value returned when a run pauses for approval.
 assert isinstance(result.evals.get("suspended"), Suspended)
@@ -372,8 +343,8 @@ parent_budget = ActorBudget(max_tokens=10_000, max_cost_usd=1.0,
 ## Budget + Quota + Meter
 
 ```python
-from agentkit import Budget, Quota, MeterExceeded
-from agentkit.middlewares import meter
+from agentkit.core.runtime import Budget, Quota, MeterExceeded
+from agentkit.core.policies import meter
 
 # Per-run ceiling. Enforced by meter() under an async lock.
 budget = Budget(
@@ -416,11 +387,8 @@ if result.stop_reason == "budget_exhausted":
 ## Provider from the environment + model capabilities
 
 ```python
-from agentkit.adapters.llm import (
-    Capability, ModelCapabilities, ModelEntry,
-    model_capabilities, register_model, register_rule, resolve_llm,
-)
-from agentkit.client import from_env
+from agentkit.models import Capability, ModelCapabilities, ModelEntry, model_capabilities, register_model, register_rule, resolve_llm
+from agentkit.models.client.chat import from_env
 
 # Provider picked from the model name; credential read from the env.
 # Raises ProviderNotConfigured if unkeyed — pass fallback="fake" to degrade.
@@ -446,7 +414,7 @@ register_rule(lambda name: "openai" if name.startswith("acme-") else None)
 ## Batteries-included LLM presets
 
 ```python
-from agentkit import claude, openai, deepseek, openrouter
+from agentkit.models.client.chat import claude, openai, deepseek, openrouter
 
 # Each returns a Chat wired with `tracing → meter → retry`.
 async with claude(api_key="sk-...", model="claude-sonnet-4-6") as chat:
@@ -469,10 +437,7 @@ Ollama, or in-house wrapper the same way the presets do.
 
 ```python
 # pip install "arc-agentkit[mcp]"
-from agentkit.integrations.mcp import (
-    MCPClient, StdioServer, StreamableHttpServer,
-    mcp_tools, mcp_resources, mcp_prompts,
-)
+from agentkit.integrations.mcp import MCPClient, StdioServer, StreamableHttpServer, mcp_tools, mcp_resources, mcp_prompts
 
 server = StdioServer(command="uvx", args=("mcp-server-time",))
 # Or: StreamableHttpServer(url="https://mcp.example.com/sse")
@@ -491,10 +456,8 @@ async with MCPClient(server) as mcp:
 
 # The other direction — agentkit AS the MCP server, which is how anything you know
 # reaches the CLI's own loop.
-from agentkit.agents.cognition import ClaudeCliCognition
-from agentkit.integrations.mcp import (
-    ApprovalServer, McpServerSpec, serve_registry, stdio_command,
-)
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
+from agentkit.integrations.mcp import ApprovalServer, McpServerSpec, serve_registry, stdio_command
 
 # Serve a ToolRegistry you already have. Sync: it reserves the port and writes the
 # config, so the spec is complete before anything listens. `async with` starts it.
@@ -535,10 +498,8 @@ for d in ap.decisions:  # one ApprovalDecision per prompt, oldest first
 
 ```python
 from agentkit.agents import RunPolicy
-from agentkit.agents.cognition import ClaudeCliCognition
-from agentkit.integrations.claude_cli import (
-    HookSettings, SkillNotProjectable, as_cli_agents, hook_settings,
-)
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
+from agentkit.models.providers.cli.claude import HookSettings, SkillNotProjectable, as_cli_agents, hook_settings
 
 # The CLI's OWN tools (Write, Edit, Bash, WebFetch) bypass the Invoker, so egress,
 # guard, audit, memoize and Guardrail.check_url do not run. The cognition warns once
@@ -578,8 +539,8 @@ ClaudeCliCognition(agents=as_cli_agents([reviewer_skill, repairer_skill]))
 
 ```python
 from agentkit.agents.control.safety import RunPolicy
-from agentkit.agents.cognition import CodexCliCognition
-from agentkit.integrations.codex_cli import as_codex_mcp
+from agentkit.models.providers.cli.codex import CodexCliCognition
+from agentkit.models.providers.cli.codex import as_codex_mcp
 
 # Capability tags come off the SANDBOX, not a tool table — Codex has no tool
 # allow-list, so what a session can reach is what its sandbox permits.
@@ -610,7 +571,7 @@ async with cognition.session() as chat:
 
 ```python
 from pydantic import BaseModel
-from agentkit import adapt
+from agentkit.models.output import adapt
 
 class Answer(BaseModel):
     summary: str
@@ -646,10 +607,7 @@ async def brief(topic: str) -> Answer:
 
 ```python
 # pip install "arc-agentkit[observability]"
-from agentkit.adapters.observability import (
-    otel_tracer, otel_meter, otel_sampler,
-    otel_exporter_otlp_http, otel_metrics_exporter_otlp_http,
-)
+from agentkit.integrations.observability import otel_tracer, otel_meter, otel_sampler, otel_exporter_otlp_http, otel_metrics_exporter_otlp_http
 
 # At process startup — reads OTEL_EXPORTER_OTLP_ENDPOINT etc. from env.
 otel_exporter_otlp_http()
@@ -668,13 +626,9 @@ services = Services(
 ```python
 # The doubles the framework's own suite uses. NEVER wire these into a
 # real run: they're for your unit tests and any mock adapters you write.
-from agentkit.testing import (
-    FakeLLM, FakeFetch, FakeSearch, FakeMemory, FakeTool, FakeClock,
-    FakeGrounder, FakeCompactor, FakeCtx, RecordingTracer, Turn,
-    FakeClaudeCli, make_test_ctx,
-)
-from agentkit import ToolCall
-from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.core.testing import FakeLLM, FakeFetch, FakeSearch, FakeMemory, FakeTool, FakeClock, FakeGrounder, FakeCompactor, FakeCtx, RecordingTracer, Turn, FakeClaudeCli, make_test_ctx
+from agentkit.core.contracts.types import ToolCall
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 
 # One reply.
 llm = FakeLLM("42")
@@ -705,16 +659,14 @@ cli.invocations     # argv / cwd / env / stdin per spawn, no subprocess patch ne
 # two drives runs them in series. Cancel through ctx.check_cancelled().
 ```
 
-Test doubles live under `agentkit.testing.*` on purpose — a
+Test doubles live under `agentkit.core.testing.*` on purpose — a
 `from agentkit import FakeLLM` shape would let production code
 accidentally pin a fake. The import boundary is the guardrail.
 
 ## Human-in-the-loop (elicit a value, park, deadline)
 
 ```python
-from agentkit.agents.control.elicitation import (
-    Decision, Elicitation, ask_human_tool, elicit,
-)
+from agentkit.agents.control.elicitation import Decision, Elicitation, ask_human_tool, elicit
 
 class MyAsker:                       # terminal / HTTP / queue — runtime doesn't care
     async def ask(self, request: Elicitation) -> Decision:

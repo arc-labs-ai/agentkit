@@ -41,9 +41,10 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
-from agentkit import Agent, Scope
-from agentkit.agents.cognition import ClaudeCliCognition
-from agentkit.runtime import RunContext, Services
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
+from agentkit.core.runtime import RunContext, Services
 
 app = FastAPI()
 
@@ -318,7 +319,7 @@ The CLI's seam is `--permission-prompt-tool`, which names an MCP tool it calls
 instead of prompting a terminal. `ApprovalServer` is that tool:
 
 ```python
-from agentkit.integrations.mcp import ApprovalServer   # needs the `mcp` extra
+from agentkit.integrations.mcp import ApprovalServer
 
 async with ApprovalServer(asker=my_asker, auto_allow=("Read", "Glob"),
                           timeout_s=300) as approvals:

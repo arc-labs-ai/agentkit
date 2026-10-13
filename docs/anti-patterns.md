@@ -105,12 +105,8 @@ family among many and the top-level package is already dense.
 ### Do: `from agentkit.agents.cognition import ReActCognition`
 
 ```python
-from agentkit.agents.cognition import (
-    SingleCallCognition,
-    ReActCognition,
-    CoordinatorCognition,
-    ClaudeCliCognition,
-)
+from agentkit.agents.cognition import SingleCallCognition, ReActCognition, CoordinatorCognition
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 ```
 
 The [cheatsheet](cheatsheet.md#cognition) shows the full menu.
@@ -146,8 +142,8 @@ no-op with a misleading name. Constructing without it raises
 ### Do: pass an `LLMPort` — same shape as the one on your `Invoker`.
 
 ```python
-from agentkit import SummarizationCompactor
-from agentkit.adapters.llm import providers
+from agentkit.state.compaction import SummarizationCompactor
+from agentkit.models.providers import frontiers as providers
 import os
 
 summarizer = providers.claude(api_key=os.environ["ANTHROPIC_API_KEY"],
@@ -180,7 +176,7 @@ If you need first-call blocking too, guard your own precheck before
 
 ### Don't: wire `FakeLLM` / `make_test_ctx` into production code
 
-Test doubles under `agentkit.testing.*` exist for your unit tests and
+Test doubles under `agentkit.core.testing.*` exist for your unit tests and
 any mock adapters you write. They're deliberately not re-exported
 from the top-level `agentkit` package — so a `from agentkit import
 FakeLLM` shape can't accidentally pin a fake into a real request
@@ -190,12 +186,12 @@ path. Wiring them into a production `Invoker` is a real outage story.
 
 ```python
 # claude / openai / deepseek / openrouter presets — batteries-included Chat.
-from agentkit import claude
+from agentkit.models.client.chat import claude
 async with claude(api_key=..., model="claude-sonnet-4-6") as chat:
     result = await chat("hi", system="Answer briefly.")
 
 # Or ClaudeCliCognition for a local CLI with no API key management.
-from agentkit.agents.cognition import ClaudeCliCognition
+from agentkit.models.providers.cli.claude import ClaudeCliCognition
 agent = Agent(name="a", prompt="...", cognition=ClaudeCliCognition(...))
 
 # Or wire your own LLMPort — three methods: stream (an async iterator),
@@ -205,7 +201,7 @@ class MyProviderLLM:
     async def stream(self, req: ChatRequest, ctx: Ctx) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`FakeLLM` and friends stay under `agentkit.testing.*` — a boundary
+`FakeLLM` and friends stay under `agentkit.core.testing.*` — a boundary
 you can grep for.
 
 ---
@@ -304,7 +300,7 @@ so template drift shows up as a version bump in the trace and in
 
 ### Don't: swallow `Cancelled` in a broad `except`
 
-The kernel's `Cancelled` (from `agentkit.kernel.concurrency`) is
+The kernel's `Cancelled` (from `agentkit.core.execution.concurrency`) is
 raised by `ctx.check_cancelled()` when the token has flipped. A
 naive `try: ... except Exception: pass` in a tool or middleware
 turns cooperative cancel into "the tool didn't stop". Every safe
@@ -337,10 +333,8 @@ overspend by the retry factor without the budget noticing.
 ### Do: `tracing → compaction → meter → fallback → retry → memoize`.
 
 ```python
-from agentkit import SlidingWindowCompactor
-from agentkit.middlewares import (
-    tracing, meter, retry, fallback, compaction,
-)
+from agentkit.state.compaction import SlidingWindowCompactor
+from agentkit.core.policies import tracing, meter, retry, fallback, compaction
 
 chat_middleware = [
     tracing(),                                          # outermost — one span across the whole call

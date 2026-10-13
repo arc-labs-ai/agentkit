@@ -66,9 +66,9 @@ def _recover_from_crash() -> bool:
     if not _BACKUP_DIR.exists():
         return False
     # The backup FILENAME is a LOSSY encoding of the path: `_backup_path` maps
-    # "/" to "__", so `agentkit/middlewares/__init__.py` is stored as
+    # "/" to "__", so `agentkit/core/policies/__init__.py` is stored as
     # `agentkit__middlewares____init__.py`, and decoding "__" back to "/" gives
-    # `agentkit/middlewares//init/.py` — a directory that does not exist. Every
+    # `agentkit/core/policies//init/.py` — a directory that does not exist. Every
     # `__init__.py` and `__main__.py` hits it. Recovery then died on the write
     # with `FileNotFoundError`, which is the worst possible moment to fail:
     # every file after it in the sort order stayed MUTATED, and because the
@@ -130,155 +130,155 @@ class Mutant:
 # ── the catalogue ────────────────────────────────────────────────────────────
 
 MONEY_TESTS = (
-    "tests/runtime/test_budget_decimal_and_verdict.py",
-    "tests/meta/test_protocol_conformance.py",
+    "tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",
+    "tests/source/architecture/test_protocol_conformance.py",
 )
-HITL_TESTS = ("tests/agents/test_hitl_elicitation.py",)
-STREAM_TESTS = ("tests/agents/test_stream_partial_output.py",)
-CONCURRENCY_TESTS = ("tests/kernel/test_nested_concurrency.py",)
+HITL_TESTS = ("tests/source/unit/agents/test_hitl_elicitation.py",)
+STREAM_TESTS = ("tests/source/unit/agents/test_stream_partial_output.py",)
+CONCURRENCY_TESTS = ("tests/source/unit/core/test_nested_concurrency.py",)
 SECURITY_TESTS = (
-    "tests/middlewares/test_memoize_scope_isolation.py",
-    "tests/observability/test_observability_cache.py",
+    "tests/source/unit/core/policies/test_memoize_scope_isolation.py",
+    "tests/source/unit/integrations/observability/test_observability_cache.py",
 )
-RESILIENCE_TESTS = ("tests/kernel/test_errors.py",)
-PROVIDER_TESTS = ("tests/adapters/test_provider_stream_errors.py",)
-SLOT_TESTS = ("tests/capabilities/test_checkpoint_slot_isolation.py",)
-STOP_REASON_TESTS = ("tests/agents/test_stop_reason_taxonomy.py",)
+RESILIENCE_TESTS = ("tests/source/unit/core/test_errors.py",)
+PROVIDER_TESTS = ("tests/source/unit/models/adapters/test_provider_stream_errors.py",)
+SLOT_TESTS = ("tests/source/unit/state/checkpoints/test_checkpoint_slot_isolation.py",)
+STOP_REASON_TESTS = ("tests/source/unit/agents/test_stop_reason_taxonomy.py",)
 PLAN_TESTS = (
-    "tests/agents/test_plan_validation.py",
-    "tests/agents/test_plan_policy.py",
+    "tests/source/unit/agents/test_plan_validation.py",
+    "tests/source/unit/agents/test_plan_policy.py",
 )
-AUDIT2_TESTS = ("tests/middlewares/test_audit_records_failures.py",)
-STORELOCK_TESTS = ("tests/adapters/test_stores.py",)
+AUDIT2_TESTS = ("tests/source/unit/core/policies/test_audit_records_failures.py",)
+STORELOCK_TESTS = ("tests/source/unit/state/adapters/test_stores.py",)
 EST_TESTS = (
-    "tests/context/test_context_tokens.py",
-    "tests/capabilities/test_compaction_strategies.py",
+    "tests/source/unit/state/context/test_context_tokens.py",
+    "tests/source/unit/state/compaction/test_compaction_strategies.py",
 )
-OBS_TESTS = ("tests/adapters/test_observer_adapters.py",)
-STORE2_TESTS = ("tests/adapters/test_stores.py",)
-VEC_TESTS = ("tests/adapters/test_vector_adapters.py",)
-PROV_TESTS = ("tests/adapters/test_provider_error_classification.py",)
-SSE_TESTS = ("tests/adapters/test_provider_sse_and_tool_calls.py",)
-MAP_TESTS = ("tests/adapters/test_callable_llm_mapping.py",)
+OBS_TESTS = ("tests/source/unit/integrations/adapters/test_observer_adapters.py",)
+STORE2_TESTS = ("tests/source/unit/state/adapters/test_stores.py",)
+VEC_TESTS = ("tests/source/unit/state/adapters/test_vector_adapters.py",)
+PROV_TESTS = ("tests/source/unit/models/adapters/test_provider_error_classification.py",)
+SSE_TESTS = ("tests/source/unit/models/adapters/test_provider_sse_and_tool_calls.py",)
+MAP_TESTS = ("tests/source/unit/models/adapters/test_callable_llm_mapping.py",)
 TOK_TESTS = (
-    "tests/context/test_context_tokens.py",
-    "tests/capabilities/test_compaction_strategies.py",
+    "tests/source/unit/state/context/test_context_tokens.py",
+    "tests/source/unit/state/compaction/test_compaction_strategies.py",
 )
-MCPHTTP_TESTS = ("tests/integrations/mcp/test_http_transport.py",)
+MCPHTTP_TESTS = ("tests/source/unit/integrations/mcp/test_http_transport.py",)
 SCHEMA2_TESTS = (
-    "tests/capabilities/test_output_schema_dataclass.py",
-    "tests/capabilities/test_output_schema_attrs.py",
-    "tests/capabilities/test_output_schema_pydantic.py",
+    "tests/source/unit/models/output/test_output_schema_dataclass.py",
+    "tests/source/unit/models/output/test_output_schema_attrs.py",
+    "tests/source/unit/models/output/test_output_schema_pydantic.py",
 )
-MW_MEMO_TESTS = ("tests/middlewares/test_memoize_tool_identity.py",)
-MW_METER_TESTS = ("tests/middlewares/test_meter_stream_and_cache.py",)
-MW_SEM_TESTS = ("tests/middlewares/test_semantic_memoize_tool_turns.py",)
-MW_TRACE_TESTS = ("tests/middlewares/test_tracing_records_failures.py",)
-MW_COMPACT_TESTS = ("tests/middlewares/test_compaction_broken_tracer.py",)
-COMPACTION_TESTS = ("tests/capabilities/test_compaction_strategies.py",)
-TOOLCOERCE_TESTS = ("tests/tools/test_tool_argument_coercion.py",)
-MW_AUDIT_TESTS = ("tests/middlewares/test_audit_records_failures.py",)
-STREAMS_TESTS = ("tests/kernel/test_streams.py",)
-BREAKER_TESTS = ("tests/kernel/test_kernel.py",)
-CONC_TESTS = ("tests/kernel/test_concurrency.py",)
-WF_TESTS = ("tests/agents/test_workflow.py",)
-CEILING_TESTS = ("tests/agents/test_ceiling_propagation.py",)
-SURFACE_TESTS = ("tests/meta/test_public_surface.py",)
-PROMPT_TESTS = ("tests/test_prompt_render.py",)
-AGENT_PROMPT_TESTS = ("tests/agents/test_agent_prompt_binding.py",)
-APPROVAL_TESTS = ("tests/integrations/mcp/test_approvals.py",)
-CLI_SESSION_TESTS = ("tests/agents/cognition/test_claude_cli_session.py",)
-CLI_STREAM_TESTS = ("tests/agents/cognition/test_claude_cli_streaming.py",)
-CLI_BUDGET_TESTS = ("tests/agents/cognition/test_claude_cli_budget.py",)
-CLI_SCHEMA_TESTS = ("tests/agents/cognition/test_claude_cli_structured.py",)
-CLI_FLAG_TESTS = ("tests/agents/cognition/test_claude_cli_flags.py",)
-FAKE_CLI_TESTS = ("tests/testing/test_fake_claude_cli.py",)
-CODEX_TESTS = ("tests/agents/cognition/test_codex_cli.py",)
-CODEX_EVENT_TESTS = ("tests/agents/cognition/test_codex_cli_events.py",)
-CODEX_FLAG_TESTS = ("tests/agents/cognition/test_codex_cli_flags.py",)
-CODEX_CAPS_TESTS = ("tests/agents/cognition/test_codex_cli_caps.py",)
-CODEX_SESSION_TESTS = ("tests/agents/cognition/test_codex_cli_session.py",)
-CODEX_BUDGET_TESTS = ("tests/agents/cognition/test_codex_cli_budget.py",)
-CODEX_SCHEMA_TESTS = ("tests/agents/cognition/test_codex_cli_structured.py",)
-FAKE_CODEX_TESTS = ("tests/testing/test_fake_codex_cli.py",)
+MW_MEMO_TESTS = ("tests/source/unit/core/policies/test_memoize_tool_identity.py",)
+MW_METER_TESTS = ("tests/source/unit/core/policies/test_meter_stream_and_cache.py",)
+MW_SEM_TESTS = ("tests/source/unit/core/policies/test_semantic_memoize_tool_turns.py",)
+MW_TRACE_TESTS = ("tests/source/unit/core/policies/test_tracing_records_failures.py",)
+MW_COMPACT_TESTS = ("tests/source/unit/core/policies/test_compaction_broken_tracer.py",)
+COMPACTION_TESTS = ("tests/source/unit/state/compaction/test_compaction_strategies.py",)
+TOOLCOERCE_TESTS = ("tests/source/unit/tools/test_tool_argument_coercion.py",)
+MW_AUDIT_TESTS = ("tests/source/unit/core/policies/test_audit_records_failures.py",)
+STREAMS_TESTS = ("tests/source/unit/core/test_streams.py",)
+BREAKER_TESTS = ("tests/source/unit/core/test_kernel.py",)
+CONC_TESTS = ("tests/source/unit/core/test_concurrency.py",)
+WF_TESTS = ("tests/source/unit/agents/test_workflow.py",)
+CEILING_TESTS = ("tests/source/unit/agents/test_ceiling_propagation.py",)
+SURFACE_TESTS = ("tests/source/architecture/test_public_surface.py",)
+PROMPT_TESTS = ("tests/source/unit/agents/prompts/test_prompt_render.py",)
+AGENT_PROMPT_TESTS = ("tests/source/unit/agents/test_agent_prompt_binding.py",)
+APPROVAL_TESTS = ("tests/source/unit/integrations/mcp/test_approvals.py",)
+CLI_SESSION_TESTS = ("tests/source/unit/models/providers/cli/claude/test_claude_cli_session.py",)
+CLI_STREAM_TESTS = ("tests/source/unit/models/providers/cli/claude/test_claude_cli_streaming.py",)
+CLI_BUDGET_TESTS = ("tests/source/unit/models/providers/cli/claude/test_claude_cli_budget.py",)
+CLI_SCHEMA_TESTS = ("tests/source/unit/models/providers/cli/claude/test_claude_cli_structured.py",)
+CLI_FLAG_TESTS = ("tests/source/unit/models/providers/cli/claude/test_claude_cli_flags.py",)
+FAKE_CLI_TESTS = ("tests/source/unit/core/testing/test_fake_claude_cli.py",)
+CODEX_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli.py",)
+CODEX_EVENT_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli_events.py",)
+CODEX_FLAG_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli_flags.py",)
+CODEX_CAPS_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli_caps.py",)
+CODEX_SESSION_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli_session.py",)
+CODEX_BUDGET_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli_budget.py",)
+CODEX_SCHEMA_TESTS = ("tests/source/unit/models/providers/cli/codex/test_codex_cli_structured.py",)
+FAKE_CODEX_TESTS = ("tests/source/unit/core/testing/test_fake_codex_cli.py",)
 MEM_DEDUPE_TESTS = (
-    "tests/memory/test_composite_memory_dedupe.py",
-    "tests/memory/test_memory_item.py",
+    "tests/source/unit/state/memory/test_composite_memory_dedupe.py",
+    "tests/source/unit/state/memory/test_memory_item.py",
 )
-MEM_VECTOR_TESTS = ("tests/memory/test_vector_memory.py",)
-WORKFLOW_MAP_TESTS = ("tests/agents/test_workflow_map.py",)
-RECURRENCE_TESTS = ("tests/kernel/test_attempt_until_stuck.py",)
-APPROVAL_AUTONOMY_TESTS = ("tests/integrations/mcp/test_approvals.py",)
-READONLY_TESTS = ("tests/memory/test_read_only_memory.py", "tests/memory/test_composite_memory_dedupe.py")
-TOOLDESC_TESTS = ("tests/tools/test_tool_description_resolution.py", "tests/tools/test_function_tool.py")
+MEM_VECTOR_TESTS = ("tests/source/unit/state/memory/test_vector_memory.py",)
+WORKFLOW_MAP_TESTS = ("tests/source/unit/agents/test_workflow_map.py",)
+RECURRENCE_TESTS = ("tests/source/unit/core/test_attempt_until_stuck.py",)
+APPROVAL_AUTONOMY_TESTS = ("tests/source/unit/integrations/mcp/test_approvals.py",)
+READONLY_TESTS = ("tests/source/unit/state/memory/test_read_only_memory.py", "tests/source/unit/state/memory/test_composite_memory_dedupe.py")
+TOOLDESC_TESTS = ("tests/source/unit/tools/test_tool_description_resolution.py", "tests/source/unit/tools/test_function_tool.py")
 CLIAGENT_TESTS = ("tests/integrations/claude_cli/",)
-HOOKS_TESTS = ("tests/integrations/claude_cli/test_hooks.py",)
-APPROVAL_RECORD_TESTS = ("tests/integrations/mcp/test_approvals.py",)
+HOOKS_TESTS = ("tests/source/unit/models/providers/cli/claude/helpers/test_hooks.py",)
+APPROVAL_RECORD_TESTS = ("tests/source/unit/integrations/mcp/test_approvals.py",)
 MCP_AUTH_TESTS = (
-    "tests/integrations/mcp/test_transport_auth.py",
-    "tests/integrations/mcp/test_serve_registry.py",
-    "tests/integrations/mcp/test_approvals.py",
+    "tests/source/unit/integrations/mcp/test_transport_auth.py",
+    "tests/source/unit/integrations/mcp/test_serve_registry.py",
+    "tests/source/unit/integrations/mcp/test_approvals.py",
 )
-GROUNDING_TESTS = ("tests/capabilities/test_request_builder_grounding.py",)
+GROUNDING_TESTS = ("tests/source/unit/agents/requests/test_request_builder_grounding.py",)
 STORE_PRIM_TESTS = (
-    "tests/adapters/test_store_primitives.py",
-    "tests/adapters/test_stores.py",
-    "tests/meta/test_protocol_conformance.py",
+    "tests/source/unit/state/adapters/test_store_primitives.py",
+    "tests/source/unit/state/adapters/test_stores.py",
+    "tests/source/architecture/test_protocol_conformance.py",
 )
-FILETOOL_TESTS = ("tests/tools/test_memory_tool.py",)
+FILETOOL_TESTS = ("tests/source/unit/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
-    "tests/tools/test_tool_call_contract.py",
-    "tests/tools/test_function_tool.py",
+    "tests/source/unit/tools/test_tool_call_contract.py",
+    "tests/source/unit/tools/test_function_tool.py",
 )
-CHANNEL_TESTS = ("tests/agents/test_signal_protocol.py",)
+CHANNEL_TESTS = ("tests/source/unit/agents/test_signal_protocol.py",)
 TERM_TESTS = (
-    "tests/agents/test_termination_isolation.py",
-    "tests/agents/test_termination.py",
+    "tests/source/unit/agents/test_termination_isolation.py",
+    "tests/source/unit/agents/test_termination.py",
 )
 ROUTING_TESTS = (
-    "tests/agents/test_routing_accuracy.py",
-    "tests/agents/test_handoff.py",
+    "tests/source/unit/agents/test_routing_accuracy.py",
+    "tests/source/unit/agents/test_handoff.py",
 )
 PLAN_GATE_TESTS = (
-    "tests/agents/test_plan_durable_gate.py",
-    "tests/agents/test_plan_policy.py",
+    "tests/source/unit/agents/test_plan_durable_gate.py",
+    "tests/source/unit/agents/test_plan_policy.py",
 )
 STORE_TESTS = (
-    "tests/meta/test_protocol_conformance.py",
-    "tests/adapters/test_stores.py",
+    "tests/source/architecture/test_protocol_conformance.py",
+    "tests/source/unit/state/adapters/test_stores.py",
 )
-WORKFLOW_TESTS = ("tests/agents/test_workflow.py",)
+WORKFLOW_TESTS = ("tests/source/unit/agents/test_workflow.py",)
 REGISTRY_TESTS = (
-    "tests/adapters/test_model_registry.py",
-    "tests/agents/test_agent_capability_binding.py",
+    "tests/source/unit/models/adapters/test_model_registry.py",
+    "tests/source/unit/agents/test_agent_capability_binding.py",
 )
 
 MEMOIZE_TESTS = (
-    "tests/middlewares/test_memoize_side_effects.py",
-    "tests/middlewares/test_memoize_chat_key_tool_fields.py",
+    "tests/source/unit/core/policies/test_memoize_side_effects.py",
+    "tests/source/unit/core/policies/test_memoize_chat_key_tool_fields.py",
 )
-SIGNAL_TESTS = ("tests/agents/test_signal_immutability.py",)
-BUS_TESTS = ("tests/runtime/test_event_bus_close_race.py",)
+SIGNAL_TESTS = ("tests/source/unit/agents/test_signal_immutability.py",)
+BUS_TESTS = ("tests/source/unit/core/runtime/test_event_bus_close_race.py",)
 PARSED_TESTS = (
-    "tests/kernel/test_result_to_stream_parity.py",
-    "tests/middlewares/test_memoize_preserves_parsed.py",
+    "tests/source/unit/core/test_result_to_stream_parity.py",
+    "tests/source/unit/core/policies/test_memoize_preserves_parsed.py",
 )
-MAPPING_TESTS = ("tests/adapters/test_callable_llm_mapping.py",)
-PORTS_TESTS = ("tests/kernel/test_value_type_hashability.py",)
-FROZEN_TESTS = ("tests/kernel/test_frozen_payloads.py",)
-FROZENVAL_TESTS = ("tests/kernel/test_frozen_value_payloads.py",)
-FROZENREQ_TESTS = ("tests/kernel/test_frozen_request_payloads.py",)
-KERNELTYPE_TESTS = ("tests/kernel/test_kernel.py",)
-RESULT_TESTS = ("tests/agents/test_agents.py",)
-MEMITEM_TESTS = ("tests/memory/test_memory_item.py",)
-SKILL_TESTS = ("tests/skills/test_skill.py",)
-CTXDIFF_TESTS = ("tests/context/test_context_working.py",)
+MAPPING_TESTS = ("tests/source/unit/models/adapters/test_callable_llm_mapping.py",)
+PORTS_TESTS = ("tests/source/unit/core/test_value_type_hashability.py",)
+FROZEN_TESTS = ("tests/source/unit/core/test_frozen_payloads.py",)
+FROZENVAL_TESTS = ("tests/source/unit/core/test_frozen_value_payloads.py",)
+FROZENREQ_TESTS = ("tests/source/unit/core/test_frozen_request_payloads.py",)
+KERNELTYPE_TESTS = ("tests/source/unit/core/test_kernel.py",)
+RESULT_TESTS = ("tests/source/unit/agents/test_agents.py",)
+MEMITEM_TESTS = ("tests/source/unit/state/memory/test_memory_item.py",)
+SKILL_TESTS = ("tests/source/unit/agents/skills/test_skill.py",)
+CTXDIFF_TESTS = ("tests/source/unit/state/context/test_context_working.py",)
 VALUETYPE_TESTS = (
-    "tests/kernel/test_kernel.py",
-    "tests/context/test_context_working.py",
-    "tests/meta/test_value_type_invariants.py",
+    "tests/source/unit/core/test_kernel.py",
+    "tests/source/unit/state/context/test_context_working.py",
+    "tests/source/architecture/test_value_type_invariants.py",
 )
-REPLAY_TESTS = ("tests/adapters/test_replay_file.py",)
+REPLAY_TESTS = ("tests/source/unit/state/adapters/test_replay_file.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
     Mutant(
@@ -292,7 +292,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="frozen",
         why="deep_freeze goes shallow, so cp.state['a']['b'] = 1 rewrites a durable record again",
-        path="agentkit/kernel/_frozen.py",
+        path="agentkit/core/serialization/_immutable.py",
         before="    if isinstance(value, dict):\n        return FrozenDict({k: deep_freeze(v) for k, v in value.items()})",
         after="    if isinstance(value, dict):\n        return FrozenDict(value)",
         tests=FROZEN_TESTS,
@@ -300,7 +300,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="frozen",
         why="FrozenDict loses __reduce__, so deepcopy and pickle break at the checkpoint seam",
-        path="agentkit/kernel/_frozen.py",
+        path="agentkit/core/serialization/_immutable.py",
         before="        return (FrozenDict, (dict(self),))",
         after="        return (dict, (dict(self),))",
         tests=FROZEN_TESTS,
@@ -308,7 +308,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="frozen",
         why="deep_freeze stops copying, so the caller keeps a live handle on what they handed over",
-        path="agentkit/kernel/_frozen.py",
+        path="agentkit/core/serialization/_immutable.py",
         before="    if isinstance(value, list):\n        return FrozenList([deep_freeze(v) for v in value])",
         after="    if isinstance(value, list):\n        return FrozenList(value)",
         tests=FROZEN_TESTS,
@@ -316,7 +316,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="frozen",
         why="Checkpoint.state stops being frozen, so a persisted record is rewritable in memory",
-        path="agentkit/kernel/ports.py",
+        path="agentkit/core/contracts/ports.py",
         before='        object.__setattr__(self, "state", deep_freeze(self.state))',
         after="        pass",
         tests=FROZENVAL_TESTS,
@@ -324,7 +324,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="AgentResult hashes free-form evals, so the framework's most-returned type breaks again",
-        path="agentkit/agents/result.py",
+        path="agentkit/agents/definitions/results.py",
         before="        return hash((self.output, self.usage, self.partial, self.prompt_version, self.stop_reason))",
         after="        return hash((self.output, self.usage, self.partial, str(self.evals)))",
         tests=RESULT_TESTS,
@@ -332,7 +332,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="WorkflowResult keys on insertion ORDER, so two equal results hash differently",
-        path="agentkit/agents/result.py",
+        path="agentkit/agents/definitions/results.py",
         before="        return hash((frozenset(self.outputs), self.usage, self.steps, self.stop_reason))",
         after="        return hash((tuple(self.outputs), self.usage, self.steps, self.stop_reason))",
         tests=RESULT_TESTS,
@@ -340,7 +340,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="MemoryItem folds backend metadata into identity, so one passage lands in two buckets",
-        path="agentkit/memory/base.py",
+        path="agentkit/state/memory/base.py",
         before="        return hash((self.content, self.source, self.score))",
         after="        return hash((self.content, self.source, self.score, str(self.metadata)))",
         tests=MEMITEM_TESTS,
@@ -348,7 +348,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="Skill hashes its cognition, which is a mutable dataclass with __hash__ = None",
-        path="agentkit/skills/skill.py",
+        path="agentkit/agents/skills/skill.py",
         before="        return hash((self.name, self.description, self.prompt, self.model))",
         after="        return hash((self.name, self.description, self.prompt, self.model, self.cognition))",
         tests=SKILL_TESTS,
@@ -356,7 +356,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="ContextDiff keys on insertion ORDER, breaking the hash invariant for equal diffs",
-        path="agentkit/context/context.py",
+        path="agentkit/state/context/context.py",
         before="                frozenset(self.scratchpad_changes),",
         after="                tuple(self.scratchpad_changes),",
         tests=CTXDIFF_TESTS,
@@ -364,7 +364,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="Checkpoint hashes its mutable state, so a durable record is unhashable again",
-        path="agentkit/kernel/ports.py",
+        path="agentkit/core/contracts/ports.py",
         before="        return hash((self.run_id, self.version))",
         after="        return hash((self.run_id, self.version, tuple(self.state)))",
         tests=PORTS_TESTS,
@@ -372,7 +372,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="SearchHit folds query-dependent score into identity, so one document lands in two buckets",
-        path="agentkit/kernel/ports.py",
+        path="agentkit/core/contracts/ports.py",
         before="        return hash((self.url, self.title))",
         after="        return hash((self.url, self.title, self.score))",
         tests=PORTS_TESTS,
@@ -380,7 +380,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="FetchResponse hashes the body, making hash O(page size) on every set insert",
-        path="agentkit/kernel/ports.py",
+        path="agentkit/core/contracts/ports.py",
         before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
         after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
         tests=PORTS_TESTS,
@@ -388,7 +388,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="Observation hashes its payload, so it is unhashable the moment it carries a dict",
-        path="agentkit/kernel/observation.py",
+        path="agentkit/core/telemetry/observation.py",
         before="        return hash((self.run_id, self.agent, self.kind))",
         after="        return hash((self.run_id, self.agent, self.kind, self.payload))",
         tests=PORTS_TESTS,
@@ -396,7 +396,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="ToolSchema hashes the JSON Schema body, so every non-empty schema is unhashable",
-        path="agentkit/kernel/types.py",
+        path="agentkit/core/contracts/types.py",
         before="        return hash((self.name, self.description))",
         after="        return hash((self.name, self.description, str(self.parameters)))",
         tests=KERNELTYPE_TESTS,
@@ -404,7 +404,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="ChatRequest hashes the whole transcript, making the hash O(turns) in an agent loop",
-        path="agentkit/kernel/types.py",
+        path="agentkit/core/contracts/types.py",
         before="        return hash((self.model, self.temperature, self.max_tokens, len(self.messages)))",
         after="        return hash((self.model, self.temperature, self.max_tokens, tuple(self.messages)))",
         tests=KERNELTYPE_TESTS,
@@ -412,7 +412,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hashable",
         why="ToolRequest hashes its decoded-JSON arguments, so a nested payload is unhashable",
-        path="agentkit/kernel/types.py",
+        path="agentkit/core/contracts/types.py",
         before="        return hash((self.name, self.side_effecting, self.url_arg))",
         after="        return hash((self.name, self.side_effecting, self.url_arg, str(self.arguments)))",
         tests=KERNELTYPE_TESTS,
@@ -420,7 +420,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="valuetype",
         why="ToolCall is unhashable again, so union merge dies on every tool-using agent",
-        path="agentkit/kernel/types.py",
+        path="agentkit/core/contracts/types.py",
         before="        return hash((self.id, self.name))",
         after="        return hash(self.arguments)",
         tests=VALUETYPE_TESTS,
@@ -428,7 +428,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="valuetype",
         why="ToolCall.arguments stops being frozen, so a tool call's payload is editable again",
-        path="agentkit/kernel/types.py",
+        path="agentkit/core/contracts/types.py",
         before=(
             '        object.__setattr__(self, "arguments", deep_freeze(self.arguments))\n\n'
             "    def __hash__(self) -> int:\n"
@@ -444,7 +444,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="valuetype",
         why="scratchpad VALUES re-enter the FrozenContext hash, breaking its memoization-key promise",
-        path="agentkit/context/context.py",
+        path="agentkit/state/context/context.py",
         before="        return hash((self.prefix, self.messages, tuple(k for k, _ in self.scratchpad)))",
         after="        return hash((self.prefix, self.messages, self.scratchpad))",
         tests=VALUETYPE_TESTS,
@@ -452,7 +452,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="parsed",
         why="a replayed/cached chat result loses its typed object again",
-        path="agentkit/kernel/middleware.py",
+        path="agentkit/core/contracts/middleware.py",
         before='            parsed=getattr(result, "parsed", None),',
         after="",
         tests=PARSED_TESTS,
@@ -460,7 +460,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="parsed",
         why="CallableLLM.stream drops parsed, so chat() and stream() disagree on the same call",
-        path="agentkit/adapters/llm/_mapping.py",
+        path="agentkit/models/adapters/_mapping.py",
         before="        parsed=res.parsed,\n",
         after="",
         tests=MAPPING_TESTS,
@@ -468,7 +468,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="bus",
         why="`closed` goes back to being dead state, so a mid-attach subscriber hangs forever",
-        path="agentkit/runtime/event_bus.py",
+        path="agentkit/core/events/bus.py",
         before="            attached = not channel.closed",
         after="            attached = True",
         tests=BUS_TESTS,
@@ -476,7 +476,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="bus",
         why="a late subscriber manufactures a live channel for a closed id and waits on a sentinel nobody sends",
-        path="agentkit/runtime/event_bus.py",
+        path="agentkit/core/events/bus.py",
         before="            if not reopen and stream_id in self._closed_ids:",
         after="            if False:",
         tests=BUS_TESTS,
@@ -484,7 +484,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="bus",
         why="publish stops reopening, so a legitimately reused stream id is poisoned forever",
-        path="agentkit/runtime/event_bus.py",
+        path="agentkit/core/events/bus.py",
         before="            self._forget_closed(stream_id)",
         after="            pass",
         tests=BUS_TESTS,
@@ -492,7 +492,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="bus",
         why="the closed-id set stops mirroring the deque's eviction, so it grows without bound",
-        path="agentkit/runtime/event_bus.py",
+        path="agentkit/core/events/bus.py",
         before="            self._closed_ids.discard(self._closed_order[0])",
         after="            pass",
         tests=BUS_TESTS,
@@ -500,7 +500,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="bus",
         why="re-closing one id in a loop evicts every other tombstone behind it",
-        path="agentkit/runtime/event_bus.py",
+        path="agentkit/core/events/bus.py",
         before="        if self._closed_capacity == 0 or stream_id in self._closed_ids:",
         after="        if self._closed_capacity == 0:",
         tests=BUS_TESTS,
@@ -540,7 +540,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="replay",
         why="a wrong-shape JSON document escapes get() as a TypeError instead of reading as a miss",
-        path="agentkit/adapters/replay/file.py",
+        path="agentkit/state/replay/file.py",
         before="            self._failed_reads += 1\n            self._warn_once(\n                \"decode-failed\",",
         after="            raise",
         tests=REPLAY_TESTS,
@@ -548,7 +548,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="replay",
         why="a failed rename leaves one orphaned .tmp per call in the operator's data directory",
-        path="agentkit/adapters/replay/file.py",
+        path="agentkit/state/replay/file.py",
         before="            tmp_path.unlink(missing_ok=True)\n            raise",
         after="            raise",
         tests=REPLAY_TESTS,
@@ -556,7 +556,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="an unbound prompt stops being refused at construction and dies mid-run instead",
-        path="agentkit/agents/agent.py",
+        path="agentkit/agents/execution/agent.py",
         before="        self.check_prompt()",
         after="        pass",
         tests=AGENT_PROMPT_TESTS,
@@ -564,7 +564,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="check_prompt reports every declared input instead of only the unbound ones",
-        path="agentkit/agents/agent.py",
+        path="agentkit/agents/execution/agent.py",
         before="        missing = sorted(set(p.inputs) - set(p.bound))",
         after="        missing = sorted(p.inputs)",
         tests=AGENT_PROMPT_TESTS,
@@ -572,7 +572,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="memoize() caches a SIDE-EFFECTING tool again — the second send_email is faked",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before="        return allow_side_effects or not _side_effecting(call)",
         after="        return True",
         tests=MEMOIZE_TESTS,
@@ -580,7 +580,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="_side_effecting reads only the REQUEST flag, missing every positionally-built ToolRequest",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before='    return bool(getattr(getattr(r, "tool", None), "side_effecting", False))',
         after="    return False",
         tests=MEMOIZE_TESTS,
@@ -588,7 +588,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="idempotent() loses its opt-in, so an at-least-once retry re-fires the mutation",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before="    return memoize(key=key, store=store, when=_side_effecting, allow_side_effects=True)",
         after="    return memoize(key=key, store=store, when=_side_effecting)",
         tests=MEMOIZE_TESTS,
@@ -596,7 +596,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="the chat key drops tool_calls, so two ReAct branches are served each other's answer",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before="def _message_identity(m: Any) -> dict[str, Any]:",
         after='def _message_identity(m: Any) -> dict[str, Any]:\n    return {"role": m.role, "content": m.content}',
         tests=MEMOIZE_TESTS,
@@ -604,7 +604,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="Prompt stops being hashable, breaking every dict/set/lru_cache holding one",
-        path="agentkit/prompts/prompt.py",
+        path="agentkit/agents/prompts/prompt.py",
         before="        return hash((self.id, self.version, self.template, self.inputs))",
         after="        return hash(self.bound)",
         tests=PROMPT_TESTS,
@@ -612,7 +612,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="Prompt.bound stops being frozen, so a caller edits a bound prompt after the fact",
-        path="agentkit/prompts/prompt.py",
+        path="agentkit/agents/prompts/prompt.py",
         before="        frozen = deep_freeze(dict(self.bound))",
         after="        frozen = dict(self.bound)",
         tests=PROMPT_TESTS,
@@ -628,7 +628,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="the retry backoff becomes dead code again, turning retries into a hot loop",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="            await asleep(backoff_delay(attempt, rng=rng))",
         after="            pass",
         tests=BREAKER_TESTS,
@@ -636,7 +636,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="release_probe stops restarting the cooldown, so the breaker never brakes",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="            self.state = \"open\"\n            self._opened_at = self.clock()",
         after="            self.state = \"open\"",
         tests=BREAKER_TESTS,
@@ -644,7 +644,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="regress",
         why="a refused call loses the failure that opened the breaker",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="                last if last is not None else breaker.last_error",
         after="                last",
         tests=BREAKER_TESTS,
@@ -652,17 +652,17 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="schema",
         why="tuple containers fall through unremapped, so nested models keep the wrong alias",
-        path="agentkit/capabilities/output_schema/pydantic_adapter.py",
-        before="        dumped, (list, tuple)",
-        after="        dumped, (list,)",
+        path="agentkit/models/output/pydantic_adapter.py",
+        before='and isinstance(dumped, (list, tuple)):',
+        after='and isinstance(dumped, (list,)):',
         tests=SCHEMA2_TESTS,
     ),
     Mutant(
         tag="schema",
         why="the walk stops recursing, fixing only the top level of a nested model",
-        path="agentkit/capabilities/output_schema/pydantic_adapter.py",
-        before="            rename.get(k, k): _to_validation_keys(children.get(k), v) for k, v in dumped.items()",
-        after="            rename.get(k, k): v for k, v in dumped.items()",
+        path="agentkit/models/output/pydantic_adapter.py",
+        before='return {rename.get(k, k): _to_validation_keys(children.get(k), v) for k, v in dumped.items()}',
+        after='return {rename.get(k, k): v for k, v in dumped.items()}',
         tests=SCHEMA2_TESTS,
     ),
     Mutant(
@@ -685,7 +685,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="deferred",
         why="a caller's summariser raising takes down the run it was observing",
-        path="agentkit/adapters/observer/cadence.py",
+        path="agentkit/integrations/observers/cadence.py",
         before="            except Exception as exc:  # noqa: BLE001 — see above",
         after="            except _NeverRaisedByAnything as exc:",
         tests=OBS_TESTS,
@@ -693,7 +693,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="deferred",
         why="the containment widens to BaseException, so a summariser can ignore cancellation",
-        path="agentkit/adapters/observer/cadence.py",
+        path="agentkit/integrations/observers/cadence.py",
         before="            except Exception as exc:  # noqa: BLE001 — see above",
         after="            except BaseException as exc:",
         tests=OBS_TESTS,
@@ -701,7 +701,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="deferred",
         why="dropped batches are not counted, so a partial rollup looks complete",
-        path="agentkit/adapters/observer/cadence.py",
+        path="agentkit/integrations/observers/cadence.py",
         before="                self._dropped += len(buf)",
         after="                pass",
         tests=OBS_TESTS,
@@ -709,7 +709,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="deferred",
         why="a state transition stops taking the lock, so two threads can both be the probe",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="        with self._lock:\n            if exc is not None:",
         after="        if True:\n            if exc is not None:",
         tests=BREAKER_TESTS,
@@ -717,7 +717,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="deferred",
         why="the lock leaks into equality, so two identical breakers compare unequal",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="default_factory=threading.Lock, repr=False, compare=False",
         after="default_factory=threading.Lock, repr=False, compare=True",
         tests=BREAKER_TESTS,
@@ -725,7 +725,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="deferred",
         why="a started wave is abandoned mid-flight, dropping siblings",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                if steps >= self.max_steps:",
         after="                if steps >= self.max_steps or len(ready) > 1:",
         tests=WF_TESTS,
@@ -734,7 +734,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="leftover",
         why="the lock table stops reclaiming, leaking one lock per key ever touched",
-        path="agentkit/adapters/store/_keylock.py",
+        path="agentkit/state/stores/_keylock.py",
         before="        if entry.users == 0 and table.get(key) is entry:",
         after="        if False:",
         tests=STORELOCK_TESTS,
@@ -756,7 +756,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="leftover",
         why="an audit record covering three charges reads exactly like one covering one",
-        path="agentkit/middlewares/resilience.py",
+        path="agentkit/core/policies/resilience.py",
         before='            call.meta["attempts"] = attempt',
         after="            pass",
         tests=AUDIT2_TESTS,
@@ -764,7 +764,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="leftover",
         why="the request-builder pre-check drifts from the compactor again",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="    return estimate_message_tokens(messages)",
         after='    return sum(len(m.content or "") for m in messages) // 4',
         tests=EST_TESTS,
@@ -773,7 +773,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="obs",
         why="the queue bound counts lifetime emissions again, dropping 8 of 12 with an idle queue",
-        path="agentkit/adapters/observer/sinks.py",
+        path="agentkit/integrations/observers/sinks.py",
         before="            if item.kind not in CRITICAL_KINDS:\n                self._noncritical -= 1",
         after="            if False:\n                self._noncritical -= 1",
         tests=OBS_TESTS,
@@ -781,7 +781,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="obs",
         why="the rollup buffer is read after the await again, raising IndexError into emit()",
-        path="agentkit/adapters/observer/cadence.py",
+        path="agentkit/integrations/observers/cadence.py",
         before="        buf, self._buf = self._buf, []",
         after="        buf = self._buf",
         tests=OBS_TESTS,
@@ -789,7 +789,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="obs",
         why="close() stops forwarding, so a wrapped rollup loses its trailing summary",
-        path="agentkit/adapters/observer/hooks.py",
+        path="agentkit/integrations/observers/hooks.py",
         before="    async def close(self) -> None:",
         after="    async def _disabled_close(self) -> None:",
         tests=OBS_TESTS,
@@ -797,7 +797,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="store",
         why="a cached None reads as a miss, so a null-returning producer re-runs every call",
-        path="agentkit/adapters/store/redis.py",
+        path="agentkit/state/stores/redis.py",
         # Target ``_lookup`` itself, not either ``is not _MISS`` guard: there
         # are two of those (a fast path outside the lock and the decision
         # inside it), so breaking one alone is EQUIVALENT — the other still
@@ -810,7 +810,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="vec",
         why="a repeated id inside one upsert is appended twice, breaking upsert-by-id",
-        path="agentkit/adapters/vector/in_memory.py",
+        path="agentkit/state/vectors/in_memory.py",
         before="        bucket.extend((ch, _vec(ch.text)) for ch in incoming.values())",
         after="        bucket.extend((ch, _vec(ch.text)) for ch in chunks)",
         tests=VEC_TESTS,
@@ -819,7 +819,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prov",
         why="the permanent-429 message carries a transient marker again, so classify says retry",
-        path="agentkit/adapters/llm/providers/base.py",
+        path="agentkit/models/providers/frontiers/base.py",
         before="def _permanent_message(",
         after="def _unused_permanent_message(",
         tests=PROV_TESTS,
@@ -827,7 +827,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prov",
         why="the error body is truncated BEFORE parsing, losing error.type on a long body",
-        path="agentkit/adapters/llm/providers/base.py",
+        path="agentkit/models/providers/frontiers/base.py",
         before="def _error_type(",
         after="def _unused_error_type(",
         tests=PROV_TESTS,
@@ -835,7 +835,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prov",
         why="a dict-shaped provider response coerces to an empty result again",
-        path="agentkit/adapters/llm/_mapping.py",
+        path="agentkit/models/adapters/_mapping.py",
         before="def _first_int(",
         after="def _unused_first_int(",
         tests=MAP_TESTS,
@@ -843,7 +843,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prov",
         why="multi-line SSE data frames are dropped whole and silently",
-        path="agentkit/adapters/llm/providers/base.py",
+        path="agentkit/models/providers/frontiers/base.py",
         before="def _sse_decode(",
         after="def _unused_sse_decode(",
         tests=SSE_TESTS,
@@ -852,7 +852,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tokens",
         why="tool calls stop counting, so compaction never fires on an agentic transcript",
-        path="agentkit/context/tokens.py",
+        path="agentkit/state/context/tokens.py",
         before="def estimate_message_tokens(",
         after="def _unused_estimate_message_tokens(",
         tests=TOK_TESTS,
@@ -860,7 +860,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="schema",
         why="an init=False dataclass field crashes with a raw TypeError again",
-        path="agentkit/capabilities/output_schema/dataclass_adapter.py",
+        path="agentkit/models/output/dataclass_adapter.py",
         before="def _coerce_dataclass(",
         after="def _unused_coerce_dataclass(",
         tests=SCHEMA2_TESTS,
@@ -868,7 +868,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="schema",
         why="serialize emits the SERIALIZATION alias, which parse cannot read",
-        path="agentkit/capabilities/output_schema/pydantic_adapter.py",
+        path="agentkit/models/output/pydantic_adapter.py",
         before="        return cast(dict[str, Any], _to_validation_keys(value, dumped))",
         after="        return dumped",
         tests=SCHEMA2_TESTS,
@@ -877,7 +877,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="tool calls share one memo key again, so every tool returns the first one's result",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before="    if _is_tool_call(call):",
         after="    if False:",
         tests=MW_MEMO_TESTS,
@@ -885,7 +885,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="an abandoned stream escapes the meter, so real tokens are billed unseen",
-        path="agentkit/middlewares/meter.py",
+        path="agentkit/core/policies/meter.py",
         before="        except BaseException:",
         after="        except _NeverRaisedByAnything:",
         tests=MW_METER_TESTS,
@@ -893,7 +893,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="a cache hit is charged again, tripping a ceiling on money never spent",
-        path="agentkit/middlewares/meter.py",
+        path="agentkit/core/policies/meter.py",
         before='        if ctx.call.meta.get("cache_hit"):',
         after="        if False:",
         tests=MW_METER_TESTS,
@@ -901,7 +901,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="a tool-call turn poisons the semantic cache, so the loop returns an empty answer",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before='        if content and not getattr(result, "tool_calls", None):',
         after="        if content is not None:",
         tests=MW_SEM_TESTS,
@@ -909,7 +909,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="a failed call is exported as a successful span, hiding provider errors",
-        path="agentkit/middlewares/tracing.py",
+        path="agentkit/core/policies/tracing.py",
         before="            stack.__exit__(type(exc), exc, exc.__traceback__)",
         after="            stack.close()",
         tests=MW_TRACE_TESTS,
@@ -917,7 +917,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="a misbehaving tracer kills the run from the compaction seam",
-        path="agentkit/middlewares/compaction.py",
+        path="agentkit/core/policies/compaction.py",
         before="with _safe_trace_span(",
         after="with _unsafe_trace_span(",
         tests=MW_COMPACT_TESTS,
@@ -925,7 +925,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="mw",
         why="a failed side effect leaves no audit record at all",
-        path="agentkit/middlewares/egress_audit.py",
+        path="agentkit/core/policies/egress_audit.py",
         before="    async def on_error(",
         after="    async def _disabled_on_error(",
         tests=MW_AUDIT_TESTS,
@@ -934,7 +934,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="merge",
         why="a raising source posts the DONE frame again, truncating the fan-in in silence",
-        path="agentkit/kernel/streams.py",
+        path="agentkit/core/execution/streams.py",
         before="            elif error is not None:",
         after="            elif False:",
         tests=STREAMS_TESTS,
@@ -942,7 +942,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="merge",
         why="the error is dropped instead of transported, so gather() discards it",
-        path="agentkit/kernel/streams.py",
+        path="agentkit/core/execution/streams.py",
         before="            error = exc",
         after="            error = None",
         tests=STREAMS_TESTS,
@@ -950,7 +950,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="breaker",
         why="a permanent probe failure wedges the breaker in half_open forever",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="    def release_probe(self) -> None:",
         after="    def release_probe(self) -> None:\n        return",
         tests=BREAKER_TESTS,
@@ -958,7 +958,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="breaker",
         why="a lost probe is never presumed lost, so a silent caller wedges the gate",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="            if now - self._probe_started_at >= self.cooldown:",
         after="            if False:",
         tests=BREAKER_TESTS,
@@ -966,7 +966,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="breaker",
         why="the neutral release grants health credit, treating a 401 as a recovery",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before=(
             '                return  # nothing in flight'
             ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
@@ -981,7 +981,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="breaker",
         why="backoff overflows on a large attempt number instead of saturating",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before="min(attempt - 1, 1023)",
         after="attempt - 1",
         tests=BREAKER_TESTS,
@@ -989,7 +989,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="conc",
         why="an abort leaves its siblings running detached, still spending",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before=(
             "        for t in tasks:\n            t.cancel()\n"
             "        if tasks:\n"
@@ -1002,7 +1002,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="max_steps is checked after the wave again, so a self-route loops forever",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                if steps >= self.max_steps:",
         after="                if steps >= self.max_steps and pending and steps:",
         tests=WF_TESTS,
@@ -1010,7 +1010,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="routes read `done` again, so a second route from a self-routing node KeyErrors",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                        if when(wave_outputs[node.name]):",
         after="                        if when(done[node.name]):",
         tests=WF_TESTS,
@@ -1018,7 +1018,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="a tool node drops the tool's url_arg, so egress() never sees a URL to check",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before='        url_arg = url_arg if url_arg is not None else getattr(tool, "url_arg", None)',
         after="        url_arg = url_arg",
         tests=WF_TESTS,
@@ -1026,7 +1026,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="a node can downgrade a side-effecting tool, so a mutation skips the approval gate",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before='        side_effecting = side_effecting or bool(getattr(tool, "side_effecting", False))',
         after=(
             "        side_effecting = side_effecting if side_effecting else "
@@ -1053,7 +1053,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="ceiling",
         why="a genuine multi-failure fan-out is unwrapped, hiding every failure but one",
-        path="agentkit/agents/_agent_helpers.py",
+        path="agentkit/agents/execution/_helpers.py",
         before="        if isinstance(exc, _ceiling_errors()):\n            return exc",
         after="        return exc",
         tests=CEILING_TESTS,
@@ -1062,22 +1062,22 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="surface",
         why="a submodule shadows an exported callable again (the bug, reintroduced)",
-        path="agentkit/middlewares/__init__.py",
+        path="agentkit/core/policies/__init__.py",
         # Mutating the RATCHET to disable its own assertion would prove nothing
         # — a test cannot vouch for itself. This re-creates the defect in the
         # SOURCE instead: bind an exported name to a module, exactly as the
         # ``security.py`` submodule import did, and check the ratchet fails.
-        before="from agentkit.middlewares.tracing import tracing",
+        before="from agentkit.core.policies.tracing import tracing",
         after=(
-            "from agentkit.middlewares import egress_audit as security\n"
-            "from agentkit.middlewares.tracing import tracing"
+            "from agentkit.core.policies import egress_audit as security\n"
+            "from agentkit.core.policies.tracing import tracing"
         ),
         tests=SURFACE_TESTS,
     ),
     Mutant(
         tag="prompt",
         why="declared inputs are ignored, so placeholders ship to the model verbatim",
-        path="agentkit/prompts/prompt.py",
+        path="agentkit/agents/prompts/prompt.py",
         before='            text = text.replace("{" + name + "}", str(resolved[name]))',
         after="            pass",
         tests=PROMPT_TESTS,
@@ -1085,7 +1085,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prompt",
         why="a missing input renders a half-filled prompt instead of refusing",
-        path="agentkit/prompts/prompt.py",
+        path="agentkit/agents/prompts/prompt.py",
         before="        if missing or unexpected:",
         after="        if False:",
         tests=PROMPT_TESTS,
@@ -1093,7 +1093,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prompt",
         why="str.format is used, so a JSON Schema in a template raises or is eaten",
-        path="agentkit/prompts/prompt.py",
+        path="agentkit/agents/prompts/prompt.py",
         before="        text = self.template\n        for name in self.inputs:",
         after=(
             "        return self.template.format(**values).strip()\n"
@@ -1105,7 +1105,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="prompt",
         why="values passed to an input-less prompt are silently ignored",
-        path="agentkit/prompts/prompt.py",
+        path="agentkit/agents/prompts/prompt.py",
         before='            self._reject_undeclared(values, verb="passed to render()")',
         after="            pass",
         tests=PROMPT_TESTS,
@@ -1114,7 +1114,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="a control_response is folded into the turn, putting protocol JSON in the answer",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='                    if payload.get("type") == "control_response":',
         after="                    if False:",
         tests=CLI_SESSION_TESTS,
@@ -1122,7 +1122,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="an interrupted turn reports the CLI's ambiguous error subtype instead",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='                state.stop_reason = "interrupted"',
         after="                pass",
         tests=CLI_SESSION_TESTS,
@@ -1130,10 +1130,10 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="an interrupt is categorised as a failure rather than a deliberate stop",
-        path="agentkit/agents/result.py",
+        path="agentkit/agents/definitions/results.py",
         before='    "interrupted": "terminated",',
         after='    "interrupted": "failed",',
-        tests=("tests/agents/test_stop_reason_taxonomy.py",),
+        tests=("tests/source/unit/agents/test_stop_reason_taxonomy.py",),
     ),
     # ── the offline CLI double, and the two bugs it surfaced ────────────────
     Mutant(
@@ -1141,7 +1141,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="Ctrl-C during a CLI run is swallowed into a tidy successful-looking "
         "terminal event instead of propagating — which also hides a test double's "
         "ScriptExhausted, the one exception that must never be caught",
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         before="    if fatal_exc is not None and not isinstance(fatal_exc, Exception):",
         after="    if fatal_exc is not None and isinstance(fatal_exc, Exception):",
         tests=FAKE_CLI_TESTS,
@@ -1151,7 +1151,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="the SESSION half of the re-raise is a separate line in a separate method; "
         "deleting it leaves Ctrl-C during a session turn swallowed, and exactly one "
         "test in the suite notices",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="""            yield StreamEvent("final", usage=state.usage, result=result)
             if should_reraise_cancel:
                 raise asyncio.CancelledError()
@@ -1166,7 +1166,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="json.loads on bytes sniffs a BOM, so a non-UTF-8 diagnostic line raises "
         "UnicodeDecodeError rather than JSONDecodeError; narrowing the catch lets one "
         "bad byte abort the run and bill the completed work at $0.00",
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         before="    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError",
         after="    except json.JSONDecodeError:",
         tests=FAKE_CLI_TESTS,
@@ -1175,7 +1175,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="fakecli",
         why="a replayed process that reports its exit code before wait() makes every "
         "persistent session look dead from turn two",
-        path="agentkit/testing/fakes/_cli_replay.py",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
         before="        return self._invocation.returncode\n\n    async def wait(self) -> int:",
         after="        return self._run.returncode\n\n    async def wait(self) -> int:",
         tests=FAKE_CLI_TESTS,
@@ -1185,7 +1185,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="dropping the newline-less fragment at EOF silently loses a recording's "
         "final result payload — cost, usage and session id vanish while the run still "
         "reports partial=False",
-        path="agentkit/testing/fakes/_cli_replay.py",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
         before="            yield blob[start:]\n            return",
         after="            return",
         tests=FAKE_CLI_TESTS,
@@ -1195,7 +1195,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="sorting the queued stderr chunks as whole tuples lets a tie on the stdout "
         "position fall through to comparing BYTES, so a multi-write traceback is "
         "reassembled in alphabetical order",
-        path="agentkit/testing/fakes/_cli_replay.py",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
         before="sorted(run.interleaved_stderr, key=lambda pair: pair[0])",
         after="sorted(run.interleaved_stderr)",
         tests=FAKE_CLI_TESTS,
@@ -1205,7 +1205,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a double whose terminate() does not stop the child still reports "
         "stop_reason='cancelled', because cancellation outranks the exit code — so a "
         "leaked subprocess is invisible from the result alone",
-        path="agentkit/testing/fakes/_cli_replay.py",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
         before="        self._invocation.terminated = True",
         after="        self._invocation.terminated = False",
         tests=FAKE_CLI_TESTS,
@@ -1213,7 +1213,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="interrupting an idle session sends a request nobody will ever answer",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if proc is None or proc.returncode is not None or not self._turn_active:",
         after="        if proc is None or proc.returncode is not None:",
         tests=CLI_SESSION_TESTS,
@@ -1221,7 +1221,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="a turn that ends first strands the interrupt waiter forever",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='                self._fail_pending("the turn ended before the CLI answered")',
         after="                pass",
         tests=CLI_SESSION_TESTS,
@@ -1229,7 +1229,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="cancel_queued is sent to a CLI that does not support it, and silently ignored",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='            if not self.supports("interrupt_cancel_queued_v1"):',
         after="            if False:",
         tests=CLI_SESSION_TESTS,
@@ -1237,7 +1237,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="cancel_queued uses the plain interrupt subtype, so queued work still runs",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='            subtype = "interrupt_cancel_queued"',
         after='            subtype = "interrupt"',
         tests=CLI_SESSION_TESTS,
@@ -1245,7 +1245,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="capabilities land only at the terminal event, too late to feature-detect against",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="                        if delta.init:\n                            self._absorb_init(delta.init)",
         after="                        pass",
         tests=CLI_SESSION_TESTS,
@@ -1253,7 +1253,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="an inline interrupt hangs the application instead of degrading",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="                payload = await asyncio.wait_for(future, timeout=ack_timeout_s)",
         after="                payload = await future",
         tests=CLI_SESSION_TESTS,
@@ -1261,7 +1261,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliinterrupt",
         why="the interrupt flag is set only after the ack, which the turn may end before",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        self._interrupted = True\n        try:",
         after="        try:",
         tests=CLI_SESSION_TESTS,
@@ -1343,7 +1343,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="a turn reads to EOF like a one-shot drive, so the session hangs forever",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='                    if payload.get("type") == "result":\n                        break',
         after='                    if payload.get("type") == "__never":\n                        break',
         tests=CLI_SESSION_TESTS,
@@ -1351,7 +1351,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="the prompt is passed as an argv argument too, running a turn nobody asked for",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='        if stream_input:',
         after="        if False:",
         tests=CLI_SESSION_TESTS,
@@ -1359,7 +1359,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="turns are not serialised, so two callers interleave one conversation",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        async with self._lock:",
         after="        if True:",
         tests=CLI_SESSION_TESTS,
@@ -1367,7 +1367,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="a turn is written into a process that has already exited",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="                if proc.returncode is not None:",
         after="                if False:",
         tests=CLI_SESSION_TESTS,
@@ -1375,7 +1375,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="a closed session accepts turns, silently starting a fresh conversation",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="                if self._closed or proc is None:",
         after="                if proc is None:",
         tests=CLI_SESSION_TESTS,
@@ -1383,15 +1383,15 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="a CLI that closed mid-turn is not noticed, so the turn reports success",
-        path="agentkit/agents/cognition/claude_cli.py",
-        before='                    raise _SessionClosed(\n                        "the CLI closed its output mid-turn; the session is over"\n                    )',
-        after="                    pass",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                    raise _SessionClosed("the CLI closed its output mid-turn; the session is over")',
+        after='                    pass',
         tests=CLI_SESSION_TESTS,
     ),
     Mutant(
         tag="clisession",
         why="a dead session reads as a spawn failure rather than an ended conversation",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="            if isinstance(fatal_exc, _SessionClosed):",
         after="            if False:",
         tests=CLI_SESSION_TESTS,
@@ -1399,7 +1399,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="per-turn structured output is accepted, silently returning prose",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="                    if schema_requested:",
         after="                    if False:",
         tests=CLI_SESSION_TESTS,
@@ -1407,7 +1407,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="a cancelled turn leaves the process alive with half an answer in its context",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         # The guard this used to anchor on became a multi-line condition that
         # also covers a timeout, so the kill ITSELF is the anchor now: it is
         # the one line whose removal leaves the process running.
@@ -1418,7 +1418,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clisession",
         why="closing the session kills the CLI instead of ending the conversation",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "                if proc.stdin is not None and not proc.stdin.is_closing():\n"
             "                    proc.stdin.close()"
@@ -1430,7 +1430,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clistream",
         why="the completed block is re-emitted, so a UI renders every sentence twice",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="                        None if partial else StreamEvent(\"message_delta\", text=text),",
         after="                        StreamEvent(\"message_delta\", text=text),",
         tests=CLI_STREAM_TESTS,
@@ -1438,7 +1438,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clistream",
         why="token deltas also accumulate, doubling AgentResult.output",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta()\n"
             "        elif dtype == \"thinking_delta\":"
@@ -1459,7 +1459,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clistream",
         why="the partial-messages flag is never passed, so no tokens ever arrive",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='        if self.partial_messages:\n            argv += ["--include-partial-messages"]\n',
         after="",
         tests=CLI_STREAM_TESTS,
@@ -1467,7 +1467,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clistream",
         why="a skipped MCP server is discarded with the rest of the init payload",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if state.init:\n            # Startup facts an operator needs",
         after="        if False:\n            # Startup facts an operator needs",
         tests=CLI_STREAM_TESTS,
@@ -1475,15 +1475,15 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clistream",
         why="an empty error list is manufactured, so presence stops being the signal",
-        path="agentkit/agents/cognition/claude_cli.py",
-        before="                    if k in payload\n                },",
-        after="                },",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                        if k in payload\n                    },',
+        after='                    },',
         tests=CLI_STREAM_TESTS,
     ),
     Mutant(
         tag="clistream",
         why="provider retries are invisible, leaving a 40s pause unexplained",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='        if subtype == "api_retry":',
         after="        if False:",
         tests=CLI_STREAM_TESTS,
@@ -1492,7 +1492,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliops",
         why="strict_mcp_config alone silently leaves the session with no MCP servers",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if self.strict_mcp_config and not self.mcp_config:",
         after="        if False:",
         tests=CLI_FLAG_TESTS,
@@ -1500,7 +1500,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliops",
         why="a stable prompt prefix is silently a no-op under a replaced system prompt",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='        if self.stable_prompt_prefix and self.system_prompt_mode == "replace":',
         after="        if False:",
         tests=CLI_FLAG_TESTS,
@@ -1508,7 +1508,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliops",
         why="a typo'd add_dir reaches the CLI and dies three seconds in",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]",
         after="        missing_dirs = []",
         tests=CLI_FLAG_TESTS,
@@ -1516,15 +1516,15 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliops",
         why="a fallback CHAIN is passed as a Python tuple repr instead of a comma list",
-        path="agentkit/agents/cognition/claude_cli.py",
-        before='                else ",".join(self.fallback_model)',
-        after="                else str(self.fallback_model)",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='else ",".join(self.fallback_model)',
+        after='else str(self.fallback_model)',
         tests=CLI_FLAG_TESTS,
     ),
     Mutant(
         tag="cliops",
         why="bare mode without a credential fails with a message pointing at the wrong fix",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if self.bare:\n            self._warn_if_bare_mode_has_no_credential(env)",
         after="        if False:\n            self._warn_if_bare_mode_has_no_credential(env)",
         tests=CLI_FLAG_TESTS,
@@ -1532,7 +1532,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliops",
         why="the bare-mode warning fires even when settings may carry an apiKeyHelper",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "        if self.settings is not None:\n"
             "            return\n"
@@ -1545,7 +1545,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="CLI spend is invisible to every meter again ($50 run, $0.00 ledger)",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "        charge_error = await _charge_meters("
             "ctx, state.usage, enabled=self.meter_spend)"
@@ -1556,7 +1556,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="the run's headroom is never handed to the CLI, so nothing stops it mid-flight",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if max_budget_usd is not None:\n            argv += [\"--max-budget-usd\", max_budget_usd]\n",
         after="",
         tests=CLI_BUDGET_TESTS,
@@ -1564,7 +1564,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="the ORIGINAL ceiling is sent instead of the remaining headroom",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='        return f"{headroom:f}"',
         after='        return f"{budget.ceiling():f}"',
         tests=CLI_BUDGET_TESTS,
@@ -1572,7 +1572,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="an exhausted budget still burns a subprocess spawn to learn it is exhausted",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if headroom <= 0:",
         after="        if False:",
         tests=CLI_BUDGET_TESTS,
@@ -1580,7 +1580,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="the pre-flight refusal is categorised as a spawn failure, so it reads unresumable",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='            elif type(fatal_exc).__name__ == "MeterExceeded":',
         after="            elif False:",
         tests=CLI_BUDGET_TESTS,
@@ -1591,7 +1591,7 @@ MUTANTS: tuple[Mutant, ...] = (
         # Moved: the two byte-identical `_charge_meters` copies were merged
         # into one shared helper, so this invariant (and the two below) now
         # live in `_cli_common.py` and are exercised through BOTH cognitions.
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         before="    actor = getattr(ctx, \"actor_budget\", None)\n    if actor is not None:",
         after="    actor = None\n    if actor is not None:",
         tests=CLI_BUDGET_TESTS,
@@ -1599,7 +1599,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="a ceiling crossed by this very run raises, losing a result already paid for",
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         before=(
             "        except Exception as exc:  # noqa: BLE001 — see docstring\n"
             "            note = f\"{type(exc).__name__}: {exc}\""
@@ -1610,7 +1610,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clibudget",
         why="meter_spend=False still charges the shared envelope",
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         # `self.meter_spend` arrives as the keyword-only `enabled` now. The
         # `call = ...` line stays in the anchor: without it this is a prefix of
         # `_budget_cap`'s identical guard and would match twice.
@@ -1626,7 +1626,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="agent.output is ignored again, so the CLI never validates its answer",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "        adapter = getattr(agent, \"_output_adapter\", None)\n"
             "        if adapter is None:\n"
@@ -1642,7 +1642,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="the validated dict is handed back raw instead of the declared type",
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         before="        return adapter.validate(value), None",
         after="        return value, None",
         tests=CLI_SCHEMA_TESTS,
@@ -1650,7 +1650,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="a success with no structured_output reads as a clean run",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "            else:\n"
             "                final_partial = True\n"
@@ -1666,7 +1666,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="a value the Python type rejects is reported as a successful parse",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         # `_coerce_structured` returns a `(parsed, failure)` pair now instead
         # of setting a `coercion_error` local; neutralising the check on the
         # failure half is the same break.
@@ -1677,15 +1677,15 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clischema",
         why="exhausted structured-output retries are categorised as a generic termination",
-        path="agentkit/agents/cognition/claude_cli.py",
-        before="    if reason in _CLI_INVALID_OUTPUT_REASONS:\n        return \"invalid_output\"\n",
+        path="agentkit/models/providers/cli/_common.py",
+        before="    if reason in invalid_output_reasons:\n        return \"invalid_output\"\n",
         after="",
         tests=CLI_SCHEMA_TESTS,
     ),
     Mutant(
         tag="clischema",
         why="the field-level coercion diagnostics are dropped, leaving only '1 error(s)'",
-        path="agentkit/agents/cognition/_cli_common.py",
+        path="agentkit/models/providers/cli/_common.py",
         # The joined sentence became typed `violations` on
         # `StructuredOutputFailure`; starving the list they are parsed from
         # leaves the same bare "N error(s)" summary in `detail`.
@@ -1697,7 +1697,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliflags",
         why="agent.prompt REPLACES the CLI's system prompt, stripping its tool guidance",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         # The mode is decided once now and consumed by both the inline and the
         # `--system-prompt-file` branch, so forcing the decision covers the
         # pair — the old anchor could only reach the inline one.
@@ -1708,7 +1708,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliflags",
         why="a resume id is passed as --session-id, silently starting a fresh session",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before='            argv += ["--resume", self.resume_session_id]',
         after='            argv += ["--session-id", self.resume_session_id]',
         tests=CLI_FLAG_TESTS,
@@ -1716,7 +1716,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliflags",
         why="a non-UUID session_id burns a subprocess spawn to learn it is invalid",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before=(
             "        if self.session_id is not None:\n"
             "            try:\n"
@@ -1728,7 +1728,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliflags",
         why="a restricted tool set is silently not passed, leaving every tool available",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if self.tools is not None:",
         after="        if False:",
         tests=CLI_FLAG_TESTS,
@@ -1736,7 +1736,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliflags",
         why="tools=() emits a bare --tools flag the CLI rejects",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if self.tools == ():",
         after="        if False:",
         tests=CLI_FLAG_TESTS,
@@ -1744,7 +1744,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliflags",
         why="fork_session without a resume reaches the CLI and errors there",
-        path="agentkit/agents/cognition/claude_cli.py",
+        path="agentkit/models/providers/cli/claude/driver.py",
         before="        if self.fork_session and not (self.continue_session or self.resume_session_id):",
         after="        if False:",
         tests=CLI_FLAG_TESTS,
@@ -1753,7 +1753,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="filetool",
         why="a backslash path reaches the backend (traversal on a Windows-hosted one)",
-        path="agentkit/tools/file_tool.py",
+        path="agentkit/tools/filesystem/files.py",
         before='        if "\\\\" in raw:',
         after="        if False:",
         tests=FILETOOL_TESTS,
@@ -1761,7 +1761,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="filetool",
         why="a NUL byte reaches the backend (C-level path truncation)",
-        path="agentkit/tools/file_tool.py",
+        path="agentkit/tools/filesystem/files.py",
         before='        if "\\x00" in raw:',
         after="        if False:",
         tests=FILETOOL_TESTS,
@@ -1769,7 +1769,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="filetool",
         why="a sibling directory sharing the root's prefix passes confinement",
-        path="agentkit/tools/file_tool.py",
+        path="agentkit/tools/filesystem/files.py",
         before='        if norm != self.root and not norm.startswith(self.root + "/"):',
         after="        if norm != self.root and not norm.startswith(self.root):",
         tests=FILETOOL_TESTS,
@@ -1777,7 +1777,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="filetool",
         why="rename confines only its source, becoming the escape hatch",
-        path="agentkit/tools/file_tool.py",
+        path="agentkit/tools/filesystem/files.py",
         before='        return await self._fs.rename(path, self._confine(args.get("new_path")))',
         after='        return await self._fs.rename(path, args.get("new_path"))',
         tests=FILETOOL_TESTS,
@@ -1785,7 +1785,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="filetool",
         why="delete wipes the whole root by prefix in one call",
-        path="agentkit/tools/file_tool.py",
+        path="agentkit/tools/filesystem/files.py",
         before="            if path == self.root:",
         after="            if False:",
         tests=FILETOOL_TESTS,
@@ -1794,7 +1794,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="an unknown argument is dropped, so a defaulted parameter runs with its default",
-        path="agentkit/tools/function.py",
+        path="agentkit/tools/declarations/function.py",
         before="            if unexpected or missing:",
         after="            if False:",
         tests=TOOLARG_TESTS,
@@ -1802,7 +1802,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="only unknown args are reported, so a missing required one stays a raw TypeError",
-        path="agentkit/tools/function.py",
+        path="agentkit/tools/declarations/function.py",
         before="            missing = tuple(k for k in required_params if k not in kwargs)",
         after="            missing = ()",
         tests=TOOLARG_TESTS,
@@ -1810,7 +1810,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="**kwargs stops receiving the extras it exists to accept",
-        path="agentkit/tools/function.py",
+        path="agentkit/tools/declarations/function.py",
         before="                kwargs.update({k: supplied[k] for k in unexpected})\n                unexpected = ()",
         after="                unexpected = ()",
         tests=TOOLARG_TESTS,
@@ -1818,7 +1818,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="a model-supplied ctx key trips the check instead of being ignored",
-        path="agentkit/tools/function.py",
+        path="agentkit/tools/declarations/function.py",
         before="                k for k in supplied if k not in arg_params and k not in ctx_params",
         after="                k for k in supplied if k not in arg_params",
         tests=TOOLARG_TESTS,
@@ -1826,7 +1826,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="a structured parameter is advertised as a bare string again",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="    struct = _struct_fragment(ann)\n    if struct is not None:\n        return struct\n",
         after="",
         tests=TOOLARG_TESTS,
@@ -1834,7 +1834,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="an Enum parameter loses its member list",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="    if isinstance(ann, type) and issubclass(ann, enum.Enum):\n        return _enum_fragment(ann)\n",
         after="",
         tests=TOOLARG_TESTS,
@@ -1842,7 +1842,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolargs",
         why="a heterogeneous enum gets a guessed type instead of none",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before=(
             "    kinds = {_JSON_PRIMITIVES.get(type(v)) for v in vals}\n"
             "    if len(kinds) == 1 and (t := kinds.pop()) is not None:\n"
@@ -2178,7 +2178,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="stopreason",
         why="a gate suspend is categorised as terminal, so nothing ever resumes it",
-        path="agentkit/agents/result.py",
+        path="agentkit/agents/definitions/results.py",
         before='    "awaiting_decision": "suspended",',
         after='    "awaiting_decision": "terminated",',
         tests=STOP_REASON_TESTS,
@@ -2202,7 +2202,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="stopreason",
         why="an unrecognised reason is GUESSED as completion instead of terminated",
-        path="agentkit/agents/result.py",
+        path="agentkit/agents/definitions/results.py",
         before='    return _REASON_TO_STOP.get(reason, "terminated")',
         after='    return _REASON_TO_STOP.get(reason, "complete")',
         tests=STOP_REASON_TESTS,
@@ -2210,15 +2210,15 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="stopreason",
         why="a CLI subprocess that exited non-zero reads as a deliberate stop",
-        path="agentkit/agents/cognition/claude_cli.py",
-        before='    if reason in _CLI_FAILURE_REASONS or (reason is not None and reason.startswith("cli_exit_")):',
-        after="    if reason in _CLI_FAILURE_REASONS:",
+        path="agentkit/models/providers/cli/_common.py",
+        before='    if reason in failure_reasons or (reason is not None and reason.startswith("cli_exit_")):',
+        after="    if reason in failure_reasons:",
         tests=STOP_REASON_TESTS,
     ),
     Mutant(
         tag="stopreason",
         why="the typed reason is dropped on the durable round trip",
-        path="agentkit/capabilities/checkpointer/persistence.py",
+        path="agentkit/state/checkpoints/persistence.py",
         before='        "stop_reason": r.stop_reason,\n',
         after="",
         tests=STOP_REASON_TESTS,
@@ -2226,7 +2226,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="stopreason",
         why="a legacy record without the field reads back as a bare completion",
-        path="agentkit/capabilities/checkpointer/persistence.py",
+        path="agentkit/state/checkpoints/persistence.py",
         before='        stop_reason=d.get("stop_reason") or stop_reason_for((d.get("evals") or {}).get("stop_reason")),',
         after='        stop_reason=d.get("stop_reason", "complete"),',
         tests=STOP_REASON_TESTS,
@@ -2235,7 +2235,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="the exact ledger accessor silently degrades to float",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         # Trailing newline matters: without it this is a PREFIX of
         # ``return self._spent.quantize(...)`` two methods down, and the
         # anchor silently matches twice. `--verify` catches exactly this.
@@ -2246,7 +2246,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="accumulation round-trips through float, losing precision at scale",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="            self._spent += to_money(usage.cost_usd)",
         after="            self._spent = to_money(float(self._spent) + usage.cost_usd)",
         tests=MONEY_TESTS,
@@ -2254,7 +2254,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="to_money reads the BINARY float instead of its decimal spelling",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="        amount = Decimal(str(value))",
         after="        amount = Decimal(value)",
         tests=MONEY_TESTS,
@@ -2262,7 +2262,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="quantizing per charge instead of at read rounds sub-cent calls to zero",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="            self._spent += to_money(usage.cost_usd)",
         after="            self._spent += to_money(usage.cost_usd).quantize(_CENTS)",
         tests=MONEY_TESTS,
@@ -2270,7 +2270,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="invoicing truncates instead of rounding half-up (systematic under-billing)",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="        return self._spent.quantize(_CENTS, rounding=ROUND_HALF_UP)",
         after="        return self._spent.quantize(_CENTS, rounding='ROUND_DOWN')",
         tests=MONEY_TESTS,
@@ -2278,7 +2278,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="guard() stops enforcing, so an exhausted budget still buys a call",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="        async with self._get_lock():\n            verdict = self._verdict()",
         after="        async with self._get_lock():\n            verdict = Charge(ok=True)",
         tests=MONEY_TESTS,
@@ -2286,7 +2286,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="token totals stop accumulating, so a run's usage under-reports",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="            self.usage = self.usage + usage",
         after="            pass",
         tests=MONEY_TESTS,
@@ -2294,7 +2294,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="the ceiling stops re-deriving, so raising it post-construction is ignored",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="        if self.max_cost_usd != self._ceiling_src:",
         after="        if False:",
         tests=MONEY_TESTS,
@@ -2302,7 +2302,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="the float mirror stops tracking the ledger and silently goes stale",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="        self.spent_usd = float(self._spent)",
         after="        pass",
         tests=MONEY_TESTS,
@@ -2328,7 +2328,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="concurrency",
         why="the permit pool goes back to one-per-tree, deadlocking nested fan-out",
-        path="agentkit/runtime/context.py",
+        path="agentkit/core/runtime/context.py",
         before="        return self.budget.semaphore(self.depth)",
         after="        return self.budget.semaphore(0)",
         tests=CONCURRENCY_TESTS,
@@ -2336,7 +2336,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="concurrency",
         why="the per-level concurrency cap stops being enforced",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="            sem = asyncio.Semaphore(self.max_concurrency)",
         after="            sem = asyncio.Semaphore(1000)",
         tests=CONCURRENCY_TESTS,
@@ -2344,7 +2344,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="concurrency",
         why="cooperative cancellation is isolated into a Failure slot again",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before="            except Cancelled:\n",
         after="            except _NeverRaised:\n",
         tests=CONCURRENCY_TESTS,
@@ -2352,45 +2352,45 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="concurrency",
         why="a starved slice floors to zero, producing silent no-op children",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before="    return max(1, units)",
         after="    return units",
-        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
     ),
     Mutant(
         tag="concurrency",
         why="a fan-out from an already-spent envelope stops failing fast",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before="        if parent_actor_budget.exhausted():",
         after="        if False:",
-        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
     ),
     Mutant(
         tag="concurrency",
         why="the money slice round-trips through the float mirror again",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before="        base_cost = parent_actor_budget.remaining_cost()  # exact, not the float mirror",
         after="        base_cost = to_money(parent_actor_budget.remaining_cost_usd())",
-        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
     ),
     Mutant(
         tag="concurrency",
         why="a child is over-granted a step the parent never reserved",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before="                    max_steps=slice_steps,",
         after="                    max_steps=max(slice_steps, 1) + 1,",
-        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
     ),
     Mutant(
         tag="concurrency",
         why="reservations leak when a fan-out fails (the finally settlement)",
-        path="agentkit/kernel/concurrency.py",
+        path="agentkit/core/execution/concurrency.py",
         before=(
             "        if parent_actor_budget is not None:\n"
             "            for idx, slice_ in enumerate(reserved_slices):"
         ),
         after="        if False:\n            for idx, slice_ in enumerate(reserved_slices):",
-        tests=("tests/kernel/test_run_agents_actor_slicing.py",),
+        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
     ),
     # ── budget: the sibling float axes ───────────────────────────────────────
     # NOTE: mutating ``remaining_cost() <= 0`` to ``remaining_cost_usd() == 0.0``
@@ -2404,31 +2404,31 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/agents/control/budget.py",
         before="        self.used_cost_usd = float(self._used_cost)",
         after="        pass",
-        tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+        tests=("tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",),
     ),
     Mutant(
         tag="budget",
         why="Quota stops evicting expired tenants (unbounded key growth)",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="            self._sweep(now)  # evict long-dead tenants; at most once per window",
         after="            pass  # no sweep",
-        tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+        tests=("tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",),
     ),
     Mutant(
         tag="budget",
         why="the per-actor envelope stops being charged (an inert ActorBudget again)",
-        path="agentkit/middlewares/meter.py",
+        path="agentkit/core/policies/meter.py",
         before="            actor = getattr(ctx.run, \"actor_budget\", None)",
         after="            actor = None",
-        tests=("tests/agents/test_actor_budget.py",),
+        tests=("tests/source/unit/agents/test_actor_budget.py",),
     ),
     Mutant(
         tag="budget",
         why="no loop consults the actor envelope, so exhausting it stops nothing",
-        path="agentkit/agents/_agent_helpers.py",
+        path="agentkit/agents/execution/_helpers.py",
         before="    actor = getattr(ctx, \"actor_budget\", None)",
         after="    actor = None",
-        tests=("tests/agents/test_actor_budget.py",),
+        tests=("tests/source/unit/agents/test_actor_budget.py",),
     ),
     Mutant(
         tag="budget",
@@ -2436,13 +2436,13 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/agents/control/budget.py",
         before="        self._used_cost += to_money(cost_usd)",
         after="        self._used_cost = to_money(float(self._used_cost) + cost_usd)",
-        tests=("tests/runtime/test_budget_decimal_and_verdict.py",),
+        tests=("tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",),
     ),
     # ── isolation + resilience ───────────────────────────────────────────────
     Mutant(
         tag="security",
         why="cache keys stop being tenant-partitioned (cross-tenant answer leak)",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before="        cache_key = _scoped(call, key(call))",
         after="        cache_key = key(call)",
         tests=SECURITY_TESTS,
@@ -2450,7 +2450,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="security",
         why="the default cache key ignores the model (a cheap answer served as a good one)",
-        path="agentkit/middlewares/memoize.py",
+        path="agentkit/core/policies/memoize.py",
         before='            "model": getattr(r, "model", None),',
         after='            "model": None,',
         tests=SECURITY_TESTS,
@@ -2458,7 +2458,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="security",
         why="egress can be constructed inert, silently disabling every URL check",
-        path="agentkit/middlewares/egress_audit.py",
+        path="agentkit/core/policies/egress_audit.py",
         before="        if guardrail is None:",
         after="        if False:",
         tests=SECURITY_TESTS,
@@ -2466,7 +2466,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="resilience",
         why="a late success closes an OPEN breaker, bypassing the cooldown",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before='            if self.state == "open":\n                return',
         after='        if False:\n            return',
         tests=RESILIENCE_TESTS,
@@ -2474,7 +2474,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="provider",
         why="an in-band SSE error frame is swallowed, truncating the answer silently",
-        path="agentkit/adapters/llm/providers/base.py",
+        path="agentkit/models/providers/frontiers/base.py",
         before="    err = event.get(\"error\")",
         after="    return\n    err = event.get(\"error\")",
         tests=PROVIDER_TESTS,
@@ -2482,7 +2482,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="provider",
         why="Anthropic stops checking for the error frame",
-        path="agentkit/adapters/llm/providers/anthropic.py",
+        path="agentkit/models/providers/frontiers/anthropic.py",
         before="            raise_if_error_frame(ev)",
         after="            pass",
         tests=PROVIDER_TESTS,
@@ -2490,7 +2490,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="provider",
         why="an overload frame stops classifying as retryable",
-        path="agentkit/kernel/resilience.py",
+        path="agentkit/core/execution/resilience.py",
         before='    "rate_limit",\n    "server_error",\n    "overloaded",',
         after='    "__never_matches_rate_limit",\n    "__never_matches_server_error",\n    "__never_matches_overloaded",',
         tests=PROVIDER_TESTS,
@@ -2516,7 +2516,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="store",
         why="FileStore.get_or_set keys on truthiness again (single-flight breaks on None)",
-        path="agentkit/adapters/store/file.py",
+        path="agentkit/state/stores/file.py",
         # Targets `_exists` itself, not one of its two call sites: mutating
         # only the pre-lock check leaves the in-lock double-check correct, and
         # the mutant survives for the wrong reason.
@@ -2527,7 +2527,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="store",
         why="FileStore writes non-atomically again (a crash mid-write orphans the checkpoint)",
-        path="agentkit/adapters/store/file.py",
+        path="agentkit/state/stores/file.py",
         before="        await asyncio.to_thread(self._write_atomic, path, json.dumps(value))",
         after="        await asyncio.to_thread(lambda: path.write_text(json.dumps(value)))",
         tests=STORE_TESTS,
@@ -2535,7 +2535,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="store",
         why="one unparseable log line takes the whole audit trail down again",
-        path="agentkit/adapters/store/file.py",
+        path="agentkit/state/stores/file.py",
         before="                except json.JSONDecodeError:",
         after="                except _NeverJSONError:",
         tests=STORE_TESTS,
@@ -2543,7 +2543,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="store",
         why="a silently-ignored ttl stops warning (permanent idempotency entries)",
-        path="agentkit/adapters/store/file.py",
+        path="agentkit/state/stores/file.py",
         before="        if ttl is not None and not self._warned_ttl:",
         after="        if False:",
         tests=STORE_TESTS,
@@ -2552,7 +2552,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="an unpersistable gate suspend goes silent again",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                        _warn_unpersisted_gate(gate.name, run_id)",
         after="                        pass",
         tests=WORKFLOW_TESTS,
@@ -2560,7 +2560,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="Workflow goes back to store-only persistence, ignoring a Checkpointer",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                    cp = resolve_checkpointer(ctx)",
         after="                    cp = None",
         tests=WORKFLOW_TESTS,
@@ -2569,7 +2569,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hitl",
         why="a secret-tainted state is persisted after all",
-        path="agentkit/capabilities/checkpointer/base.py",
+        path="agentkit/state/checkpoints/base.py",
         before="        if _is_tainted(state):",
         after="        if False:",
         tests=HITL_TESTS,
@@ -2609,7 +2609,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="hitl",
         why="the RunPolicy trifecta gate is skipped on the resume path",
-        path="agentkit/agents/agent.py",
+        path="agentkit/agents/execution/agent.py",
         before="            await self._run_policy_gate(ctx)\n            final = await cognition.resume(",
         after="            final = await cognition.resume(",
         tests=HITL_TESTS,
@@ -2643,7 +2643,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="registry",
         why="an unknown model reports capabilities as present instead of UNKNOWN",
-        path="agentkit/adapters/llm/model_registry.py",
+        path="agentkit/models/catalog/registry.py",
         before="        return entry.capabilities if entry is not None else ModelCapabilities()",
         after="        return entry.capabilities if entry is not None else ModelCapabilities(\n"
         "            tools=_Y, structured_output=_Y, native_json_schema=_Y, streaming=_Y, vision=_Y\n"
@@ -2653,7 +2653,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="registry",
         why="a missing credential silently returns the fake instead of raising",
-        path="agentkit/adapters/llm/model_registry.py",
+        path="agentkit/models/catalog/registry.py",
         before="        if fallback is None:\n            raise hard",
         after="        if False:\n            raise hard",
         tests=REGISTRY_TESTS,
@@ -2661,7 +2661,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="registry",
         why="a declared NO capability stops refusing at bind time",
-        path="agentkit/adapters/llm/model_registry.py",
+        path="agentkit/models/catalog/registry.py",
         before="        missing = [n for n in (*requires, *derived) if caps.get(n) is Capability.NO]",
         after="        missing = []",
         tests=REGISTRY_TESTS,
@@ -2669,7 +2669,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="registry",
         why="the downgrade warning fires every time instead of once",
-        path="agentkit/adapters/llm/model_registry.py",
+        path="agentkit/models/catalog/registry.py",
         before="        if key in self._warned:\n            return",
         after="        if False:\n            return",
         tests=REGISTRY_TESTS,
@@ -2677,7 +2677,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="compaction",
         why="the sliding window stops guarding its walk-back, so keep_recent=0 raises IndexError",
-        path="agentkit/capabilities/compaction/impls.py",
+        path="agentkit/state/compaction/impls.py",
         # Anchored on the comment above it: all THREE compactors in this file run
         # the identical walk-back, and the other two already guarded it.
         before=(
@@ -2693,7 +2693,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="compaction",
         why="keep_recent stops being clamped, so a negative count reaches past the end of the list",
-        path="agentkit/capabilities/compaction/impls.py",
+        path="agentkit/state/compaction/impls.py",
         before="        keep = max(0, self.keep_recent)",
         after="        keep = self.keep_recent",
         tests=COMPACTION_TESTS,
@@ -2701,7 +2701,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="abstract collections fall back to 'string', telling the model to send a JSON string",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="    if origin in _ARRAY_ANNOTATIONS:\n        element = _element_annotation(ann)",
         after="    if origin in (list, tuple, set, frozenset):\n        element = _element_annotation(ann)",
         tests=TOOLCOERCE_TESTS,
@@ -2709,7 +2709,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="a TypedDict parameter is advertised as a string again, so the body indexes a str",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="    if not is_typeddict(ann):\n        return None",
         after="    if True:\n        return None",
         tests=TOOLCOERCE_TESTS,
@@ -2717,7 +2717,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="a TypedDict's total=False keys are advertised as required, inverting the contract",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before='            "required": [key for key in hints if key in required],',
         after='            "required": list(hints),',
         tests=TOOLCOERCE_TESTS,
@@ -2725,20 +2725,17 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="money",
         why="an unrepresentable ceiling escapes as decimal.InvalidOperation, past MoneyPrecisionError",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before=(
-            "        raise MoneyPrecisionError(\n"
-            '            f"monetary amount {value!r} is too large to represent at "\n'
-            '            f"{MONEY_SCALE} decimal places"\n'
-            "        ) from exc"
+            '        raise MoneyPrecisionError(\n            f"monetary amount {value!r} is too large to represent at {MONEY_SCALE} decimal places"\n        ) from exc'
         ),
-        after="        raise",
+        after='        raise',
         tests=MONEY_TESTS,
     ),
     Mutant(
         tag="money",
         why="max_concurrency=0 constructs again, and the first fan-out waits on it forever",
-        path="agentkit/runtime/meter.py",
+        path="agentkit/core/runtime/meter.py",
         before="        if self.max_concurrency < 1:",
         after="        if False:",
         tests=MONEY_TESTS,
@@ -2746,7 +2743,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="a typo'd after= stops being caught, so dependent nodes silently never run",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="        self._validate_dependencies()",
         after="        pass",
         tests=WF_TESTS,
@@ -2754,7 +2751,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="containers stop describing items, so list[Unit] is an untyped array again",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="        return {\"type\": \"array\", \"items\": _json_type(element)}",
         after="        return {\"type\": \"array\"}",
         tests=TOOLCOERCE_TESTS,
@@ -2762,7 +2759,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="a heterogeneous tuple claims one element type, advertising items that are a lie",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="        if len(args) == 2 and args[1] is Ellipsis:\n            return None if args[0] is Any else args[0]\n        return None",
         after="        return None if args[0] is Any else args[0]",
         tests=TOOLCOERCE_TESTS,
@@ -2770,7 +2767,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="elements stop being coerced, so the body gets strings where items promised members",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="    if origin in _ARRAY_ANNOTATIONS:\n        return _sequence_coercer(ann, origin)",
         after="    if origin in _ARRAY_ANNOTATIONS:\n        return None",
         tests=TOOLCOERCE_TESTS,
@@ -2778,7 +2775,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="set/tuple annotations receive a list again, so the body gets a container it did not ask for",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="_REBUILT_CONTAINERS: dict[Any, Any] = {set: set, frozenset: frozenset, tuple: tuple}",
         after="_REBUILT_CONTAINERS: dict[Any, Any] = {}",
         tests=TOOLCOERCE_TESTS,
@@ -2786,7 +2783,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="Optional collapses to bare X again, so a required X|None cannot be sent as null",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="        nullable = len(real) != len(args)",
         after="        nullable = False",
         tests=TOOLCOERCE_TESTS,
@@ -2794,7 +2791,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="toolschema",
         why="*args is silently dropped again, leaving a parameter that can never be filled",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="        if p.kind is p.VAR_POSITIONAL:",
         after="        if False:",
         tests=TOOLCOERCE_TESTS,
@@ -2802,7 +2799,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="workflow",
         why="dependency validation only checks the first node, so a later typo still slips through",
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="        for name in self._order:",
         after="        for name in self._order[:1]:",
         tests=WF_TESTS,
@@ -2814,7 +2811,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'id-less-but-not-None record in the pool collapses into one group. Killed by '
             'test_an_empty_string_id_is_treated_as_no_id_at_all.'
         ),
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="        if mode == \"id\" and item.id:",
         after="        if mode == \"id\" and item.id is not None:",
         tests=MEM_DEDUPE_TESTS,
@@ -2827,7 +2824,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'records together across BOTH dedupe modes. Killed by '
             'test_blank_content_is_not_evidence_that_two_records_are_the_same_fact.'
         ),
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="    stripped = content.strip()\n    if not stripped:\n        return None\n    return hashlib.sha256(stripped.encode(\"utf-8\")).hexdigest()",
         after="    stripped = content.strip()\n    return hashlib.sha256(stripped.encode(\"utf-8\")).hexdigest()",
         tests=MEM_DEDUPE_TESTS,
@@ -2839,7 +2836,7 @@ MUTANTS: tuple[Mutant, ...] = (
             're-breaking nested composites (dedupe_sources drops the inner sources, dedupe_count under-reports). '
             'Killed by 2 tests: the nested-composite and stamp-absorption tests.'
         ),
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="            agreed.extend(_prior_sources(m))\n            collapsed += _prior_count(m)",
         after="            agreed.append(m.source)\n            collapsed += 1",
         tests=MEM_DEDUPE_TESTS,
@@ -2851,7 +2848,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'through storage propagates a str into an int accumulation and raises inside the query path. Killed by '
             'test_a_corrupt_stamp_from_a_backend_does_not_crash_the_merge.'
         ),
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="    if isinstance(prior, int) and not isinstance(prior, bool) and prior >= 1:\n        return prior",
         after="    if prior is not None:\n        return prior  # type: ignore[no-any-return]",
         tests=MEM_DEDUPE_TESTS,
@@ -2863,7 +2860,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'broadcast write of a journal item with row key "3" upserts over vector chunk "3". Killed by '
             'test_a_foreign_sources_id_never_addresses_this_stores_keyspace.'
         ),
-        path="agentkit/memory/vector.py",
+        path="agentkit/state/memory/vector.py",
         before="            own_id = item.id if item.source == self.name else None",
         after="            own_id = item.id",
         tests=MEM_VECTOR_TESTS,
@@ -2875,7 +2872,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'as durable record metadata and (given the absorb fix) inflates its own count on every round trip. Killed '
             'by test_the_dedupe_stamp_is_not_persisted_as_record_metadata.'
         ),
-        path="agentkit/memory/vector.py",
+        path="agentkit/state/memory/vector.py",
         before="            for transient in (DEDUPE_SOURCES_KEY, DEDUPE_COUNT_KEY):\n                metadata.pop(transient, None)",
         after="",
         tests=MEM_VECTOR_TESTS,
@@ -2888,7 +2885,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'shipped bounded_by test uses width 2 under the default max_concurrency=8, where both behave '
             'identically). Now killed by test_map_bounded_by_does_not_escape_the_level_semaphore.'
         ),
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                if width_sem is not None:\n                    async with level_sem:\n                        return await _work(index, item, slot)\n                return await _work(index, item, slot)",
         after="                return await _work(index, item, slot)",
         tests=WORKFLOW_MAP_TESTS,
@@ -2901,7 +2898,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'slots instead of raising MapExpansionChanged. SURVIVED all 29 original tests despite the source comment '
             'claiming this exact risk. Now killed by test_map_long_identities_are_capped_but_stay_distinguishable.'
         ),
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="    return f\"{s[:_IDENTITY_MAX]}\u2026#{hashlib.sha256(s.encode('utf-8', 'replace')).hexdigest()[:12]}\"",
         after="    return s[:_IDENTITY_MAX]",
         tests=WORKFLOW_MAP_TESTS,
@@ -2914,7 +2911,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'original tests — no test had a store that fails. Now killed by '
             'test_map_checkpointer_failure_does_not_replace_the_element_failure.'
         ),
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="            with contextlib.suppress(Exception):",
         after="            if True:",
         tests=WORKFLOW_MAP_TESTS,
@@ -2926,7 +2923,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'used a prompt nobody wrote and reported success. SURVIVED all 29 original tests: `prompt` appeared zero '
             'times in the test file. Now killed by test_map_prompt_builds_the_task_for_a_runnable_element.'
         ),
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                    p = (\n                        prompt(item, goal)\n                        if prompt is not None\n                        else _default_prompt({\"item\": item}, goal)\n                    )",
         after="                    p = _default_prompt({\"item\": item}, goal)",
         tests=WORKFLOW_MAP_TESTS,
@@ -2938,7 +2935,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'the expansion record and therefore into EVERY checkpoint the run takes. SURVIVED all 29 original tests. '
             'Now killed by test_map_long_identities_are_capped_but_stay_distinguishable.'
         ),
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="_IDENTITY_MAX = 120",
         after="_IDENTITY_MAX = 10**9",
         tests=WORKFLOW_MAP_TESTS,
@@ -2951,7 +2948,7 @@ MUTANTS: tuple[Mutant, ...] = (
             'reproduces the ORIGINAL shipped behaviour, which I changed. Killed by '
             'test_map_prompt_with_a_non_runnable_element_is_refused_not_dropped.'
         ),
-        path="agentkit/agents/workflow.py",
+        path="agentkit/agents/workflows/graph.py",
         before="                if prompt is not None and not callable(runner):",
         after="                if False:",
         tests=WORKFLOW_MAP_TESTS,
@@ -2959,7 +2956,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="storeprim",
         why="`by` stops being validated, so the four backends diverge: memory/file return a float from a method annotated -> int and poison the key, while Redis reports 1 for increment(k, 1.5)",
-        path="agentkit/adapters/store/memory.py",
+        path="agentkit/state/stores/memory.py",
         before="        check_by(key, by)",
         after="",
         tests=STORE_PRIM_TESTS,
@@ -2967,7 +2964,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="storeprim",
         why="FileStore's increment goes back to a plain setdefault lock table, leaking one asyncio.Lock per key forever \u2014 the exact regression `_keylock` exists to prevent",
-        path="agentkit/adapters/store/file.py",
+        path="agentkit/state/stores/file.py",
         before="        check_by(key, by)\n        self._warn_ttl_ignored(ttl)\n        async with key_lock(self._locks, key):",
         after="        check_by(key, by)\n        self._warn_ttl_ignored(ttl)\n        lock = self._locks.setdefault(key, asyncio.Lock())\n        async with lock:",
         tests=STORE_PRIM_TESTS,
@@ -2975,7 +2972,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="storeprim",
         why="the Postgres error path re-acquires a SECOND pooled connection while holding the first, so increment deadlocks outright on a max_size=1 pool \u2014 invisible until the pool is bounded",
-        path="agentkit/adapters/store/postgres.py",
+        path="agentkit/state/stores/postgres.py",
         before="        if total is None:\n            # The guard excluded the row, so something non-integer is there.\n            # Re-read it to name the type in the error \u2014 but OUTSIDE the\n            # ``acquire`` above, because ``self.get`` takes a connection of its\n            # own. Asking the pool for a second connection while still holding\n            # the first deadlocks outright on ``max_size=1`` (measured: the\n            # call hangs forever), and on any pool size it doubles the\n            # connections a concurrent burst of bad increments needs, so N\n            # workers each holding one and waiting for another is a deadlock at\n            # every size. The error path must not be the expensive one.\n            raise not_a_counter(key, await self.get(key))",
         after="            if total is None:\n                # The guard excluded the row, so something non-integer is there.\n                # Re-read it to name the type in the error \u2014 but OUTSIDE the\n                # ``acquire`` above, because ``self.get`` takes a connection of its\n                # own. Asking the pool for a second connection while still holding\n                # the first deadlocks outright on ``max_size=1`` (measured: the\n                # call hangs forever), and on any pool size it doubles the\n                # connections a concurrent burst of bad increments needs, so N\n                # workers each holding one and waiting for another is a deadlock at\n                # every size. The error path must not be the expensive one.\n                raise not_a_counter(key, await self.get(key))",
         tests=STORE_PRIM_TESTS,
@@ -2983,7 +2980,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="recurrence",
         why="The `is None` success check must be read AFTER the fingerprint is awaited. Moved before, it sees a coroutine \u2014 never None \u2014 so an async fingerprint can never report success: the run loops, repeats, and is declared PERMANENTLY stuck on a SUCCESSFUL outcome, leaving an un-awaited coroutine each turn. THIS MUTANT SURVIVED THE SHIPPED 21-TEST SUITE (their test_an_async_fingerprint_is_awaited only exercises a non-None async signature); the test below is new and kills it.",
-        path="agentkit/kernel/recurrence.py",
+        path="agentkit/core/execution/recurrence.py",
         before="        if inspect.isawaitable(signature):\n            # The signature is frequently itself a model call (\"does this answer the goal?\"), so\n            # it has to be allowed to be async. Same duck-typed treatment ``LedgerPolicy`` gives\n            # its assessor and planner \u2014 a sync lambda stays a sync lambda.\n            signature = await signature\n        if signature is None:\n            return outcome",
         after="        if signature is None:\n            return outcome\n        if inspect.isawaitable(signature):\n            signature = await signature",
         tests=RECURRENCE_TESTS,
@@ -2991,7 +2988,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="recurrence",
         why="A shared stable_hash key must be CONFIRMED by equality before a repeat is declared. Trusting the hash alone restores the shipped bug: stable_hash's last-resort branch describes an opaque value by bare type name, so distinct signatures collide and a run making real progress is killed with a PERMANENT/non-retriable verdict it never proved.",
-        path="agentkit/kernel/recurrence.py",
+        path="agentkit/core/execution/recurrence.py",
         before="        first_seen = next((earlier for earlier, prior in bucket if _same_signature(prior, signature)), None)",
         after="        first_seen = next((earlier for earlier, _prior in bucket), None)",
         tests=RECURRENCE_TESTS,
@@ -2999,7 +2996,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="recurrence",
         why="An unrecognised on_repeat must raise, not fall through to the non-raising branch. Widening the accepted set restores the silent-success path: a caller who asked for a raise gets a PERMANENT Failure returned as an ordinary value, and code that only handles Stuck treats the stall as the answer.",
-        path="agentkit/kernel/recurrence.py",
+        path="agentkit/core/execution/recurrence.py",
         before="    if on_repeat not in (\"escalate\", \"stop\"):",
         after="    if on_repeat not in (\"escalate\", \"stop\", \"raise\"):",
         tests=RECURRENCE_TESTS,
@@ -3007,7 +3004,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="recurrence",
         why="A signature comparison that raises (numpy-style elementwise `==`) must count as NOT the same, so the run falls through to the backstop and is reported UNKNOWN/retriable 'out of budget'. Flipping it to True makes an uncomparable signature type report PERMANENT/non-retriable stuck on attempt 2 \u2014 wrong in the terminal direction.",
-        path="agentkit/kernel/recurrence.py",
+        path="agentkit/core/execution/recurrence.py",
         before="    except Exception:\n        return False",
         after="    except Exception:\n        return True",
         tests=RECURRENCE_TESTS,
@@ -3015,7 +3012,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="recurrence",
         why="The recorded attempt number is the entire reason the history is a dict of attempts and not a bare set \u2014 'attempt 3 repeats attempt 1' is what tells an operator this is an oscillation rather than a wedge. The shipped suite never asserted the message, so the attempt number was free to rot into a placeholder undetected.",
-        path="agentkit/kernel/recurrence.py",
+        path="agentkit/core/execution/recurrence.py",
         before="        bucket.append((attempt, signature))",
         after="        bucket.append((0, signature))",
         tests=RECURRENCE_TESTS,
@@ -3023,7 +3020,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="recurrence",
         why="The history must be every signature seen, not a one-element window. Collapsing it makes an A,B,A,B oscillation read as progress and silently reverts the bound to max_attempts \u2014 the exact naive form the module exists to reject.",
-        path="agentkit/kernel/recurrence.py",
+        path="agentkit/core/execution/recurrence.py",
         before="        bucket = seen.setdefault(key, [])",
         after="        seen.clear()\n        bucket = seen.setdefault(key, [])",
         tests=RECURRENCE_TESTS,
@@ -3031,7 +3028,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="grounding",
         why="the audit trail goes stale: under reground_every_turn the prefix holds turn-N evidence while the record still claims turn 1 \u2014 the trail contradicting the transcript, which is worse than no trail. SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="                    # The record tracks the PREFIX, so it is overwritten rather\n                    # than appended: the prefix now holds this turn's evidence\n                    # only, and a record that accumulated would claim the run\n                    # grounded on blocks that are no longer in the prompt.\n                    self._record(wc, admitted)\n",
         after="                    # MUTANT: record not refreshed on re-ground\n",
         tests=GROUNDING_TESTS,
@@ -3039,7 +3036,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="grounding",
         why="a stale grounding block survives into turn N when this turn's retrieval admits nothing \u2014 the prompt asserts evidence gathered for a different question, precisely when the application's admit just said 'none of this may be used'. SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="                        grounding=grounding_msgs,\n",
         after="                        grounding=grounding_msgs or wc.prefix.grounding,\n",
         tests=GROUNDING_TESTS,
@@ -3047,7 +3044,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="grounding",
         why="the record becomes first-write-wins, so it freezes at turn 1 forever. Same failure as the first mutant by a different route. SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))\n",
         after="        wc.scratchpad.setdefault(\n            GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted)\n        )\n",
         tests=GROUNDING_TESTS,
@@ -3055,7 +3052,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="grounding",
         why="removes the build-time both-seams guard I added, restoring the silent precedence: `builder.grounding = src` on a grounder=-wired builder had its admit predicate dropped and every model-authored item reached the prompt (observed on the shipped code). SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="        if self.grounder is not None and self.grounding is not None:\n            raise ValueError(\n                \"RequestBuilder has both grounder= and grounding= set at build time \u2014 \"",
         after="        if False:\n            raise ValueError(\n                \"RequestBuilder has both grounder= and grounding= set at build time \u2014 \"",
         tests=GROUNDING_TESTS,
@@ -3063,7 +3060,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="grounding",
         why="reverts the durable-state encoding, putting live MemoryItem dataclasses back in the scratchpad \u2014 the run then dies with TypeError inside PostgresCheckpointStore.save while passing every in-memory test.",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))\n",
         after="        wc.note(GROUNDING_RECORD_KEY, admitted)\n",
         tests=GROUNDING_TESTS,
@@ -3071,7 +3068,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="grounding",
         why="the encoder silently drops metadata, so the `tier` key an admit policy reads is absent from the audit trail \u2014 the record would say a run grounded on evidence without recording what made it evidence.",
-        path="agentkit/capabilities/request_builder/base.py",
+        path="agentkit/agents/requests/base.py",
         before="        \"metadata\": dict(item.metadata),\n",
         after="        \"metadata\": {},\n",
         tests=GROUNDING_TESTS,
@@ -3143,7 +3140,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="readonly",
         why="The headline gap. `ToolMemory.accepts_writes = False` was scope the implementing agent chose to take on, and it shipped with ZERO assertions anywhere in the repo \u2014 flipping it back to True left the entire suite green, restoring the exact silent-no-op-reported-as-a-commit lie the change was written to close. Verified: `before` occurs exactly once in tool.py, mutated file ast.parses, SURVIVED the shipped suite and is now KILLED.",
-        path="agentkit/memory/tool.py",
+        path="agentkit/state/memory/tool.py",
         before="    accepts_writes: ClassVar[bool] = False",
         after="    accepts_writes: ClassVar[bool] = True",
         tests=READONLY_TESTS,
@@ -3151,7 +3148,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="readonly",
         why="`CompactedMemory` was the one decorator whose marker mirroring nothing asserted \u2014 test_accepts_writes_propagates_through_the_other_decorators covers ScopedMemory and CachedMemory but skips it. Hardcoding the property to True means a CompactedMemory(ReadOnlyMemory(...)) member of a fan-out gets filed as accepted. Verified: `before` occurs exactly once, parses, SURVIVED the shipped suite, now KILLED.",
-        path="agentkit/memory/decorators.py",
+        path="agentkit/state/memory/decorators.py",
         before="        \"\"\"Compaction is a read-side concern; ``write`` is a straight\n        pass-through, so the marker is the wrapped source's.\"\"\"\n        return bool(getattr(self.inner, \"accepts_writes\", True))",
         after="        \"\"\"MUTANT\"\"\"\n        return True",
         tests=READONLY_TESTS,
@@ -3159,7 +3156,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="readonly",
         why="Turns the drop COUNTER into a flag. The shipped suite only ever asserted `refused_writes == 1` after a single write, so an assignment was indistinguishable from an increment \u2014 a decorator that reported '1' forever regardless of how many writes it turned away would have looked correct. The counter is explicitly one of the three accountability mechanisms the design leans on, so it has to actually count. Verified: `before` occurs exactly once, parses, SURVIVED the shipped suite, now KILLED.",
-        path="agentkit/memory/decorators.py",
+        path="agentkit/state/memory/decorators.py",
         before="        self.refused_writes += 1",
         after="        self.refused_writes = 1",
         tests=READONLY_TESTS,
@@ -3167,7 +3164,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="readonly",
         why="Guards the fix for the real defect. Hardcoding the fan-out's marker to True reinstates the nesting bug exactly: an all-read-only CompositeMemory nested in an outer composite is reported as `accepted`. Verified: `before` occurs exactly once in composite.py, parses, KILLED.",
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="        return any(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
         after="        return True",
         tests=READONLY_TESTS,
@@ -3175,7 +3172,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="readonly",
         why="Pins the any-vs-all choice, which is the subtle half of the fix. With `all`, a MIXED composite holding one writable and one read-only member would declare itself non-accepting and an outer fan-out would refuse to credit a commit that genuinely happened \u2014 the inverse lie, equally wrong for an operator deciding what to replay. Verified: `before` occurs exactly once, parses, KILLED.",
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="        return any(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
         after="        return all(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
         tests=READONLY_TESTS,
@@ -3183,7 +3180,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="readonly",
         why="Pins that SequentialMemory mirrors the source it actually WRITES to. `sources[-1]` is the plausible wrong choice: the chain writes to sources[0] only, so keying the marker off the last source reports a read-only cache tier as writable whenever the fallback tier happens to be writable. Verified: `before` occurs exactly once, parses, KILLED.",
-        path="agentkit/memory/composite.py",
+        path="agentkit/state/memory/composite.py",
         before="        return bool(getattr(self.sources[0], \"accepts_writes\", True))",
         after="        return bool(getattr(self.sources[-1], \"accepts_writes\", True))",
         tests=READONLY_TESTS,
@@ -3191,7 +3188,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tooldesc",
         why="THE BUG. `inspect.getdoc` dedents by the COMMON leading whitespace, so a developer note written one level in keeps its extra indent through the dedent and a column-0 anchor never sees it. Reverting to column-0-only lets `Notes on behaviour:` / `  - TODO: rewrite before Q3` ship to the model verbatim \u2014 the exact failure mode the check exists to prevent, arriving by the route authors actually take. Verified: `before` occurs exactly once, mutated source parses (ast.parse OK).",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
         after="_DEV_NOTE_RE = re.compile(r\"^(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
         tests=TOOLDESC_TESTS,
@@ -3199,7 +3196,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tooldesc",
         why="The bullet allowance specifically. A note is most often written as one list item among real ones, where the `- ` sits between the marker and the line start. Dropping only this clause still catches a plainly-indented note but silently passes the commonest form. Verified: `before` occurs exactly once, mutated source parses.",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
         after="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
         tests=TOOLDESC_TESTS,
@@ -3207,7 +3204,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tooldesc",
         why="`\\b` is the only thing keeping the guard from firing on ordinary prose that merely BEGINS with a marker. Without it, a docstring line reading `XXXL is a size, not a note.` or `HACKS are documented below.` becomes a hard ToolDefinitionError at import in somebody else's application \u2014 a false positive on a decoration-time refusal, which is the most expensive kind. The shipped suite did not pin this: its mid-sentence test is saved by the `^` anchor, not by `\\b`, so it passes with `\\b` removed. Verified: `before` occurs exactly once, mutated source parses.",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\\b\", re.MULTILINE)",
         after="_DEV_NOTE_RE = re.compile(r\"^[ \\t]*(?:[-*+][ \\t]+)?(TODO|FIXME|XXX|HACK)\", re.MULTILINE)",
         tests=TOOLDESC_TESTS,
@@ -3215,7 +3212,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tooldesc",
         why="The second `.replace` handles a bare `\\r`, which is what a classic-Mac docstring uses throughout and what a `\\r\\r` paragraph break degrades to. The author's CRLF test only exercises the first replace, so this half was unpinned \u2014 and since the whole docstring now ships, an un-normalised `\\r` goes straight into the JSON handed to the provider. Observed with the mutant applied: the description came back as 'Do the documented thing properly.\\r\\r    And the second paragraph.' with the phantom indent intact. Verified: `before` occurs exactly once, mutated source parses.",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="        doc = inspect.cleandoc(doc.replace(\"\\r\\n\", \"\\n\").replace(\"\\r\", \"\\n\"))",
         after="        doc = inspect.cleandoc(doc.replace(\"\\r\\n\", \"\\n\"))",
         tests=TOOLDESC_TESTS,
@@ -3223,7 +3220,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tooldesc",
         why="The conditional clause the author added to the floor error so that a docstring emptied by its own `---` line reports something fixable instead of \"got 0 chars: ''\". The shipped suite exercises that scenario but asserts only on the generic half of the message, so the entire clause could be deleted with the suite still green \u2014 the explanatory feature was untested. Verified: `before` occurs exactly once, mutated source parses.",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="            if description is None and tail_cut\n            else \"\"",
         after="            if False\n            else \"\"",
         tests=TOOLDESC_TESTS,
@@ -3231,7 +3228,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="tooldesc",
         why="The per-line `rstrip()` is load-bearing, not tidying, and nothing pinned it. Measured directly: `inspect.cleandoc`/`getdoc` dedent and trim blank lines at the ends but do NOT rstrip interior lines, so trailing whitespace an editor left behind survives into the description and now \u2014 with whole docstrings shipping \u2014 rides to the provider verbatim. Verified: `before` occurs exactly once, mutated source parses.",
-        path="agentkit/tools/schema.py",
+        path="agentkit/tools/declarations/schema.py",
         before="    return \"\\n\".join(line.rstrip() for line in lines).strip(), cut",
         after="    return \"\\n\".join(lines).strip(), cut",
         tests=TOOLDESC_TESTS,
@@ -3239,7 +3236,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliagents",
         why="REVERTS MY FIX 1. Non-bare `disallowed_tools` entries stop being detected, so a skill that wrote `disallowed_tools=('mcp__*',)` \u2014 the spelling ClaudeCliCognition's own __post_init__ error message recommends \u2014 projects a sub-agent still holding every mcp__ tool. A widening past the skill, invisible in the output JSON. This was the SHIPPED behaviour; I observed it projecting tools ['Read','mcp__db__query','mcp__fs__write'].",
-        path="agentkit/integrations/claude_cli/agents.py",
+        path="agentkit/models/providers/cli/claude/agents.py",
         before="        lost = _unsubtractable(tools, cognition.disallowed_tools)",
         after="        lost = []",
         tests=CLIAGENT_TESTS,
@@ -3247,7 +3244,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliagents",
         why="REVERTS MY FIX 2. An unrecognised ReActCognition registry is read as 'no tools' again, so a skill carrying real tools projects `tools: []` with no refusal, and the F1-seam MCP refusal below silently stops guarding. Observed on the shipped code with both a plain list and an arbitrary object.",
-        path="agentkit/integrations/claude_cli/agents.py",
+        path="agentkit/models/providers/cli/claude/agents.py",
         before="        if not callable(names_of):",
         after="        if False and not callable(names_of):",
         tests=CLIAGENT_TESTS,
@@ -3255,7 +3252,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliagents",
         why="SURVIVED THE SHIPPED SUITE. The sub-agent name check stops being anchored at the right-hand end, so `reviewer_v2`, `reviewer!` and `reviewer ` all become valid CLI sub-agent names. The shipped suite's only invalid-name test used 'Code_Reviewer', which fails at position 0 and so is rejected by match() too \u2014 the anchoring was never pinned.",
-        path="agentkit/integrations/claude_cli/agents.py",
+        path="agentkit/models/providers/cli/claude/agents.py",
         before="if not _CLI_AGENT_NAME.fullmatch(name):",
         after="if not _CLI_AGENT_NAME.match(name):",
         tests=CLIAGENT_TESTS,
@@ -3263,7 +3260,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliagents",
         why="SURVIVED THE SHIPPED SUITE. A whitespace-only description projects instead of being refused, producing a sub-agent the CLI can never route delegation to. The shipped suite tested description='' (falsy either way) but not '   ', so the .strip() was unpinned \u2014 note the asymmetry: they DID test the whitespace case for prompt.",
-        path="agentkit/integrations/claude_cli/agents.py",
+        path="agentkit/models/providers/cli/claude/agents.py",
         before="description = skill.description.strip()",
         after="description = skill.description",
         tests=CLIAGENT_TESTS,
@@ -3271,7 +3268,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliagents",
         why="Narrows my new guard to wildcards only, so the within-tool specifier `Bash(rm:*)` is silently dropped again and the sub-agent gets unrestricted Bash. Checks that the two halves of _unsubtractable are independently pinned.",
-        path="agentkit/integrations/claude_cli/agents.py",
+        path="agentkit/models/providers/cli/claude/agents.py",
         before="        if \"(\" in entry:",
         after="        if False:",
         tests=CLIAGENT_TESTS,
@@ -3279,7 +3276,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="cliagents",
         why="The wildcard prefix is taken as the whole entry, so `mcp__*` never matches any projected tool and the guard silently passes everything. A guard that is present but never fires.",
-        path="agentkit/integrations/claude_cli/agents.py",
+        path="agentkit/models/providers/cli/claude/agents.py",
         before="            prefix = entry.split(\"*\", 1)[0]",
         after="            prefix = entry",
         tests=CLIAGENT_TESTS,
@@ -3287,7 +3284,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clihooks",
         why="The fix I landed, inverted. An unreadable payload becoming a PASS is the exact fail-open I found in the as-shipped code: `{}` on stdout is 'no opinion', so the CLI's normal flow decides and under bypassPermissions the tool runs with the chain having inspected nothing. Invisible to every deny test \u2014 only a test that feeds a MALFORMED payload and asserts a deny catches it, and there was none.",
-        path="agentkit/integrations/claude_cli/hooks.py",
+        path="agentkit/models/providers/cli/claude/hooks.py",
         before="            body = _deny(reason)",
         after="            body = _pass()",
         tests=HOOKS_TESTS,
@@ -3295,7 +3292,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clihooks",
         why="The tool name is the only identity the two processes agree on, and `if ctx.request.name == \"Bash\"` is how most real guards are written \u2014 so dropping it on the floor makes every name-keyed guard inert while the hook still answers, still records decisions, and still denies in the one test that uses a name-blind middleware. Every pre-existing shell-out test used `_PathAllowlist`, which never reads the name; this mutant survived the shipped suite untouched.",
-        path="agentkit/integrations/claude_cli/hooks.py",
+        path="agentkit/models/providers/cli/claude/hooks.py",
         before="body = await self._decide(tool_name, arguments)",
         after="body = await self._decide(\"\", arguments)",
         tests=HOOKS_TESTS,
@@ -3303,7 +3300,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clihooks",
         why="The matcher is a regex a DIFFERENT process compiles, and the anchors are the difference between guarding `Write` and guarding everything whose name contains `Write`. The shipped assertion (`\"SomeNewTool\" in matcher`) is a substring check, which is true with or without anchors \u2014 so the one property the anchors exist for was never tested. Unanchored, a `Read` matcher also fires for `ReadWrite` and an `Edit` matcher for `NotebookEdit`: a guard applying where nobody chose, with the deny reason naming a tool the caller never listed.",
-        path="agentkit/integrations/claude_cli/hooks.py",
+        path="agentkit/models/providers/cli/claude/hooks.py",
         before="\"matcher\": f\"^({'|'.join(names)})$\",",
         after="\"matcher\": f\"({'|'.join(names)})\",",
         tests=HOOKS_TESTS,
@@ -3311,7 +3308,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clihooks",
         why="The single most consequential number in the generated file, and the module docstring is explicit about why: a hook the CLI times out is a NON-blocking error, so the CLI prints it and RUNS the tool. Inverting the order means a chain that is merely slow \u2014 not refusing, just slow \u2014 turns into the fail-open the whole layered-deadline design exists to close. It is two integers in two generated files, so nothing in-process can notice; every behavioural test still passes because the tests never let the CLI's deadline be the one that fires.",
-        path="agentkit/integrations/claude_cli/hooks.py",
+        path="agentkit/models/providers/cli/claude/hooks.py",
         before="cli_timeout = int(timeout_s + 4.0) + 1",
         after="cli_timeout = max(1, int(timeout_s))",
         tests=HOOKS_TESTS,
@@ -3319,7 +3316,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clihooks",
         why="`_NATIVE_TOOLS`'s fallback is a policy decision the code comments on ('a middleware keyed on that flag should treat a tool it has never heard of as the dangerous kind') and nothing asserted. It only bites through `allow_unknown_tools=True` \u2014 i.e. the escape hatch for a CLI that grew a tool \u2014 which is precisely when you least want the new tool silently reclassified as read-only and waved past a side-effect guard.",
-        path="agentkit/integrations/claude_cli/hooks.py",
+        path="agentkit/models/providers/cli/claude/hooks.py",
         before="_NATIVE_TOOLS.get(tool_name, (True, None))",
         after="_NATIVE_TOOLS.get(tool_name, (False, None))",
         tests=HOOKS_TESTS,
@@ -3327,7 +3324,7 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="clihooks",
         why="The script is the guard's entire presence on disk and the CLI executes whatever is in it, so its mode is a security control, not housekeeping. The suite asserted the 0700 directory and never the file \u2014 and the directory alone is not the argument the docstring makes (it claims mkdtemp's mode AND an owner-only script). A one-character regression here is invisible to every behavioural test, because a world-writable script still works perfectly.",
-        path="agentkit/integrations/claude_cli/hooks.py",
+        path="agentkit/models/providers/cli/claude/hooks.py",
         before="script_path.chmod(0o600)",
         after="script_path.chmod(0o666)",
         tests=HOOKS_TESTS,
@@ -3487,7 +3484,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="the cached prefix is not subtracted, so every cached token is billed at "
         "full input rate — and a Codex session is mostly cache, so the estimate and "
         "every meter are wrong by roughly the whole prompt on every turn",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before="    return max(0, total_input - cached), cached",
         after="    return total_input, cached",
         tests=CODEX_EVENT_TESTS,
@@ -3496,7 +3493,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="codex",
         why="a completed item re-emits text its updates already streamed, so a UI with "
         "a cursor in it shows every sentence twice while the final answer stays right",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before="        already = self.emitted.get(key, 0)",
         after="        already = 0",
         tests=CODEX_EVENT_TESTS,
@@ -3505,9 +3502,12 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="codex",
         why="an item's text is folded on every phase, so an updated-then-completed "
         "message lands in the answer twice",
-        path="agentkit/agents/cognition/codex_cli.py",
-        before='        return [(ev, _EventDelta(text=text if phase == "completed" else ""))]',
-        after="        return [(ev, _EventDelta(text=text))]",
+        path="agentkit/models/providers/cli/codex/driver.py",
+        before=(
+            '        return [(ev, _EventDelta(text=text, message_id=item_id or None, '
+            'message_done=phase == "completed"))]'
+        ),
+        after='        return [(ev, _EventDelta(text=text, message_id=item_id or None, message_done=True))]',
         tests=CODEX_EVENT_TESTS,
     ),
     Mutant(
@@ -3515,7 +3515,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="the legacy vocabulary stops being parsed, so an older `codex` produces a "
         "run that exits 0, emits no events and returns an empty answer with no stop "
         "reason — silent, plausible and wrong, because forward-compat is 'don't crash'",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before='    if "msg" in payload and isinstance(payload.get("msg"), dict):',
         after="    if False:",
         tests=CODEX_EVENT_TESTS,
@@ -3524,7 +3524,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="codex",
         why="a paired tool item emits its call event twice, so an observer counting "
         "tool calls doubles every shell command",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before='    if log.first_call(f"call:{item_id}"):',
         after="    if True:",
         tests=CODEX_TESTS,
@@ -3534,7 +3534,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="an unset sandbox reports no capabilities, so RunPolicy's lethal-trifecta "
         "gate goes blind on the commonest wiring there is — a cognition nobody "
         "configured, which the CLI still runs read-only",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before="        return self.sandbox or _DEFAULT_SANDBOX",
         after='        return self.sandbox or "danger-full-access"',
         tests=CODEX_CAPS_TESTS,
@@ -3544,7 +3544,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="web search stops contributing untrusted_content, so a read-only sandbox "
         "with --search — the most innocuous-looking configuration Codex has — is no "
         "longer refused as the lethal trifecta",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before='            tags.update(("untrusted_content", "egress"))',
         after='            tags.update(("egress",))',
         tests=CODEX_CAPS_TESTS,
@@ -3554,7 +3554,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="the subcommand is emitted before the options instead of after them, which "
         "is the one argv layout `codex exec` cannot parse for both its global and its "
         "parent-only flags",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         # `--search` is the concrete global flag this is about: it is rejected
         # by `codex exec` and accepted by `codex`, so hoisting the subcommand
         # ahead of it is the exact argv layout the source comment warns about.
@@ -3576,7 +3576,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a config override value is interpolated rather than serialised, so a "
         "string arrives unquoted (a TOML parse error), a bool arrives quoted (the "
         "string 'True'), and a Windows path's backslashes end the value early",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before="    if isinstance(value, str):\n        return json.dumps(value)",
         after="    if isinstance(value, str):\n        return value",
         tests=CODEX_FLAG_TESTS,
@@ -3586,7 +3586,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a session forgets the thread it started, so every turn opens a fresh "
         "conversation — the model answers each question competently with no memory of "
         "the last, which reads as a bad model rather than a bug",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before='            resume = ("resume", self.session_id) if self.session_id else ()',
         after="            resume = ()",
         tests=CODEX_SESSION_TESTS,
@@ -3596,7 +3596,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a session cannot be an agent's cognition again: Agent._span_attrs reads "
         "cognition.name on every run, so agent.run raises AttributeError before "
         "reaching the CLI — the bug this attribute was added to fix",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before='        return f"{self._cog.name}_session"',
         after='        raise AttributeError("name")',
         tests=CODEX_SESSION_TESTS,
@@ -3606,7 +3606,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="a final message that is not the JSON --output-schema asked for is reported "
         "as a clean success with parsed=None, so a caller who declared output=Invoice "
         "reads the silence as if the type had simply not been wired",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before="            if decode_error is not None:\n                final_partial = True",
         after="            if decode_error is not None:\n                final_partial = False",
         tests=CODEX_SCHEMA_TESTS,
@@ -3615,7 +3615,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="codex",
         why="the schema's scratch directory outlives the run, so every typed run leaks "
         "a file naming the caller's data model",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before="            if scratch is not None:\n                shutil.rmtree(scratch, ignore_errors=True)",
         after="            if scratch is None:\n                shutil.rmtree(scratch, ignore_errors=True)",
         tests=CODEX_SCHEMA_TESTS,
@@ -3625,7 +3625,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="the CLI's spend never reaches the framework's meters, which is the silent "
         "$0.00 ledger the Claude cognition shipped once — the middleware that would "
         "have charged it never runs, because the Invoker is bypassed",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         before=(
             "        charge_error = await _charge_meters("
             "ctx, usage, enabled=self.meter_spend)"
@@ -3637,7 +3637,7 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="codex",
         why="an exhausted budget spawns anyway, and the resumable budget_exhausted stop "
         "reason becomes a completed run that overspent",
-        path="agentkit/agents/cognition/codex_cli.py",
+        path="agentkit/models/providers/cli/codex/driver.py",
         # Dedented: the pre-flight moved into the `_prepare` closure so a
         # throw here still reaches the terminal event.
         before="            self._refuse_if_budget_exhausted(ctx)",
@@ -3647,10 +3647,10 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="codex",
         why="a computed cost is presented as if the CLI reported one, so a caller bills "
-        "against a price-table lookup — or against the 0.00 an unpriced model returns",
-        path="agentkit/agents/cognition/codex_cli.py",
-        before='            "cost_source": "estimated",',
-        after='            "cost_source": "reported",',
+        "against a price-table estimate instead of a provider billing receipt",
+        path="agentkit/models/providers/cli/codex/driver.py",
+        before='            state.cost_source = CostSource.HOST_PRICING if self.pricing is not None else CostSource.PRICE_TABLE',
+        after='            state.cost_source = CostSource.REPORTED',
         tests=CODEX_BUDGET_TESTS,
     ),
     Mutant(
@@ -3658,7 +3658,7 @@ MUTANTS: tuple[Mutant, ...] = (
         why="the codex double replays past the end of its recording, so a session that "
         "spawns twice for one turn — a retry nobody asked for — is answered with a "
         "stable, plausible, wrong result instead of raising",
-        path="agentkit/testing/fakes/codex_cli.py",
+        path="agentkit/core/testing/fakes/codex_cli.py",
         before="            if not self._repeat_last or not self._runs:",
         after="            if self._runs:",
         tests=FAKE_CODEX_TESTS,
@@ -3667,10 +3667,53 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="fakecodex",
         why="codex_turn emits its terminal payload first, so every test asserting on a "
         "stream asserts against an order the binary never produces",
-        path="agentkit/testing/fakes/codex_cli.py",
+        path="agentkit/core/testing/fakes/codex_cli.py",
         before="        out.append(completed)",
         after="        out.insert(0, completed)",
         tests=FAKE_CODEX_TESTS,
+    ),
+    Mutant(
+        tag="calls",
+        why="optional strict placeholders erase required nulls from canonical answers",
+        path="agentkit/models/contracts/schema.py",
+        before='if item is None and key in props and key not in required and not valid(None, child):',
+        after='if item is None and key in props:',
+        tests=("tests/source/conformance/test_calls.py", "tests/source/conformance/test_schema_boundaries.py"),
+    ),
+    Mutant(
+        tag="calls",
+        why="cumulative usage charges the cached prefix repeatedly on resumed CLI calls",
+        path="agentkit/models/catalog/pricing.py",
+        before="        return a - b if a >= b else a",
+        after="        return a",
+        tests=("tests/source/conformance/test_calls.py", "tests/source/conformance/test_accounting.py"),
+    ),
+    Mutant(
+        tag="calls",
+        why="MCP deny rules cease to override matching allow grants",
+        path="agentkit/integrations/mcp/gateway.py",
+        before=(
+            'return not any(fnmatchcase(key, x) for x in self.deny) '
+            'and any(fnmatchcase(key, x) for x in self.allow)'
+        ),
+        after='return any(fnmatchcase(key, x) for x in self.allow)',
+        tests=("tests/source/conformance/test_gateway.py",),
+    ),
+    Mutant(
+        tag="calls",
+        why="durable checkpoints drop first-class message context metadata",
+        path="agentkit/core/serialization/messages.py",
+        before='        "metadata": thaw(message.metadata),',
+        after='        "metadata": {},',
+        tests=("tests/source/conformance/test_persistence.py",),
+    ),
+    Mutant(
+        tag="calls",
+        why="multi-call live evals report only the final call spend",
+        path="tests/evals/engine/reporting.py",
+        before='    return sum(costs.values(), Decimal(0))',
+        after='    return list(costs.values())[-1] if costs else Decimal(0)',
+        tests=("tests/source/evaluation/test_runner.py",),
     ),
 )
 

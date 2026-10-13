@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from agentkit.agents.result import Suspended  # re-exported: the suspend/resume value
+from agentkit.agents.definitions.results import Suspended
 
 
 class Autonomy(StrEnum):

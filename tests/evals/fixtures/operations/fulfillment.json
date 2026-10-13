@@ -1,0 +1,15 @@
+{
+  "order_id": "ORD-3051",
+  "sku": "FILTER-XL",
+  "requested_quantity": 7,
+  "approval_ref": "APR-FUL-3051",
+  "partial_fulfillment_allowed": true,
+  "warehouses": {
+    "north": {"on_hand": 7, "reserved_for_others": 5},
+    "south": {"on_hand": 5, "reserved_for_others": 2}
+  },
+  "allocations": {},
+  "backordered_quantity": 0,
+  "shipped_quantity": 0,
+  "status": "pending"
+}

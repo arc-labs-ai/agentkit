@@ -35,8 +35,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentkit.agents.control.selector import Selector
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import Message, ToolSchema
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import Message, ToolSchema
 from agentkit.tools import FunctionTool
 
 # Re-exported so `Selector` survives ruff's unused-import sweep — under `from __future__

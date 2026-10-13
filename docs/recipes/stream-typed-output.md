@@ -30,7 +30,7 @@ recipe is how you receive it: `StreamEvent.partial_output`, off
     ship. To run it with **no key at all**, replace
     `resolve_llm("claude-sonnet-4-6")` with
     `FakeLLM('{"title": "Octopus cognition", "body": "Distributed neurons."}')`
-    from `agentkit.testing` — it streams in 8-character chunks, so the
+    from `agentkit.core.testing` — it streams in 8-character chunks, so the
     partials are genuinely incremental. That substitution is how this
     snippet is verified.
 
@@ -43,10 +43,11 @@ import asyncio
 
 from pydantic import BaseModel
 
-from agentkit import Agent, Scope
-from agentkit.adapters.llm import resolve_llm
-from agentkit.middlewares import output_coerce, tracing
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
+from agentkit.models import resolve_llm
+from agentkit.core.policies import output_coerce, tracing
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 class Article(BaseModel):

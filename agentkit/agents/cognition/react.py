@@ -16,16 +16,6 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from agentkit.agents._agent_helpers import (
-    _assistant,
-    _ceiling_errors,
-    _exhausted_ceiling,
-    _final_events,
-    _last_assistant,
-    _parse_args,
-    _to_text,
-    _unwrap_ceiling,
-)
 from agentkit.agents.control.elicitation import (
     Decision,
     Elicitation,
@@ -35,8 +25,31 @@ from agentkit.agents.control.elicitation import (
     resolve_asker,
 )
 from agentkit.agents.control.gate import should_gate
-from agentkit.agents.result import AgentResult, Suspended
-from agentkit.capabilities.checkpointer import (
+from agentkit.agents.definitions.results import AgentResult, Suspended
+from agentkit.agents.execution._helpers import (
+    _assistant,
+    _ceiling_errors,
+    _exhausted_ceiling,
+    _final_events,
+    _last_assistant,
+    _parse_args,
+    _to_text,
+    _unwrap_ceiling,
+)
+from agentkit.core.contracts.ports import CheckpointStatus
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import (
+    ChatRequest,
+    Message,
+    StreamEvent,
+    ToolCall,
+    ToolRequest,
+    Usage,
+    assemble_deltas,
+)
+from agentkit.core.execution.concurrency import gather_bounded
+from agentkit.models.output import OutputCoercionError
+from agentkit.state.checkpoints import (
     Checkpointer,
     dict_to_tc,
     msg_to_dict,
@@ -46,25 +59,12 @@ from agentkit.capabilities.checkpointer import (
     tc_to_dict,
     usage_to_dict,
 )
-from agentkit.capabilities.output_schema import OutputCoercionError
-from agentkit.kernel.concurrency import gather_bounded
-from agentkit.kernel.ports import CheckpointStatus
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.types import (
-    ChatRequest,
-    Message,
-    StreamEvent,
-    ToolCall,
-    ToolRequest,
-    Usage,
-    assemble_deltas,
-)
 from agentkit.tools import ToolShapeError
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
     from agentkit.agents.control.termination import TerminationCondition
-    from agentkit.context import WorkingContext
+    from agentkit.agents.execution.agent import Agent
+    from agentkit.state.context import WorkingContext
 
 
 @dataclass(slots=True)
@@ -454,7 +454,7 @@ class ReActCognition:
                             evals={"stop_reason": "awaiting_approval", "suspended": susp},
                             prompt_version=prompt_version,
                             # Typed so a reader can branch WITHOUT reaching into
-                            # the ``evals`` bag: parked on a human, not broken.
+                            # the ``tests.evals`` bag: parked on a human, not broken.
                             stop_reason="suspended",
                         ),
                     )
@@ -636,7 +636,7 @@ class ReActCognition:
         ``stop_reason="budget_exhausted"`` — which
         ``AgentResult.is_resumable`` reports as recoverable, distinguishing it
         from both a completed run and a crash. The verdict's reason string
-        lands in ``evals["error"]`` so an operator sees the actual numbers
+        lands in ``tests.evals["error"]`` so an operator sees the actual numbers
         without re-deriving them.
         """
         await ctx.emit(

@@ -3,7 +3,7 @@
 A `Prompt` is a system prompt with an id and a version attached, so that
 when quality changes you can say *which wording* changed it.
 
-That is the whole package. `agentkit.prompts` is deliberately boring: it
+That is the whole package. `agentkit.agents.prompts` is deliberately boring: it
 owns the shape of a prompt and nothing else. No templating engine, no
 prompt store, no A/B router — those live in your app, or in a layer above,
 and consume this shape.
@@ -41,8 +41,9 @@ and the model will happily answer it.
 ```python
 import asyncio
 
-from agentkit import Agent, Prompt
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.agents.prompts import Prompt
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 BRIEFER = Prompt(
     id="briefer",
@@ -115,7 +116,7 @@ with no arguments. Binding is what makes `inputs` usable through an
 `Agent` at all.
 
 ```python
-from agentkit import Prompt
+from agentkit.agents.prompts import Prompt
 
 BRIEFER = Prompt(
     id="briefer",
@@ -176,7 +177,7 @@ doubling someone added to escape them.
 import copy
 import pickle
 
-from agentkit import Prompt
+from agentkit.agents.prompts import Prompt
 
 p = Prompt(id="x", version="1", inputs=("kind",),
            template='Return {"type": "object"} for {kind}.')
@@ -214,7 +215,7 @@ true:
 
 ## Built-ins
 
-`agentkit.prompts.builtin` ships two vetted seed prompts used by the
+`agentkit.agents.prompts.builtin` ships two vetted seed prompts used by the
 LLM-driven compaction strategies: `COMPACTION_SUMMARY` (for
 `SummarizationCompactor`) and `COMPACTION_IMPORTANCE` (for
 `ImportanceFilteringCompactor`).

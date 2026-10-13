@@ -1,0 +1,42 @@
+{
+  "order_id": "ORD-2048",
+  "customer": "maya@example.test",
+  "currency": "USD",
+  "captured_cents": 15000,
+  "refunded_cents": 0,
+  "lines": [
+    {
+      "sku": "JACKET-NAVY-M",
+      "quantity": 1,
+      "unit_cents": 12000
+    },
+    {
+      "sku": "BELT-BROWN",
+      "quantity": 1,
+      "unit_cents": 3000
+    }
+  ],
+  "return": {
+    "return_id": "RET-2048",
+    "sku": "BELT-BROWN",
+    "quantity": 1,
+    "condition": "unopened",
+    "received": true
+  },
+  "stock": {
+    "BELT-BROWN": {
+      "available": 8,
+      "reserved": 2
+    }
+  },
+  "review": {
+    "approval_ref": "APR-RET-2048",
+    "order_id": "ORD-2048",
+    "max_refund_cents": 3000,
+    "restock_sku": "BELT-BROWN",
+    "approved": false,
+    "reason": "manual approval missing"
+  },
+  "idempotency_key": "return:RET-2048",
+  "requested_refund_cents": 15000
+}

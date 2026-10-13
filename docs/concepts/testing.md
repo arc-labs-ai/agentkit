@@ -1,6 +1,6 @@
 # Testing
 
-`agentkit.testing` is how you run an agent in a unit test — no API key,
+`agentkit.core.testing` is how you run an agent in a unit test — no API key,
 no network, no wall-clock waiting, deterministic every time.
 
 !!! tip "Is this page for you?"
@@ -34,8 +34,8 @@ has actually cost this repo time.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -73,10 +73,10 @@ trivial tests.
 import asyncio
 from decimal import Decimal
 
-from agentkit import Agent
-from agentkit.kernel.types import Scope
-from agentkit.runtime import Budget
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
+from agentkit.core.runtime import Budget
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -130,8 +130,8 @@ model.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -159,8 +159,8 @@ nothing.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -188,10 +188,10 @@ sent.
 ```python
 import asyncio
 
-from agentkit import Agent
+from agentkit.agents import Agent
 from agentkit.agents.cognition import ReActCognition
-from agentkit.kernel.types import ToolCall
-from agentkit.testing import FakeLLM, FakeTool, Turn, make_test_ctx
+from agentkit.core.contracts.types import ToolCall
+from agentkit.core.testing import FakeLLM, FakeTool, Turn, make_test_ctx
 
 
 async def main() -> None:
@@ -233,9 +233,9 @@ records something — that is the assertion surface.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.middlewares import retry
-from agentkit.testing import FakeClock, FakeLLM, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.policies import retry
+from agentkit.core.testing import FakeClock, FakeLLM, make_test_ctx
 
 
 async def main() -> None:
@@ -300,7 +300,7 @@ double that returned finished `AgentResult`s would test none of those,
 which is where every bug on this path has actually lived.
 
 ```python
-from agentkit.testing import FakeClaudeCli
+from agentkit.core.testing import FakeClaudeCli
 
 # a recorded session, replayed event for event
 cli = FakeClaudeCli.replay(Path("sessions/adds_endpoint.jsonl"))
@@ -325,8 +325,8 @@ the two share their replay machinery and their value types (`CliRun`,
 whichever binary produced it.
 
 ```python
-from agentkit.agents.cognition import CodexCliCognition
-from agentkit.testing import FakeCodexCli, codex_turn
+from agentkit.models.providers.cli.codex import CodexCliCognition
+from agentkit.core.testing import FakeCodexCli, codex_turn
 
 cli = FakeCodexCli.script(codex_turn(text="done", usage=(1200, 1000, 40)))
 cognition = CodexCliCognition(spawn=cli)
@@ -370,9 +370,9 @@ run and bill the completed work at $0.00.
 ```python
 import asyncio
 
-from agentkit.kernel.ports import FetchResponse, SearchHit
-from agentkit.memory.base import MemoryItem
-from agentkit.testing import FakeCtx, FakeFetch, FakeMemory, FakeSearch
+from agentkit.core.contracts.ports import FetchResponse, SearchHit
+from agentkit.state.memory.base import MemoryItem
+from agentkit.core.testing import FakeCtx, FakeFetch, FakeMemory, FakeSearch
 
 
 async def main() -> None:
@@ -417,8 +417,8 @@ tests that only care that the agent received *some* items.
 ```python
 import asyncio
 
-from agentkit import Agent
-from agentkit.testing import FakeLLM, RecordingTracer, make_test_ctx
+from agentkit.agents import Agent
+from agentkit.core.testing import FakeLLM, RecordingTracer, make_test_ctx
 
 
 async def main() -> None:
@@ -446,8 +446,8 @@ adapter and read it back:
 ```python
 import asyncio
 
-from agentkit.adapters.observer import CollectingObserver
-from agentkit.testing import make_test_ctx
+from agentkit.integrations.observers import CollectingObserver
+from agentkit.core.testing import make_test_ctx
 
 
 async def main() -> None:
@@ -467,9 +467,9 @@ asyncio.run(main())
 The convention is load-bearing, because two of these are production
 code:
 
-- **`Fake*`** — test doubles. They live in `agentkit.testing` and are
+- **`Fake*`** — test doubles. They live in `agentkit.core.testing` and are
   kept off the production import path (pinned by
-  `tests/meta/test_public_api_surface.py`).
+  `tests/source/architecture/test_public_api_surface.py`).
 - **`Null*` / `Noop*`** — production-grade null objects. `NullCtx`,
   `NoopObserver`, `NoopTrace`, `NoopMetrics`, `NoopReplayStore` live in
   `runtime/` and `kernel/`. They are what makes `Services()` with no
@@ -494,10 +494,10 @@ recording.
     ```python
     import asyncio
 
-    from agentkit import Agent
-    from agentkit.adapters.store import InMemoryStore
-    from agentkit.middlewares import memoize
-    from agentkit.testing import FakeLLM, make_test_ctx
+    from agentkit.agents import Agent
+    from agentkit.state.stores import InMemoryStore
+    from agentkit.core.policies import memoize
+    from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
     async def run_twice(ctx, llm) -> int:
@@ -541,10 +541,10 @@ recording.
     import asyncio
     from decimal import Decimal
 
-    from agentkit import Agent
-    from agentkit.middlewares import meter
-    from agentkit.runtime import Budget
-    from agentkit.testing import FakeLLM, make_test_ctx
+    from agentkit.agents import Agent
+    from agentkit.core.policies import meter
+    from agentkit.core.runtime import Budget
+    from agentkit.core.testing import FakeLLM, make_test_ctx
 
 
     async def main() -> None:
@@ -584,8 +584,8 @@ recording.
     ```python
     import asyncio
 
-    from agentkit import Agent
-    from agentkit.testing import FakeLLM, ScriptExhausted, Turn, make_test_ctx
+    from agentkit.agents import Agent
+    from agentkit.core.testing import FakeLLM, ScriptExhausted, Turn, make_test_ctx
 
 
     async def main() -> None:
@@ -615,8 +615,8 @@ recording.
     When the unbounded loop is the point of the test, say so:
 
     ```python
-    from agentkit.kernel.types import ToolCall
-    from agentkit.testing import FakeLLM, Turn
+    from agentkit.core.contracts.types import ToolCall
+    from agentkit.core.testing import FakeLLM, Turn
 
     # one tool-call turn, replayed forever; max_iterations ends the run
     llm = FakeLLM.script(
@@ -645,8 +645,8 @@ recording.
     ```python
     import asyncio
 
-    from agentkit.kernel.types import Message
-    from agentkit.testing import FakeLLM, Turn
+    from agentkit.core.contracts.types import Message
+    from agentkit.core.testing import FakeLLM, Turn
 
 
     async def main() -> None:

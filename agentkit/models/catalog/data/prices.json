@@ -1,0 +1,67 @@
+{
+  "version": "2026-10-13",
+  "date": "2026-10-13",
+  "rates": {
+    "claude-haiku-4-5": {
+      "input_uncached": "1",
+      "input_cache_read": "0.10",
+      "input_cache_write_5m": "1.25",
+      "input_cache_write_1h": "2",
+      "output": "5"
+    },
+    "gpt-5.4-mini": {
+      "input_uncached": "0.75",
+      "input_cache_read": "0.075",
+      "output": "4.50"
+    },
+    "claude-sonnet-4-6": {
+      "input_uncached": "3",
+      "input_cache_read": ".30",
+      "input_cache_write_5m": "3.75",
+      "input_cache_write_1h": "6",
+      "output": "15"
+    },
+    "claude-opus-4-1": {
+      "input_uncached": "15",
+      "input_cache_read": "1.50",
+      "input_cache_write_5m": "18.75",
+      "input_cache_write_1h": "30",
+      "output": "75"
+    },
+    "gpt-4o": {
+      "input_uncached": "2.50",
+      "input_cache_read": "1.25",
+      "output": "10"
+    },
+    "gpt-4o-mini": {
+      "input_uncached": ".15",
+      "input_cache_read": ".075",
+      "output": ".60"
+    },
+    "gpt-4.1": {
+      "input_uncached": "2",
+      "input_cache_read": ".50",
+      "output": "8"
+    },
+    "gpt-4.1-mini": {
+      "input_uncached": ".40",
+      "input_cache_read": ".10",
+      "output": "1.60"
+    }
+  },
+  "modifiers": {
+    "batch": "0.5",
+    "regional": "1.1"
+  },
+  "aliases": {
+    "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+    "gpt-4o-mini-2024-07-18": "gpt-4o-mini"
+  },
+  "sources": [
+    "https://platform.claude.com/docs/en/about-claude/pricing",
+    "https://developers.openai.com/api/docs/models/gpt-4o",
+    "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+    "https://developers.openai.com/api/docs/models/gpt-4.1",
+    "https://developers.openai.com/api/docs/models/gpt-4.1-mini"
+  ]
+}

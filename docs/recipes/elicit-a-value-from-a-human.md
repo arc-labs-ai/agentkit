@@ -28,11 +28,11 @@ correct. This page is the superset.
 !!! note "Assumes `ANTHROPIC_API_KEY` in the environment"
     To run it with **no key at all**, replace
     `resolve_llm("claude-sonnet-4-6")` with a scripted `FakeLLM` from
-    `agentkit.testing`:
+    `agentkit.core.testing`:
 
     ```python
-    from agentkit.kernel.types import ToolCall
-    from agentkit.testing import FakeLLM, Turn
+    from agentkit.core.contracts.types import ToolCall
+    from agentkit.core.testing import FakeLLM, Turn
 
     llm = FakeLLM.script([
         Turn(tool_calls=(ToolCall(id="c1", name="ask_human",
@@ -51,11 +51,12 @@ correct. This page is the superset.
 
 import asyncio
 
-from agentkit import Agent, Scope
-from agentkit.adapters.llm import resolve_llm
+from agentkit.agents import Agent
+from agentkit.core.contracts.types import Scope
+from agentkit.models import resolve_llm
 from agentkit.agents.cognition import ReActCognition
 from agentkit.agents.control.elicitation import Decision, Elicitation, ask_human_tool, elicit
-from agentkit.runtime import Invoker, RunContext, Services
+from agentkit.core.runtime import Invoker, RunContext, Services
 
 
 class TerminalAsker:

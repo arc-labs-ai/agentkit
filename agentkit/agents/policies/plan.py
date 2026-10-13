@@ -10,7 +10,7 @@ reaching it checkpoints the accumulated results/errors/usage through the shared
 ``Checkpointer`` seam (``resolve_checkpointer``: an explicit ``checkpointer=`` on the
 cognition, else ``ctx.checkpointer``, else a bridge over ``ctx.store``) at the plan's own
 slot ``{run_id}:plan``, then returns an ``AgentResult`` with
-``stop_reason="awaiting_decision"`` and a ``Suspended`` in ``evals["suspended"]``. The
+``stop_reason="awaiting_decision"`` and a ``Suspended`` in ``tests.evals["suspended"]``. The
 run resumes via :meth:`PlanPolicy.resume` — an ``approve`` decision continues at the next
 group (and reclaims the checkpoint); a ``reject`` (or missing decision) returns a
 terminal ``stop_reason="rejected"`` result without running further groups. This is the
@@ -26,24 +26,21 @@ import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from agentkit.agents.definitions.results import AgentResult, Suspended, stop_reason_for
 from agentkit.agents.policies.roundrobin import _emit_policy_dispatch, _resolve_checkpointer
-from agentkit.agents.result import AgentResult, Suspended, stop_reason_for
-from agentkit.capabilities.checkpointer.persistence import (
-    result_to_dict,
-    usage_to_dict,
-)
-from agentkit.context import WorkingContext
-from agentkit.kernel._json import dumps as _json_dumps
-from agentkit.kernel.concurrency import run_agents
-from agentkit.kernel.errors import Failure
-from agentkit.kernel.ports import CheckpointStatus
-from agentkit.kernel.protocols import Ctx
-from agentkit.kernel.resilience import ErrorClass
-from agentkit.kernel.types import Usage
+from agentkit.core.contracts.errors import Failure
+from agentkit.core.contracts.ports import CheckpointStatus
+from agentkit.core.contracts.protocols import Ctx
+from agentkit.core.contracts.types import Usage
+from agentkit.core.execution.concurrency import run_agents
+from agentkit.core.execution.resilience import ErrorClass
+from agentkit.core.serialization._json import dumps as _json_dumps
+from agentkit.state.checkpoints.persistence import result_to_dict, usage_to_dict
+from agentkit.state.context import WorkingContext
 
 if TYPE_CHECKING:
-    from agentkit.agents.agent import Agent
-    from agentkit.capabilities.checkpointer import Checkpointer
+    from agentkit.agents.execution.agent import Agent
+    from agentkit.state.checkpoints import Checkpointer
 
 
 def _plan_dispatch(ctx: Ctx, *, policy: str, child: str, reason: str) -> None:
@@ -154,7 +151,7 @@ def _encode_plan_state(
     in-memory tests honest about the wire contract, the same argument
     ``Checkpointer.snapshot`` makes for deep-copying state.
 
-    A child result's ``evals`` / ``parsed`` can hold ANYTHING (a Pydantic model,
+    A child result's ``tests.evals`` / ``parsed`` can hold ANYTHING (a Pydantic model,
     a ``Message`` list from a nested coordinator). Rather than let the suspend
     itself explode — which loses the whole run, the worst possible outcome at a
     gate — those two fields are dropped, once, with a warning, if the payload
@@ -181,9 +178,9 @@ def _encode_plan_state(
         rec.pop("evals", None)
         rec.pop("parsed", None)
     warnings.warn(
-        "a suspended plan carried child results whose `evals`/`parsed` could not be "
+        "a suspended plan carried child results whose `tests.evals`/`parsed` could not be "
         "serialized, so those two fields were dropped from the checkpoint. The plan will "
-        "resume and finish; the pre-gate results it hands back will have empty `evals` and "
+        "resume and finish; the pre-gate results it hands back will have empty `tests.evals` and "
         "`parsed=None`. Return JSON-safe values from `output=` parsers to keep them.",
         UserWarning,
         stacklevel=3,
@@ -209,7 +206,7 @@ def _decode_plan_state(
     before this change must still resume rather than crash on a dict lookup
     into a ``Step``.
     """
-    from agentkit.capabilities.checkpointer.persistence import dict_to_result
+    from agentkit.state.checkpoints.persistence import dict_to_result
 
     task = state["task"]
     gate_group = int(state["gate_group"])
@@ -322,7 +319,7 @@ def _validate_plan(
     An **unknown child name** is the one case that depends on the mode, because
     it is the one case that can legitimately be runtime data rather than a typo:
     a live ``Planner`` names the child it wants. Under ``best_effort=True`` it
-    becomes a ``Failure`` in ``evals["errors"]`` and the rest of the plan runs;
+    becomes a ``Failure`` in ``tests.evals["errors"]`` and the rest of the plan runs;
     otherwise it is refused up front.
     """
     dropped: list[tuple[str | None, Failure]] = []
@@ -360,7 +357,7 @@ def _validate_plan(
             if not best_effort:
                 raise PlanShapeError(
                     msg + ". Fix the plan, or set best_effort=True to isolate unknown children "
-                    "into evals['errors'] and run the rest."
+                    "into tests.evals['errors'] and run the rest."
                 )
             # PERMANENT: retrying a name that is not on the roster cannot
             # succeed, and ``Failure.retriable`` is read by callers deciding
@@ -384,7 +381,7 @@ class PlanPolicy:
 
     ``best_effort=False`` (default) fail-fast: a failing step cancels its group and
     raises. ``best_effort=True``: each slot is a result OR a
-    :class:`~agentkit.kernel.errors.Failure` wrapping the raised exception, so partial
+    :class:`~agentkit.core.contracts.errors.Failure` wrapping the raised exception, so partial
     progress survives — failures land in ``AgentResult.evals['errors']`` as
     ``(child_name, failure)`` tuples (the ``Failure`` carries the originating exception
     on ``.cause``).
@@ -525,7 +522,7 @@ class PlanPolicy:
                 },
                 # A person declining is a deliberate terminal stop, not a
                 # completed plan and not a failure. ``"terminated"`` is the
-                # closed-taxonomy spelling; ``evals`` keeps the exact word.
+                # closed-taxonomy spelling; ``tests.evals`` keeps the exact word.
                 stop_reason=stop_reason_for("rejected"),
             )
 

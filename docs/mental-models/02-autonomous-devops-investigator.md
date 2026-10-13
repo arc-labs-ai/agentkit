@@ -148,7 +148,7 @@ UI renders a REVIEW REQUIRED card with `tc.name="get_logs"` and
 `tc.arguments={"service": "checkout-api", "since_minutes": 15}` verbatim
 — the `FrozenDict` on `ToolCall.arguments` prevents any downstream render
 code from mutating it. It was a `MappingProxyType` originally; a `dict`
-SUBCLASS replaced it (see `agentkit/kernel/_frozen.py`) so the card's own
+SUBCLASS replaced it (see `agentkit/core/serialization/_immutable.py`) so the card's own
 `json.dumps` of the arguments keeps working, which a proxy refused.
 
 **t=~603ms → t=~90s — Human wall clock.** The oncall reads the card,
@@ -248,7 +248,7 @@ the framework's invariants slip.
    only gates approval-required tools, and read-only tools slip through
    silently. The operator's contract ("show me every step") breaks.
    *Locked by the `should_gate` truth-table in
-   `tests/agents/test_gate.py`.*
+   `tests/source/unit/agents/test_gate.py`.*
 2. **Approval snapshot mutable across the seam.** If
    `ToolCall.arguments` were a plain `dict` instead of a `FrozenDict`,
    a tool implementation could `args.pop("dry_run")` between the UI
@@ -256,24 +256,24 @@ the framework's invariants slip.
    call is destructive. The freeze is DEEP, so
    `args["filters"]["tags"].append(...)` is refused too. *Locked by
    `test_toolcall_arguments_view_rejects_item_assignment` in
-   `tests/kernel/test_kernel.py`.*
+   `tests/source/unit/core/test_kernel.py`.*
 3. **`Checkpointer.snapshot` shares state by reference.** If the
    snapshot didn't deep-copy `state` / `metadata`, the running loop
    would mutate the persisted record — an operator loading the paused
    view would see stale evidence, or (worse) evidence that no longer
    matches what will resume. *Locked by
    `test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it`
-   in `tests/capabilities/test_checkpointer.py`.*
+   in `tests/source/unit/state/checkpoints/test_checkpointer.py`.*
 4. **`Suspended.pending` is a mutable list.** A stray
    `suspended.pending.append(...)` after emit would desync the operator's
    card from what resume actually invokes. The frozen tuple pins both
    ends of the handshake. *Locked by
-   `test_suspended_pending_is_a_frozen_tuple` in `tests/agents/test_agents.py`.*
+   `test_suspended_pending_is_a_frozen_tuple` in `tests/source/unit/agents/test_agents.py`.*
 5. **Cancellation not checked between turns.** If
    `ctx.check_cancelled()` were removed from the top of `_iterate`'s
    loop, an operator's Cancel would only take effect after another full
    LLM turn — burning another turn's worth of tokens and possibly one
-   more approved tool call. *Locked by `tests/runtime/test_cancellation.py`.*
+   more approved tool call. *Locked by `tests/source/unit/core/runtime/test_cancellation.py`.*
 6. **`max_iterations` ceiling drops.** If `for i in range(start_i,
    self.max_iterations)` were replaced with `while True`, a termination
    bug would loop forever until the cost cap tripped — the never-hang
@@ -284,14 +284,14 @@ the framework's invariants slip.
    `classify` ordering flipped so PERMANENT went through the retry
    branch, an audit alarm would fire before the model even saw the
    error. *Locked by `test_run_with_resilience_fails_fast_on_permanent`
-   in `tests/kernel/test_kernel.py`.*
+   in `tests/source/unit/core/test_kernel.py`.*
 8. **Resume ignores checkpoint's `pending` list.** If `resume` rebuilt
    `pending` from the transcript instead of `saved.state["pending"]`, a
    snapshot corruption or a race between snapshot and interrupt emit
    would let the operator approve tool call A while the loop invoked
    tool call B. *Locked by
    `test_agent_suspends_then_resumes_through_a_checkpointer` in
-   `tests/capabilities/test_checkpointer.py`.*
+   `tests/source/unit/state/checkpoints/test_checkpointer.py`.*
 
 ### Integration-level failures (the wiring's job to prevent)
 
@@ -503,11 +503,11 @@ How to actually check the design is working — not just "tests pass" but
 
 ```bash
 cd agentkit
-uv run pytest tests/agents/test_agent_loop.py \
-              tests/agents/test_gate.py \
-              tests/agents/test_control.py \
-              tests/runtime/test_cancellation.py \
-              tests/capabilities/test_checkpointer.py
+uv run pytest tests/source/unit/agents/test_agent_loop.py \
+              tests/source/unit/agents/test_gate.py \
+              tests/source/unit/agents/test_control.py \
+              tests/source/unit/core/runtime/test_cancellation.py \
+              tests/source/unit/state/checkpoints/test_checkpointer.py
 ```
 
 Expected: all pass. Any failure is a live invariant violation. These
@@ -534,7 +534,7 @@ grep -n "check_cancelled\|ctx.cancel" agentkit/agents/cognition/react.py
 # Expected: at least one ctx.check_cancelled() at the top of _iterate's loop.
 
 # Tool arguments are frozen at construction.
-grep -n "deep_freeze" agentkit/kernel/types.py
+grep -n "deep_freeze" agentkit/core/contracts/types.py
 # Expected: `ToolCall.__post_init__` passes `arguments` through `deep_freeze`
 # (which returns a FrozenDict — a dict subclass that refuses mutation).
 # Grepping for MappingProxyType here is the OLD check and now only finds
@@ -542,7 +542,7 @@ grep -n "deep_freeze" agentkit/kernel/types.py
 # landed, because a proxy broke json.dumps / asdict / isinstance(_, dict).
 
 # Snapshot deep-copies state.
-grep -n "deepcopy" agentkit/capabilities/checkpointer/base.py
+grep -n "deepcopy" agentkit/state/checkpoints/base.py
 # Expected: Checkpointer.snapshot deep-copies both state and metadata.
 ```
 
@@ -553,10 +553,12 @@ Build the smallest reproduction of the gate + resume flow:
 ```python
 # Not committed — one-off verification script.
 import asyncio
-from agentkit import Agent, Budget, Scope
+from agentkit.agents import Agent
+from agentkit.core.runtime import Budget
+from agentkit.core.contracts.types import Scope
 from agentkit.agents.cognition import ReActCognition
-from agentkit.agents.result import Suspended
-from agentkit.runtime import RunContext, Services
+from agentkit.agents.definitions.results import Suspended
+from agentkit.core.runtime import RunContext, Services
 from agentkit.tools import FunctionTool
 
 async def kubectl_rollout(**args):
@@ -700,13 +702,13 @@ full trifecta up front.
 
 | Invariant | Concrete failure if violated | Locked by |
 |---|---|---|
-| **`requires_approval=True` always fires the human gate** | The loop invokes a `kubectl` command without operator consent → prod outage or data loss | `test_manual_autonomy_gates_an_unapproved_tool`, `test_gated_autonomy_gates_side_effecting_key_step` in `tests/agents/test_agent_loop.py` |
-| **`Autonomy.MANUAL` gates every step, not just approval-required ones** | Operator wanted "review everything" mode; framework only gated the flagged tools → ran read-only tools they wanted to see first | `should_gate` truth table in `tests/agents/test_gate.py` |
-| **`RunPolicy.check` returns a flagged verdict when trifecta hits** | The tool set has all three caps and nobody notices → framework silently allows autonomous auto-remediation | `PolicyVerdict` tests in `tests/agents/test_control.py` |
+| **`requires_approval=True` always fires the human gate** | The loop invokes a `kubectl` command without operator consent → prod outage or data loss | `test_manual_autonomy_gates_an_unapproved_tool`, `test_gated_autonomy_gates_side_effecting_key_step` in `tests/source/unit/agents/test_agent_loop.py` |
+| **`Autonomy.MANUAL` gates every step, not just approval-required ones** | Operator wanted "review everything" mode; framework only gated the flagged tools → ran read-only tools they wanted to see first | `should_gate` truth table in `tests/source/unit/agents/test_gate.py` |
+| **`RunPolicy.check` returns a flagged verdict when trifecta hits** | The tool set has all three caps and nobody notices → framework silently allows autonomous auto-remediation | `PolicyVerdict` tests in `tests/source/unit/agents/test_control.py` |
 | **`Suspended` carries the ToolCall arguments verbatim** | Operator UI shows a hallucinated command different from what would actually run | `test_agent_suspends_then_resumes_through_a_checkpointer` |
 | **`ToolCall.arguments` cannot be mutated between UI render and execution** | A tool implementation `args.pop("dry_run")` mutates the approval snapshot → operator sees "dry run" but actual call is destructive | `test_toolcall_arguments_view_rejects_item_assignment` |
 | **`Checkpointer.snapshot` deep-copies state** | Suspended snapshot's `pending` list is shared with the running loop's; a resume-race mutates one side and the operator sees stale evidence | `test_snapshot_deep_copies_state_so_post_snapshot_mutation_cannot_reach_it` |
-| **Cancellation propagates through `ctx.check_cancelled()` between turns** | Operator's Cancel arrives but the loop already dispatched the next chat call → burns another turn's tokens after the abort | `tests/runtime/test_cancellation.py` |
+| **Cancellation propagates through `ctx.check_cancelled()` between turns** | Operator's Cancel arrives but the loop already dispatched the next chat call → burns another turn's tokens after the abort | `tests/source/unit/core/runtime/test_cancellation.py` |
 | **`Budget.max_calls` is a hard ceiling** | Termination condition bug leaves the loop unhung by MaxTurns → runs forever until cost cap trips | Framework contract: `_iterate`'s `for i in range(start_i, self.max_iterations)` is the never-hang backstop |
 | **Approved tools RE-approve on subsequent runs** | Operator approves once → the run remembers → next investigation autonomously reuses the approval | By design: the approval carrier is `Suspended` scoped to `run_id`; a new `run_id` starts fresh |
 | **The kernel `run_with_resilience` does NOT retry PERMANENT failures** | A 403 on `kubectl` triggers a retry storm → looks like an attack pattern to infra security | `test_run_with_resilience_fails_fast_on_permanent`, `classify` ordering test |
@@ -725,7 +727,7 @@ full trifecta up front.
 - **`Suspended.pending` is a frozen `tuple`, not a mutable `list`.**
   Two doors both locked: the frozen dataclass blocks rebinding, the
   tuple itself blocks item mutation. Verified by
-  `test_suspended_pending_is_a_frozen_tuple` in `tests/agents/test_agents.py`.
+  `test_suspended_pending_is_a_frozen_tuple` in `tests/source/unit/agents/test_agents.py`.
 - **`Autonomy` values are `AutonomyLiteral` — a typo doesn't silently
   drop to AUTO.** mypy catches this at the seam.
 
@@ -771,9 +773,9 @@ specific things this design proves the framework must support:
 
 Last audited against the current tree:
 
-- **Automated invariant tests**: `pytest tests/agents/test_agent_loop.py
-  tests/agents/test_gate.py tests/agents/test_control.py
-  tests/runtime/test_cancellation.py tests/capabilities/test_checkpointer.py`
+- **Automated invariant tests**: `pytest tests/source/unit/agents/test_agent_loop.py
+  tests/source/unit/agents/test_gate.py tests/source/unit/agents/test_control.py
+  tests/source/unit/core/runtime/test_cancellation.py tests/source/unit/state/checkpoints/test_checkpointer.py`
   → 69 passed, 0 failed.
 - **Gate call site**: `grep -n "requires_approval"
   agentkit/agents/cognition/react.py` → 1 match at line 361 inside

@@ -76,6 +76,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from agentkit.agents.control.elicitation import Decision, Elicitation
 from agentkit.agents.control.gate import Autonomy, should_gate
+from agentkit.core.contracts.protocols import AutonomyLiteral
+from agentkit.core.serialization._immutable import deep_freeze
 from agentkit.integrations.mcp._transport import (
     LoopbackMcpTransport,
     McpAuth,
@@ -83,12 +85,10 @@ from agentkit.integrations.mcp._transport import (
     qualified_tool_name,
     validated_auth,
 )
-from agentkit.kernel._frozen import deep_freeze
-from agentkit.kernel.protocols import AutonomyLiteral
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     from agentkit.agents.control.elicitation import Asker
-    from agentkit.kernel.ports import ClockPort
+    from agentkit.core.contracts.ports import ClockPort
 
 # The MCP server name. It appears in the tool's fully-qualified name
 # (``mcp__<server>__<tool>``), which the caller passes to
