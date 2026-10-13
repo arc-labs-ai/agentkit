@@ -849,6 +849,28 @@ async def test_api_rate_limit_without_usage_retries_under_cost_cap_and_keeps_cos
 
 
 @pytest.mark.asyncio
+async def test_runtime_idle_deadline_restarts_after_hosted_tool_finishes():
+    from agentkit.models.contracts.types import CallEvent
+
+    class ToolActivityAdapter:
+        async def turn(self, binding, prompt, *, emit, tool_activity, **kwargs):
+            await emit(CallEvent(EventKind.MESSAGE_DELTA, "runtime-idle-tool", {"text": "started"}))
+            tool_activity(True)
+            await asyncio.sleep(1.5)
+            tool_activity(False)
+            await asyncio.sleep(0.2)
+            await emit(CallEvent(EventKind.MESSAGE_DELTA, "runtime-idle-tool", {"text": "finished"}))
+            return Turn(messages=("finished",), raw_usage={"input_tokens": 1, "output_tokens": 1})
+
+    async with CallRuntime(adapters={Mode.CLAUDE_CODE: ToolActivityAdapter()}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.CLAUDE_CODE, "test"), "long host tool",
+            limits=CallLimits(idle_s=1), call_id="runtime-idle-tool",
+        )
+    assert answer.outcome == "answered"
+
+
+@pytest.mark.asyncio
 async def test_disallowed_credential_home_file_is_refused_before_cli_spawn():
     spawned = 0
 

@@ -92,6 +92,8 @@ async def test_fake_claude_cli_invokes_workspace_fence_and_preserves_existing_ho
     from agentkit.models.contracts.constants import NativeToolPolicy
     from agentkit.models.contracts.types import Binding, CredentialRef, Workspace
     from agentkit.models.providers.cli.calls import CliAdapter
+    from agentkit.tools import ToolRegistry, tool
+    from agentkit.tools.execution.policy import ToolSet
     from tests.source.conformance.test_calls import PRICES
 
     seen, decisions, events = [], [], []
@@ -99,6 +101,13 @@ async def test_fake_claude_cli_invokes_workspace_fence_and_preserves_existing_ho
     async def policy(name, arguments):
         seen.append((name, dict(arguments)))
         return Deny("production write refused")
+
+    @tool(side_effecting=False)
+    def lookup_record(key: str) -> str:
+        """Look up and return a stored record using its unique caller-provided key."""
+        return key
+
+    tools = ToolSet(ToolRegistry.from_tools([lookup_record]))
 
     fake = FakeClaudeCli.script(
         [
@@ -123,6 +132,13 @@ async def test_fake_claude_cli_invokes_workspace_fence_and_preserves_existing_ho
             command, {"tool_name": "Bash", "tool_input": {"command": "write production"}, "tool_use_id": "native-gate"}
         )
         decisions.append(result["hookSpecificOutput"])
+        hosted = await hook(
+            command, {"tool_name": "mcp__agentkit__lookup_record", "tool_input": {"key": "x"}}
+        )
+        external = await hook(
+            command, {"tool_name": "mcp__other_server__lookup_record", "tool_input": {"key": "x"}}
+        )
+        decisions.extend([hosted["hookSpecificOutput"], external["hookSpecificOutput"]])
         return await fake(*argv, **kwargs)
 
     async with CallRuntime(
@@ -132,18 +148,28 @@ async def test_fake_claude_cli_invokes_workspace_fence_and_preserves_existing_ho
             Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "synthetic"})),
             "attempt a write",
             workspace=Workspace(native_tools=("Bash",), hooks=retained, pre_tool_use=policy),
+            tools=tools,
             native_tool_policy=NativeToolPolicy.ALLOW,
             events=events.append,
             call_id="native-fence",
         )
     assert answer.outcome == "answered" and answer.text == "write blocked"
-    assert seen == [("Bash", {"command": "write production"})]
+    assert seen == [
+        ("Bash", {"command": "write production"}),
+        ("mcp__other_server__lookup_record", {"key": "x"}),
+    ]
     assert decisions == [
         {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
             "permissionDecisionReason": "production write refused",
-        }
+        },
+        {"hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": ""},
+        {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "production write refused",
+        },
     ]
     assert any(e.kind == "tool_call" and e.fields.get("refused") for e in events)
     assert retained == {"PostToolUse": [{"matcher": "Read", "hooks": []}]}
@@ -214,9 +240,11 @@ async def test_mcp_tools_require_the_native_authorization_callback():
         return Deny("no grant")
 
     events = []
-    async with NativeToolFence(policy, events.append) as fence:
+    async with NativeToolFence(policy, events.append, hosted_tools=("mcp__agentkit__lookup",)) as fence:
         command = fence.settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         result = await hook(command, {"tool_name": "mcp__agentkit__refund", "tool_input": {}})
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        hosted = await hook(command, {"tool_name": "mcp__agentkit__lookup", "tool_input": {}})
+        assert hosted["hookSpecificOutput"]["permissionDecision"] == "allow"
     assert calls == [("mcp__agentkit__refund", {})]
-    assert events
+    assert len(events) == 1

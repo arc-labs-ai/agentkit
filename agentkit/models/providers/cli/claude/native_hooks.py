@@ -40,8 +40,9 @@ def _decision(allowed: bool, reason: str = "") -> dict[str, Any]:
 class NativeToolFence:
     """Per-call native policy endpoint, private configuration and hook command."""
 
-    def __init__(self, callback: PreToolUse, emit: Any):
+    def __init__(self, callback: PreToolUse, emit: Any, *, hosted_tools: tuple[str, ...] = ()):
         self.callback, self.emit = callback, emit
+        self.hosted_tools = frozenset(hosted_tools)
         self._token = secrets.token_urlsafe(32)
         self._tasks: set[asyncio.Task[Any]] = set()
         self._server: asyncio.Server | None = None
@@ -127,25 +128,30 @@ class NativeToolFence:
                 ):
                     raise ValueError("invalid hook payload")
                 name, arguments = payload["tool_name"], payload["tool_input"]
-                try:
-                    async with asyncio.timeout(_CALLBACK_TIMEOUT_S):
-                        result = await self.callback(name, deep_freeze(arguments))
-                    if not isinstance(result, (Allow, Deny)):
-                        raise TypeError("native callback must return Allow or Deny")
-                    refused = isinstance(result, Deny)
-                    reason = result.reason if isinstance(result, Deny) else ""
-                except Exception:
-                    refused, reason = True, "native tool policy callback failed"
-                answer = _decision(not refused, reason)
-                await _emit(
-                    self.emit,
-                    EventKind.TOOL_CALL,
-                    name=name,
-                    tool_call_id=payload.get("tool_use_id"),
-                    refused=refused,
-                    native=True,
-                    reason=reason,
-                )
+                if name in self.hosted_tools:
+                    # These exact tools are backed by agentkit's own ToolSet
+                    # and keep its grant/approval policy at the MCP server.
+                    answer = _decision(True)
+                else:
+                    try:
+                        async with asyncio.timeout(_CALLBACK_TIMEOUT_S):
+                            result = await self.callback(name, deep_freeze(arguments))
+                        if not isinstance(result, (Allow, Deny)):
+                            raise TypeError("native callback must return Allow or Deny")
+                        refused = isinstance(result, Deny)
+                        reason = result.reason if isinstance(result, Deny) else ""
+                    except Exception:
+                        refused, reason = True, "native tool policy callback failed"
+                    answer = _decision(not refused, reason)
+                    await _emit(
+                        self.emit,
+                        EventKind.TOOL_CALL,
+                        name=name,
+                        tool_call_id=payload.get("tool_use_id"),
+                        refused=refused,
+                        native=True,
+                        reason=reason,
+                    )
             writer.write(json.dumps(answer).encode() + b"\n")
             await writer.drain()
         except Exception:

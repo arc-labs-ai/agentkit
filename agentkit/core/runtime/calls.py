@@ -455,9 +455,10 @@ class CallRuntime:
                     now = time.monotonic()
                     cancelled = cancel is not None and cancel.cancelled
                     wall = limits.wall_clock_s is not None and now - started >= limits.wall_clock_s
+                    idle_reference = max(last_event, last_tool_activity_end or 0.0)
                     idle = (
                         transport and active_host_tools == 0 and saw_event and limits.idle_s is not None
-                        and now - last_event >= limits.idle_s
+                        and now - idle_reference >= limits.idle_s
                     )
                     first = (
                         transport

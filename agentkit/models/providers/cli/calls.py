@@ -436,10 +436,6 @@ class CliAdapter:
         )
         async with AsyncExitStack() as stack:
             native_fence = None
-            if workspace and workspace.pre_tool_use:
-                from agentkit.models.providers.cli.claude.native_hooks import NativeToolFence
-
-                native_fence = await stack.enter_async_context(NativeToolFence(workspace.pre_tool_use, emit))
             credential_home = await IsolatedHome.credential_lifecycle(
                 home,
                 binding.mode.value,
@@ -470,6 +466,16 @@ class CliAdapter:
             )
             if spec is not None:
                 await spec.check_ready()
+            if workspace and workspace.pre_tool_use:
+                from agentkit.models.providers.cli.claude.native_hooks import NativeToolFence
+
+                native_fence = await stack.enter_async_context(
+                    NativeToolFence(
+                        workspace.pre_tool_use,
+                        emit,
+                        hosted_tools=spec.tool_names if spec is not None else (),
+                    )
+                )
             cognition: Any
             wiring: dict[str, Any]
             if binding.mode == Mode.CLAUDE_CODE:

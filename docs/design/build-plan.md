@@ -66,8 +66,8 @@ run; commit IDs will be added when this implementation is committed.
 | Phase 3 step 1 | Implemented and tested | `cli/calls.py` has no imports from retired runtime modules; CLI conformance tests pass |
 | Phase 3 step 2 | Implemented and tested | Deterministic `SlidingWindowContextPolicy`, `test_cli_context_compaction_keeps_one_native_session_across_three_slices`, scoped memory composition, CLI approval config wiring, and `test_cli_permission_prompt_mcp_request_reaches_host_approval_callback` |
 | Phase 3 deletion + claims | Implemented and tested in the working tree | Legacy runtime modules and stale tests are removed; `test_single_runtime.py` checks one public result/usage type and planted imports of removed modules |
-| G44 | Implemented and conformance-tested | `test_tool_timeout_is_model_visible_and_cancels_body`, `test_cli_mcp_timeout_covers_largest_per_tool_deadline`, and `test_cli_idle_deadline_pauses_during_a_hosted_tool` cover per-tool deadlines, derived MCP timeout and a 3-second tool under a 1-second idle bound |
-| G45 | Implemented and offline-verified | The native-hook fake CLI integration tests exercise the real hook subprocess through `CallRuntime` and `CliAdapter`; callback allow/deny/error/timeout, malformed input, authentication, cleanup and fail-closed fallback are covered |
+| G44 | Implemented and conformance-tested | `test_runtime_idle_deadline_restarts_after_hosted_tool_finishes` proves the runtime idle guard measures from tool completion; `test_cli_idle_deadline_resets_at_tool_completion_even_without_active_poll` covers the adapter timer; per-tool deadlines and derived MCP timeout have separate tests |
+| G45 | Implemented and offline-verified | The fence receives the exact qualified tool names in its per-call AgentKit MCP server. Those tools retain ToolSet/approval enforcement; all other MCP and native tools go through the host callback. `test_mcp_tools_require_the_native_authorization_callback` covers both paths |
 | G47 | Implemented and conformance-tested | `test_native_cli_bundle_reference_restores_across_adapter_instances`, `test_portable_cli_replay_applies_policy_before_dispatch_and_obeys_byte_bound`, and `test_portable_cli_replay_over_limit_stops_before_spawn` prove bundle propagation, bounded host policy replay and no-spawn refusal. The bundle-store tests cover 17 MiB cross-process restore and incremental chunks. |
 | G48 | Implemented and conformance-tested | `test_narration_capture_is_per_call_and_bounded`, `test_narration_capture_refuses_without_a_host_masker`, and `test_narration_masker_failure_keeps_answer_and_omits_text` |
 | G49 | Implemented and conformance-tested | Anthropic/OpenAI payload mapping, explicit OpenAI model capability and pre-dispatch refusal tests in `test_calls.py`; the CLI modes refuse because their installed CLIs expose no verified TTL control |
@@ -162,8 +162,8 @@ losing work, cache or control.**
 
 | Item | Change | Done when |
 |---|---|---|
-| **G44** Stall vs long tools | `Tool.timeout_s` per tool; the `serve()` wrapper signals tool start and end so `idle_s` pauses until that tool's deadline; `MCP_TOOL_TIMEOUT` derives from the largest per-tool deadline | a 3 s tool under `idle_s=1` completes; a silent model with no tool running times out at `idle_s`; a tool past its own deadline times out |
-| **G45** Live native-tool fence — implemented, offline verified | `Workspace.pre_tool_use` uses typed `Allow` / `Deny`; Claude native calls cross an agentkit-owned authenticated Unix-socket hook bridge, without middleware. Denials emit `tool_call(refused=True)` without argument data/digests. MCP calls retain hosted authorization. Claude/POSIX only; Codex rejects this unsupported workspace option. | `AGENTKIT_SKIP_REAL_CLI=1 uv run pytest tests/source/conformance/test_native_tool_fence.py -q`: **9 passed**. Fake CLI invokes the actual hook subprocess through `CallRuntime`/`CliAdapter`; allow/deny, callback exceptions/timeout cleanup, malformed input, unauthorized connection, disconnected endpoint, missing script fallback, retained hooks and private configuration cleanup verified. Denial uses the official [Claude PreToolUse JSON contract](https://code.claude.com/docs/en/hooks#pretooluse-decision-control); no paid live probe claimed. |
+| **G44** Stall vs long tools | `Tool.timeout_s` per tool; the `serve()` wrapper signals tool start and end so both runtime and CLI adapter idle clocks reset at tool completion; `MCP_TOOL_TIMEOUT` derives from the largest per-tool deadline | a 1.5 s hosted tool under `idle_s=1` completes and the runtime guard has a regression test; a silent model with no tool running times out at `idle_s`; a tool past its own deadline times out |
+| **G45** Live native-tool fence | `Workspace.pre_tool_use` uses typed `Allow` / `Deny`; Claude native calls cross an agentkit-owned authenticated Unix-socket hook bridge, without middleware. Denials emit `tool_call(refused=True)` without argument data/digests. The fence receives exact qualified names from the per-call AgentKit MCP server; those tools retain ToolSet grants/approval. All other MCP tools and native tools go through the host callback. Claude/POSIX only; Codex rejects this unsupported workspace option. | Fake CLI invokes the actual hook subprocess through `CallRuntime`/`CliAdapter`; callback allow/deny/error/timeout, exact hosted-tool bypass, foreign MCP callback, malformed input, authentication, cleanup and fail-closed fallback are covered. Denial uses the official [Claude PreToolUse JSON contract](https://code.claude.com/docs/en/hooks#pretooluse-decision-control); no paid live probe claimed. |
 | **G51** Native-tool policy per call | `native_tool_policy` per call, never wider than the runtime ceiling | under one runtime, a Claude call denies native tools while a Codex call runs under `warn` |
 | **G47** Long resumes across processes | a bundle-store port (by reference, incremental); the fallback replay goes through `context_policy` with a byte bound, and `limit_reached` if it is still too large | a 17 MiB transcript resumed in a new process gives a bounded prompt and a `degraded` event; the second slice stores a reference |
 | **G48** Narration | opt-in `capture_text` per call; `MESSAGE_DONE` carries bounded, host-masked text; missing or failing masker omits text while retaining the answer | on: the done text is masked and capped; off: length only; masker failure retains the answer |
@@ -185,6 +185,22 @@ losing work, cache or control.**
 | **A real 429** | observe a real rate-limit response and its `Retry-After` on each mode | **Open:** no real provider 429 was observed. Offline retry/error-shape tests remain the evidence for retry behavior. |
 
 ---
+
+### Follow-up gaps verified after `e62490b` (2026-10-14)
+
+G35, G40, G42 and G1 were closed at `e62490b`. The verifier then found two remaining defects; both are now
+fixed in the working tree and have proving regressions:
+
+| Item | What still fails | Fix | Done when |
+|---|---|---|---|
+| **G44** Stall vs long tools — fixed | The runtime monitor was still measuring from the last streamed event after hosted tool completion | Runtime idle now measures from `max(last_event, last_tool_activity_end)` | `test_runtime_idle_deadline_restarts_after_hosted_tool_finishes` fails before the fix; the adapter's missed-poll regression remains covered separately |
+| **G45** Live native-tool fence — fixed | The fence treated all MCP tools the same after removing the blanket `mcp__*` allow | `CliAdapter` supplies exact qualified names from its owned MCP server; only these bypass the native callback, while arbitrary/project MCP tools still require host authorization | `test_mcp_tools_require_the_native_authorization_callback` proves hosted exact-name allow and callback denial for an unowned MCP tool |
+
+Also open:
+- **G51:** the adapter's backup clamp (`cli/calls.py:158-161`) has no test of its own.
+- **G1:** the pre-spawn refusal surfaces as `UNKNOWN` with empty detail; it should name the refused file.
+- **Examples and docstrings:** `tests/examples/01_single_agent.py` and `02_streaming_and_tools.py` still import the deleted
+  `Agent`; "Invoker" still appears in docstrings and comments in 9 files.
 
 ## Order, and what each phase unlocks for Mirror
 
