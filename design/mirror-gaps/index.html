@@ -2837,6 +2837,127 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#independent-verification-at-6238e7e-2026-10-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Independent verification at 6238e7e (2026-10-13)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g26-a-claude-call-without-tools-failed-against-the-real-cli-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G26. A Claude call without tools failed against the real CLI (fixed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g27-a-budgeted-cli-call-does-not-retry-a-429-that-reported-no-cost-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G27. A budgeted CLI call does not retry a 429 that reported no cost (fixed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g28-non-string-secrets-reached-events-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G28. Non-string secrets reached events (fixed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g29-a-host-could-not-set-tls-or-proxy-settings-per-adapter-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G29. A host could not set TLS or proxy settings per adapter (fixed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g30-proof-for-credential-handling-end-to-end-open-live-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G30. Proof for credential handling end to end (open live verification)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g31-the-argv-bound-could-exceed-the-per-argument-kernel-limit-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G31. The argv bound could exceed the per-argument kernel limit (fixed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g32-the-json-extractor-accepted-the-last-object-reverted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G32. The JSON extractor accepted the last object (reverted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g33-unpricedpolicyrefuse-stopped-refusing-reverted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G33. UnpricedPolicy.REFUSE stopped refusing (reverted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#g34-usage-completeness-was-inferred-from-cost-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G34. Usage completeness was inferred from cost (fixed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-mirror-needs-before-moving-cognition-off-13ff01e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Mirror needs before moving cognition off 13ff01e
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3354,6 +3475,210 @@ induced. Claude Code's live long-schema fallback passed in
   (G14), tool arguments in events (G16), and long sessions (G18).</li>
 </ul>
 <hr />
+<h3 id="independent-verification-at-6238e7e-2026-10-13">Independent verification at <code>6238e7e</code> (2026-10-13)<a class="headerlink" href="#independent-verification-at-6238e7e-2026-10-13" title="Anchor link">&para;</a></h3>
+<p>This was checked from outside agentkit against the code at <code>6238e7e</code>, not against the table above. An item
+counts as done only when the code does what its "Build" line asks <strong>and</strong> a test exists that fails without it.
+Where this section and the table above disagree, this section is the measured one.</p>
+<p><strong>Suites at <code>6238e7e</code></strong></p>
+<table>
+<thead>
+<tr>
+<th>Suite</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Offline suite (<code>AGENTKIT_SKIP_REAL_CLI=1 uv run pytest</code>)</td>
+<td>6011 passed, 87 skipped</td>
+</tr>
+<tr>
+<td><code>tests/source/conformance</code></td>
+<td>406 passed</td>
+</tr>
+<tr>
+<td>Mirror's <code>cognition</code> call-layer suite, run against this revision</td>
+<td>64 passed</td>
+</tr>
+</tbody>
+</table>
+<p>The figures quoted above (5,958 / 5,961) are out of date.</p>
+<p><strong>Where verification disagrees with the table above</strong></p>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Table says</th>
+<th>Measured</th>
+<th>What is missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>G1</td>
+<td>Implemented</td>
+<td>Partial</td>
+<td>No CLI fake refuses to start unless the file is in its home at 0600. No adapter-level "refused before spawn" test. No test of an async resolver. <strong>No live run with a real subscription <code>.credentials.json</code> or ChatGPT <code>auth.json</code>.</strong> On macOS Claude may read the keychain instead of <code>CLAUDE_CONFIG_DIR</code>.</td>
+</tr>
+<tr>
+<td>G2</td>
+<td>Implemented</td>
+<td>Partial</td>
+<td>Exercised against the lifecycle directly, not through a CLI that rewrites its file.</td>
+</tr>
+<tr>
+<td>G4</td>
+<td>Implemented</td>
+<td>Implemented, thinly tested</td>
+<td>No test passes <code>executable=</code> per mode.</td>
+</tr>
+<tr>
+<td>G6</td>
+<td>Implemented</td>
+<td>Changed meaning</td>
+<td>See G33.</td>
+</tr>
+<tr>
+<td>G8</td>
+<td>Implemented</td>
+<td>Changed meaning</td>
+<td>See G32.</td>
+</tr>
+<tr>
+<td>G9</td>
+<td>Partial</td>
+<td>Partial</td>
+<td>The argv bound has no ceiling. See G31.</td>
+</tr>
+<tr>
+<td>G12, G15, G19, G20</td>
+<td>Implemented</td>
+<td>Implemented, no proving test</td>
+<td>Each needs a test that fails without the code.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The six regressions measured at <code>13ff01e</code>, re-checked at <code>6238e7e</code></strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue</th>
+<th>Result</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td>A CLI retry dropped a resumed session</td>
+<td>Fixed</td>
+<td><code>core/runtime/calls.py:456,690-707</code>; <code>tests/source/conformance/test_calls.py:1057</code></td>
+</tr>
+<tr>
+<td>R2</td>
+<td>Env denylist was substring-based</td>
+<td>Fixed</td>
+<td>explicit allowlist <code>models/providers/cli/calls.py:30,54-56</code>, per-mode credential allowlist <code>:240-249</code>; <code>test_calls.py:444,385</code>. <code>ALL_PROXY</code> and <code>HOME</code> are blocked but untested</td>
+</tr>
+<tr>
+<td>R3</td>
+<td>Tool arguments unmasked by default</td>
+<td>Fixed</td>
+<td>All scalar leaves and mapping keys are digested; <code>test_calls.py</code> covers strings, numbers, booleans and keys</td>
+</tr>
+<tr>
+<td>R4</td>
+<td><code>--max-budget-usd</code> gave each retry the full cap</td>
+<td>Fixed for failed zero-usage CLI attempts</td>
+<td>Now <code>cap − spent</code>; no-usage/no-output CLI failures count as zero, while unknown spend after output blocks retry. See G27</td>
+</tr>
+<tr>
+<td>R5</td>
+<td><code>max_turns</code> counted failed attempts</td>
+<td>Fixed</td>
+<td><code>calls.py:709</code>; <code>test_calls.py:898,922</code></td>
+</tr>
+<tr>
+<td>R6</td>
+<td>Non-bare Claude without tools ran without <code>--strict-mcp-config</code></td>
+<td>Fixed</td>
+<td>No-tools config now contains an empty <code>mcpServers</code> record; the fake validates the shape. See G26</td>
+</tr>
+</tbody>
+</table>
+<h3 id="g26-a-claude-call-without-tools-failed-against-the-real-cli-fixed">G26. A Claude call without tools failed against the real CLI (fixed)<a class="headerlink" href="#g26-a-claude-call-without-tools-failed-against-the-real-cli-fixed" title="Anchor link">&para;</a></h3>
+<p>The no-tools default at <code>models/providers/cli/calls.py:391</code> sends <code>--mcp-config {}</code>. Claude Code 2.1.296
+rejects that: <code>Error: Invalid MCP configuration: mcpServers: Invalid input: expected record, received
+undefined</code>. It does so inline and as a file. <code>{"mcpServers":{}}</code> is accepted. This was checked against the
+real CLI with an invalid key, so nothing was spent. The no-tools default now uses the valid empty record, and
+<code>FakeClaudeCli</code> validates inline and file-backed config before consuming a scripted process result.</p>
+<p><strong>Prove:</strong>
+- the fake refuses <code>{}</code> and accepts <code>{"mcpServers":{}}</code>;
+- a no-tools call succeeds through the fake;
+- one opt-in real-CLI check with an invalid key reaches authentication rather than failing config parsing.</p>
+<h3 id="g27-a-budgeted-cli-call-does-not-retry-a-429-that-reported-no-cost-fixed">G27. A budgeted CLI call does not retry a 429 that reported no cost (fixed)<a class="headerlink" href="#g27-a-budgeted-cli-call-does-not-retry-a-429-that-reported-no-cost-fixed" title="Anchor link">&para;</a></h3>
+<p>R4 made each attempt get <code>cap − spent</code>. But a real CLI 429 carries no usage and no <code>total_cost_usd</code>, so spend
+is unknown, the guard at <code>calls.py:639-648</code> fires, and the call ends <code>limit_reached</code> without retrying. This was
+reproduced with <code>FakeClaudeCli</code>: a 429 without usage under <code>max_cost_usd=1</code> ends <code>limit_reached</code>.</p>
+<p><strong>Prove:</strong> a usage-less 429 under a cost cap is retried and answered. Its twin is an attempt with output but
+no cost, which still stops.</p>
+<h3 id="g28-non-string-secrets-reached-events-fixed">G28. Non-string secrets reached events (fixed)<a class="headerlink" href="#g28-non-string-secrets-reached-events-fixed" title="Anchor link">&para;</a></h3>
+<p>R3 masks string leaves only. A numeric or boolean secret, or one used as a dict key, reaches <code>tool_call.arguments</code>.</p>
+<p><strong>Prove:</strong> a numeric secret and a secret dict key never appear in a recorded event.</p>
+<h3 id="g29-a-host-could-not-set-tls-or-proxy-settings-per-adapter-fixed">G29. A host could not set TLS or proxy settings per adapter (fixed)<a class="headerlink" href="#g29-a-host-could-not-set-tls-or-proxy-settings-per-adapter-fixed" title="Anchor link">&para;</a></h3>
+<p>R2's allowlist (<code>PATH</code>, <code>LANG</code>, <code>LC_*</code>, <code>TERM</code>, <code>NO_COLOR</code>, <code>TMP*</code>) means <code>SSL_CERT_FILE</code>,
+<code>NODE_EXTRA_CA_CERTS</code> and proxy variables can arrive only ambiently, never through <code>CliAdapter(env=)</code>. A
+deployment behind a corporate proxy or a private CA needs them per adapter.</p>
+<p><code>CliTransportVariable</code> provides a second named allowlist for TLS and proxy settings through <code>transport=</code>;
+those same names remain rejected through <code>env=</code>. Base URL and AWS credential variables are not transport
+settings and are rejected there too.</p>
+<p><strong>Prove:</strong> a transport setting passes through <code>transport=</code>; the same name passed as <code>env=</code> is refused; a
+<code>*_BASE_URL</code> is refused on every path.</p>
+<h3 id="g30-proof-for-credential-handling-end-to-end-open-live-verification">G30. Proof for credential handling end to end (open live verification)<a class="headerlink" href="#g30-proof-for-credential-handling-end-to-end-open-live-verification" title="Anchor link">&para;</a></h3>
+<p><strong>Build:</strong>
+- one opt-in live check per CLI with a real login home. Claude: <code>.credentials.json</code> in <code>CLAUDE_CONFIG_DIR</code>.
+  Codex: ChatGPT <code>auth.json</code>;
+- one with a refresh forced mid-call, asserting <code>on_changed</code> receives the new file.</p>
+<p>On macOS, confirm whether Claude reads the file or the keychain, and fail closed if it reads the keychain.</p>
+<p><strong>Prove:</strong> both live checks pass and are recorded in <code>tests/evals/reports/</code>.</p>
+<h3 id="g31-the-argv-bound-could-exceed-the-per-argument-kernel-limit-fixed">G31. The argv bound could exceed the per-argument kernel limit (fixed)<a class="headerlink" href="#g31-the-argv-bound-could-exceed-the-per-argument-kernel-limit-fixed" title="Anchor link">&para;</a></h3>
+<p><code>max(4096, SC_ARG_MAX // 32)</code> (<code>models/providers/cli/_common.py:939-951</code>) has no ceiling. On Linux with a
+large or unlimited stack it passes the 128 KiB per-argument limit (<code>MAX_ARG_STRLEN</code>), and an inline payload
+fails with <code>E2BIG</code>.</p>
+<p><strong>Prove:</strong> a payload just over the effective bound goes by file; just under goes inline; and the bound never
+exceeds the per-argument limit whatever <code>SC_ARG_MAX</code> reports.</p>
+<h3 id="g32-the-json-extractor-accepted-the-last-object-reverted">G32. The JSON extractor accepted the last object (reverted)<a class="headerlink" href="#g32-the-json-extractor-accepted-the-last-object-reverted" title="Anchor link">&para;</a></h3>
+<p><code>models/contracts/schema.py:100-106</code> used to refuse a reply holding more than one JSON object. It now takes
+the last. A reply that gives the answer and then an example object is read as the example.</p>
+<p>The extractor again rejects more than one complete top-level object as ambiguous. A single stray closing
+brace remains tolerated. The regression test covers both behaviors.</p>
+<h3 id="g33-unpricedpolicyrefuse-stopped-refusing-reverted">G33. <code>UnpricedPolicy.REFUSE</code> stopped refusing (reverted)<a class="headerlink" href="#g33-unpricedpolicyrefuse-stopped-refusing-reverted" title="Anchor link">&para;</a></h3>
+<p>At <code>core/runtime/calls.py:718-731</code>, an unpriced token kind under <code>REFUSE</code> now degrades and answers with
+unknown cost whenever no cost cap is set. That makes <code>REFUSE</code> mean "proceed unpriced" in the common case.</p>
+<p><code>REFUSE</code> again fails the call when reported token categories cannot be priced. <code>PROCEED_UNPRICED</code> remains the
+explicit opt-in and preserves partial cost as <code>mixed</code> where possible.</p>
+<h3 id="g34-usage-completeness-was-inferred-from-cost-fixed">G34. Usage completeness was inferred from cost (fixed)<a class="headerlink" href="#g34-usage-completeness-was-inferred-from-cost-fixed" title="Anchor link">&para;</a></h3>
+<p>At <code>core/runtime/calls.py:556</code>, usage marked incomplete now counts as complete if the provider reports a cost.
+Cost and token counts are separate facts, and a ledger settling tokens needs to know when they are partial.</p>
+<p><code>Answer.usage_complete</code> is aggregated independently across turns. A reported cost can be present while token
+usage remains incomplete; a regression covers that combination.</p>
+<h3 id="what-mirror-needs-before-moving-cognition-off-13ff01e">What Mirror needs before moving <code>cognition</code> off <code>13ff01e</code><a class="headerlink" href="#what-mirror-needs-before-moving-cognition-off-13ff01e" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Why it gates the move</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>G30</td>
+<td>real login file refresh and macOS keychain behavior are still unverified</td>
+</tr>
+</tbody>
+</table>
+<p>G28–G30 and G34 can follow. Mirror's <code>ask</code> units do not depend on them.</p>
 <h2 id="tier-0-blocks-every-cli-call">Tier 0: blocks every CLI call<a class="headerlink" href="#tier-0-blocks-every-cli-call" title="Anchor link">&para;</a></h2>
 <h3 id="g1-a-cli-login-cannot-be-supplied-x">G1. A CLI login cannot be supplied (X)<a class="headerlink" href="#g1-a-cli-login-cannot-be-supplied-x" title="Anchor link">&para;</a></h3>
 <p><strong>Mirror today:</strong>
@@ -3469,13 +3794,13 @@ twin is a stream under the cap, which runs to completion.</p>
 - <code>UnpricedPolicy = REFUSE | PROCEED_UNPRICED</code>, set per runtime.
 - <code>PROCEED_UNPRICED</code> dispatches, reports <code>cost_source=unpriced</code>, and is only allowed where the caller sets a
   turn or token cap.
-- An unpriced token kind <strong>after</strong> dispatch never fails the call. It reports <code>cost_source=mixed</code> with the
-  priced part.
+- An unpriced token kind <strong>after</strong> dispatch fails under <code>REFUSE</code>. Under <code>PROCEED_UNPRICED</code>, the answer is
+  preserved and any priced portion reports <code>cost_source=mixed</code>.
 - <code>PriceTable.derive(input=…, output=…, cache_read_ratio=…, cache_write_ratio=…)</code> covers providers that
   publish ratios.
 - <code>PriceTable.load</code> accepts TOML as well as JSON.</p>
-<p><strong>Prove:</strong> an unpriced model refused under <code>REFUSE</code>, dispatched and marked under <code>PROCEED_UNPRICED</code>. A
-missing reasoning rate after dispatch yields <code>mixed</code>, not <code>failed</code>.</p>
+<p><strong>Prove:</strong> an unpriced model is refused under <code>REFUSE</code>, dispatched under <code>PROCEED_UNPRICED</code>; a missing token
+rate fails under <code>REFUSE</code> and yields <code>mixed</code> under <code>PROCEED_UNPRICED</code>.</p>
 <h3 id="g7-no-real-bound-on-concurrent-cli-processes-x">G7. No real bound on concurrent CLI processes (X)<a class="headerlink" href="#g7-no-real-bound-on-concurrent-cli-processes-x" title="Anchor link">&para;</a></h3>
 <p><strong>Mirror today:</strong> bounds spawns by a measured admission ceiling (<code>M:assay/platform/providers/model.py:1029</code>).</p>
 <p><strong>agentkit:</strong> the semaphore is keyed on <code>config_dir</code> (<code>A:models/providers/cli/_common.py:77-90</code>), and
@@ -3744,7 +4069,7 @@ not-applicable for a mode with the reason, in <code>tests/source/conformance/</c
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 15:33:27 UTC">October 13, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 17:03:44 UTC">October 13, 2026</span>
   </span>
 
     
