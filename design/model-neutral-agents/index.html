@@ -1,0 +1,4421 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/design/model-neutral-agents/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>One agent runtime for four model modes - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#one-agent-runtime-for-four-model-modes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="../../tutorial/">tutorial</a>
+      to build a real research-briefing agent step by step.
+    </span>
+  </span>
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../../assets/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              One agent runtime for four model modes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../../assets/favicon.svg" alt="logo">
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../why/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/using-agentkit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public usage guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/calls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model-neutral calls
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/harnesses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building harnesses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations (MCP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Claude CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/codex-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Codex CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mental models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mental models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mental-models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mental-models/01-multi-tenant-chat-with-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-tenant chat with docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mental-models/02-autonomous-devops-investigator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Autonomous devops investigator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mental-models/03-long-running-data-enrichment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Long-running data enrichment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mental-models/04-multi-agent-coordinated-research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-agent coordinated research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../anti-patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anti-patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Recipes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_11_2" id="__nav_11_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Making the agent act
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_11_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Making the agent act
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/define-a-tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Define and register a tool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/ground-with-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ground an agent in memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/mcp-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consume MCP tools from an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/serve-tools-to-the-claude-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serve your tools to the Claude CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/stream-typed-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stream a typed object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_11_3" id="__nav_11_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Structuring the work
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_11_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Structuring the work
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/workflow-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Author a workflow graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/multi-agent-coordination/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate multiple agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/parallel-agents-with-cancellation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel agents with cooperative cancellation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/compact-a-long-conversation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compact a long conversation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_11_4" id="__nav_11_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keeping a person in the loop
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_11_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Keeping a person in the loop
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/hitl-tool-approval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human-in-the-loop tool approval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/elicit-a-value-from-a-human/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Elicit a value from a human
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_11_5" id="__nav_11_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cost and behaviour
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_11_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cost and behaviour
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/provider-from-env/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pick a provider from config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/spend-budget-and-quota/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cap spend with Budget and Quota
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/custom-middleware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write a custom middleware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_11_6" id="__nav_11_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running in production
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_11_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Running in production
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/resume-after-crash/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resume from a checkpoint after a crash
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/otel-tracing-and-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire OpenTelemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/test-an-agentkit-app/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test an agentkit app
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/claude-cli-fastapi-code-gen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plug the claude CLI into FastAPI code-gen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Migrating
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migrating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migrating/from-langchain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From LangChain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migrating/from-vanilla-asyncio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From vanilla asyncio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/middlewares/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    middlewares
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-why-this-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Why this exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-where-agentkit-stands-today-baseline-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Where agentkit stands today (baseline first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-four-modes-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The four modes at a glance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-architecture-layers-and-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Architecture: layers and ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-call-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The call contract
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. The call contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#c1-the-answer-is-the-last-assistant-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C1 — The answer is the last assistant message
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c2-structured-output-one-canonical-schema-compiled-per-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C2 — Structured output, one canonical schema compiled per mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c3-model-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C3 — Model settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c4-one-event-stream-for-every-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C4 — One event stream for every mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c5-usage-and-pricing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C5 — Usage and pricing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c6-failures-and-retries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C6 — Failures and retries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c7-limits-per-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C7 — Limits per call
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c8-cancellation-and-timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C8 — Cancellation and timeouts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c9-credential-homes-and-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C9 — Credential homes and isolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c10-sessions-resume-and-reasoning-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C10 — Sessions, resume and reasoning state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c11-prompt-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C11 — Prompt caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c12-public-hooks-instead-of-subclassing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C12 — Public hooks instead of subclassing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-model-settings-temperature-vs-effort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Model settings: temperature vs effort
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Model settings: temperature vs effort">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-what-each-mode-accepts-observed-unless-marked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 What each mode accepts (observed unless marked)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Design
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-tools-mirror-serves-to-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Tools Mirror serves to agents
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Tools Mirror serves to agents">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-one-registry-one-server-identical-on-every-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 One registry, one server, identical on every mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-self-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 Self-description
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-large-catalogues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4 Large catalogues
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-external-mcp-servers-that-users-connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. External MCP servers that users connect
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. External MCP servers that users connect">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-protocol-support-revision-2026-07-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Protocol support (revision 2026-07-28)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-authorization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 Authorization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-security-policy-client-side-the-spec-leaves-it-to-us" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 Security policy (client-side; the spec leaves it to us)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-delivering-external-tools-to-the-four-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4 Delivering external tools to the four modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-skills-agent-definitions-instructions-and-dynamic-prompts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Skills, agent definitions, instructions and dynamic prompts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Skills, agent definitions, instructions and dynamic prompts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-skills-follow-the-open-standard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1 Skills follow the open standard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-activation-s2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2 Activation (S2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-agent-definitions-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3 Agent definitions (S3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-instructions-that-let-an-agent-run-itself-s4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.4 Instructions that let an agent run itself (S4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#95-dynamic-prompt-composition-s5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.5 Dynamic prompt composition (S5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#96-user-authored-personas-and-instructions-s6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.6 User-authored personas and instructions (S6)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#97-delegation-s7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.7 Delegation (S7)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#98-four-modes-s8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.8 Four modes (S8)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-public-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Public API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-proof-conformance-suite-and-the-eval-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Proof: conformance suite and the eval matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-what-stays-in-mirrors-cognition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. What stays in Mirror's cognition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-order-of-work-and-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Order of work and migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-open-questions-to-settle-with-live-probes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. Open questions to settle with live probes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#16-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="one-agent-runtime-for-four-model-modes">One agent runtime for four model modes<a class="headerlink" href="#one-agent-runtime-for-four-model-modes" title="Anchor link">&para;</a></h1>
+<p><strong>agentkit design for model-neutral calls, tools, MCP, skills and dynamic agents — and the thin layer Mirror keeps
+on top</strong></p>
+<p>Date: 2026-10-13. Status: proposal for the agentkit maintainer. Research for this document was done against the
+vendors' current documentation and source on this date; every external fact is cited in §15 and marked where it
+was not directly observed.</p>
+<hr />
+<h2 id="contents">Contents<a class="headerlink" href="#contents" title="Anchor link">&para;</a></h2>
+<ol>
+<li>Why this exists</li>
+<li>Where agentkit stands today (baseline first)</li>
+<li>The four modes at a glance</li>
+<li>Architecture: layers and ownership</li>
+<li>The call contract (C1–C12)</li>
+<li>Model settings: temperature vs effort</li>
+<li>Tools Mirror serves to agents</li>
+<li>External MCP servers that users connect</li>
+<li>Skills, agent definitions, instructions and dynamic prompts</li>
+<li>Observability</li>
+<li>Public API</li>
+<li>Proof: conformance suite and the eval matrix</li>
+<li>What stays in Mirror's <code>cognition</code></li>
+<li>Order of work and migration</li>
+<li>Open questions to settle with live probes</li>
+<li>Sources</li>
+</ol>
+<hr />
+<h2 id="1-why-this-exists">1. Why this exists<a class="headerlink" href="#1-why-this-exists" title="Anchor link">&para;</a></h2>
+<p>Mirror calls models from about ten places — control (preflight, chat), assay (research, plan, design, drive),
+forge (build lanes), the eval harness — and each built its own adapter. Every defect found in one path existed or
+was fixed separately in another. Defects observed in live runs on 2026-10-11/12:</p>
+<table>
+<thead>
+<tr>
+<th>Defect</th>
+<th>Effect seen</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Codex answers joined every assistant message into one string</td>
+<td>a note written before a patch was glued onto <code>diff --git</code>; patches refused; JSON answers with a preface dropped</td>
+</tr>
+<tr>
+<td>OpenAI strict mode returns <code>null</code> for optional fields; cleaning did not follow <code>anyOf</code>/<code>oneOf</code>/<code>$ref</code></td>
+<td>correct seed answers rejected on every run (17 of 23 eval cases failing); live repair turns spent</td>
+</tr>
+<tr>
+<td>Disconnects ("Server disconnected") not retried</td>
+<td>a 3-hour, $155 build failed with every stage finished</td>
+</tr>
+<tr>
+<td>One call path deleted its credential home in one pass while Codex was still writing a plugin cache</td>
+<td>the cleanup error replaced a correct answer; 61 leftover homes, two holding an API key</td>
+</tr>
+<tr>
+<td>Tool limits only in JSON-schema keywords</td>
+<td>Codex drops those keywords; agents asked past limits and were refused</td>
+</tr>
+<tr>
+<td>Claude and Codex served tools through different wrappers</td>
+<td>different overflow and image behaviour per runtime</td>
+</tr>
+<tr>
+<td>Each plane priced usage itself; an unknown model cost 0</td>
+<td>spend ceilings that could not fire</td>
+</tr>
+</tbody>
+</table>
+<p>The goal: <strong>one runtime every model call goes through</strong>, with identical observable behaviour on all four modes,
+so a defect is fixed once and a stage is evaluated the same way on every model.</p>
+<hr />
+<h2 id="2-where-agentkit-stands-today-baseline-first">2. Where agentkit stands today (baseline first)<a class="headerlink" href="#2-where-agentkit-stands-today-baseline-first" title="Anchor link">&para;</a></h2>
+<p><code>/Users/dododuck/Desktop/agentkit-main</code> is <strong>two commits behind</strong> what Mirror runs. Mirror resolves agentkit
+<code>main</code> to commit <code>555bc57</code> (uv.lock); the local copy matches <code>c6eadc6</code>. The two missing commits
+("harden the CLI cognitions against hangs, leaks and drift", "fixed cli") add about 6,800 lines in
+<code>_cli_common.py</code>, <code>claude_cli.py</code>, <code>codex_cli.py</code> and three test files: <code>env_policy</code>, <code>native_tool_policy</code>,
+process-group kill, 250 ms cancel polling, bounded stderr drain, 8 MiB line limit, <code>CliTimeouts</code>,
+<code>StructuredOutputFailure</code>, <code>_validate_json_schema</code>. Mirror already passes some of these options.</p>
+<p><strong>Start every change from <code>555bc57</code> (or current remote <code>main</code>), never from the local copy.</strong></p>
+<p>What agentkit already does well and should be kept: <code>Checkpointer</code> and CLI sessions; <code>CancellationToken</code> /
+<code>RunContext</code>; <code>Budget</code>; <code>ReActCognition</code> / <code>SingleCallCognition</code>; <code>serve_registry</code> with <code>cli_kwargs()</code> /
+<code>codex_kwargs()</code>; <code>ProviderError.status_code</code>; the tracing middleware and OTel adapter; <code>Prompt.render</code> strictness.</p>
+<hr />
+<h2 id="3-the-four-modes-at-a-glance">3. The four modes at a glance<a class="headerlink" href="#3-the-four-modes-at-a-glance" title="Anchor link">&para;</a></h2>
+<p>The engine already admits exactly these pairs (<code>kernel/authority/agent_routing.py</code>).</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>M1 Claude Code CLI / Agent SDK</th>
+<th>M2 Codex CLI <code>exec --json</code></th>
+<th>M3 Anthropic Messages API</th>
+<th>M4 OpenAI API (Responses)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Transport</td>
+<td>subprocess, NDJSON <code>stream-json</code></td>
+<td>subprocess, JSONL events</td>
+<td>HTTPS + SSE</td>
+<td>HTTPS + SSE</td>
+</tr>
+<tr>
+<td>Final answer</td>
+<td>the <code>result</code> message (<code>result</code> / <code>structured_output</code>) — not the last <code>assistant</code> message</td>
+<td>last <code>agent_message</code> of the turn; cleared on failure</td>
+<td>the turn whose <code>stop_reason</code> is not <code>tool_use</code>/<code>pause_turn</code></td>
+<td>the output <code>message</code> item; check <code>status</code></td>
+</tr>
+<tr>
+<td>Structured output</td>
+<td>synthetic tool + validator retry loop (draft-07); <code>success</code> can arrive without <code>structured_output</code></td>
+<td><code>--output-schema</code> (OpenAI strict rules, inferred)</td>
+<td>constrained decoding, <code>output_config.format</code></td>
+<td>constrained decoding, <code>text.format</code> strict</td>
+</tr>
+<tr>
+<td>Usage</td>
+<td>per-step <code>output_tokens</code> is a placeholder; result <code>usage</code> excludes sub-agents; <code>modelUsage</code> includes them</td>
+<td><code>turn.completed.usage</code>, possibly thread-cumulative; none on failed turns</td>
+<td><code>input_tokens</code> excludes cache; cache split by 5m/1h</td>
+<td><code>input_tokens</code> includes cache; <code>reasoning_tokens</code> explicit</td>
+</tr>
+<tr>
+<td>Cost</td>
+<td>client-side estimate (<code>total_cost_usd</code>, <code>costBasis</code>), cumulative on resume</td>
+<td>not reported</td>
+<td>not reported</td>
+<td>not reported</td>
+</tr>
+<tr>
+<td>Failure signal</td>
+<td>exit code + <code>result.subtype</code>/<code>is_error</code>; SIGTERM leaves no result</td>
+<td><code>turn.failed</code> + exit code; details on stdout</td>
+<td>HTTP status + mid-stream <code>error</code> events</td>
+<td>HTTP status + <code>response.failed</code>/<code>error</code> events</td>
+</tr>
+<tr>
+<td>Internal retries</td>
+<td>yes (<code>system/api_retry</code>)</td>
+<td>yes</td>
+<td>SDK retries 2×</td>
+<td>SDK retries</td>
+</tr>
+<tr>
+<td>Sampling (temperature)</td>
+<td>not exposed</td>
+<td>not exposed</td>
+<td>400 on current models if non-default</td>
+<td>removed unless effort <code>none</code></td>
+</tr>
+<tr>
+<td>Reasoning depth</td>
+<td><code>--effort</code> (clamped silently)</td>
+<td><code>model_reasoning_effort</code></td>
+<td><code>output_config.effort</code> + <code>thinking</code></td>
+<td><code>reasoning.effort</code></td>
+</tr>
+<tr>
+<td>MCP</td>
+<td>config files; failed / needs-auth servers silently drop tools</td>
+<td>config file; <code>required</code> servers fail hard</td>
+<td>connector: remote servers, tools only</td>
+<td>remote MCP tool with approvals, tools only</td>
+</tr>
+</tbody>
+</table>
+<p>The consequence: almost nothing about a call is the same across modes. The runtime's job is to make it the same.</p>
+<hr />
+<h2 id="4-architecture-layers-and-ownership">4. Architecture: layers and ownership<a class="headerlink" href="#4-architecture-layers-and-ownership" title="Anchor link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a> Mirror planes (control · assay · forge · evals)
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>        │  cognition.ask / cognition.run / cognition.run_agent      ← Mirror: routing, ledger, journals, prompts
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a> ───────┼─────────────────────────────────────────────────────────────
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        ▼                                                               agentkit
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>   Entry points        ask (one-shot) · run (agent loop) · run_agent (definition + task)
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>   Composition         prompt parts → manifest → rendered prompt; skills activation; delegation
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>   Contract core       final answer · structured output · settings · events · usage/price · failures/retry ·
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>                       limits · cancellation · homes · sessions · caching
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>   Tools &amp; MCP         one tool registry · MCP server (serve) · MCP client/gateway (external servers) ·
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                       result hook (overflow, images) · limits-in-words · deferred loading
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>   Mode adapters       M1 Claude Code · M2 Codex · M3 Anthropic · M4 OpenAI
+</span></code></pre></div>
+<p>Rules:</p>
+<ul>
+<li><strong>Every behaviour in §5–§10 lives in the contract core or tools layer</strong>, never in a mode adapter. An adapter
+  only translates: request → mode, mode events → <code>CallEvent</code>s, mode usage → raw usage, mode failure → failure
+  facts. A conformance test runs the same scenario against each adapter.</li>
+<li><strong>Planes never call a mode directly.</strong> They call <code>cognition</code>, which calls agentkit. Old paths are deleted once
+  nothing uses them (§14).</li>
+<li><strong>Sounding never dispatches.</strong> Control names a harness only in its providers seam. These plane rules stay in
+  Mirror and are enforced by Mirror's existing checks.</li>
+</ul>
+<hr />
+<h2 id="5-the-call-contract">5. The call contract<a class="headerlink" href="#5-the-call-contract" title="Anchor link">&para;</a></h2>
+<p>Each item: why it matters, what the modes actually do, agentkit today, the design, the test.</p>
+<h3 id="c1-the-answer-is-the-last-assistant-message">C1 — The answer is the last assistant message<a class="headerlink" href="#c1-the-answer-is-the-last-assistant-message" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> Models write commentary before answering. If commentary is concatenated into the answer, a patch or JSON
+document becomes invalid.</p>
+<p><strong>Modes.</strong> Codex can emit several <code>agent_message</code> items per turn; its own CLI takes the <em>last</em> before
+<code>turn.completed</code> and clears it on failure. Claude Code emits one <code>assistant</code> message per content block sharing one
+<code>message.id</code>, and the authoritative answer is the <code>result</code> message. The APIs return one assistant message per
+response; in a tool loop the final turn is the one that does not end in <code>tool_use</code>/<code>pause_turn</code>.</p>
+<p><strong>agentkit today.</strong> Both CLI cognitions concatenate every message (<code>codex_cli._TurnState.fold</code>,
+<code>claude_cli</code> fold); a test asserts <code>"First. Second."</code>. Mirror works around it with <code>MessageTap</code>/<code>settle_answer</code>,
+and two Mirror call sites still get joined text.</p>
+<p><strong>Design.</strong> Track message boundaries (Codex item id per <code>agent_message</code>; Claude <code>message.id</code>, deduplicated;
+prefer <code>result.result</code>/<code>structured_output</code>). <code>Answer.text</code> = final message; <code>Answer.messages</code> = all, in order,
+kept as transcript. Structured output is decoded from the final message only. On a failed turn there is no
+answer.</p>
+<p><strong>Test.</strong> Two messages then a final answer → <code>text</code> is the final one on all four modes; the old concatenation
+test is flipped.</p>
+<h3 id="c2-structured-output-one-canonical-schema-compiled-per-mode">C2 — Structured output, one canonical schema compiled per mode<a class="headerlink" href="#c2-structured-output-one-canonical-schema-compiled-per-mode" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> "Structured output" is three different mechanisms with incompatible schema subsets; a schema valid on
+one mode is rejected or silently degraded on another; success statuses do not guarantee a payload.</p>
+<p><strong>Modes (observed).</strong>
+- <em>OpenAI strict:</em> every object <code>additionalProperties:false</code>; every property in <code>required</code>; optional = union with
+  <code>null</code>; root must be an object, not <code>anyOf</code>; no <code>allOf</code>, <code>not</code>, <code>if/then/else</code>, <code>dependent*</code>; limits of 5,000
+  properties, 10 levels, 120,000 characters of names/enums, 1,000 enum values. Numeric/length keywords: the
+  current page lists several as supported on base models; older sources say unsupported — probe (§15).
+- <em>Anthropic:</em> <code>output_config.format</code> (GA); <code>additionalProperties:false</code> required; no <code>minimum/maximum/
+  multipleOf/minLength/maxLength/maxItems</code>, <code>minItems</code> only 0 or 1, no recursion; budgets of 20 strict tools,
+  24 optional parameters, 16 <code>anyOf</code>/type-array parameters per request; 180 s compile timeout. Forced
+  <code>tool_choice</code> (<code>any</code>/named) is a 400 on the newest models, so "force a tool to get JSON" no longer works there.
+- <em>Claude Code:</em> <code>--json-schema</code> / <code>output_format</code>; draft-07 only; <code>format</code> is annotation-only; enforced by a
+  synthetic tool plus re-prompting; failure is <code>error_max_structured_output_retries</code>, and <code>subtype: success</code> with
+  no <code>structured_output</code> happens.
+- <em>Codex:</em> <code>--output-schema</code> follows OpenAI strict rules (inferred); a looser schema is refused with the reason on
+  stdout only.
+- <em>All:</em> refusals (<code>stop_reason:"refusal"</code>, OpenAI <code>refusal</code> items) and truncation (<code>max_tokens</code>,
+  <code>incomplete</code>) arrive as HTTP 200 with possibly invalid JSON.</p>
+<p><strong>agentkit today.</strong> Sends <code>strict:true</code> with the raw Pydantic schema (OpenAI rejects optionals); Codex adds only
+<code>additionalProperties:false</code>; Anthropic API enforces by prompt only; no null cleaning; CLI cognitions ignore
+<code>max_repairs</code>.</p>
+<p><strong>Design.</strong>
+1. <code>OutputSpec(schema, name)</code> holds the caller's canonical schema (JSON Schema 2020-12).
+2. <code>compile(schema, mode, model)</code> produces the mode's dialect: strict rewrite for OpenAI/Codex (required-all,
+   nullable optionals, <code>additionalProperties:false</code>, unsupported keywords removed and moved into descriptions);
+   Anthropic subset (bounds moved to descriptions, budgets checked before sending); draft-07 for Claude Code.
+   A schema that cannot be expressed on the mode is refused before dispatch with the reason.
+3. On the way back: detect refusal and truncation first; then <code>clean_nulls(value, canonical)</code> (follows <code>anyOf</code>,
+   <code>oneOf</code>, <code>$ref</code>; never removes a required null; a value matching no branch is left for the validator); then
+   validate against the <strong>canonical</strong> schema (constraints stripped for the mode are enforced here).
+4. One bounded correction turn with the validation errors, on every mode, including the CLIs.
+5. Absent and <code>null</code> normalise to one representation in <code>Answer.value</code>.</p>
+<p><strong>Test.</strong> Optional fields inside <code>anyOf</code> and <code>$ref</code>; a bound the mode cannot express (enforced client-side);
+a refusal; a truncation; a <code>success</code> without payload (CLI) → failure; the correction turn fixes a near-miss.</p>
+<h3 id="c3-model-settings">C3 — Model settings<a class="headerlink" href="#c3-model-settings" title="Anchor link">&para;</a></h3>
+<p>Covered fully in §6 because the modes diverge most here.</p>
+<h3 id="c4-one-event-stream-for-every-mode">C4 — One event stream for every mode<a class="headerlink" href="#c4-one-event-stream-for-every-mode" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> Planes need to observe a call identically regardless of mode — for logs, UIs and liveness.</p>
+<p><strong>Modes.</strong> Anthropic SSE (<code>message_start</code> … <code>message_stop</code>, <code>ping</code>, mid-stream <code>error</code>); OpenAI Responses events
+(<code>response.created</code> … <code>response.completed</code>/<code>failed</code>/<code>incomplete</code>, text/function-argument/reasoning deltas, MCP
+progress); Claude Code NDJSON (<code>system/init</code>, <code>system/api_retry</code>, <code>assistant</code>, <code>user</code>, <code>stream_event</code>,
+<code>result</code>); Codex JSONL (<code>thread.started</code>, <code>turn.*</code>, <code>item.*</code>, <code>error</code>). Codex <code>error</code> events can be non-fatal
+reconnect notices; only <code>turn.failed</code> ends a turn.</p>
+<p><strong>Design.</strong> A <code>CallEvent</code> union, emitted to an <code>EventSink</code> and as OTel spans (§10):</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>call_started</code></td>
+<td>call_id, mode, model, effective settings, inputs digest, prompt manifest digest, attempt</td>
+</tr>
+<tr>
+<td><code>message_delta</code></td>
+<td>message index, text delta (opt-in)</td>
+</tr>
+<tr>
+<td><code>message_done</code></td>
+<td>message index, length, final?</td>
+</tr>
+<tr>
+<td><code>reasoning</code></td>
+<td>summary delta (only where the mode exposes it; never raw reasoning)</td>
+</tr>
+<tr>
+<td><code>tool_call</code> / <code>tool_result</code></td>
+<td>name, call id, argument shape (sizes/digests, not bodies by default), result size, overflowed, is_error</td>
+</tr>
+<tr>
+<td><code>usage</code></td>
+<td>raw usage so far (cumulative), normalised usage</td>
+</tr>
+<tr>
+<td><code>retry</code></td>
+<td>failure class, wait seconds, source (<code>retry-after</code> / backoff), attempt</td>
+</tr>
+<tr>
+<td><code>degraded</code></td>
+<td>requested vs applied setting (§6), reason</td>
+</tr>
+<tr>
+<td><code>call_finished</code></td>
+<td>outcome (<code>answered</code>, <code>refused</code>, <code>truncated</code>, <code>failed</code>, <code>cancelled</code>), usage, cost, cost source, duration</td>
+</tr>
+</tbody>
+</table>
+<p>Optional masked, bounded request/response capture for audit, off by default. Unknown mode event types are
+recorded as such (version drift), never silently ignored.</p>
+<p><strong>Test.</strong> The same scripted scenario yields the same event sequence on all four modes.</p>
+<h3 id="c5-usage-and-pricing">C5 — Usage and pricing<a class="headerlink" href="#c5-usage-and-pricing" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> Token semantics differ per mode, cost is reported by only one mode (as an estimate), and an unknown model
+silently costing 0 makes every spend ceiling useless.</p>
+<p><strong>Modes.</strong> Anthropic <code>input_tokens</code> excludes cache reads and writes (total = read + creation + input; creation
+split 5m/1h). OpenAI <code>input_tokens</code> includes cached tokens; <code>reasoning_tokens</code> explicit; <code>cache_write_tokens</code> on
+newer models. Claude Code <code>total_cost_usd</code> is a client estimate, includes sub-agents, is cumulative on resume;
+per-step output tokens are placeholders. Codex reports <code>input_tokens</code>, <code>cached_input_tokens</code>,
+<code>cache_write_input_tokens</code>, <code>output_tokens</code>, <code>reasoning_output_tokens</code>, possibly thread-cumulative, absent on
+failure. Price structure: cache write 1.25× (5m) / 2× (1h) on Anthropic, 1.25× on newer OpenAI models; cache read
+0.1× (0.05× / 0.025× on some models); batch 50% off; regional 1.1×; long-context tiers on some models.</p>
+<p><strong>agentkit today.</strong> <code>Usage</code> has input/output/cache read/write and cost; no reasoning field; a stale 9-model price
+table; unknown models cost 0 silently; pricing hook private.</p>
+<p><strong>Design.</strong>
+- Keep <strong>raw usage per mode</strong> as received, plus a <strong>normalised</strong> <code>Usage(input_uncached, input_cache_read,
+  input_cache_write_5m, input_cache_write_1h, output, reasoning | None)</code>. Reasoning is nullable, never 0 when
+  unknown.
+- Per-call vs cumulative is decided per adapter and tested (Claude Code resume, Codex thread totals).
+- <code>PriceTable</code>: versioned, dated, per provider/model, rates for every token kind and modifiers (batch, region,
+  long-context tier, fast/priority tier). Loaded from a file the host supplies; agentkit ships a dated default.
+- <code>cost_source = reported | price_table | unpriced</code>. An unpriced model is a refusal by default for paid modes,
+  never a free call. A mode-reported cost is kept as <code>reported</code> and cross-checked against the table.</p>
+<p><strong>Test.</strong> Each mode's raw usage maps to the same normalised usage for the same scripted call; resume does not
+double-count; an unpriced model refuses.</p>
+<h3 id="c6-failures-and-retries">C6 — Failures and retries<a class="headerlink" href="#c6-failures-and-retries" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> The same word means different things: a 429 may be a rate limit (retry) or a spend cap (never retry);
+some failures arrive after a 200; CLIs report failure on stdout, not via status.</p>
+<p><strong>Modes (observed).</strong> Anthropic: 429 <code>rate_limit_error</code> with <code>retry-after</code> vs spend-cap 429 with
+<code>details.error_code: "enforced_spend_limit_reached"</code> and no <code>retry-after</code>; 529 <code>overloaded_error</code>; 500, 504
+retryable; 400/401/402/403/404/413 not; a 400 is also returned when a user-set spend limit is reached; errors can
+arrive mid-stream after 200. OpenAI: 429 rate limit / <code>slow_down</code> vs <code>insufficient_quota</code> and spend codes — branch
+on <code>error.code</code>, not <code>type</code>; 503 <code>server_is_overloaded</code> with <code>Retry-After</code>; <code>response.failed</code>. Claude Code:
+<code>system/api_retry</code> with an <code>error</code> category; exit code + <code>result.subtype</code>. Codex: <code>turn.failed</code> + exit code;
+details on stdout; non-fatal <code>error</code> notices.</p>
+<p><strong>agentkit today.</strong> Substring <code>classify</code>; headers dropped (no <code>Retry-After</code> anywhere); CLI failures not
+classified.</p>
+<p><strong>Design.</strong>
+- <code>FailureClass = rate_limited | overloaded | transient_network | timeout | quota_exhausted | auth | invalid_request
+  | refused | context_exceeded | tool_error | cancelled | unknown</code>, decided from structured fields (status, type,
+  code, CLI subtype/category) — never message wording.
+- <code>Failure(class, retryable, retry_after_s, mode_detail)</code>.
+- One retry loop: full-jitter backoff, honour <code>retry_after_s</code> as a minimum within a cap, bounded attempts and
+  total time. <strong>No stacking</strong>: when the mode already retries internally (CLIs, SDKs), the loop counts those
+  attempts and does not multiply them; SDK auto-retry is disabled where agentkit owns the loop.
+- A terminal-state classifier per adapter, independent of transport status ("success" with no payload is a
+  failure; a Codex non-fatal <code>error</code> is not).</p>
+<p><strong>Test.</strong> Dropped connection, 429 with <code>Retry-After</code>, spend-cap 429, overloaded, 400, auth, mid-stream error,
+CLI <code>turn.failed</code>, Claude <code>success</code> without payload — each classified identically across modes.</p>
+<h3 id="c7-limits-per-call">C7 — Limits per call<a class="headerlink" href="#c7-limits-per-call" title="Anchor link">&para;</a></h3>
+<p><strong>Design.</strong> <code>CallLimits(max_cost_usd, max_turns, max_output_tokens, wall_clock_s, idle_s, first_event_s)</code> honoured
+by all four. Codex has no turn or cost flag: count turn/usage events and stop the process. Claude Code
+<code>--max-turns</code>/<code>--max-budget-usd</code> are used where they exist and checked independently. A limit hit is an
+outcome (<code>truncated</code> / <code>limit_reached</code>) with partial output kept and resumable (C10), never a silent stop.</p>
+<h3 id="c8-cancellation-and-timeouts">C8 — Cancellation and timeouts<a class="headerlink" href="#c8-cancellation-and-timeouts" title="Anchor link">&para;</a></h3>
+<p>Keep the pinned commit's process-group kill, cancel polling and bounded drains. Add: Claude Code prefers
+SIGINT/<code>interrupt()</code> (clean turn end) over SIGTERM (exit 143, no result, no cost recorded); Codex signal semantics
+are undocumented — probe (§15). Timeouts explicit per mode (startup, first event, idle, total), including MCP
+startup and tool timeouts. A cancelled call still emits <code>call_finished(cancelled)</code> with whatever usage is known.</p>
+<h3 id="c9-credential-homes-and-isolation">C9 — Credential homes and isolation<a class="headerlink" href="#c9-credential-homes-and-isolation" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> CLIs read configuration, credentials, MCP servers and hooks from their home and working directory.
+Claude Code <code>-p</code> loads a project's <code>.mcp.json</code> and hooks even in untrusted folders unless <code>--bare</code>; Codex reads
+project config for trusted projects.</p>
+<p><strong>Design.</strong>
+- <code>IsolatedHome</code>: one root per process holding an exclusive owner lock for the process lifetime; homes created per
+  call under it; removed on exit, cancel and SIGTERM; orphaned roots (owner lock free) swept at start, credential
+  files deleted first. Port Mirror's <code>disposable_home</code> / <code>sweep_orphaned_homes</code> / owner lock.
+- API keys installed through the CLI's own login flow on stdin (<code>codex login --with-api-key</code>); session bundles
+  materialised into the home; nothing from the user's own config inherited (<code>env_policy="isolated"</code>).
+- CLIs started so they load <strong>only</strong> what agentkit gives them: Claude Code <code>--bare</code> + <code>--strict-mcp-config</code>;
+  Codex <code>--ignore-user-config</code> and <code>--ignore-rules</code>. The effective configuration is read back
+  (<code>system/init</code>: model, tools, MCP server status) and recorded.</p>
+<h3 id="c10-sessions-resume-and-reasoning-state">C10 — Sessions, resume and reasoning state<a class="headerlink" href="#c10-sessions-resume-and-reasoning-state" title="Anchor link">&para;</a></h3>
+<p><code>SessionHandle(mode, run_id, cli_session_id, home_bundle)</code>; <code>resume=</code> on both entry points. API modes must
+replay reasoning state exactly: Anthropic thinking blocks unmodified (bound to the conversation prefix on newer
+models), OpenAI reasoning items. Any history rewrite breaks replay, so the runtime owns history and never edits
+earlier turns. Usage across resumed sessions is reconciled, not summed (C5).</p>
+<h3 id="c11-prompt-caching">C11 — Prompt caching<a class="headerlink" href="#c11-prompt-caching" title="Anchor link">&para;</a></h3>
+<p><strong>Why.</strong> Cost and latency depend on a stable prefix; small changes silently invalidate it.</p>
+<p><strong>Design.</strong> Fixed order: tools → stable system parts → volatile parts → messages; cache breakpoint after the last
+stable block (§9). The runtime records a <strong>prefix digest</strong> per layer and emits <code>cache_invalidated(reason)</code> when a
+tool definition, <code>tool_choice</code>, effort, thinking config, schema or image toggles change. Cache read/write counts
+are always reported separately. Controls are mapped per mode (Anthropic breakpoints and TTL; OpenAI
+<code>prompt_cache_key</code>; Claude Code TTL env) but the reported counts are uniform.</p>
+<h3 id="c12-public-hooks-instead-of-subclassing">C12 — Public hooks instead of subclassing<a class="headerlink" href="#c12-public-hooks-instead-of-subclassing" title="Anchor link">&para;</a></h3>
+<p><code>request_hook(payload) -&gt; payload</code> on the HTTP adapters (Mirror currently overrides private <code>_post</code>), a public
+<code>pricing=</code> everywhere, and a public <code>result_hook</code> on the MCP server (§7). Nothing in Mirror should need a private
+attribute of agentkit.</p>
+<hr />
+<h2 id="6-model-settings-temperature-vs-effort">6. Model settings: temperature vs effort<a class="headerlink" href="#6-model-settings-temperature-vs-effort" title="Anchor link">&para;</a></h2>
+<p>The modes do not share a vocabulary. The APIs take sampling settings on some models and reasoning controls on
+others; the CLIs take model and effort and expose no temperature.</p>
+<h3 id="61-what-each-mode-accepts-observed-unless-marked">6.1 What each mode accepts (observed unless marked)<a class="headerlink" href="#61-what-each-mode-accepts-observed-unless-marked" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Anthropic API</th>
+<th>OpenAI API</th>
+<th>Claude Code</th>
+<th>Codex</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>model</td>
+<td><code>model</code></td>
+<td><code>model</code></td>
+<td><code>--model</code> (aliases; precedence <code>/model</code> &gt; flag &gt; env &gt; settings)</td>
+<td><code>-m</code> / <code>model</code></td>
+</tr>
+<tr>
+<td>temperature, top_p</td>
+<td>400 when non-default on Opus 4.7+ and Sonnet 5.5; accepted on older models</td>
+<td>remove unless effort <code>none</code> on models that allow it (400s reported otherwise)</td>
+<td>not exposed (inferred)</td>
+<td>not in config reference</td>
+</tr>
+<tr>
+<td>top_k</td>
+<td>same as above</td>
+<td>none</td>
+<td>not exposed</td>
+<td>not exposed</td>
+</tr>
+<tr>
+<td>max output</td>
+<td><code>max_tokens</code> (required; includes thinking)</td>
+<td><code>max_output_tokens</code> (includes reasoning; hit → <code>incomplete</code>)</td>
+<td>none; <code>--max-turns</code>, <code>--max-budget-usd</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td>reasoning depth</td>
+<td><code>output_config.effort</code> (<code>low</code>…<code>max</code>, per model) + <code>thinking</code> mode</td>
+<td><code>reasoning.effort</code> (<code>none</code>, <code>minimal</code>, <code>low</code>…<code>max</code>, per model)</td>
+<td><code>--effort</code>, <code>CLAUDE_CODE_EFFORT_LEVEL</code> (<strong>clamped silently</strong> to the highest supported level)</td>
+<td><code>model_reasoning_effort</code> (examples include <code>ultra</code>)</td>
+</tr>
+<tr>
+<td>reasoning visibility</td>
+<td><code>thinking.display</code></td>
+<td><code>reasoning.summary</code></td>
+<td>summaries setting</td>
+<td><code>model_reasoning_summary</code></td>
+</tr>
+<tr>
+<td>verbosity</td>
+<td>none</td>
+<td><code>text.verbosity</code></td>
+<td>none</td>
+<td><code>model_verbosity</code> (<code>low</code>/<code>medium</code>/<code>high</code>)</td>
+</tr>
+<tr>
+<td>speed / tier</td>
+<td>fast mode (some models)</td>
+<td><code>service_tier</code> (Fast = former Priority)</td>
+<td>none found</td>
+<td><code>service_tier</code></td>
+</tr>
+</tbody>
+</table>
+<p>Model-specific rejections exist on the Anthropic API: <code>thinking.enabled</code> and <code>between_tools</code>/<code>disabled</code>
+combinations differ per model; prefill is a 400 on 4.6+; forced <code>tool_choice</code> is a 400 on the newest models.
+Defaults differ (e.g. effort default <code>medium</code> on some models, <code>high</code> on others).</p>
+<h3 id="62-design">6.2 Design<a class="headerlink" href="#62-design" title="Anchor link">&para;</a></h3>
+<ul>
+<li><code>ModelSettings(model, effort, temperature, top_p, top_k, max_output_tokens, reasoning_summary, verbosity,
+  tier)</code> — every field optional.</li>
+<li>A <strong>capability table as data</strong> keyed by (mode, model): accepted settings and their valid values, defaults, and
+  incompatible combinations. A new model is a data change. The table is versioned and dated; re-probed on model
+  upgrades.</li>
+<li><strong>Checked before dispatch.</strong> A 400 after dispatch is a fallback, not the check.</li>
+<li><strong>Policy for an unsupported setting:</strong></li>
+<li><em>Refuse</em> when it changes the meaning of the result and has no equivalent (e.g. <code>temperature=0</code> for
+     reproducibility on a CLI mode or a model that rejects it).</li>
+<li><em>Map and record a degradation</em> when a deterministic nearest equivalent exists (effort <code>xhigh</code>→<code>high</code> where
+     missing; <code>none</code>→<code>low</code> where <code>none</code> is unsupported).</li>
+<li><em>Drop and record</em> only pure presentation hints (summary display, tier).</li>
+<li><em>Read back the effective settings</em> the mode actually used (Claude Code <code>system/init</code>; Codex thread) and
+     record any silent clamp.</li>
+<li>Settings that change answers (model, effort, temperature, top_p/top_k) are part of the call's identity
+  (reuse keys, eval comparisons); presentation hints are not.</li>
+</ul>
+<hr />
+<h2 id="7-tools-mirror-serves-to-agents">7. Tools Mirror serves to agents<a class="headerlink" href="#7-tools-mirror-serves-to-agents" title="Anchor link">&para;</a></h2>
+<h3 id="71-one-registry-one-server-identical-on-every-mode">7.1 One registry, one server, identical on every mode<a class="headerlink" href="#71-one-registry-one-server-identical-on-every-mode" title="Anchor link">&para;</a></h3>
+<ul>
+<li>One <code>ToolRegistry</code>. For the CLIs it is served through one MCP server (Streamable HTTP, stateless JSON mode,
+  readiness check); for the APIs the same registry runs in-process. The <strong>same result handling</strong> applies either
+  way.</li>
+<li><code>serve(tools, result_hook=…, images=True, stateless_json=True)</code>, public <code>check_ready()</code> and timeouts.
+  Mirror's <code>EngineServer</code>/<code>EvidenceServer</code> subclasses and the private-field cloning disappear.</li>
+</ul>
+<h3 id="72-results">7.2 Results<a class="headerlink" href="#72-results" title="Anchor link">&para;</a></h3>
+<ul>
+<li>Text, image, and structured results. MCP results carry <code>content[]</code> (text, image, audio, <code>resource_link</code>) and
+  <code>structuredContent</code> validated against the tool's <code>outputSchema</code>; structured results also serialised as text.</li>
+<li>Images are first-class in the in-process loop too (Anthropic image blocks; OpenAI image arrays), not
+  base64 markers smuggled through text.</li>
+<li><strong>Overflow:</strong> results over a size are written to a file and replaced by a short notice naming the path and how
+  to read it (Claude Code itself spills MCP results over 25,000 tokens / 50,000 characters — the runtime must
+  set its own bound so every mode behaves alike).</li>
+<li>Execution errors are <code>isError: true</code> results fed back to the model; protocol errors are not.</li>
+</ul>
+<h3 id="73-self-description">7.3 Self-description<a class="headerlink" href="#73-self-description" title="Anchor link">&para;</a></h3>
+<ul>
+<li>Every limit is stated <strong>in words</strong> in the tool description and in the parameter's own description (Codex drops
+  numeric schema keywords; Anthropic strict tools reject some). <code>describe_limits</code> renders <code>minimum/maximum/
+  maxItems/maxLength/pattern</code> into text automatically; keywords stay in the schema where harmless.</li>
+<li>Every parameter has a description; descriptions say when to use the tool versus its sibling, how to batch,
+  what comes back and how to continue.</li>
+<li>System prompts never restate tools (§9.5).</li>
+<li>A tool that cannot do exactly what was asked does the nearest useful thing (clamp, apply) or returns what the
+  next call needs — never a bare refusal.</li>
+</ul>
+<h3 id="74-large-catalogues">7.4 Large catalogues<a class="headerlink" href="#74-large-catalogues" title="Anchor link">&para;</a></h3>
+<p>Tool-selection accuracy degrades past roughly 30–50 tools (vendor guidance). Support <strong>deferred loading</strong> plus a
+<strong>tool search</strong> tool (regex/BM25/embeddings): a few hot tools always loaded, the rest found on demand; names
+namespaced by server/service; deterministic ordering so the cached prefix stays stable.</p>
+<hr />
+<h2 id="8-external-mcp-servers-that-users-connect">8. External MCP servers that users connect<a class="headerlink" href="#8-external-mcp-servers-that-users-connect" title="Anchor link">&para;</a></h2>
+<p>Later, users will connect any MCP server and agents must know about and use its tools. The MCP spec leaves most
+safety to the client, so this is a runtime responsibility.</p>
+<h3 id="81-protocol-support-revision-2026-07-28">8.1 Protocol support (revision 2026-07-28)<a class="headerlink" href="#81-protocol-support-revision-2026-07-28" title="Anchor link">&para;</a></h3>
+<ul>
+<li><strong>Stateless base protocol.</strong> No <code>initialize</code> handshake; each request carries version and client capabilities in
+  <code>_meta</code>; unsupported version → retry with the server's <code>supported</code> list. <strong>Also support legacy servers</strong>
+  (<code>initialize</code>), detect by probing, and cache which era each server speaks.</li>
+<li><strong>Transports:</strong> stdio and Streamable HTTP (single POST endpoint, JSON or request-scoped SSE replies, required
+  <code>MCP-Protocol-Version</code>, <code>Mcp-Method</code>, <code>Mcp-Name</code> headers). HTTP+SSE is deprecated.</li>
+<li><strong>Discovery:</strong> <code>server/discover</code> (versions, capabilities, <code>instructions</code>, TTL). <code>serverInfo</code> and annotations
+  are self-reported and untrusted.</li>
+<li><strong>Lists:</strong> pagination and TTL caching for every <code>*/list</code>; change notifications only via a
+  <code>subscriptions/listen</code> stream (<code>toolsListChanged</code>, resource subscriptions).</li>
+<li><strong>Server-to-client asks:</strong> elicitation arrives as <code>InputRequiredResult</code> and is answered on retry (form mode for
+  plain inputs; URL mode for secrets and third-party OAuth — never collect secrets in form mode).</li>
+<li><strong>Deprecated, do not build on:</strong> sampling, roots, logging. Never declare the <code>sampling</code> capability (it would
+  let a server spend the user's model quota).</li>
+<li><strong>Progress and cancellation:</strong> request-scoped progress; closing the HTTP stream cancels; stdio sends
+  <code>notifications/cancelled</code>; client timeouts with a hard maximum.</li>
+<li><strong>Skills over MCP</strong> (<code>io.modelcontextprotocol/skills</code>, <code>skill://</code> URIs, digest manifests) — see §9.</li>
+</ul>
+<h3 id="82-authorization">8.2 Authorization<a class="headerlink" href="#82-authorization" title="Anchor link">&para;</a></h3>
+<p>OAuth 2.1 for HTTP servers: Protected Resource Metadata discovery from the 401 <code>WWW-Authenticate</code>; RFC 8414/OIDC
+discovery; client registration by pre-registered id, Client ID Metadata Document, or DCR (deprecated) — in that
+order; PKCE; RFC 8707 <code>resource</code> on authorization and token requests; validate the issuer (RFC 9207 <code>iss</code>);
+<code>insufficient_scope</code> step-up with bounded retries; tokens only in the <code>Authorization</code> header, only to the server
+they were issued for; refresh tokens stored encrypted (Mirror's vault). stdio servers take credentials from the
+environment the runtime gives them, never the parent's.</p>
+<h3 id="83-security-policy-client-side-the-spec-leaves-it-to-us">8.3 Security policy (client-side; the spec leaves it to us)<a class="headerlink" href="#83-security-policy-client-side-the-spec-leaves-it-to-us" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Control</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tool poisoning / prompt injection in descriptions, annotations, <code>instructions</code>, results</td>
+<td>treat all as untrusted; place third-party text only in tool results, labelled by source; descriptions/instructions truncated to a bound; optional screening classifier on results</td>
+</tr>
+<tr>
+<td>Rug pull (definitions change after approval)</td>
+<td><strong>pin</strong> each tool by a digest of its full raw definition (name, description, schemas, annotations, <code>_meta</code>); on <code>list_changed</code> or reconnect compare; changed or new tools need re-approval; never swap definitions mid-run silently</td>
+</tr>
+<tr>
+<td>Over-broad access</td>
+<td>per-server and per-tool allow/deny (deny wins) matched on URL or command, never on the user-chosen label; approval modes per tool (always / prompt / writes-only / never) keyed on annotations only for trusted servers</td>
+</tr>
+<tr>
+<td>SSRF via OAuth discovery URLs</td>
+<td>HTTPS only; block private/link-local ranges; validate every redirect; pin DNS between check and use; optional egress proxy</td>
+</tr>
+<tr>
+<td>Local server compromise</td>
+<td>sandbox stdio servers (filesystem, network, env); show the exact command for consent; never inherit the parent environment</td>
+</tr>
+<tr>
+<td>Context flooding</td>
+<td>per-tool output cap with spill-to-file; a global context budget for MCP content</td>
+</tr>
+<tr>
+<td>Confused deputy / token passthrough</td>
+<td>per-server tokens with audience binding; never forward a client token downstream</td>
+</tr>
+<tr>
+<td>Silent capability loss</td>
+<td>a server marked required that fails or needs auth fails the call; optional servers' status is recorded</td>
+</tr>
+</tbody>
+</table>
+<p>Audit: every external tool call recorded (server, tool, argument shape, result size, approval decision).</p>
+<h3 id="84-delivering-external-tools-to-the-four-modes">8.4 Delivering external tools to the four modes<a class="headerlink" href="#84-delivering-external-tools-to-the-four-modes" title="Anchor link">&para;</a></h3>
+<p>The four modes consume MCP differently (Claude Code and Codex from config files; the APIs accept remote
+servers and tools only, with their own approval semantics). To keep one behaviour and one security policy:</p>
+<p><strong>agentkit acts as the MCP client and gateway.</strong> It connects to the user's servers, applies §8.1–8.3, and
+re-exposes the approved, pinned tools through the same tool registry and server it uses for its own tools
+(§7). The CLIs are started with only agentkit's server (<code>--strict-mcp-config</code>/<code>--bare</code>, Codex ignoring user
+config); the API modes run the registry in-process. The vendors' native connectors are not used for
+user-supplied servers, because each would apply a different policy.</p>
+<hr />
+<h2 id="9-skills-agent-definitions-instructions-and-dynamic-prompts">9. Skills, agent definitions, instructions and dynamic prompts<a class="headerlink" href="#9-skills-agent-definitions-instructions-and-dynamic-prompts" title="Anchor link">&para;</a></h2>
+<p>A person (or an agent) creates an agent at run time: picks skills that make up its <strong>persona</strong>, gives it
+<strong>instructions</strong> that let it run itself, and the runtime composes its <strong>prompt</strong> dynamically. The agent behaves
+the same on all four modes.</p>
+<h3 id="91-skills-follow-the-open-standard">9.1 Skills follow the open standard<a class="headerlink" href="#91-skills-follow-the-open-standard" title="Anchor link">&para;</a></h3>
+<p>The industry has converged on the <strong>Agent Skills</strong> format (agentskills.io), adopted by Claude Code, Codex,
+Google ADK, and an MCP extension:</p>
+<ul>
+<li>A skill is a directory with <code>SKILL.md</code>: YAML frontmatter (<code>name</code> 1–64 lowercase/digits/hyphens, equal to the
+  directory name; <code>description</code> ≤1,024 characters saying what it does and when to use it; optional <code>license</code>,
+  <code>compatibility</code>, <code>metadata</code>, experimental <code>allowed-tools</code>) and a body; optional <code>scripts/</code>, <code>references/</code>,
+  <code>assets/</code>.</li>
+<li><strong>Three disclosure levels:</strong> metadata (~100 tokens, always visible), body (loaded on activation; keep under
+  ~5,000 tokens), resources (on demand, one level deep).</li>
+<li>Vendor extensions exist (Claude Code: <code>when_to_use</code>, <code>disable-model-invocation</code>, <code>user-invocable</code>, <code>model</code>,
+  <code>effort</code>, <code>context: fork</code>…; Codex: <code>agents/openai.yaml</code>, <code>allow_implicit_invocation</code>); unknown fields are
+  ignored but logged.</li>
+</ul>
+<p><strong>Design (S1).</strong> agentkit's <code>Skill</code> becomes a loader for this format plus a source abstraction (filesystem,
+MCP <code>skill://</code>, in-memory) and a digest manifest (sha256 per file, size). Mirror's richer manifest fields
+(<code>roles</code>, <code>required_tools</code>, <code>playbooks</code> keyed by event kind) live in <code>metadata</code> or a Mirror extension file, so
+skills stay portable. Mirror's <code>agent_skills</code> remains the store, approval and permission layer.</p>
+<h3 id="92-activation-s2">9.2 Activation (S2)<a class="headerlink" href="#92-activation-s2" title="Anchor link">&para;</a></h3>
+<ul>
+<li><strong>Pinned:</strong> body included from the start.</li>
+<li><strong>Discoverable:</strong> only metadata listed; the agent calls <code>load_skill(name)</code>; resources via
+  <code>read_skill_resource(path)</code>. The listing is budgeted (Codex caps it at ~2% of context; Claude Code truncates
+  descriptions) — order and truncate deterministically.</li>
+<li><strong>Triggered:</strong> the host loads a playbook when an event matches (e.g. a failure class).</li>
+<li><code>required_tools</code> checked against the agent's grant before activation; a skill needing a tool the agent lacks
+  is refused with the reason.</li>
+<li>Approval binds to the whole manifest digest; any file change revokes it. Same-name skills from different
+  sources never silently replace each other (key by source + URI).</li>
+<li>Skill content is untrusted input; scripts run only with explicit approval and in the sandbox; dynamic shell
+  injection into skill bodies is disabled by default.</li>
+<li>Active skill bodies are re-attached after context compaction.</li>
+</ul>
+<h3 id="93-agent-definitions-s3">9.3 Agent definitions (S3)<a class="headerlink" href="#93-agent-definitions-s3" title="Anchor link">&para;</a></h3>
+<p>Industry shape (Claude Code sub-agents / Agent SDK <code>AgentDefinition</code>, OpenAI Agents SDK <code>Agent</code>): a named record
+with a description, a prompt, tools, a model, and limits.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>AgentDefinition(
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  id, version, digest,
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  description,                      # when another agent should delegate to it (distinct from its prompt)
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  persona: [SkillRef],              # pinned skills that define how it thinks and acts
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  discoverable_skills: [SkillRef],
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  tools: ToolGrant(allow, deny),    # deny applied first; patterns for MCP servers
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  model: Binding | &quot;inherit&quot;, settings: ModelSettings,
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  limits: CallLimits,
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  memory: MemoryRef | None,
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  delegation: DelegationPolicy(allowed: [AgentRef], max_depth, max_concurrency, budget_share),
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>)
+</span></code></pre></div>
+<p>Created by a person or an agent through one API, validated (§9.6), stored versioned, and its digest recorded on
+every call and in reuse keys. Model resolution order is explicit (invocation &gt; definition &gt; environment &gt;
+parent).</p>
+<h3 id="94-instructions-that-let-an-agent-run-itself-s4">9.4 Instructions that let an agent run itself (S4)<a class="headerlink" href="#94-instructions-that-let-an-agent-run-itself-s4" title="Anchor link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>InstructionSet(
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  goal,
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  definition_of_done,               # a machine-checkable artifact where possible (a checklist only the verifier flips)
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  rules,                            # what it must and must not do
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  stop_conditions,                  # turns, spend, time, &quot;no progress for N slices&quot;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  escalation,                       # what to record and return when it cannot finish
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  orientation,                      # what to read first when resuming (progress notes, prior decisions)
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>)
+</span></code></pre></div>
+<ul>
+<li>Given as the <strong>task</strong>, separate from the persona.</li>
+<li>The loop (<code>run</code>) ends on the definition of done or a stop condition; partial results are kept and resumable;
+  progress notes live outside the context window.</li>
+<li>Done is decided by a check, not the model's claim. Explicit "double-check" wording is model-dependent (some
+  current models over-verify when told to) — keep that wording in the prompt part, not in code.</li>
+<li>Every autonomous decision is recorded.</li>
+</ul>
+<h3 id="95-dynamic-prompt-composition-s5">9.5 Dynamic prompt composition (S5)<a class="headerlink" href="#95-dynamic-prompt-composition-s5" title="Anchor link">&para;</a></h3>
+<p>The prompt is assembled from <strong>parts</strong>, each a locked, versioned template:</p>
+<ol>
+<li><strong>Rules</strong> — engine-owned; highest precedence; untrusted-content policy; never overridable.</li>
+<li><strong>Persona</strong> — from pinned skills.</li>
+<li><strong>Skill index</strong> — metadata of discoverable skills.</li>
+<li><strong>Task</strong> — the instruction set and its inputs.</li>
+<li><strong>Context references</strong> — ids/paths the agent reads through tools; bodies are never pasted.</li>
+</ol>
+<p>Rules for composition:</p>
+<ul>
+<li>Stable parts first, volatile last; the cache breakpoint after the last stable part (C11). Tool definitions
+  precede the system prompt in the cache prefix, so tool changes are tracked separately.</li>
+<li><strong>Tools are never restated</strong> in any part; their definitions describe them (§7.3).</li>
+<li>Third-party content (tool results, skill files from external sources, MCP text) is never placed in the system
+  prompt.</li>
+<li>The composition produces a <strong>manifest</strong> (part id @ version @ digest, inputs digest); its digest is the
+  prompt's identity for reuse and comparison.</li>
+<li>Strict rendering (undefined variables raise; leftover markers refused).</li>
+<li>Size is measured and fitted: split into parts or passed by reference — never truncated or dropped.</li>
+</ul>
+<h3 id="96-user-authored-personas-and-instructions-s6">9.6 User-authored personas and instructions (S6)<a class="headerlink" href="#96-user-authored-personas-and-instructions-s6" title="Anchor link">&para;</a></h3>
+<p>Personas and instructions written by a person are <strong>data</strong>: bounded length, screened by guardrails (no secrets,
+no verdict claims), recorded verbatim with their digest. Precedence is structural: user parts cannot redefine
+tools, limits, fences or the rules part, because those are not expressed in the prompt at all — they are
+enforced by the runtime.</p>
+<h3 id="97-delegation-s7">9.7 Delegation (S7)<a class="headerlink" href="#97-delegation-s7" title="Anchor link">&para;</a></h3>
+<ul>
+<li>Two patterns: <strong>agent-as-tool</strong> (manager keeps control; child returns one message) and <strong>handoff</strong> (a peer
+  takes over the conversation). Support both.</li>
+<li>A child starts with a fresh context containing only its definition and an explicit briefing (objective, output
+  format, tools, boundaries). It inherits nothing else.</li>
+<li>Depth, concurrency and spend caps are enforced by the runtime, not only stated in prompts (current models
+  delegate eagerly).</li>
+<li>A child's final message is untrusted input to the parent (scan for imitated control tags and turn markers).</li>
+<li>Child events carry the parent's call id for attribution.</li>
+</ul>
+<h3 id="98-four-modes-s8">9.8 Four modes (S8)<a class="headerlink" href="#98-four-modes-s8" title="Anchor link">&para;</a></h3>
+<p>Claude Code has native skills and sub-agents; use them only where the observable behaviour matches the
+contract. Codex and the APIs receive the composed prompt plus <code>load_skill</code>/<code>read_skill_resource</code>/<code>delegate</code>
+tools. A conformance scenario per concept proves identical behaviour: which skill loaded, which playbook,
+what the agent saw, what it did.</p>
+<hr />
+<h2 id="10-observability">10. Observability<a class="headerlink" href="#10-observability" title="Anchor link">&para;</a></h2>
+<ul>
+<li><strong>Spans</strong> follow the OpenTelemetry GenAI conventions (repo <code>semantic-conventions-genai</code>, status Development —
+  pin the version): <code>invoke_agent {name}</code>, <code>execute_tool {tool}</code>, skill-load/resource spans, <code>create_agent</code>;
+  attributes <code>gen_ai.operation.name</code>, <code>gen_ai.provider.name</code>, <code>gen_ai.request.model</code>,
+  <code>gen_ai.request.{temperature,top_p,max_tokens}</code>, <code>gen_ai.response.{model,id,finish_reasons}</code>,
+  <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code>, cache read/write subsets,
+  <code>gen_ai.tool.{name,call.id,type}</code>, <code>gen_ai.skill.{name,resource.name,source.uri}</code>, <code>gen_ai.agent.{id,name,
+  version}</code>, <code>gen_ai.conversation.id</code> (only when the caller supplies one), <code>error.type</code>.</li>
+<li><strong>Cost</strong> has no standard attribute: use a clearly namespaced one (e.g. <code>agentkit.cost.usd</code>,
+  <code>agentkit.cost.source</code>, <code>agentkit.price_table.version</code>).</li>
+<li><strong>Content capture</strong> (messages, system instructions, tool arguments/results) is opt-in, separately for
+  arguments and results, masked and bounded.</li>
+<li><strong>Events</strong> (§5 C4) go to an <code>EventSink</code>; Mirror maps them into its journals (bounded, masked) and the UI Logs
+  tab filters and totals by their fields.</li>
+</ul>
+<hr />
+<h2 id="11-public-api">11. Public API<a class="headerlink" href="#11-public-api" title="Anchor link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a># Binding and settings
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Binding(mode: Literal[&quot;claude_code&quot;, &quot;codex&quot;, &quot;anthropic_api&quot;, &quot;openai_api&quot;], model: str, credential: CredentialRef)
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>ModelSettings(effort=None, temperature=None, top_p=None, top_k=None, max_output_tokens=None,
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>              reasoning_summary=None, verbosity=None, tier=None)
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>CallLimits(max_cost_usd=None, max_turns=None, max_output_tokens=None, wall_clock_s=None, idle_s=None,
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>           first_event_s=None)
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a># Results
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>Answer[T](value: T | None, text: str, messages: tuple[str, ...], outcome: Outcome, usage: Usage,
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>          raw_usage: Mapping, cost_usd: Decimal | None, cost_source: CostSource, effective: EffectiveSettings,
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>          degradations: tuple[Degradation, ...], attempts: int, failure: Failure | None,
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>          session: SessionHandle | None, prompt_manifest: Manifest)
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a># Entry points
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>async def ask(binding, prompt: ComposedPrompt, output: OutputSpec | type[T], *, settings=ModelSettings(),
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>              limits=CallLimits(), cancel=None, events: EventSink | None = None, pricing: PriceTable | None = None,
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>              call_id: str) -&gt; Answer[T]                                   # one-shot
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>async def run(binding, prompt: ComposedPrompt, tools: ToolSet, *, output=None, settings=ModelSettings(),
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>              limits=CallLimits(), turns_per_slice=None, resume: SessionHandle | None = None, cancel=None,
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>              events=None, pricing=None, call_id: str) -&gt; Answer[T]        # agent loop
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>async def run_agent(definition: AgentDefinition, task: InstructionSet, inputs: Mapping, *, resume=None,
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>                    cancel=None, events=None, call_id: str) -&gt; Answer[T]   # composes, activates skills, runs
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a># Composition
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>def compose(parts: Sequence[PromptPart], inputs: Mapping) -&gt; ComposedPrompt   # manifest + digest + rendered text
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>
+</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a># Tools and MCP
+</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>ToolSet(registry, overflow: OverflowPolicy, images=True, describe_limits=True, deferred: DeferPolicy | None)
+</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>def serve(tools: ToolSet, *, ctx) -&gt; AsyncContextManager[McpServerSpec]
+</span><span id="__span-3-32"><a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a>class McpGateway:                    # external servers (§8)
+</span><span id="__span-3-33"><a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a>    async def connect(server: ServerConfig, policy: McpPolicy) -&gt; ConnectedServer
+</span><span id="__span-3-34"><a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a>    def tools(approved_only=True) -&gt; ToolSet
+</span><span id="__span-3-35"><a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a>
+</span><span id="__span-3-36"><a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a># Skills and agents
+</span><span id="__span-3-37"><a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a>class SkillSource(Protocol): list() / get(ref) / read(ref, path)    # filesystem, MCP skill://, memory
+</span><span id="__span-3-38"><a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a>class AgentStore(Protocol): get(ref) / put(definition) -&gt; validated, versioned
+</span><span id="__span-3-39"><a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a>
+</span><span id="__span-3-40"><a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a># Helpers (public, testable)
+</span><span id="__span-3-41"><a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a>def compile_schema(schema, mode, model) -&gt; dict;  def clean_nulls(value, schema) -&gt; Any
+</span><span id="__span-3-42"><a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a>def classify(exc_or_event) -&gt; Failure | None;      def price(model, usage, table) -&gt; (Decimal | None, CostSource)
+</span></code></pre></div>
+<hr />
+<h2 id="12-proof-conformance-suite-and-the-eval-matrix">12. Proof: conformance suite and the eval matrix<a class="headerlink" href="#12-proof-conformance-suite-and-the-eval-matrix" title="Anchor link">&para;</a></h2>
+<p><strong>In agentkit — <code>tests/conformance/</code>.</strong> The same scripted scenarios run against a scripted fake of each mode
+and assert identical observable results:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Proves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>two messages then a final answer</td>
+<td>C1</td>
+</tr>
+<tr>
+<td>optional fields inside <code>anyOf</code>/<code>$ref</code>; an inexpressible bound; refusal; truncation; CLI success without payload; correction turn</td>
+<td>C2</td>
+</tr>
+<tr>
+<td>unsupported temperature on a CLI; effort clamp; incompatible thinking combination</td>
+<td>§6</td>
+</tr>
+<tr>
+<td>identical event sequence</td>
+<td>C4</td>
+</tr>
+<tr>
+<td>raw usage → normalised usage; resume without double counting; unpriced model</td>
+<td>C5</td>
+</tr>
+<tr>
+<td>dropped connection; 429 + <code>Retry-After</code>; spend-cap 429; overloaded; 400; auth; mid-stream error; CLI <code>turn.failed</code></td>
+<td>C6</td>
+</tr>
+<tr>
+<td>turn, cost, output and wall-clock limits</td>
+<td>C7</td>
+</tr>
+<tr>
+<td>cancel mid-call kills the process tree and reports usage</td>
+<td>C8</td>
+</tr>
+<tr>
+<td>killed owner's home swept; project MCP config ignored</td>
+<td>C9</td>
+</tr>
+<tr>
+<td>resume a sliced session; reasoning state replay</td>
+<td>C10</td>
+</tr>
+<tr>
+<td>a tool change emits cache invalidation</td>
+<td>C11</td>
+</tr>
+<tr>
+<td>image result; oversized result spilled; limits in words; tool error vs protocol error</td>
+<td>§7</td>
+</tr>
+<tr>
+<td>external server: changed tool definition requires re-approval; deny list wins; SSRF URL refused; required server failing fails the call</td>
+<td>§8</td>
+</tr>
+<tr>
+<td>skill activation (pinned, discoverable, triggered); missing required tool; digest change revokes approval; delegation caps</td>
+<td>§9</td>
+</tr>
+</tbody>
+</table>
+<p>Plus one opt-in live test per mode (skipped without credentials) running the same scenario set.</p>
+<p><strong>In Mirror — the eval matrix.</strong> <code>evals run --matrix</code> runs every prompt case on M1–M4 with real evidence,
+per-answer caps, per-model thresholds only with a written reason, and a per-model report and baseline. A stage
+is not ported until its cases pass on all four.</p>
+<hr />
+<h2 id="13-what-stays-in-mirrors-cognition">13. What stays in Mirror's <code>cognition</code><a class="headerlink" href="#13-what-stays-in-mirrors-cognition" title="Anchor link">&para;</a></h2>
+<ul>
+<li>Routing an organisation's binding to a mode and model; vault credential references.</li>
+<li>The spend ledger (announce before the call, settle after) and Mirror's authoritative price file fed to
+  agentkit's <code>PriceTable</code>.</li>
+<li>Per-stage budget and retry <em>policy</em>; tool-aware liveness bounds; repair policy (what to re-ask with).</li>
+<li>Mirror's event schema, journals and the Logs tab mapping.</li>
+<li><code>prompting</code> (strict render, locks, guardrail cases) for every prompt part.</li>
+<li>Plane rules: sounding never dispatches; control's harness only in its providers seam.</li>
+<li>Mirror's skill store, approvals and the agent store.</li>
+</ul>
+<hr />
+<h2 id="14-order-of-work-and-migration">14. Order of work and migration<a class="headerlink" href="#14-order-of-work-and-migration" title="Anchor link">&para;</a></h2>
+<p><strong>In agentkit</strong> (each step merged with its conformance scenarios green):</p>
+<ol>
+<li>Rebase on <code>555bc57</code>/remote <code>main</code>; tag current behaviour.</li>
+<li>C1 last-message answer and C2 structured output — the two causing live failures today.</li>
+<li>C6 failures and <code>Retry-After</code>; C5 usage and pricing; §6 settings and capability table; C7 limits.</li>
+<li>§7 tool serving (result hook, images, overflow, limits in words, deferred loading).</li>
+<li>C8–C11: cancellation details, homes, sessions, caching; C12 hooks; §10 observability.</li>
+<li>§8 MCP gateway for external servers.</li>
+<li>§9 skills (open standard + sources), agent definitions, instruction sets, composition, delegation.</li>
+<li>Opt-in live conformance per mode.</li>
+</ol>
+<p><strong>In Mirror</strong> (one consumer at a time; each ported stage must pass the eval matrix):</p>
+<ol>
+<li>Bump the agentkit pin; build <code>cognition.ask/run/run_agent</code> on it.</li>
+<li>Port <strong>preflight</strong> (one-shot proposal prompts with existing evals) — first consumer.</li>
+<li>Control chat; assay (research, plan, design, drive); forge build lanes; the eval harness.</li>
+<li>Delete each old path once unused: <code>kernel/authority/agent_adapter.py</code>, both <code>adapter_contract.py</code>, the five
+   <code>_build_env</code> overrides, <code>_widen_stream_lines</code>, <code>EngineServer</code>/<code>EvidenceServer</code>, the three <code>_table_cost</code>
+   copies, control's <code>codex_agent.strict_json_schema</code>, the separate retry loops.</li>
+<li>Expose user-connected MCP servers and user-defined agents once §8 and §9 are in.</li>
+</ol>
+<hr />
+<h2 id="15-open-questions-to-settle-with-live-probes">15. Open questions to settle with live probes<a class="headerlink" href="#15-open-questions-to-settle-with-live-probes" title="Anchor link">&para;</a></h2>
+<p>These were not established from documentation and must be measured once, recorded in the capability table, and
+re-checked on upgrades:</p>
+<ul>
+<li>OpenAI strict mode: which numeric/length keywords base models accept today.</li>
+<li>Anthropic: sampling acceptance on Opus 5, Fable, Mythos and Haiku 5.5; non-strict tool schema keyword handling.</li>
+<li>OpenAI: which models accept temperature at effort <code>none</code>; <code>text.verbosity</code> values; <code>service_tier</code> values; where
+  usage appears in a Responses stream; cancel and <code>previous_response_id</code> semantics.</li>
+<li>Codex: exit codes; whether <code>turn.completed.usage</code> is per-turn or thread-cumulative; behaviour on an unsupported
+  effort; signal/cancel behaviour; whether <code>--output-schema</code> works with <code>resume</code>; image handling in MCP results.</li>
+<li>Claude Code: whether it honours output and turn caps cleanly; the full flag/env list (confirm no temperature);
+  how MCP images and <code>structuredContent</code> reach the model; cache TTL breakdown in result usage.</li>
+<li>Whether Claude Code's native skills/sub-agents match the contract closely enough to use natively.</li>
+</ul>
+<hr />
+<h2 id="16-sources">16. Sources<a class="headerlink" href="#16-sources" title="Anchor link">&para;</a></h2>
+<p>Anthropic: structured outputs, errors, rate limits, streaming, pricing, prompt caching, tool use (handle tool
+calls, strict tool use, tool search), stop reasons, effort, extended thinking, Opus 5.5 and Sonnet 5.5 migration
+guides, mitigating jailbreaks and prompt injection, Agent Skills overview and best practices, MCP connector —
+<code>https://platform.claude.com/docs/en/...</code>. Engineering: effective context engineering, effective harnesses for
+long-running agents, multi-agent research system, advanced tool use — <code>https://www.anthropic.com/engineering/...</code>.</p>
+<p>Claude Code and Agent SDK: headless, model configuration, MCP, managed MCP, skills, sub-agents, SDK cost tracking,
+structured outputs, TypeScript reference, SDK MCP, SDK skills, SDK sub-agents — <code>https://code.claude.com/docs/en/...</code>.</p>
+<p>OpenAI: structured outputs, function calling, streaming responses, error codes, rate limits, prompt caching,
+reasoning, latest model, pricing, remote MCP and connectors — <code>https://developers.openai.com/api/docs/...</code>;
+openai-python types (<code>response_stream_event.py</code>, <code>response_usage.py</code>, <code>completion_usage.py</code>); OpenAI Agents SDK
+(agents, handoffs, guardrails, tracing) — <code>https://openai.github.io/openai-agents-python/</code>.</p>
+<p>Codex: non-interactive mode, MCP, config reference, skills, AGENTS.md — <code>https://learn.chatgpt.com/docs/...</code>;
+source <code>codex-rs/exec/src/exec_events.rs</code> and <code>event_processor_with_jsonl_output.rs</code> on <code>main</code>. Third-party,
+treated as reported only: codex.danielvaughan.com JSONL, exit-code and output-schema notes;
+pathscale/RustAgentAbstraction PR 10.</p>
+<p>MCP: specification revision 2026-07-28 (transports, Streamable HTTP, authorization, versioning, discover, tools,
+resources, prompts, cancellation, sampling, elicitation, deprecated features), schema.ts, security best practices,
+Skills extension, registry — <code>https://modelcontextprotocol.io/...</code>. Security notes treated as reported: CSA
+research note on tool poisoning; tool-poisoning threat model (trackr.live); Zuplo on rug pulls.</p>
+<p>Skills standard: <code>https://agentskills.io/specification</code>. Google ADK skills guide; Pydantic AI harness skills;
+LangChain supervisor migration (reported).</p>
+<p>Observability: OpenTelemetry GenAI semantic conventions — <code>https://github.com/open-telemetry/semantic-conventions-genai</code>.</p>
+<p>Mirror and agentkit code references in this document were read from the Mirror working tree and the pinned
+agentkit commit <code>555bc57</code> on 2026-10-13.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 12:47:46 UTC">October 13, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
