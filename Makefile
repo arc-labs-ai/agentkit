@@ -40,8 +40,8 @@ test-matrix: ## Run the suite on every supported interpreter (3.12 and 3.13)
 	@# then pinned a CPython bug that upstream fixed in a 3.13 PATCH release,
 	@# and both landed green here and red in CI. `requires-python = ">=3.12"`
 	@# and the classifiers promise 3.13, so the gate should check it.
-	uv run --python 3.12 pytest -q
-	uv run --python 3.13 pytest -q
+	uv run --all-extras --python 3.12 pytest -q
+	uv run --all-extras --python 3.13 pytest -q
 
 # ── Lint ────────────────────────────────────────────────────────────────────
 
