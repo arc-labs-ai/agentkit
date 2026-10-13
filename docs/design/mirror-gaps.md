@@ -57,21 +57,21 @@ A bounded live run on
 `image_result` and `model_switch` passed all seven `model_switch`
 rows, and passed `image_result` on Anthropic API, OpenAI API and Codex. Claude Code failed `image_result`
 before invoking its MCP tool; the retained report is
-[`20261013T142237440683Z`](../../tests/evals/reports/20261013T142237440683Z/summary.json). A focused Claude-only
+`tests/evals/reports/20261013T142237440683Z/summary.json`. A focused Claude-only
 rerun after adding MCP image serialization failed the same way. Debugging showed
 `spec.cli_kwargs()` already supplied `strict_mcp_config`, while `CliAdapter` passed that argument a
 second time; the cognition constructor raised before spawning. The duplicate was removed, and a new
 offline regression covers one strict config flag. Live `tool_evidence` and `image_result` both pass
 on Claude Code alongside the other backends in
-[`20261013T151551366051Z`](../../tests/evals/reports/20261013T151551366051Z/summary.json).
+`tests/evals/reports/20261013T151551366051Z/summary.json`.
 
 The all-mode `provider_auth_rejection` eval uses a fresh deliberately invalid credential. Each backend
 returned an authentication failure in one attempt with zero observed usage and zero accounted spend;
-the report is [`20261013T152207836480Z`](../../tests/evals/reports/20261013T152207836480Z/summary.json).
+the report is `tests/evals/reports/20261013T152207836480Z/summary.json`.
 This validates real provider rejection shapes and confirms authentication failures do not retry.
 Transient 429/Retry-After still has offline parser/retry coverage only; no controlled provider 429 was
 induced. Claude Code's live long-schema fallback passed in
-[`20261013T152051324301Z`](../../tests/evals/reports/20261013T152051324301Z/summary.json).
+`tests/evals/reports/20261013T152051324301Z/summary.json`.
 
 The public additions are documented here as well as in the API reference: `Credential`, `Workspace`,
 `ImagePart`, `ClaudePermissionMode`, `CodexSandboxMode`, and `McpSkillSource`.
