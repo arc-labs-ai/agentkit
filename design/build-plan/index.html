@@ -585,6 +585,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Phase 5: Live proof">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#follow-up-gaps-verified-after-e62490b-2026-10-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-up gaps verified after e62490b (2026-10-14)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -826,6 +843,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Phase 5: Live proof">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#follow-up-gaps-verified-after-e62490b-2026-10-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-up gaps verified after e62490b (2026-10-14)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1026,12 +1060,12 @@ run; commit IDs will be added when this implementation is committed.</p>
 <tr>
 <td>G44</td>
 <td>Implemented and conformance-tested</td>
-<td><code>test_tool_timeout_is_model_visible_and_cancels_body</code>, <code>test_cli_mcp_timeout_covers_largest_per_tool_deadline</code>, and <code>test_cli_idle_deadline_pauses_during_a_hosted_tool</code> cover per-tool deadlines, derived MCP timeout and a 3-second tool under a 1-second idle bound</td>
+<td><code>test_runtime_idle_deadline_restarts_after_hosted_tool_finishes</code> proves the runtime idle guard measures from tool completion; <code>test_cli_idle_deadline_resets_at_tool_completion_even_without_active_poll</code> covers the adapter timer; per-tool deadlines and derived MCP timeout have separate tests</td>
 </tr>
 <tr>
 <td>G45</td>
 <td>Implemented and offline-verified</td>
-<td>The native-hook fake CLI integration tests exercise the real hook subprocess through <code>CallRuntime</code> and <code>CliAdapter</code>; callback allow/deny/error/timeout, malformed input, authentication, cleanup and fail-closed fallback are covered</td>
+<td>The fence receives the exact qualified tool names in its per-call AgentKit MCP server. Those tools retain ToolSet/approval enforcement; all other MCP and native tools go through the host callback. <code>test_mcp_tools_require_the_native_authorization_callback</code> covers both paths</td>
 </tr>
 <tr>
 <td>G47</td>
@@ -1229,13 +1263,13 @@ losing work, cache or control.</strong></p>
 <tbody>
 <tr>
 <td><strong>G44</strong> Stall vs long tools</td>
-<td><code>Tool.timeout_s</code> per tool; the <code>serve()</code> wrapper signals tool start and end so <code>idle_s</code> pauses until that tool's deadline; <code>MCP_TOOL_TIMEOUT</code> derives from the largest per-tool deadline</td>
-<td>a 3 s tool under <code>idle_s=1</code> completes; a silent model with no tool running times out at <code>idle_s</code>; a tool past its own deadline times out</td>
+<td><code>Tool.timeout_s</code> per tool; the <code>serve()</code> wrapper signals tool start and end so both runtime and CLI adapter idle clocks reset at tool completion; <code>MCP_TOOL_TIMEOUT</code> derives from the largest per-tool deadline</td>
+<td>a 1.5 s hosted tool under <code>idle_s=1</code> completes and the runtime guard has a regression test; a silent model with no tool running times out at <code>idle_s</code>; a tool past its own deadline times out</td>
 </tr>
 <tr>
-<td><strong>G45</strong> Live native-tool fence — implemented, offline verified</td>
-<td><code>Workspace.pre_tool_use</code> uses typed <code>Allow</code> / <code>Deny</code>; Claude native calls cross an agentkit-owned authenticated Unix-socket hook bridge, without middleware. Denials emit <code>tool_call(refused=True)</code> without argument data/digests. MCP calls retain hosted authorization. Claude/POSIX only; Codex rejects this unsupported workspace option.</td>
-<td><code>AGENTKIT_SKIP_REAL_CLI=1 uv run pytest tests/source/conformance/test_native_tool_fence.py -q</code>: <strong>9 passed</strong>. Fake CLI invokes the actual hook subprocess through <code>CallRuntime</code>/<code>CliAdapter</code>; allow/deny, callback exceptions/timeout cleanup, malformed input, unauthorized connection, disconnected endpoint, missing script fallback, retained hooks and private configuration cleanup verified. Denial uses the official <a href="https://code.claude.com/docs/en/hooks#pretooluse-decision-control">Claude PreToolUse JSON contract</a>; no paid live probe claimed.</td>
+<td><strong>G45</strong> Live native-tool fence</td>
+<td><code>Workspace.pre_tool_use</code> uses typed <code>Allow</code> / <code>Deny</code>; Claude native calls cross an agentkit-owned authenticated Unix-socket hook bridge, without middleware. Denials emit <code>tool_call(refused=True)</code> without argument data/digests. The fence receives exact qualified names from the per-call AgentKit MCP server; those tools retain ToolSet grants/approval. All other MCP tools and native tools go through the host callback. Claude/POSIX only; Codex rejects this unsupported workspace option.</td>
+<td>Fake CLI invokes the actual hook subprocess through <code>CallRuntime</code>/<code>CliAdapter</code>; callback allow/deny/error/timeout, exact hosted-tool bypass, foreign MCP callback, malformed input, authentication, cleanup and fail-closed fallback are covered. Denial uses the official <a href="https://code.claude.com/docs/en/hooks#pretooluse-decision-control">Claude PreToolUse JSON contract</a>; no paid live probe claimed.</td>
 </tr>
 <tr>
 <td><strong>G51</strong> Native-tool policy per call</td>
@@ -1304,6 +1338,38 @@ losing work, cache or control.</strong></p>
 </tbody>
 </table>
 <hr />
+<h3 id="follow-up-gaps-verified-after-e62490b-2026-10-14">Follow-up gaps verified after <code>e62490b</code> (2026-10-14)<a class="headerlink" href="#follow-up-gaps-verified-after-e62490b-2026-10-14" title="Anchor link">&para;</a></h3>
+<p>G35, G40, G42 and G1 were closed at <code>e62490b</code>. The verifier then found two remaining defects; both are now
+fixed in the working tree and have proving regressions:</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>What still fails</th>
+<th>Fix</th>
+<th>Done when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>G44</strong> Stall vs long tools — fixed</td>
+<td>The runtime monitor was still measuring from the last streamed event after hosted tool completion</td>
+<td>Runtime idle now measures from <code>max(last_event, last_tool_activity_end)</code></td>
+<td><code>test_runtime_idle_deadline_restarts_after_hosted_tool_finishes</code> fails before the fix; the adapter's missed-poll regression remains covered separately</td>
+</tr>
+<tr>
+<td><strong>G45</strong> Live native-tool fence — fixed</td>
+<td>The fence treated all MCP tools the same after removing the blanket <code>mcp__*</code> allow</td>
+<td><code>CliAdapter</code> supplies exact qualified names from its owned MCP server; only these bypass the native callback, while arbitrary/project MCP tools still require host authorization</td>
+<td><code>test_mcp_tools_require_the_native_authorization_callback</code> proves hosted exact-name allow and callback denial for an unowned MCP tool</td>
+</tr>
+</tbody>
+</table>
+<p>Also open:
+- <strong>G51:</strong> the adapter's backup clamp (<code>cli/calls.py:158-161</code>) has no test of its own.
+- <strong>G1:</strong> the pre-spawn refusal surfaces as <code>UNKNOWN</code> with empty detail; it should name the refused file.
+- <strong>Examples and docstrings:</strong> <code>tests/examples/01_single_agent.py</code> and <code>02_streaming_and_tools.py</code> still import the deleted
+  <code>Agent</code>; "Invoker" still appears in docstrings and comments in 9 files.</p>
 <h2 id="order-and-what-each-phase-unlocks-for-mirror">Order, and what each phase unlocks for Mirror<a class="headerlink" href="#order-and-what-each-phase-unlocks-for-mirror" title="Anchor link">&para;</a></h2>
 <table>
 <thead>
@@ -1366,7 +1432,7 @@ hook (for G46 and G47). Phase 5 runs at the end of each phase on whatever it unl
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 20:18:39 UTC">October 13, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 21:28:12 UTC">October 13, 2026</span>
   </span>
 
     
