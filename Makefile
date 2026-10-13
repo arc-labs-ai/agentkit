@@ -56,8 +56,9 @@ typecheck: ## Type-check the public surface (mypy --strict)
 # ── Coverage ────────────────────────────────────────────────────────────────
 
 cov: ## Run the suite under branch coverage and enforce the threshold
-	uv run --with coverage coverage run -m pytest
-	uv run --with coverage coverage report
+	uv run --all-extras --with coverage coverage erase
+	uv run --all-extras --with coverage coverage run -m pytest
+	uv run --all-extras --with coverage coverage report
 
 # ── Mutation testing ────────────────────────────────────────────────────────
 # Coverage proves a line RAN; this proves a test would NOTICE if it were wrong.
