@@ -93,6 +93,7 @@ every test, to buy something three of them want and can ask for themselves.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -126,6 +127,7 @@ class FakeClaudeCli:
         self._repeat_last = repeat_last
         self._cursor = 0
         self.invocations: list[CliInvocation] = []
+        self.validated_mcp_configs: list[Mapping[str, Any]] = []
 
     # ---- construction ------------------------------------------------------
 
@@ -185,6 +187,7 @@ class FakeClaudeCli:
         changed a pipe mode, which is not a change any test of parsing or event
         mapping should notice.
         """
+        await self._validate_mcp_config(argv)
         run = self._next_run()
         invocation = CliInvocation(
             argv=tuple(argv),
@@ -200,13 +203,36 @@ class FakeClaudeCli:
         # put a type in the production module purely to describe a test double.
         return cast("asyncio.subprocess.Process", _ReplayProcess(run, invocation))
 
+    async def _validate_mcp_config(self, argv: tuple[str, ...]) -> None:
+        """Enforce the required config shape that Claude Code validates."""
+        try:
+            index = argv.index("--mcp-config")
+        except ValueError:
+            return
+        index += 1
+        config_values: list[str] = []
+        while index < len(argv) and not argv[index].startswith("-"):
+            config_values.append(argv[index])
+            index += 1
+        if not config_values:
+            raise ValueError("--mcp-config requires a config value")
+        for raw in config_values:
+            try:
+                if raw.lstrip().startswith("{"):
+                    document = json.loads(raw)
+                else:
+                    document = json.loads(await asyncio.to_thread(Path(raw).read_text, encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError("--mcp-config must contain valid JSON") from exc
+            if not isinstance(document, dict) or not isinstance(document.get("mcpServers"), dict):
+                raise ValueError("mcpServers: expected record")
+            self.validated_mcp_configs.append(document)
+
     def _next_run(self) -> CliRun:
         if self._cursor >= len(self._runs):
             if not self._repeat_last or not self._runs:
                 raise ScriptExhausted(
-                    _exhausted_message(
-                        double="FakeClaudeCli", have=len(self._runs), idx=self._cursor
-                    )
+                    _exhausted_message(double="FakeClaudeCli", have=len(self._runs), idx=self._cursor)
                 )
             # Incremented past the end too, so a ``repeat_last`` test can
             # assert HOW MANY spawns a loop made, not merely that it made

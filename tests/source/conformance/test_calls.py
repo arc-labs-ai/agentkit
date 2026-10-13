@@ -228,8 +228,9 @@ async def test_output_tolerant_decode_and_validator_correction() -> None:
     assert len(adapter.requests) == 2
 
 
-def test_tolerant_json_uses_last_object_and_ignores_stray_closing_brace() -> None:
-    assert tolerant_json_object('draft {"x": 1}; final {"x": 2}') == {"x": 2}
+def test_tolerant_json_refuses_multiple_objects_and_ignores_stray_closing_brace() -> None:
+    with pytest.raises(ValueError, match="unambiguous"):
+        tolerant_json_object('draft {"x": 1}; final {"x": 2}')
     assert tolerant_json_object('final {"x": 2}}') == {"x": 2}
 
 
@@ -345,6 +346,28 @@ async def test_cli_auth_failure_without_rotation_is_not_retried() -> None:
         )
     assert answer.outcome == "failed"
     assert answer.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_claude_no_tools_supplies_a_real_empty_mcp_servers_record() -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    adapter = CliAdapter(spawn=cli, transport={"HTTPS_PROXY": "https://proxy.example"})
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "task",
+            call_id="empty-mcp-record",
+        )
+    assert answer.outcome == "answered"
+    argv = cli.invocations[0].argv
+    assert "--mcp-config" in argv
+    assert cli.validated_mcp_configs == [{"mcpServers": {}}]
+    assert cli.invocations[0].env["HTTPS_PROXY"] == "https://proxy.example"
     assert len(cli.invocations) == 1
 
 
@@ -456,12 +479,26 @@ def test_cli_environment_is_an_explicit_allowlist() -> None:
             CliAdapter(env={variable: "unsafe"})
 
 
+def test_cli_transport_allowlist_is_separate_from_credentials_and_base_urls() -> None:
+    from agentkit.models.providers.cli import CliTransportVariable
+
+    adapter = CliAdapter(transport={CliTransportVariable.HTTPS_PROXY: "https://proxy.example"})
+    assert adapter.transport == {"HTTPS_PROXY": "https://proxy.example"}
+    for variable in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "AWS_PROFILE"):
+        with pytest.raises(ValueError):
+            CliAdapter(transport={variable: "unsafe"})
+    with pytest.raises(ValueError):
+        CliAdapter(env={"HTTPS_PROXY": "https://proxy.example"})
+
+
 def test_default_tool_argument_masker_redacts_short_strings_recursively() -> None:
-    value = {"command": "cat /tmp/private", "nested": ["sk-secret", 7]}
+    value = {"secret-key": "cat /tmp/private", "nested": ["sk-secret", 7, True]}
     masked = _mask_tool_arguments("Bash", value)
-    assert masked["command"] == {"length": len("cat /tmp/private"), "sha256": masked["command"]["sha256"]}
+    assert "secret-key" not in repr(masked)
+    assert "cat /tmp/private" not in repr(masked)
     assert "sk-secret" not in repr(masked)
-    assert masked["nested"][1] == 7
+    assert "'value': 7" not in repr(masked)
+    assert "'value': True" not in repr(masked)
 
 
 @pytest.mark.asyncio
@@ -472,7 +509,14 @@ async def test_cli_tool_call_event_masks_arguments_by_default() -> None:
                 CallEvent(
                     EventKind.TOOL_CALL,
                     "masked-event",
-                    {"name": "Bash", "arguments": {"command": "echo sk-live-secret"}},
+                    {
+                        "name": "Bash",
+                        "arguments": {
+                            "secret-key": "echo sk-live-secret",
+                            "numeric-secret": 734291,
+                            "boolean-secret": True,
+                        },
+                    },
                 )
             )
             return Turn(messages=("done",), raw_usage={"input_tokens": 1, "output_tokens": 1})
@@ -483,7 +527,9 @@ async def test_cli_tool_call_event_masks_arguments_by_default() -> None:
     event = next(item for item in events if item.kind == EventKind.TOOL_CALL)
     assert answer.outcome == "answered"
     assert "sk-live-secret" not in repr(event.fields)
-    assert event.fields["arguments"]["command"]["length"] == len("echo sk-live-secret")
+    assert "secret-key" not in repr(event.fields)
+    assert "734291" not in repr(event.fields)
+    assert "True" not in repr(event.fields)
 
 
 @pytest.mark.asyncio
@@ -952,7 +998,7 @@ async def test_codex_native_turn_slicing_fails_closed_before_dispatch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unpriced_usage_category_preserves_answer_under_default_policy() -> None:
+async def test_unpriced_usage_category_is_refused_by_default_and_can_be_allowed_explicitly() -> None:
     partial_prices = PriceTable("partial", "2026-10-13", {"test": {"input_uncached": "1"}})
     adapter = ScriptedAdapter(Turn(messages=("answer",), raw_usage={"input_tokens": 3, "output_tokens": 2}))
     events = []
@@ -960,9 +1006,21 @@ async def test_unpriced_usage_category_preserves_answer_under_default_policy() -
         answer = await runtime.ask(
             Binding("openai_api", "test"), "q", events=events.append, call_id="unpriced-category"
         )
-    assert answer.outcome == "answered" and answer.text == "answer"
+    assert answer.outcome == "failed" and answer.text == ""
     assert answer.cost_usd is None
-    assert any(event.kind == EventKind.DEGRADED and event.fields.get("setting") == "accounting" for event in events)
+    assert answer.failure is not None
+    proceed_adapter = ScriptedAdapter(Turn(messages=("answer",), raw_usage={"input_tokens": 3, "output_tokens": 2}))
+    proceed_events = []
+    async with CallRuntime(
+        adapters={"openai_api": proceed_adapter},
+        pricing=partial_prices,
+        unpriced_policy=UnpricedPolicy.PROCEED_UNPRICED,
+    ) as runtime:
+        proceed = await runtime.ask(
+            Binding("openai_api", "test"), "q", events=proceed_events.append, call_id="unpriced-category-proceed"
+        )
+    assert proceed.outcome == "answered" and proceed.text == "answer"
+    assert proceed.cost_source == "mixed"
 
 
 @pytest.mark.asyncio
@@ -1161,6 +1219,94 @@ async def test_claude_retry_passes_only_remaining_provider_budget() -> None:
     assert answer.outcome == "answered" and answer.attempts == 2
     retry_argv = cli.invocations[1].argv
     assert Decimal(retry_argv[retry_argv.index("--max-budget-usd") + 1]) == Decimal("0.6")
+
+
+@pytest.mark.asyncio
+async def test_claude_budgeted_retry_treats_failed_attempt_without_usage_as_zero_spent() -> None:
+    cli = FakeClaudeCli(
+        [
+            CliRun.of(
+                [
+                    {
+                        "type": "result",
+                        "subtype": "api_error",
+                        "terminal_reason": "api_error",
+                        "is_error": True,
+                        "api_error_status": 429,
+                        "retry_after": "0.001",
+                        "error": {"type": "rate_limit_error"},
+                    }
+                ],
+                returncode=1,
+            ),
+            CliRun.of(
+                [
+                    {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "done"}]}},
+                    {
+                        "type": "result",
+                        "subtype": "success",
+                        "result": "done",
+                        "total_cost_usd": 0.2,
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                ]
+            ),
+        ]
+    )
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=cli)},
+        pricing=PRICES,
+        retry=RetryPolicy(base_s=0, cap_s=1, max_elapsed_s=2),
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "retry without reported usage",
+            limits=CallLimits(max_cost_usd=Decimal("1")),
+            call_id="budgeted-cli-retry-no-cost",
+        )
+    assert answer.outcome == "answered" and answer.attempts == 2
+    retry_argv = cli.invocations[1].argv
+    assert Decimal(retry_argv[retry_argv.index("--max-budget-usd") + 1]) == Decimal("1")
+
+
+@pytest.mark.asyncio
+async def test_cli_budget_does_not_retry_after_output_with_unknown_cost() -> None:
+    cli = FakeClaudeCli(
+        [
+            CliRun.of(
+                [
+                    {
+                        "type": "assistant",
+                        "message": {"id": "partial", "content": [{"type": "text", "text": "partial output"}]},
+                    },
+                    {
+                        "type": "result",
+                        "subtype": "api_error",
+                        "terminal_reason": "api_error",
+                        "is_error": True,
+                        "api_error_status": 429,
+                        "retry_after": "0.001",
+                        "error": {"type": "rate_limit_error"},
+                    },
+                ],
+                returncode=1,
+            ),
+            CliRun.of([{"type": "result", "subtype": "success", "result": "unexpected"}]),
+        ]
+    )
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=cli)},
+        pricing=PRICES,
+        retry=RetryPolicy(base_s=0, cap_s=1, max_elapsed_s=2),
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "do not retry unknown spend",
+            limits=CallLimits(max_cost_usd=Decimal("1")),
+            call_id="budgeted-cli-partial-output",
+        )
+    assert answer.outcome == "limit_reached" and answer.attempts == 1
+    assert cli.spawns == 1
 
 
 @pytest.mark.asyncio
@@ -1629,6 +1775,23 @@ async def test_missing_or_incomplete_accounting_is_unknown_instead_of_free(usage
     assert answer.cost_usd is None and answer.cost_source == "unpriced"
     assert answer.usage.input_uncached == usage.get("input_tokens", 0)
     assert events[-1].fields["cost_usd"] is None
+    assert answer.usage_complete is complete
+
+
+@pytest.mark.asyncio
+async def test_reported_cost_does_not_mark_partial_usage_complete() -> None:
+    adapter = ScriptedAdapter(
+        Turn(
+            messages=("answer",),
+            raw_usage={"input_tokens": 7},
+            usage_complete=False,
+            reported_cost=Decimal("0.25"),
+        )
+    )
+    async with CallRuntime(adapters={"openai_api": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(Binding("openai_api", "test"), "q", call_id="partial-usage-reported-cost")
+    assert answer.cost_usd == Decimal("0.25")
+    assert answer.usage_complete is False
 
 
 @pytest.mark.asyncio

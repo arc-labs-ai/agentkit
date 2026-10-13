@@ -945,7 +945,7 @@ def _system_argv_text_limit() -> int:
     # Keep a thirty-second of the system limit for one payload. This remains
     # conservative on both Darwin's shared ARG_MAX and Linux's single-argument
     # ceiling, while adapting to the host's actual exec budget.
-    return max(4096, arg_max // 32)
+    return min(max(4096, arg_max // 32), 128 * 1024 - 1)
 
 
 _ARGV_TEXT_LIMIT = _system_argv_text_limit()

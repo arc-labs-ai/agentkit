@@ -90,6 +90,139 @@ The public additions are documented here as well as in the API reference: `Crede
 
 ---
 
+### Independent verification at `6238e7e` (2026-10-13)
+
+This was checked from outside agentkit against the code at `6238e7e`, not against the table above. An item
+counts as done only when the code does what its "Build" line asks **and** a test exists that fails without it.
+Where this section and the table above disagree, this section is the measured one.
+
+**Suites at `6238e7e`**
+
+| Suite | Result |
+|---|---|
+| Offline suite (`AGENTKIT_SKIP_REAL_CLI=1 uv run pytest`) | 6011 passed, 87 skipped |
+| `tests/source/conformance` | 406 passed |
+| Mirror's `cognition` call-layer suite, run against this revision | 64 passed |
+
+The figures quoted above (5,958 / 5,961) are out of date.
+
+**Where verification disagrees with the table above**
+
+| Gap | Table says | Measured | What is missing |
+|---|---|---|---|
+| G1 | Implemented | Partial | No CLI fake refuses to start unless the file is in its home at 0600. No adapter-level "refused before spawn" test. No test of an async resolver. **No live run with a real subscription `.credentials.json` or ChatGPT `auth.json`.** On macOS Claude may read the keychain instead of `CLAUDE_CONFIG_DIR`. |
+| G2 | Implemented | Partial | Exercised against the lifecycle directly, not through a CLI that rewrites its file. |
+| G4 | Implemented | Implemented, thinly tested | No test passes `executable=` per mode. |
+| G6 | Implemented | Changed meaning | See G33. |
+| G8 | Implemented | Changed meaning | See G32. |
+| G9 | Partial | Partial | The argv bound has no ceiling. See G31. |
+| G12, G15, G19, G20 | Implemented | Implemented, no proving test | Each needs a test that fails without the code. |
+
+**The six regressions measured at `13ff01e`, re-checked at `6238e7e`**
+
+| # | Issue | Result | Evidence |
+|---|---|---|---|
+| R1 | A CLI retry dropped a resumed session | Fixed | `core/runtime/calls.py:456,690-707`; `tests/source/conformance/test_calls.py:1057` |
+| R2 | Env denylist was substring-based | Fixed | explicit allowlist `models/providers/cli/calls.py:30,54-56`, per-mode credential allowlist `:240-249`; `test_calls.py:444,385`. `ALL_PROXY` and `HOME` are blocked but untested |
+| R3 | Tool arguments unmasked by default | Fixed | All scalar leaves and mapping keys are digested; `test_calls.py` covers strings, numbers, booleans and keys |
+| R4 | `--max-budget-usd` gave each retry the full cap | Fixed for failed zero-usage CLI attempts | Now `cap − spent`; no-usage/no-output CLI failures count as zero, while unknown spend after output blocks retry. See G27 |
+| R5 | `max_turns` counted failed attempts | Fixed | `calls.py:709`; `test_calls.py:898,922` |
+| R6 | Non-bare Claude without tools ran without `--strict-mcp-config` | Fixed | No-tools config now contains an empty `mcpServers` record; the fake validates the shape. See G26 |
+
+### G26. A Claude call without tools failed against the real CLI (fixed)
+
+The no-tools default at `models/providers/cli/calls.py:391` sends `--mcp-config {}`. Claude Code 2.1.296
+rejects that: `Error: Invalid MCP configuration: mcpServers: Invalid input: expected record, received
+undefined`. It does so inline and as a file. `{"mcpServers":{}}` is accepted. This was checked against the
+real CLI with an invalid key, so nothing was spent. The no-tools default now uses the valid empty record, and
+`FakeClaudeCli` validates inline and file-backed config before consuming a scripted process result.
+
+**Prove:**
+- the fake refuses `{}` and accepts `{"mcpServers":{}}`;
+- a no-tools call succeeds through the fake;
+- one opt-in real-CLI check with an invalid key reaches authentication rather than failing config parsing.
+
+### G27. A budgeted CLI call does not retry a 429 that reported no cost (fixed)
+
+R4 made each attempt get `cap − spent`. But a real CLI 429 carries no usage and no `total_cost_usd`, so spend
+is unknown, the guard at `calls.py:639-648` fires, and the call ends `limit_reached` without retrying. This was
+reproduced with `FakeClaudeCli`: a 429 without usage under `max_cost_usd=1` ends `limit_reached`.
+
+**Prove:** a usage-less 429 under a cost cap is retried and answered. Its twin is an attempt with output but
+no cost, which still stops.
+
+### G28. Non-string secrets reached events (fixed)
+
+R3 masks string leaves only. A numeric or boolean secret, or one used as a dict key, reaches `tool_call.arguments`.
+
+**Prove:** a numeric secret and a secret dict key never appear in a recorded event.
+
+### G29. A host could not set TLS or proxy settings per adapter (fixed)
+
+R2's allowlist (`PATH`, `LANG`, `LC_*`, `TERM`, `NO_COLOR`, `TMP*`) means `SSL_CERT_FILE`,
+`NODE_EXTRA_CA_CERTS` and proxy variables can arrive only ambiently, never through `CliAdapter(env=)`. A
+deployment behind a corporate proxy or a private CA needs them per adapter.
+
+`CliTransportVariable` provides a second named allowlist for TLS and proxy settings through `transport=`;
+those same names remain rejected through `env=`. Base URL and AWS credential variables are not transport
+settings and are rejected there too.
+
+**Prove:** a transport setting passes through `transport=`; the same name passed as `env=` is refused; a
+`*_BASE_URL` is refused on every path.
+
+### G30. Proof for credential handling end to end (open live verification)
+
+**Build:**
+- one opt-in live check per CLI with a real login home. Claude: `.credentials.json` in `CLAUDE_CONFIG_DIR`.
+  Codex: ChatGPT `auth.json`;
+- one with a refresh forced mid-call, asserting `on_changed` receives the new file.
+
+On macOS, confirm whether Claude reads the file or the keychain, and fail closed if it reads the keychain.
+
+**Prove:** both live checks pass and are recorded in `tests/evals/reports/`.
+
+### G31. The argv bound could exceed the per-argument kernel limit (fixed)
+
+`max(4096, SC_ARG_MAX // 32)` (`models/providers/cli/_common.py:939-951`) has no ceiling. On Linux with a
+large or unlimited stack it passes the 128 KiB per-argument limit (`MAX_ARG_STRLEN`), and an inline payload
+fails with `E2BIG`.
+
+**Prove:** a payload just over the effective bound goes by file; just under goes inline; and the bound never
+exceeds the per-argument limit whatever `SC_ARG_MAX` reports.
+
+### G32. The JSON extractor accepted the last object (reverted)
+
+`models/contracts/schema.py:100-106` used to refuse a reply holding more than one JSON object. It now takes
+the last. A reply that gives the answer and then an example object is read as the example.
+
+The extractor again rejects more than one complete top-level object as ambiguous. A single stray closing
+brace remains tolerated. The regression test covers both behaviors.
+
+### G33. `UnpricedPolicy.REFUSE` stopped refusing (reverted)
+
+At `core/runtime/calls.py:718-731`, an unpriced token kind under `REFUSE` now degrades and answers with
+unknown cost whenever no cost cap is set. That makes `REFUSE` mean "proceed unpriced" in the common case.
+
+`REFUSE` again fails the call when reported token categories cannot be priced. `PROCEED_UNPRICED` remains the
+explicit opt-in and preserves partial cost as `mixed` where possible.
+
+### G34. Usage completeness was inferred from cost (fixed)
+
+At `core/runtime/calls.py:556`, usage marked incomplete now counts as complete if the provider reports a cost.
+Cost and token counts are separate facts, and a ledger settling tokens needs to know when they are partial.
+
+`Answer.usage_complete` is aggregated independently across turns. A reported cost can be present while token
+usage remains incomplete; a regression covers that combination.
+
+### What Mirror needs before moving `cognition` off `13ff01e`
+
+| Item | Why it gates the move |
+|---|---|
+| G30 | real login file refresh and macOS keychain behavior are still unverified |
+
+G28–G30 and G34 can follow. Mirror's `ask` units do not depend on them.
+
+
 ## Tier 0: blocks every CLI call
 
 ### G1. A CLI login cannot be supplied (X)
@@ -233,14 +366,14 @@ twin is a stream under the cap, which runs to completion.
 - `UnpricedPolicy = REFUSE | PROCEED_UNPRICED`, set per runtime.
 - `PROCEED_UNPRICED` dispatches, reports `cost_source=unpriced`, and is only allowed where the caller sets a
   turn or token cap.
-- An unpriced token kind **after** dispatch never fails the call. It reports `cost_source=mixed` with the
-  priced part.
+- An unpriced token kind **after** dispatch fails under `REFUSE`. Under `PROCEED_UNPRICED`, the answer is
+  preserved and any priced portion reports `cost_source=mixed`.
 - `PriceTable.derive(input=…, output=…, cache_read_ratio=…, cache_write_ratio=…)` covers providers that
   publish ratios.
 - `PriceTable.load` accepts TOML as well as JSON.
 
-**Prove:** an unpriced model refused under `REFUSE`, dispatched and marked under `PROCEED_UNPRICED`. A
-missing reasoning rate after dispatch yields `mixed`, not `failed`.
+**Prove:** an unpriced model is refused under `REFUSE`, dispatched under `PROCEED_UNPRICED`; a missing token
+rate fails under `REFUSE` and yields `mixed` under `PROCEED_UNPRICED`.
 
 ### G7. No real bound on concurrent CLI processes (X)
 

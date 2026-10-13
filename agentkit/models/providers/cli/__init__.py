@@ -9,6 +9,7 @@ from agentkit.models.providers.cli._common import (
     SchemaViolation,
     StructuredOutputFailure,
 )
+from agentkit.models.providers.cli.calls import CliAdapter, CliTransportVariable
 from agentkit.models.providers.cli.claude.driver import ClaudeCliCognition, ClaudeCliSession, CliSpawn, InterruptReceipt
 from agentkit.models.providers.cli.codex.driver import (
     CODEX_NATIVE_TOOLS,
@@ -27,9 +28,11 @@ __all__ = [
     "ClaudeCliCognition",
     "ClaudeCliSession",
     "CliLineTooLong",
+    "CliAdapter",
     "CliSpawn",
     "CliTimedOut",
     "CliTimeouts",
+    "CliTransportVariable",
     "CodexCliCognition",
     "CodexCliSession",
     "EnvPolicy",

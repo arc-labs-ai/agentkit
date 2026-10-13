@@ -237,6 +237,7 @@ class Answer(Generic[T]):
     session: SessionHandle | None = None
     prompt_manifest: Any = field(default=None, hash=False)
     context: Any = field(default=None, hash=False)
+    usage_complete: bool = True
 
     @property
     def degradations(self) -> tuple[Degradation, ...]:

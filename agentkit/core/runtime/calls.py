@@ -304,8 +304,11 @@ class CallRuntime:
         if resume and resume.prefix_digest != prefix:
             await emit(EventKind.CACHE_INVALIDATED, reason="prompt, tools, schema or settings changed")
         usage = Usage(reasoning=0)
+        usage_complete = True
         raw: dict[str, Any] = {}
         total_cost: Decimal | None = Decimal(0)
+        budget_spent = Decimal(0)
+        budget_unknown = False
         cost_source: CostSource = CostSource.PRICE_TABLE
         outcome: Outcome = Outcome.FAILED
         failure: Failure | None = None
@@ -429,10 +432,10 @@ class CallRuntime:
                     last_event, saw_event = time.monotonic(), False
                     turn_limits = limits
                     if limits.max_cost_usd is not None:
-                        if total_cost is None:
+                        if budget_unknown:
                             outcome = Outcome.LIMIT_REACHED
                             break
-                        remaining_cost = limits.max_cost_usd - total_cost
+                        remaining_cost = limits.max_cost_usd - budget_spent
                         if remaining_cost <= 0:
                             outcome = Outcome.LIMIT_REACHED
                             break
@@ -535,6 +538,7 @@ class CallRuntime:
 
                     turn = await monitored(invoke_adapter())
                     model_in_flight = False
+                    usage_complete = usage_complete and turn.usage_complete
                     normalized = normalize_usage(binding.mode, turn.raw_usage)
                     if turn.usage_cumulative and current_session:
                         normalized = usage_delta(normalized, normalize_usage(binding.mode, current_session.raw_usage))
@@ -558,11 +562,22 @@ class CallRuntime:
                     )
                     if incomplete_accounting:
                         amount, source = None, CostSource.UNPRICED
+                    cli_failure_without_usage_or_cost = (
+                        turn.failure is not None
+                        and not binding.mode.is_api
+                        and turn.reported_cost is None
+                        and not any(bool(value) for value in turn.raw_usage.values())
+                        and not any(message.strip() for message in turn.messages)
+                    )
                     if amount is None:
                         total_cost, cost_source = None, CostSource.UNPRICED
+                        if limits.max_cost_usd is not None and not cli_failure_without_usage_or_cost:
+                            budget_unknown = True
                     elif total_cost is not None:
                         total_cost += amount
                         cost_source = source
+                    if amount is not None:
+                        budget_spent += amount
                     await emit(EventKind.USAGE, raw_usage=raw, usage=asdict(usage))
                     await emit(
                         EventKind.ATTEMPT_FINISHED,
@@ -636,14 +651,10 @@ class CallRuntime:
                         if failure.classification == FailureClass.TIMEOUT and not failure.retryable:
                             outcome = Outcome.LIMIT_REACHED
                             break
-                        if limits.max_cost_usd is not None and total_cost is None:
+                        if limits.max_cost_usd is not None and budget_unknown:
                             outcome = Outcome.LIMIT_REACHED
                             break
-                        if (
-                            limits.max_cost_usd is not None
-                            and total_cost is not None
-                            and total_cost >= limits.max_cost_usd
-                        ):
+                        if limits.max_cost_usd is not None and budget_spent >= limits.max_cost_usd:
                             outcome = Outcome.LIMIT_REACHED
                             break
                         retry_allowed = (
@@ -719,6 +730,12 @@ class CallRuntime:
                         outcome = Outcome.TRUNCATED
                         break
                     if amount is None and not incomplete_accounting:
+                        if self.unpriced_policy == UnpricedPolicy.REFUSE:
+                            failure = Failure(
+                                FailureClass.INVALID_REQUEST,
+                                mode_detail={"reason": "usage contains unpriced token kinds"},
+                            )
+                            break
                         await emit(
                             EventKind.DEGRADED,
                             setting="accounting",
@@ -730,7 +747,7 @@ class CallRuntime:
                             outcome = Outcome.LIMIT_REACHED
                             break
                     if (
-                        limits.max_cost_usd is not None and (total_cost is None or total_cost >= limits.max_cost_usd)
+                        limits.max_cost_usd is not None and (budget_unknown or budget_spent >= limits.max_cost_usd)
                     ) or (limits.max_output_tokens is not None and usage.output > limits.max_output_tokens):
                         outcome = Outcome.LIMIT_REACHED
                         break
@@ -921,6 +938,7 @@ class CallRuntime:
             current_session,
             prompt.manifest,
             context=working.freeze(),
+            usage_complete=usage_complete,
         )
         await emit(
             EventKind.CALL_FINISHED,
@@ -934,15 +952,21 @@ class CallRuntime:
 
 
 def _mask_tool_arguments(name: str, arguments: Any) -> Any:
-    """Replace every string leaf before tool arguments enter the event journal."""
-    if isinstance(arguments, str):
-        raw = arguments.encode("utf-8")
-        return {"length": len(raw), "sha256": digest(arguments)}
+    """Digest every leaf and key before tool arguments enter the event journal."""
     if isinstance(arguments, Mapping):
-        return {str(key): _mask_tool_arguments(str(key), value) for key, value in arguments.items()}
+        return {
+            f"key:{_masked_event_scalar(key)['sha256']}": _mask_tool_arguments(name, value)
+            for key, value in arguments.items()
+        }
     if isinstance(arguments, (tuple, list)):
         return tuple(_mask_tool_arguments(name, item) for item in arguments)
-    return arguments
+    return _masked_event_scalar(arguments)
+
+
+def _masked_event_scalar(value: Any) -> dict[str, Any]:
+    kind = type(value).__name__
+    encoded = repr(value).encode("utf-8", errors="replace")
+    return {"type": kind, "length": len(encoded), "sha256": digest({"type": kind, "value": repr(value)})}
 
 
 async def _tool_turn(tools: Any, name: str, arguments: Any, ctx: Any) -> Turn:

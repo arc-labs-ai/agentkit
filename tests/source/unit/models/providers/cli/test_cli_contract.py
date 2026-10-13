@@ -65,6 +65,8 @@ pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 def test_cli_argv_payload_limit_is_derived_from_system_arg_max(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(os, "sysconf", lambda name: 256 * 1024)
     assert _system_argv_text_limit() == 8 * 1024
+    monkeypatch.setattr(os, "sysconf", lambda name: 16 * 1024 * 1024)
+    assert _system_argv_text_limit() == 128 * 1024 - 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1582,15 +1584,17 @@ async def test_the_materialised_file_has_the_content_and_is_private() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_path_is_passed_through_untouched() -> None:
+async def test_a_path_is_passed_through_untouched(tmp_path: Path) -> None:
     """A path is already a reference rather than a value, so there is nothing
     to move — and rewriting it would break a caller pointing at a file they
     manage themselves."""
     cog, cli, _ = _claude_case()
-    object.__setattr__(cog, "mcp_config", ("/etc/agentkit/mcp.json",))
+    config_path = tmp_path / "mcp.json"
+    config_path.write_text('{"mcpServers":{}}')
+    object.__setattr__(cog, "mcp_config", (str(config_path),))
     await _drive(cog)
     argv = cli.invocations[-1].argv
-    assert argv[argv.index("--mcp-config") + 1] == "/etc/agentkit/mcp.json"
+    assert argv[argv.index("--mcp-config") + 1] == str(config_path)
 
 
 def test_codex_warns_because_it_cannot_move_the_secret() -> None:

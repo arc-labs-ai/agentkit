@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from contextlib import AsyncExitStack
 from dataclasses import asdict, replace
 from decimal import ROUND_FLOOR, Decimal
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -30,6 +31,18 @@ _CLAUDE_SCHEMA_PROMPT_MAX_BYTES = 256 * 1024
 _CLI_ENV_ALLOWLIST = frozenset({"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR", "TMPDIR", "TMP", "TEMP"})
 
 
+class CliTransportVariable(StrEnum):
+    """Non-credential transport overrides accepted by CLI adapters."""
+
+    HTTP_PROXY = "HTTP_PROXY"
+    HTTPS_PROXY = "HTTPS_PROXY"
+    ALL_PROXY = "ALL_PROXY"
+    NO_PROXY = "NO_PROXY"
+    SSL_CERT_FILE = "SSL_CERT_FILE"
+    SSL_CERT_DIR = "SSL_CERT_DIR"
+    NODE_EXTRA_CA_CERTS = "NODE_EXTRA_CA_CERTS"
+
+
 class CliAdapter:
     """Reuse the hardened subprocess lifecycle; all policy remains in the core."""
 
@@ -41,6 +54,7 @@ class CliAdapter:
         native_tool_policy: NativeToolPolicy = NativeToolPolicy.WARN,
         executable: dict[Mode, str] | None = None,
         env: Any = None,
+        transport: Mapping[CliTransportVariable | str, str] | None = None,
         home_parent: Path | None = None,
         request_hook: Any = None,
     ) -> None:
@@ -54,6 +68,12 @@ class CliAdapter:
         forbidden_env = set(self.env) - _CLI_ENV_ALLOWLIST
         if forbidden_env:
             raise ValueError("CLI adapter env contains unsupported variables; use CredentialRef for credentials")
+        self.transport: dict[str, str] = {}
+        for key, value in (transport or {}).items():
+            name = CliTransportVariable(key).value
+            if not isinstance(value, str):
+                raise TypeError("CLI adapter transport values must be strings")
+            self.transport[name] = value
         self.home_parent = home_parent
         self.request_hook = request_hook
         self._homes: Any = None
@@ -294,6 +314,7 @@ class CliAdapter:
             env_policy="isolated",
             env={
                 **self.env,
+                **self.transport,
                 **credentials,
                 **({"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"} if binding.mode == Mode.CLAUDE_CODE else {}),
                 **(
@@ -388,7 +409,7 @@ class CliAdapter:
                 wiring = (
                     spec.cli_kwargs(builtin_tools=False) if spec else {"tools": ("",), "disallowed_tools": ("mcp__*",)}
                 )
-                wiring.setdefault("mcp_config", ("{}",))
+                wiring.setdefault("mcp_config", ('{"mcpServers":{}}',))
                 wiring["strict_mcp_config"] = True
                 if workspace and workspace.native_tools:
                     wiring["tools"] = workspace.native_tools

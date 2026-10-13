@@ -52,9 +52,16 @@ def _shape(events: list[Any]) -> list[tuple[str, str]]:
     for ev in events:
         if ev.type == "final":
             r = ev.result
-            out.append(("final", json.dumps([r.output, r.partial, r.stop_reason, r.evals], sort_keys=True, default=str)))
+            out.append(
+                ("final", json.dumps([r.output, r.partial, r.stop_reason, r.evals], sort_keys=True, default=str))
+            )
         elif ev.tool_call is not None:
-            out.append((ev.type, f"{ev.tool_call.id}:{ev.tool_call.name}:{json.dumps(ev.tool_call.arguments, sort_keys=True)}:{ev.tool_result}"))
+            out.append(
+                (
+                    ev.type,
+                    f"{ev.tool_call.id}:{ev.tool_call.name}:{json.dumps(ev.tool_call.arguments, sort_keys=True)}:{ev.tool_result}",
+                )
+            )
         else:
             out.append((ev.type, ev.text))
     return out
@@ -95,6 +102,16 @@ async def test_a_recorded_session_is_replayed_through_the_real_parser() -> None:
     assert result.evals["cli_duration_ms"] == 18432
     assert result.evals["cli_init"]["model"] == "claude-opus-4-5-20251101"
     assert result.evals["api_retries"][0]["error"] == "overloaded_error"
+
+
+@pytest.mark.asyncio
+async def test_fake_claude_cli_validates_mcp_config_like_the_real_cli() -> None:
+    cli = FakeClaudeCli.script([{"type": "result", "subtype": "success", "result": "ok"}])
+    with pytest.raises(ValueError, match="mcpServers: expected record"):
+        await cli("claude", "--mcp-config", "{}")
+    assert cli.spawns == 0
+    await cli("claude", "--mcp-config", '{"mcpServers":{}}')
+    assert cli.spawns == 1
 
 
 @pytest.mark.asyncio
@@ -304,8 +321,14 @@ async def test_a_keyboard_interrupt_during_a_session_turn_reaches_the_caller() -
         [
             {"type": "system", "subtype": "init", "session_id": "s"},
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "partway"}]}},
-            {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 1,
-             "total_cost_usd": 0.01, "usage": {}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "session_id": "s",
+                "duration_ms": 1,
+                "total_cost_usd": 0.01,
+                "usage": {},
+            },
         ]
     )
     cog = ClaudeCliCognition(spawn=cli)
@@ -387,7 +410,14 @@ async def test_a_line_that_is_valid_json_but_an_unknown_event_type() -> None:
             {"type": "system", "subtype": "init", "session_id": "s"},
             {"type": "wombat", "payload": {"anything": [1, 2, 3]}},
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "fine"}]}},
-            {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 3, "total_cost_usd": 0.01, "usage": {}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "session_id": "s",
+                "duration_ms": 3,
+                "total_cost_usd": 0.01,
+                "usage": {},
+            },
         ]
     )
     events = await _drive(ClaudeCliCognition(spawn=cli))
@@ -478,7 +508,14 @@ async def test_blank_and_non_json_diagnostic_lines_are_skipped() -> None:
             "\n",
             "warning: config at ~/.claude/settings.json is not valid JSON, ignoring\n",
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
-            {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 1, "total_cost_usd": 0.0, "usage": {}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "session_id": "s",
+                "duration_ms": 1,
+                "total_cost_usd": 0.0,
+                "usage": {},
+            },
         ]
     )
     result = (await _drive(ClaudeCliCognition(spawn=cli)))[-1].result
@@ -522,7 +559,14 @@ async def test_a_malformed_final_answer_against_a_declared_schema() -> None:
     cli = FakeClaudeCli.script(
         [
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "{sort of json}"}]}},
-            {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 5, "total_cost_usd": 0.01, "usage": {}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "session_id": "s",
+                "duration_ms": 5,
+                "total_cost_usd": 0.01,
+                "usage": {},
+            },
         ]
     )
     cog = ClaudeCliCognition(spawn=cli, json_schema={"type": "object", "properties": {"n": {"type": "integer"}}})
@@ -543,11 +587,17 @@ async def test_a_large_recording_is_streamed_not_slurped() -> None:
     you can use to test incremental UI rendering and one you cannot."""
     payloads: list[Any] = [{"type": "system", "subtype": "init", "session_id": "s"}]
     payloads += [
-        {"type": "assistant", "message": {"content": [{"type": "text", "text": f"chunk{i} "}]}}
-        for i in range(20_000)
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": f"chunk{i} "}]}} for i in range(20_000)
     ]
     payloads.append(
-        {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 1, "total_cost_usd": 0.0, "usage": {}}
+        {
+            "type": "result",
+            "subtype": "success",
+            "session_id": "s",
+            "duration_ms": 1,
+            "total_cost_usd": 0.0,
+            "usage": {},
+        }
     )
     cli = FakeClaudeCli.script(payloads)
     cog = ClaudeCliCognition(spawn=cli)
@@ -576,7 +626,14 @@ async def test_a_persistent_session_runs_many_turns_from_one_spawn() -> None:
     def _turn(text: str) -> list[Any]:
         return [
             {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}},
-            {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 2, "total_cost_usd": 0.01, "usage": {"input_tokens": 3, "output_tokens": 4}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "session_id": "s",
+                "duration_ms": 2,
+                "total_cost_usd": 0.01,
+                "usage": {"input_tokens": 3, "output_tokens": 4},
+            },
         ]
 
     cli = FakeClaudeCli.script(
@@ -730,13 +787,16 @@ async def test_a_cancelled_run_terminates_the_replayed_process() -> None:
                 raise RuntimeError("cancelled by the operator")
 
     payloads: list[Any] = [{"type": "system", "subtype": "init", "session_id": "s"}]
-    payloads += [
-        {"type": "assistant", "message": {"content": [{"type": "text", "text": f"x{i}"}]}}
-        for i in range(10)
-    ]
+    payloads += [{"type": "assistant", "message": {"content": [{"type": "text", "text": f"x{i}"}]}} for i in range(10)]
     payloads.append(
-        {"type": "result", "subtype": "success", "session_id": "s", "duration_ms": 1,
-         "total_cost_usd": 9.99, "usage": {"input_tokens": 1, "output_tokens": 1}}
+        {
+            "type": "result",
+            "subtype": "success",
+            "session_id": "s",
+            "duration_ms": 1,
+            "total_cost_usd": 9.99,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
     )
     cli = FakeClaudeCli.script(payloads)
     result = (await _drive(ClaudeCliCognition(spawn=cli), _CancelsOnThirdLine()))[-1].result
@@ -765,13 +825,18 @@ async def test_an_interrupt_is_delivered_and_acknowledged_over_the_double() -> N
     meets it."""
     cli = FakeClaudeCli.script(
         [
-            {"type": "system", "subtype": "init", "session_id": "s",
-             "capabilities": ["interrupt_cancel_queued_v1"]},
+            {"type": "system", "subtype": "init", "session_id": "s", "capabilities": ["interrupt_cancel_queued_v1"]},
             {"type": "assistant", "message": {"content": [{"type": "text", "text": "thinking "}]}},
-            {"type": "control_response",
-             "response": {"request_id": "agentkit-1", "subtype": "success"}},
-            {"type": "result", "subtype": "error_during_execution", "is_error": True,
-             "session_id": "s", "duration_ms": 5, "total_cost_usd": 0.01, "usage": {}},
+            {"type": "control_response", "response": {"request_id": "agentkit-1", "subtype": "success"}},
+            {
+                "type": "result",
+                "subtype": "error_during_execution",
+                "is_error": True,
+                "session_id": "s",
+                "duration_ms": 5,
+                "total_cost_usd": 0.01,
+                "usage": {},
+            },
         ]
     )
     cog = ClaudeCliCognition(spawn=cli)
@@ -821,7 +886,5 @@ async def test_two_stderr_chunks_at_one_point_keep_their_write_order() -> None:
     )
     result = (await _drive(ClaudeCliCognition(spawn=cli)))[-1].result
     assert result.evals["stderr"] == (
-        "Traceback (most recent call last):\n"
-        "  File 'cli.js', line 1\n"
-        "Error: ENOSPC, no space left on device"
+        "Traceback (most recent call last):\n  File 'cli.js', line 1\nError: ENOSPC, no space left on device"
     )
