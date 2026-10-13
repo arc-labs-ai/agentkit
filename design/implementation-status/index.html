@@ -2869,6 +2869,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mirror-gap-implementation-update-2026-10-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mirror gap implementation update (2026-10-13)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2994,7 +3005,7 @@
 <p>The package root exports six owner namespaces and version metadata. Each owner root contains only <code>__init__.py</code>; implementation modules are grouped by responsibility. Direct API providers live under <code>models/providers/frontiers</code>, installed CLI providers under <code>models/providers/cli</code>, and all event implementations under <code>core/events</code>. Old namespace aliases are absent.</p>
 <p>Source tests, live evaluations and examples live under <code>tests/source</code>, <code>tests/evals</code> and <code>tests/examples</code>. Pytest collects only the source suite by default. Architecture checks enforce package ownership and export-only initializers.</p>
 <h2 id="validation-on-2026-10-13">Validation on 2026-10-13<a class="headerlink" href="#validation-on-2026-10-13" title="Anchor link">&para;</a></h2>
-<p>The current offline source suite passed <strong>5,917 tests with 98 skips on both Python 3.12 and 3.13</strong>. Library branch coverage measures <strong>93 percent</strong>, above the unchanged 90 percent gate. Strict typing and Ruff pass across 265 source files. Mutation anchors resolve, and the strict documentation build passes. A focused live Claude Code test also confirms that partial-message interruption stops before the terminal sentinel and the same session can complete another turn. The broader optional real-CLI source group remains gated; the four-mode live matrix exercises configured providers and installed CLIs separately.</p>
+<p>The baseline offline source suite passed <strong>5,917 tests with 98 skips on both Python 3.12 and 3.13</strong>. The latest offline run after the changes below passed <strong>5,961 tests with 98 skips</strong>. Library branch coverage measures <strong>93 percent</strong>, above the unchanged 90 percent gate. Strict typing and Ruff pass. Mutation anchors resolve, and the strict documentation build passes. A focused live Claude Code test also confirms that partial-message interruption stops before the terminal sentinel and the same session can complete another turn. The broader optional real-CLI source group remains gated; the four-mode live matrix exercises configured providers and installed CLIs separately.</p>
 <p>Configured models were <code>claude-haiku-4-5</code> and <code>gpt-5.4-mini</code>, with Claude Code 2.1.296 and Codex CLI 0.162.1. Each run below retains its source digest, per-case acceptance checks, usage, event traces and evidence. Reports live at <code>tests/evals/reports/&lt;run&gt;/summary.json</code>.</p>
 <table>
 <thead>
@@ -3089,6 +3100,9 @@
 <p>The latest integrated matrix, <code>tests/evals/reports/20261013T115456391082Z/summary.json</code>, used source digest <code>5b28a2fcf71b7d131281bdb928c2b3c9fa3bb91b51f066399efc7e6a3389ab1a</code> and completed all <strong>204 rows: 186 passed, 6 failed and 12 not applicable</strong>, accounting for <strong>$3.84214305</strong> with <code>source_changed=false</code>. The 12 not-applicable rows are six API-only lifecycle/cache cases for each native CLI. All four modes passed the stale-lease refusal and scoped-vector positive/negative workflows. OpenAI API and Codex passed durable checkpoint/journal/replay; Anthropic API skipped the commit, and Claude Code committed but returned a status that did not match the stored receipt. Remaining model acceptance failures are Codex SQLite busy-error count and skill application, OpenAI memory handoff completeness, and Anthropic recommendation commit. The graders retain those as failures. This is evidence for the configured models and installed CLI versions, not a guarantee for arbitrary providers or tasks.</p>
 <p>The state adapter regression group passed <strong>514 tests with 6 external-service skips</strong> on Python 3.12 and 3.13. It covers checkpoint isolation, SQLite journal rollback/corruption, lease ownership and fencing races, file replay, vector scope, context cancellation, and local stores. The new live state workflows exercise SQLite journal, FileReplay, FileStore-backed checkpoints, SQLite leases, and reference-vector retrieval. PostgreSQL, Redis and pgvector deployments remain environment-gated; local SQLite leases do not provide multi-host coordination or downstream effect fencing. Tool scenarios for evidence, deferred discovery, retry, images, overflow, context handoff, cancellation and scoped denial pass across all four modes, with the Codex discoverable-skill case retained as a model failure.</p>
 <p>Native Codex <code>WARN</code> disables optional shell/unified-exec, apps, plugins, skill dependency installation and web search while retaining explicitly granted host MCP tools. Codex still has no host-enforced complete native-tool allow-list; <code>DENY</code> refuses dispatch when that guarantee is required. Positive interactive host approval is covered offline rather than by the live matrix. Hosts still own multi-host scheduling, replay cursors, idempotent downstream effects, secure credential refresh, and provider-specific mid-request spend controls.</p>
+<h2 id="mirror-gap-implementation-update-2026-10-13">Mirror gap implementation update (2026-10-13)<a class="headerlink" href="#mirror-gap-implementation-update-2026-10-13" title="Anchor link">&para;</a></h2>
+<p><code>docs/design/mirror-gaps.md</code> records the status of its 25 consumer-derived gaps separately from this model-neutral design status. The working tree adds credential home files and refresh callbacks, CLI retry/admission and per-attempt accounting, configurable pricing and output validators, per-call CLI workspace controls, image/context propagation, MCP skill resources, persona screening, native Claude subagent inputs, scripted runtime fakes, and bounded event masking. The gap tracker marks each item implemented, partial, open, or host-owned with the corresponding proof limits. Codex mid-call spend enforcement and a provider-native long-schema transport remain open; long-session support and native Claude subagent support remain partial.</p>
+<p>The latest validation passed <code>AGENTKIT_SKIP_REAL_CLI=1 uv run pytest -q</code> (<strong>5,961 passed, 98 skipped</strong>), <code>uv run ruff check agentkit tests</code>, <code>uv run mypy --strict agentkit</code>, and <code>git diff --check</code>. The earlier Claude Code failures in reports <code>20261013T142237440683Z</code> and <code>20261013T145848602007Z</code> are historical and were caused by duplicate <code>strict_mcp_config</code> kwargs; the fix is covered offline and live <code>tool_evidence</code> plus <code>image_result</code> now pass in <code>20261013T151551366051Z</code>. Real authentication rejection passes on all four backends in one attempt with zero observed usage (<code>20261013T152207836480Z</code>). Claude Code's large-schema prompt-file fallback passes live (<code>20261013T152051324301Z</code>); it uses local validation because a provider-supported schema-file transport is undocumented. Live 429/Retry-After shape validation remains open; offline retry tests cover the behavior.</p>
 
 
 
@@ -3109,7 +3123,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 12:47:46 UTC">October 13, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 15:28:00 UTC">October 13, 2026</span>
   </span>
 
     

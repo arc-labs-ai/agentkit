@@ -3160,6 +3160,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.core.testing.ScriptedAdapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ScriptedAdapter
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.core.testing.ScriptedAdapterExhausted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ScriptedAdapterExhausted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.core.testing.codex_turn" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3175,6 +3197,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;make_test_ctx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.core.testing.scripted_runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;scripted_runtime
       
     </span>
   </a>
@@ -3722,6 +3755,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#agentkit.core.testing.ScriptedAdapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ScriptedAdapter
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.core.testing.ScriptedAdapterExhausted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;ScriptedAdapterExhausted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#agentkit.core.testing.codex_turn" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3737,6 +3792,17 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;make_test_ctx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agentkit.core.testing.scripted_runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;scripted_runtime
       
     </span>
   </a>
@@ -5385,6 +5451,84 @@ contract violation belongs in the same bucket. pytest reports a
 
 </div>
 
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.core.testing.ScriptedAdapter" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">ScriptedAdapter</span>
+
+
+<a href="#agentkit.core.testing.ScriptedAdapter" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ScriptedAdapter</span><span class="p">(</span><span class="n">turns</span><span class="p">:</span> <span class="n"><span title="collections.abc.Iterable">Iterable</span></span><span class="p">[</span><span class="n"><span title="agentkit.models.contracts.types.Turn">Turn</span></span><span class="p">])</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>A finite sequence of transport facts; exhaustion fails loudly.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="agentkit.core.testing.ScriptedAdapterExhausted" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">ScriptedAdapterExhausted</span>
+
+
+<a href="#agentkit.core.testing.ScriptedAdapterExhausted" class="headerlink" title="Anchor link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="BaseException">BaseException</span></code></p>
+
+
+
+        <p>A runtime requested more transport turns than the script supplied.</p>
+
+
+
+
+
+
+
+
+
+    </div>
+
+</div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -5497,6 +5641,32 @@ default to <code>None</code> here, which we <em>omit</em> when constructing
 factories still kick in — passing <code>None</code> explicitly would clobber
 them and break code that calls <code>ctx.trace.span(...)</code> or
 <code>ctx.observer.emit(...)</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="agentkit.core.testing.scripted_runtime" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">scripted_runtime</span>
+
+
+<a href="#agentkit.core.testing.scripted_runtime" class="headerlink" title="Anchor link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">scripted_runtime</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">turns</span><span class="p">:</span> <span class="n"><span title="collections.abc.Iterable">Iterable</span></span><span class="p">[</span><span class="n"><span title="agentkit.models.contracts.types.Turn">Turn</span></span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">pricing</span><span class="p">:</span> <span class="n"><span title="agentkit.models.catalog.pricing.PriceTable">PriceTable</span></span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">*</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">mode</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Mode (agentkit.core.contracts.types.Mode)" href="../kernel/#agentkit.core.Mode">Mode</a></span> <span class="o">=</span> <span class="n"><span title="agentkit.core.contracts.types.Mode.OPENAI_API">OPENAI_API</span></span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="o">**</span><span class="n">runtime_options</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            CallRuntime (agentkit.core.runtime.calls.CallRuntime)" href="../runtime/#agentkit.core.runtime.CallRuntime">CallRuntime</a></span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Create a runtime wired to one scripted mode and an explicit price table.</p>
 
 
     </div>
