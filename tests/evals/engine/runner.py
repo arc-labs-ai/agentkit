@@ -39,7 +39,7 @@ async def run_matrix(
     case_filter: tuple[str, ...] = (),
     domain_filter: tuple[EvalDomain, ...] = (),
 ) -> tuple[Path, bool]:
-    credential = config.credentials()
+    credentials = {mode: config.credentials(mode) for mode in config.modes}
     prices = config.prices()
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     run_dir = config.report_dir / timestamp
@@ -47,7 +47,7 @@ async def run_matrix(
     rows: list[dict[str, Any]] = []
     spent = Decimal(0)
     reserved = Decimal(0)
-    secrets = tuple(credential.resolve().values())
+    secrets = tuple(value for credential in credentials.values() for value in credential.resolve().values())
     active: dict[str, Any] = {}
     report = {
         "date": timestamp,
@@ -87,6 +87,7 @@ async def run_matrix(
 
         async def backend(mode: Mode) -> None:
             nonlocal spent, reserved
+            credential = credentials[mode]
             binding = config.binding(mode, credential)
             values = credential.resolve()
             available = (

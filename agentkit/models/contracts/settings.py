@@ -81,7 +81,7 @@ DEFAULT_CAPABILITIES = CapabilityTable(
         },
         # Unverified models accept only the mode's required output cap. Hosts add
         # model profiles based on live probes instead of guessing at sampling.
-        Mode.ANTHROPIC_API: {"max_output_tokens": None},
+        Mode.ANTHROPIC_API: {"max_output_tokens": None, "cache_ttl": ["5m", "1h"]},
         Mode.OPENAI_API: {"max_output_tokens": None},
         "openai_api/gpt-4o": {"temperature": None, "top_p": None, "max_output_tokens": None},
         "openai_api/gpt-4o-mini": {"temperature": None, "top_p": None, "max_output_tokens": None},

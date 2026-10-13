@@ -214,14 +214,176 @@ Cost and token counts are separate facts, and a ledger settling tokens needs to 
 `Answer.usage_complete` is aggregated independently across turns. A reported cost can be present while token
 usage remains incomplete; a regression covers that combination.
 
-### What Mirror needs before moving `cognition` off `13ff01e`
+### Verified at `5ebe4c0` (2026-10-13)
 
-| Item | Why it gates the move |
+This was checked from outside agentkit against the code, not against the headings above.
+
+**Fixed, with tests that fail without the fix:** G26, G27, G28, G29 and G31. G26 was also confirmed against
+real Claude Code 2.1.296 with a dummy key at no cost: the empty `mcpServers` record passes config parsing and
+reaches `401 Invalid API key`, and `{}` is rejected.
+
+**Decided:**
+- G32 refuses an ambiguous reply.
+- G33 restores `REFUSE` as refusing.
+
+**Suites:**
+
+| Suite | Result |
 |---|---|
-| G30 | real login file refresh and macOS keychain behavior are still unverified |
+| Offline | 6017 passed, 87 skipped |
+| Conformance | 411 passed |
+| Mirror `cognition` call layer, against this revision | 64 passed |
 
-G28–G30 and G34 can follow. Mirror's `ask` units do not depend on them.
+**Still open:**
+- G30 (no live login run).
+- G34's "partial usage with a reported cost settles as `mixed`". The flag exists, but the cost source stays
+  `reported`.
+- The proving tests listed in the disagreement table above: G1 refused-before-spawn and a successful async
+  resolver; G2 `on_changed` receiving the new bytes exactly once through a CLI; G4 `executable=`; G12, G15,
+  G19 and G20.
+- G35 and G36 below.
 
+### G35. A retried 429 makes the answer's cost unknown (P)
+
+When a CLI attempt fails without reporting cost (a 429), the runtime sets the call's `total_cost` to unknown
+for good. The budget correctly treats that attempt as zero spent (G27). But the final `Answer` reports
+`cost_usd=None, cost_source=unpriced`, even when the attempt that succeeded reported its cost. Reproduced with
+`FakeClaudeCli`: a usage-less 429, then success at $0.20, gives an answer with an unknown cost.
+
+A ledger reading the answer total then records every retried call as unpriced.
+
+**Build:** an attempt that failed with no usage, no cost and no output contributes zero to the total, the same
+rule G27 applies to the budget. The total is unknown only when an attempt that produced output or usage
+reported no cost.
+
+**Prove:**
+- a usage-less 429, then success at $0.20, gives `cost_usd=0.20` with the source `reported`;
+- the twin is an attempt with output and no cost, which still leaves the total unknown.
+
+### G36. A regression assertion was dropped while adding the G26 test
+
+`test_cli_auth_failure_without_rotation_is_not_retried` (`tests/source/conformance/test_calls.py:334`) lost its
+`assert len(cli.invocations) == 1` when the G26 test was inserted above it. It still asserts `attempts == 1`, but
+a regression that spawned twice and reported one attempt would now pass.
+
+**Build:** restore the assertion.
+
+### G37–G42. The current agent path, as Mirror's `cognition` will use it (2026-10-13)
+
+Mirror's `cognition` builds only on the current runtime: `CallRuntime`, `AgentRunner.run_agent`, Minds,
+`compose`, `SkillSource`, `ToolSet`, `McpGateway` and `EventHub`. The older runtime is not used: the Invoker,
+middleware, `Workflow`, `agents/cognition`, `policies`, `control`, `evaluation`, and the state compaction,
+checkpoints, memory and leases. These are the gaps found on the current path.
+
+| Gap | Where | Build | Prove |
+|---|---|---|---|
+| **G37.** The runner does not pass `workspace`, `pricing`, `turns_per_slice`, `stable_prefix` or `native_agents` through to `run` | `agents/execution/runner.py:331-345` | forward every `CallRuntime.run` parameter `run_agent` accepts; refuse an unknown one rather than dropping it | a `run_agent` call with each parameter reaches the adapter with it (a scripted adapter records the arguments) |
+| **G38.** The delegated brief cannot be overridden: a child always gets a bare `InstructionSet(objective)` | `runner.py:236-247` | a `brief=` hook on `DelegationPolicy` (or the runner) returning the child's `InstructionSet` and inputs | a host brief reaches the child's composed prompt; without the hook, today's behaviour is kept |
+| **G39.** `persona_screening` is never passed into `compose` | `runner.py:275-288` | `AgentRunner(persona_screening=…)`, forwarded to `compose` | an untrusted persona the screen refuses never reaches a model |
+| **G40.** `SKILL_LOADED` is declared and never emitted | `constants.py:78`; nothing emits it | emit it when `load_skill` returns, and when a pinned or triggered skill is activated, with the ref and digest | each activation path emits exactly one event with the digest |
+| **G41.** Tools run one at a time, with a fresh empty `Scope` | `core/runtime/calls.py:762-780,979-980` | run tool calls the model issued together concurrently when every one is declared side-effect free; propagate a host `scope=` (tenant, request) into each tool's `RunContext` | two side-effect-free tools overlap in time, while a side-effecting one runs alone; a tool reads the host scope it was given |
+| **G42.** A raising `EventHub` subscriber fails the call | `core/events/hub.py:115,171-172` | a per-subscription `isolate=True` that logs the handler's error and keeps delivering | an isolated raising subscriber leaves the call answered and the other subscribers delivered |
+
+Mirror's `ask` needs none of these. Mirror's `run_agent` needs G37, G39 and G42; G38, G40 and G41 follow.
+
+### G43. One runtime: finish the migration to `CallRuntime` (architecture)
+
+agentkit carries two runtimes side by side.
+
+**The current one** is `CallRuntime.ask`/`run`, with `AgentRunner.run_agent`, Minds, `compose`, `SkillSource`,
+`ToolSet`, `McpGateway`, `EventHub` and `WorkingContext`/`SessionHandle`.
+
+**The older one** is the `Invoker`, its middleware and `RunContext.services`, with:
+- `Agent`, `RequestBuilder` and `Workflow`;
+- `agents/cognition`, `agents/policies`, `agents/control` and `agents/evaluation`;
+- `Observation`/`ObserverPort`;
+- the state modules: compaction, memory, checkpoints, replay, stores, vectors and leases.
+
+`CallRuntime` never touches the older runtime, and the two return different result and usage types with no
+conversion. The project's own docs name `run_agent` on `CallRuntime` as "one path for building a harness".
+
+**Why it matters:**
+- **Features read as available and are not.** Compaction, memory, checkpoints, guardrails and observers exist
+  and are tested, but no current caller reaches them.
+- **Behaviour is duplicated.** Retry, limits and pricing exist as middleware and again in `CallRuntime`; fixing
+  one does not fix the other.
+- **Downstream code breaks.** Consumers built on the older path break when it is reorganised.
+
+**Build: one runtime.** Each older piece is rebuilt on `CallRuntime`, or deleted.
+
+| Older piece | Becomes |
+|---|---|
+| `Invoker`, `core/policies` middleware, `RunContext.services` | deleted; `CallRuntime` and the event sinks already do retry, limits, pricing, correction and tracing |
+| `Observation`, `ObserverPort`, `integrations/observers` | deleted; `EventHub` subscribers |
+| `state/compaction` | a `context_policy: Callable[[WorkingContext], WorkingContext]` that `run`/`run_agent` applies between slices and before resume; deterministic policies built in, summarising ones explicit opt-ins |
+| `state/memory` | a memory provider `run_agent` turns into an untrusted `context` part at compose time |
+| `state/checkpoints`, `state/replay`, `state/stores`, `state/vectors` | deleted; continuation is `SessionHandle` + `FrozenContext` with the `core/serialization` codecs; replay is the event journal |
+| `state/leases` (timed, renewed) | deleted; admission is the untimed `acquire` hook |
+| `agents/workflows.Workflow` | deleted; multi-step flows are the host's (or rebuilt over `run_agent` emitting `CallEvent`s, if a real user appears) |
+| `agents/cognition`, `agents/policies`, `agents/control`, `agents/evaluation`, `Agent`, `RequestBuilder`, `skills.Skill.as_agent`, `tools/adapters.as_tool` | deleted; Minds, `run_agent`, `DelegationPolicy` and the `delegate` tool cover them; grading is the host's |
+| `integrations/mcp/approvals.ApprovalServer` (bound to the old CLI class) | rebuilt on the current CLI adapter's `--permission-prompt-tool`, with the same approval callback shape as `McpPolicy.approval` |
+| `core/guardrails` (`check_url`, `redact`, `wrap_tool_output`) | kept as a library tools call, with an optional `ToolSet` hook |
+
+**Order, so nothing breaks midway:**
+1. Rebuild the four pieces with current users: the compaction hook, the memory provider, approvals on the
+   current CLI adapter, and G37–G42.
+2. Delete the rest in one change, with docs and examples updated and no deprecation shims. Consumers still on
+   the older path stay pinned to a pre-deletion revision until they move.
+3. Add the claims test below.
+
+**Prove:**
+- An architecture claims test in agentkit: one `Answer` type and one `Usage` type in the public surface;
+  nothing imports a deleted module (a planted import of each is caught); every public module is reachable
+  from `CallRuntime` or `AgentRunner`, or is a declared library (guardrails, serialization).
+- `context_policy` runs between slices, and the same transcript gives the same result.
+- A memory provider's items reach the composed prompt as an untrusted context part.
+- An approval prompt from the Claude CLI reaches the host callback on the current adapter.
+
+Mirror's `cognition` already uses only the current runtime, so G43 changes no Mirror design. It moves
+compaction and memory hooks into agentkit, where Mirror plugs in its own policies.
+
+### G44–G53. What Mirror's build service (forge) needs from the current runtime (2026-10-13)
+
+Forge is the heaviest agentic consumer Mirror has. It runs:
+- unit sessions sliced at a turn checkpoint, up to 5 resumptions with a persisted wall deadline;
+- one goal-holding driver per build, 200 turns over up to 6 h;
+- parallel waves of isolated units, up to 12 wide;
+- repair ladders, corrections, specialists, and starter lanes on Codex.
+
+It serves all file, shell and grep work as its own MCP tools, and denies native tools except web. These gaps
+were measured against `5ebe4c0` plus the uncommitted working tree.
+
+| Gap | Forge needs | Where agentkit falls short | Build | Prove | Severity |
+|---|---|---|---|---|---|
+| **G44** | stall detection that knows a tool is running, and a deadline per tool (a check can run for minutes) | the idle clock keeps running while a CLI-served tool executes (`core/runtime/calls.py:357`); `serve()` emits nothing (`tools/execution/policy.py:288-297`); one `timeout_s` for every tool (`policy.py:89`) | `Tool.timeout_s` per tool; the `serve()` wrapper signals tool start and end so the runtime pauses `idle_s` until that tool's own deadline; `MCP_TOOL_TIMEOUT` derives from the largest per-tool deadline | a 3 s tool under `idle_s=1` completes; a silent model with no tool running still times out at `idle_s`; a tool past its own deadline times out | **blocks** forge parity |
+| **G45** | a live native-tool fence decided in-process | `Workspace.hooks` is static JSON (`models/contracts/types.py:117`; `cli/calls.py:435`); the live hook transport sits on the middleware chain (`cli/claude/hooks.py:161,347-381`) | `Workspace(pre_tool_use=async (tool, input) -> Allow | Deny(reason))`, served by agentkit's own hook script, with no middleware; a refusal is a `tool_call` event marked refused; fail closed | a fake CLI calls the hook for `WebFetch`; the host's deny reaches the model in the CLI's deny shape; a raising callback denies; nothing imports middleware | **blocks** web-granted lanes |
+| **G46** | compaction that keeps the native Claude session and its cache | a context policy that changes the context drops `cli_session_id` (`calls.py:189-191,334-346`), so the CLI replays all history into the prompt (`cli/calls.py:115-125`) | apply `context_policy` per mode: API by default; on CLI, keep `--resume` and send nothing extra | a three-slice Claude fake with a message-dropping policy keeps one resume id; API mode still compacts | degrades: cost, cache, context size |
+| **G47** | resuming a multi-hour session in a new process without an unbounded prompt | a home bundle over 16 MiB is dropped (`cli/calls.py:583-594`); the fallback replays every message, unbounded (`:212-231`); the bundle rides inline in every `SessionHandle` (`types.py:213`) | a bundle-store port (by reference, incremental); the fallback goes through `context_policy` with a byte bound, and `limit_reached` if it is still too large | a 17 MiB transcript resumed in a new process gives a bounded prompt and a `degraded` event; the second slice stores a reference, not the bytes | degrades; blocks a driver resumed after a restart |
+| **G48** | the agent's narration for the build log | `MESSAGE_DONE` carries only a length (`calls.py:610-611`); text exists only as deltas behind a runtime-wide flag (`:83,256-257`) | `capture_text` per call; `MESSAGE_DONE` optionally carries its text, bounded by `MaskingSink` | flag on: the done text equals the assistant message; off: length only | degrades |
+| **G49** | prompt-cache TTL control | the env allowlist refuses it (`cli/calls.py:31,68-70`) | `ModelSettings.cache_ttl`, mapped per mode and refused where unsupported | a fake Claude CLI receives it; Codex refuses it | degrades: cost |
+| **G50** | an hours-long log that survives one bad write | (working tree) the first exception from a sink turns it off for the rest of the call, and `degraded` is only reported at the end (`calls.py:219-235,986-995`) | isolate each failure; emit `degraded` at once; keep delivering; stop only after N consecutive failures | one failure mid-call: later events still arrive, and the `degraded` event is immediate | degrades; follows G42 |
+| **G51** | Claude and Codex lanes in one process | `native_tool_policy` is set once per runtime, and `DENY` refuses Codex (`calls.py:410-416`) | `native_tool_policy` per call, never wider than the runtime's ceiling | under one runtime, a Claude call denies native tools while a Codex call runs under `warn` | **blocks** Codex starter lanes |
+| **G52** | a tool that ends the call to ask a person, resumable | no suspended outcome (`constants.py:40-46`) | `ToolResult(stop_call=True)` ends the call after the current turn, with a resumable session | the tool ends a CLI call with the session id kept | nice-to-have; Mirror can stop at a slice boundary instead |
+| **G53** | the host scope in CLI-served tools | `RunContext(scope=Scope())` is still hard-coded for CLI-served tools (`cli/calls.py:242-247`); the working tree fixed only the API loop | pass `scope` into the CLI `serve()` context | a CLI-mode tool reads the scope it was given | nice-to-have; Mirror's tools close over identity |
+
+**A risk for G43:** the current CLI adapter itself still uses `Agent`, `RunContext` and `Budget` internally
+(`cli/calls.py:107,126,242-246,488-491`). Deleting the older runtime has to move those internals into the
+adapter first, or G43 breaks every CLI call.
+
+**Forge does not need raw tool-call arguments from events.** Its file, shell and grep tools are its own, so its
+wrappers see raw arguments, and its attestation comes from the workspace stamp and change journal. It needs
+the argument masker to be per-service policy, not agentkit's fixed default. agentkit already allows that, and
+should keep it.
+
+### What Mirror needs, by what it unlocks
+
+| Unlocks | Needs |
+|---|---|
+| Mirror `cognition` moving off `13ff01e` | Nothing further. Done at `5ebe4c0`. |
+| Preflight on API keys | G35, G36, the G34 cost-source rule, and the proving tests above |
+| Preflight on Claude or Codex logins | All of the above, and G30: a recorded live run with a real `.credentials.json` and a ChatGPT `auth.json`, a refresh forced mid-call, and the macOS keychain question answered |
+| Forge build lanes | G44, G45 and G51 (blocking); G46–G50 (degrading); G37 complete (`stable_prefix`, `fork`, `native_agents` through `run_agent`); G43 without breaking the CLI adapter's internals; the Codex limits in G5 and G18 accepted, which keeps build lanes on Claude |
+| Mirror `run_agent` (conversation, analysis loops) | G37, G39, G42, and G43 step 1 (the compaction hook, the memory provider, approvals on the current CLI adapter) |
 
 ## Tier 0: blocks every CLI call
 
@@ -569,7 +731,8 @@ These are host policy. Mirror keeps them on top of the call contract:
 - admission control by measured memory and CPU (`M:assay/platform/providers/admission.py`), plugged in
   through G7's hook;
 - prompt fitting and splitting (`fitting.py`, `packages/prompting/fit`);
-- vault leases, renewal and rotation (on top of G1, G2 and G12);
+- the login refresh holder and borrowers (one refresh holder per CLI login, any number of borrowers) and
+  compare-and-set rotation in the vault — no timed leases (on top of G1, G2 and G12);
 - the stage-tier to model mapping (agentkit's `ModelSettings.tier` is a presentation hint,
   `models/contracts/settings.py:16,43-46`);
 - refusing an identical retry after a timeout;

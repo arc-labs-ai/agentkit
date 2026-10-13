@@ -47,19 +47,19 @@ def test_public_harness_retrieves_evidence_runs_tool_preserves_context_and_saves
                     org_id=1,
                     files=files,
                     orders={"owned": "Duplicate captured; no refund issued."},
+                    policy_documents=(("/approved/refunds.md", "Refunds require approval before execution."),),
                     events=events,
                 )
                 result = await harness.respond("How should we handle this payment?", order_id="owned")
                 assert result.outcome == Outcome.ANSWERED
-                evidence = harness.context.prefix.grounding[0].content
-                assert "Refunds require approval" in evidence
-                assert "Other organization" not in evidence
+                prompt_text = adapter.requests[0][1].user
+                assert "Refunds require approval" in prompt_text
+                assert "Other organization" not in prompt_text
                 assert any(
                     m.role == MessageRole.TOOL and "Duplicate captured" in m.content for m in harness.context.messages
                 )
                 await harness.save_note(result)
                 assert "/orgs/1/notes/" in await files.view("/orgs/1/notes/")
-                assert "Duplicate captured" not in harness.context.prefix.grounding[0].content
                 host_view = harness.context
                 host_view.note("review", "pending")
                 assert harness.context.get("review") is None
@@ -74,7 +74,10 @@ def test_missing_approved_memory_stops_before_dispatch():
     async def run():
         adapter = ScriptedAdapter(Turn(("Should not execute",)))
         async with CallRuntime(adapters={"openai_api": adapter}, pricing=PRICES) as runtime:
-            harness = SupportHarness(runtime, Binding("openai_api", "test"), org_id=1, files=InMemoryFiles(), orders={})
+            harness = SupportHarness(
+                runtime, Binding("openai_api", "test"), org_id=1, files=InMemoryFiles(), orders={},
+                policy_documents=(),
+            )
             with pytest.raises(LookupError, match="before model dispatch"):
                 await harness.respond("Where is the refund?", order_id="owned")
             assert not adapter.requests
@@ -92,7 +95,8 @@ def test_order_tool_cannot_read_outside_host_authorized_view():
         )
         async with CallRuntime(adapters={"openai_api": adapter}, pricing=PRICES) as runtime:
             harness = SupportHarness(
-                runtime, Binding("openai_api", "test"), org_id=1, files=files, orders={"owned": "private"}
+                runtime, Binding("openai_api", "test"), org_id=1, files=files, orders={"owned": "private"},
+                policy_documents=(("/approved/refunds.md", "Refunds require approval."),),
             )
             await harness.respond("Inspect an order", order_id="owned")
             results = [m for m in harness.context.messages if m.role == MessageRole.TOOL]

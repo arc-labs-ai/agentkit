@@ -83,22 +83,3 @@ def test_strict_native_optional_null_placeholder_restores_default_without_weaken
     assert set(wire["required"]) == {"title", "label", "note"}
     parsed = adapter.parse({"title": "done", "label": None, "note": None})
     assert parsed.label == "default-label" and parsed.note is None
-
-
-def test_typed_agent_requires_host_validator_even_for_unknown_model_fallback(monkeypatch):
-    from agentkit.agents.execution.agent import Agent
-
-    @dataclass
-    class Receipt:
-        title: str
-
-    original = builtins.__import__
-
-    def refuse(name, *args, **kwargs):
-        if name == "jsonschema":
-            raise ImportError("validation deliberately unavailable")
-        return original(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", refuse)
-    with pytest.raises(ImportError, match="Structured calls require"):
-        Agent("unknown-model-fallback", model="unknown", output=Receipt)

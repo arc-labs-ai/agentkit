@@ -88,17 +88,28 @@ class ToolSet:
     describe_limits: bool = True
     result_hook: Callable[[str, Any], Any] | None = None
     timeout_s: float = 60
+    max_concurrency: int = 4
     # Empty means eager loading. Deferred names are exposed by search_tools.
     deferred: tuple[str, ...] = ()
     _loaded: set[str] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.max_concurrency < 1:
+            raise ValueError("tool concurrency must be positive")
         if self.deferred and any(name in self.registry.names() for name in DeferredToolName):
             raise ValueError("deferred discovery names are reserved by ToolSet")
 
     def with_registry(self, registry: ToolRegistry) -> ToolSet:
         """Apply this policy to an authorized registry with fresh discovery state."""
         return replace(self, registry=registry, deferred=tuple(n for n in self.deferred if n in registry.names()))
+
+    @property
+    def effective_timeout_s(self) -> float | None:
+        """Largest declared deadline, or ``None`` if any tool is unbounded."""
+        deadlines = [getattr(tool, "timeout_s", None) or self.timeout_s for tool in self.registry.tools()]
+        if any(deadline is None for deadline in deadlines):
+            return None
+        return max(deadlines, default=self.timeout_s)
 
     def schemas(self) -> list[ToolSchema]:
         schemas = []
@@ -197,7 +208,10 @@ class ToolSet:
             tool = self.registry.get(name)
             if tool.requires_approval:
                 raise PermissionError("tool requires host approval before execution")
-            async with asyncio.timeout(self.timeout_s):
+            timeout = getattr(tool, "timeout_s", None)
+            if timeout is None:
+                timeout = self.timeout_s
+            async with asyncio.timeout(timeout):
                 value = await run_cancellable(tool.run(args, ctx), ctx)
             if tool.output_schema is not None:
                 from agentkit.models.output import adapt
@@ -262,6 +276,7 @@ def serve(
     name: str = "agentkit",
     execution_observer: Callable[[str, Mapping[str, Any], ToolResult], Any] | None = None,
     timeout_s: float | None = None,
+    activity_observer: Callable[[bool], Any] | None = None,
 ) -> Any:
     """Serve the same execution policy to CLI modes via the existing MCP transport."""
     from agentkit.integrations.mcp import serve_registry
@@ -282,12 +297,19 @@ def serve(
         output_schema: Any = None
         side_effecting: bool = False
         requires_approval: bool = False
+        timeout_s: float | None = None
 
         async def run(self, args: Mapping[str, Any], ctx: Any) -> Any:
             from agentkit.core.serialization._immutable import deep_freeze
 
             observed_args = deep_freeze(dict(args))
-            result = await tools.execute(self.name, args, ctx)
+            if activity_observer is not None:
+                activity_observer(True)
+            try:
+                result = await tools.execute(self.name, args, ctx)
+            finally:
+                if activity_observer is not None:
+                    activity_observer(False)
             if execution_observer is not None:
                 observed = execution_observer(self.name, observed_args, result)
                 if hasattr(observed, "__await__"):
@@ -301,6 +323,7 @@ def serve(
             schema,
             side_effecting=schema.name == DeferredToolName.CALL or bool(getattr(original, "side_effecting", False)),
             requires_approval=bool(getattr(original, "requires_approval", False)),
+            timeout_s=getattr(original, "timeout_s", None),
         )
 
     def visible() -> list[Tool]:
@@ -310,6 +333,11 @@ def serve(
     # Discovery remains deferred; execution still enforces search-before-use.
     registered = {schema.name: schema for schema in tools.registry.schemas()}
     registered.update({schema.name: schema for schema in tools.schemas()})
+    # MCP's advertised client timeout must cover the longest permitted tool.
+    # Each individual call is still bounded by ToolSet.execute's own deadline.
+    timeout_s = tools.effective_timeout_s if timeout_s is None else max(
+        (timeout_s, tools.effective_timeout_s) if tools.effective_timeout_s is not None else (timeout_s,)
+    )
     return serve_registry(
         cast(list[Tool], [wrap(schema) for schema in registered.values()]),
         name=name,

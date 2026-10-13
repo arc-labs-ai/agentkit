@@ -9,7 +9,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
-from agentkit.core.contracts.types import Delta, LLMResult, Message, ToolCall, Usage
+from agentkit.core.contracts.types import Delta, LLMResult, Message, ProviderUsage, ToolCall
 from agentkit.models.adapters._mapping import coerce_tool_args
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
 from agentkit.models.providers.frontiers.base import HttpLLM, raise_if_error_frame
@@ -172,7 +172,7 @@ class OpenAICompatibleLLM(HttpLLM):
         u = data.get("usage", {}) or {}
         cached = int((u.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
         prompt = int(u.get("prompt_tokens", 0) or 0)
-        usage = Usage(
+        usage = ProviderUsage(
             input_tokens=max(0, prompt - cached),
             output_tokens=int(u.get("completion_tokens", 0) or 0),
             cache_read_tokens=cached,
@@ -206,7 +206,7 @@ class OpenAICompatibleLLM(HttpLLM):
 
         `stream_options.include_usage` asks the provider for token counts in the closing chunk. Token
         accounting on the streamed path is therefore best-effort: a backend that ignores that option (some
-        self-hosted/OpenAI-compatible servers do) sends no usage, so the final delta carries a zero `Usage`
+        self-hosted/OpenAI-compatible servers do) sends no usage, so the final delta carries a zero `ProviderUsage`
         and zero cost. The non-streaming `chat()` always reports usage from the response body — use it when
         exact cost accounting matters against such a backend."""
         model = model or self._default_model
@@ -266,13 +266,13 @@ class OpenAICompatibleLLM(HttpLLM):
                 usage_complete = "prompt_tokens" in u and "completion_tokens" in u
                 cached = int((u.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
                 prompt = int(u.get("prompt_tokens", 0) or 0)
-                usage = Usage(
+                usage = ProviderUsage(
                     input_tokens=max(0, prompt - cached),
                     output_tokens=int(u.get("completion_tokens", 0) or 0),
                     cache_read_tokens=cached,
                 )
         tool_calls = tuple(_frag_to_toolcall(idx, f) for idx, f in sorted(frags.items()))
-        final = usage or Usage()  # zero usage if the backend sent no usage chunk
+        final = usage or ProviderUsage()  # zero usage if the backend sent no usage chunk
         final = self._priced_usage(served_model, final, usage_observed=usage_complete)
         yield Delta(
             tool_calls=tool_calls,

@@ -7,6 +7,29 @@ import pytest
 from agentkit.models.contracts.constants import EventKind
 from agentkit.models.contracts.types import CallEvent
 from tests.evals.engine.config import EvalConfig
+
+
+def test_eval_credentials_are_scoped_to_the_selected_backend(tmp_path, monkeypatch):
+    from agentkit.core.contracts.types import Mode
+
+    env_file = tmp_path / ".env.eval"
+    env_file.write_text(
+        "OPENAI_API_KEY=openai-test\nANTHROPIC_API_KEY=anthropic-test\n"
+        "ANTHROPIC_AUTH_TOKEN=oauth-test\nCLAUDE_CODE_OAUTH_TOKEN=claude-oauth-test\n"
+    )
+    config = EvalConfig(env_file=env_file)
+    assert config.credentials(Mode.CODEX).resolve() == {"OPENAI_API_KEY": "openai-test"}
+    assert config.credentials(Mode.OPENAI_API).resolve() == {"OPENAI_API_KEY": "openai-test"}
+    assert config.credentials(Mode.CLAUDE_CODE).resolve() == {
+        "ANTHROPIC_API_KEY": "anthropic-test",
+        "ANTHROPIC_AUTH_TOKEN": "oauth-test",
+        "CLAUDE_CODE_OAUTH_TOKEN": "claude-oauth-test",
+    }
+    assert config.credentials(Mode.ANTHROPIC_API).resolve() == {
+        "ANTHROPIC_API_KEY": "anthropic-test",
+        "ANTHROPIC_AUTH_TOKEN": "oauth-test",
+        "CLAUDE_CODE_OAUTH_TOKEN": "claude-oauth-test",
+    }
 from tests.evals.engine.reporting import case_spend, redact, write_report
 
 
@@ -114,7 +137,7 @@ async def test_matrix_stops_before_next_two_call_case_exceeds_remaining_budget(m
     monkeypatch.setattr(
         EvalConfig,
         "credentials",
-        lambda self: CredentialRef(lambda: {"OPENAI_API_KEY": "synthetic-private-test-token"}),
+        lambda self, mode=None: CredentialRef(lambda: {"OPENAI_API_KEY": "synthetic-private-test-token"}),
     )
     config = EvalConfig(
         modes=(Mode.OPENAI_API,), report_dir=tmp_path, max_total_usd=Decimal("0.6"), max_case_usd=Decimal("0.25")
@@ -184,7 +207,7 @@ async def test_backend_fanout_reserves_global_workflow_budget_until_prior_case_f
     monkeypatch.setattr(
         EvalConfig,
         "credentials",
-        lambda self: CredentialRef(
+        lambda self, mode=None: CredentialRef(
             lambda: {"OPENAI_API_KEY": "synthetic-openai", "ANTHROPIC_API_KEY": "synthetic-anthropic"}
         ),
     )
@@ -238,7 +261,7 @@ async def test_unsupported_modes_are_not_applicable_and_never_reserve_or_dispatc
 
     monkeypatch.setattr(runner, "CASES", (supported,))
     monkeypatch.setattr(runner, "WORKLOAD_EXECUTORS", {supported.id: execute})
-    monkeypatch.setattr(EvalConfig, "credentials", lambda self: CredentialRef(lambda: {
+    monkeypatch.setattr(EvalConfig, "credentials", lambda self, mode=None: CredentialRef(lambda: {
         "OPENAI_API_KEY": "synthetic-test", "ANTHROPIC_API_KEY": "synthetic-test",
     }))
     config = EvalConfig(modes=(Mode.OPENAI_API, Mode.CLAUDE_CODE), report_dir=tmp_path)
@@ -281,7 +304,7 @@ async def test_only_declared_clean_pre_dispatch_rejection_can_omit_an_answer(
     monkeypatch.setattr(runner, "CallRuntime", FakeRuntime)
     monkeypatch.setattr(runner, "CASES", (case,))
     monkeypatch.setattr(runner, "execute", execute)
-    monkeypatch.setattr(EvalConfig, "credentials", lambda self: CredentialRef(lambda: {"OPENAI_API_KEY": "synthetic-test"}))
+    monkeypatch.setattr(EvalConfig, "credentials", lambda self, mode=None: CredentialRef(lambda: {"OPENAI_API_KEY": "synthetic-test"}))
     config = EvalConfig(modes=(Mode.OPENAI_API,), report_dir=tmp_path,
                         max_total_usd=Decimal(".1"), max_case_usd=Decimal(".1"))
     target, passed = await runner.run_matrix(config, suites=("probes",))

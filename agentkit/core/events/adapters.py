@@ -1,4 +1,4 @@
-"""Bridge standardized call events into the existing EventBus and trace port."""
+"""Event-sink adapters for masking and OpenTelemetry trace export."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import inspect
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from agentkit.core.events.bus import EventBus
 from agentkit.models.contracts.constants import EventKind
 from agentkit.models.contracts.types import CallEvent, EventSink
 
@@ -58,22 +57,6 @@ class MaskingSink:
         result = self.inner(bounded)
         if inspect.isawaitable(result):
             await result
-
-
-class BusEventSink:
-    """Use the existing replayable EventBus as a CallRuntime EventSink.
-
-    EventBus is a bounded live fan-out with ring replay. Durable, lossless
-    delivery belongs to an EventJournal or a host EventPublisher.
-    """
-
-    def __init__(self, bus: EventBus[CallEvent], *, close_on_finish: bool = False) -> None:
-        self.bus, self.close_on_finish = bus, close_on_finish
-
-    async def __call__(self, event: CallEvent) -> None:
-        await self.bus.publish(event.call_id, event)
-        if self.close_on_finish and event.kind == EventKind.CALL_FINISHED:
-            await self.bus.close_stream(event.call_id)
 
 
 class TraceEventSink:

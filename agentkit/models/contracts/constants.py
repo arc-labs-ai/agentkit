@@ -12,6 +12,12 @@ class NativeToolPolicy(StrEnum):
     ALLOW = "allow"
 
 
+class CacheTtl(StrEnum):
+    FIVE_MINUTES = "5m"
+    ONE_HOUR = "1h"
+    THIRTY_MINUTES = "30m"
+
+
 class UnpricedPolicy(StrEnum):
     REFUSE = "refuse"
     PROCEED_UNPRICED = "proceed_unpriced"
@@ -104,6 +110,7 @@ __all__ = [
     "AuthKind",
     "ModelSelection",
     "NativeToolPolicy",
+    "CacheTtl",
     "UnpricedPolicy",
     "ClaudePermissionMode",
     "CodexSandboxMode",

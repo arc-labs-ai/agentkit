@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -27,6 +28,7 @@ class _Subscription:
     handler: EventHandler
     kinds: tuple[str, ...]
     call_id: str | None
+    isolate: bool
 
 
 class EventHub:
@@ -59,11 +61,17 @@ class EventHub:
         self._in_handler: ContextVar[bool] = ContextVar("agentkit_event_handler", default=False)
 
     def subscribe(
-        self, id: str, handler: EventHandler, *, kinds: tuple[str, ...] = ("*",), call_id: str | None = None
+        self,
+        id: str,
+        handler: EventHandler,
+        *,
+        kinds: tuple[str, ...] = ("*",),
+        call_id: str | None = None,
+        isolate: bool = False,
     ) -> Callable[[], None]:
         if not id or id in self._subscriptions or self._closed:
             raise ValueError("subscription ID must be unique and the hub must be open")
-        self._subscriptions[id] = _Subscription(id, handler, kinds, call_id)
+        self._subscriptions[id] = _Subscription(id, handler, kinds, call_id, isolate)
 
         def unsubscribe() -> None:
             self._subscriptions.pop(id, None)
@@ -157,14 +165,24 @@ class EventHub:
                         error = EventDeliveryError(
                             f"subscription {subscription.id!r} failed for {event.event_id}: {type(exc).__name__}"
                         )
-                        errors.append(error)
                         self._errors.append(error)
+                        if not subscription.isolate:
+                            errors.append(error)
+                        else:
+                            logging.getLogger("agentkit.events").exception(
+                                "isolated event subscriber failed: %s", subscription.id
+                            )
                     except Exception as exc:
                         error = EventDeliveryError(
                             f"subscription {subscription.id!r} failed for {event.event_id}: {type(exc).__name__}"
                         )
-                        errors.append(error)
                         self._errors.append(error)
+                        if not subscription.isolate:
+                            errors.append(error)
+                        else:
+                            logging.getLogger("agentkit.events").exception(
+                                "isolated event subscriber failed: %s", subscription.id
+                            )
                     finally:
                         self._in_handler.reset(token)
                 if not future.done():

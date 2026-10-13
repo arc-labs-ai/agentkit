@@ -34,12 +34,6 @@ class FeatureAspect(StrEnum):
     MINDS = "minds"
     MEMORY = "memory"
     CONTEXT_COMPACTION = "context_compaction"
-    CHECKPOINTS = "checkpoints"
-    JOURNALS = "journals"
-    REPLAY = "replay"
-    LEASES_FENCING = "leases_fencing"
-    STORES = "stores"
-    VECTORS = "vectors"
 
 
 A = FeatureAspect
@@ -68,22 +62,6 @@ CONFORMANCE_COVERAGE: Mapping[str, tuple[FeatureAspect, ...]] = {
     "settings_refusal": (A.SETTINGS,),
 }
 WORKLOAD_COVERAGE: Mapping[str, tuple[FeatureAspect, ...]] = {
-    "dispatch_checkpoint_replay": (
-        A.CHECKPOINTS,
-        A.JOURNALS,
-        A.REPLAY,
-        A.LEASES_FENCING,
-        A.STORES,
-        A.SESSIONS_CONTEXT,
-        A.TOOLS,
-    ),
-    "dispatch_stale_fence_refusal": (A.JOURNALS, A.LEASES_FENCING, A.STORES, A.TOOLS),
-    "vector_support_grounding": (A.VECTORS, A.MEMORY, A.STORES, A.TOOLS),
-    "vector_missing_authority": (A.VECTORS, A.MEMORY, A.STORES, A.TOOLS),
-    "memory_customer_handoff": (A.MEMORY, A.TOOLS, A.SESSIONS_CONTEXT, A.STRUCTURED_OUTPUT),
-    "memory_readonly_refusal": (A.MEMORY, A.TOOLS, A.STRUCTURED_OUTPUT),
-    "context_compaction_evidence": (A.CONTEXT_COMPACTION, A.SESSIONS_CONTEXT, A.STRUCTURED_OUTPUT),
-    "context_compaction_insufficient_evidence": (A.CONTEXT_COMPACTION, A.SESSIONS_CONTEXT, A.STRUCTURED_OUTPUT),
     "prompt_cache_policy_reuse": (A.PROMPT_CACHING, A.STRUCTURED_OUTPUT, A.USAGE_PRICING),
     "prompt_cache_policy_revoked": (A.PROMPT_CACHING, A.STRUCTURED_OUTPUT),
     "coding_checkpoint_repair": (A.TOOLS, A.FAILURE_RECOVERY),
@@ -118,10 +96,6 @@ WORKLOAD_COVERAGE: Mapping[str, tuple[FeatureAspect, ...]] = {
 }
 
 WORKLOAD_PAIRS: Mapping[str, str] = {
-    "dispatch_stale_fence_refusal": "dispatch_checkpoint_replay",
-    "vector_missing_authority": "vector_support_grounding",
-    "memory_readonly_refusal": "memory_customer_handoff",
-    "context_compaction_insufficient_evidence": "context_compaction_evidence",
     "prompt_cache_policy_revoked": "prompt_cache_policy_reuse",
     "coding_checkpoint_write_denied": "coding_checkpoint_repair",
     "sqlite_research_insufficient_evidence": "sqlite_migration_research",
@@ -152,14 +126,8 @@ SUPPORTED_CASE_MODES: Mapping[str, tuple[Mode, ...]] = {
 # with an injected client, not external HTTP/stdio protocol interoperability.
 _CLI_ONLY = {"durable_resume": frozenset({A.ISOLATION})}
 COVERAGE_SCOPE: Mapping[FeatureAspect, str] = {
-    A.CHECKPOINTS: "Business checkpoints over FileStore-backed latest-slot storage, reconstructed by fresh adapters; external Postgres deployments remain separate.",
-    A.JOURNALS: "Authored SQLite event persistence and cursor replay; not exactly-once subscribers or multi-host delivery.",
-    A.REPLAY: "Actual FileReplayStore tool receipt replay verified against checkpoint and journal after restart.",
-    A.LEASES_FENCING: "SQLite lease renewal rejection and application fencing at an approved business-write boundary; not distributed database concurrency certification.",
-    A.STORES: "Durable FileStore business effects and CAS idempotence within its documented process scope; external database operations remain separate.",
-    A.VECTORS: "InMemoryVector TF-cosine reference retrieval through VectorMemory with fixed tenant/metadata guards; not external embedding quality or pgvector deployment.",
-    A.MEMORY: "Durable StoreFiles/FileMemory CRUD, restart and read-only/tenant boundaries; external vector backends need deployment checks.",
-    A.CONTEXT_COMPACTION: "Sliding-window compaction with explicitly protected attributed tool evidence and model switching; summarizer quality is separately evaluated.",
+    A.MEMORY: "AgentRunner retrieves scope-bound memory and composes it as untrusted context; external storage and retrieval quality are host concerns.",
+    A.CONTEXT_COMPACTION: "CallRuntime applies deterministic WorkingContext policies between slices and before resume; summarizing policies are explicit opt-ins.",
     A.LIMITS: "Live conformance checks tool-result overflow; deadline/spend/turn boundary faults are offline tests.",
     A.HOOKS: "Live cases exercise event subscriptions; request/result-hook variants remain offline checks.",
     A.MCP: "CLI hosted tools or injected-client gateway policy; not every external server/auth/transport.",

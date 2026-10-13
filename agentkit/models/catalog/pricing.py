@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from agentkit.core.contracts.types import Mode
-from agentkit.core.contracts.types import Usage as CompactUsage
+from agentkit.core.contracts.types import ProviderUsage as CompactUsage
 from agentkit.core.serialization._immutable import deep_freeze
 from agentkit.models.contracts.constants import CostSource
 from agentkit.models.contracts.types import Usage

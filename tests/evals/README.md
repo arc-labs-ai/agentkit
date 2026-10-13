@@ -23,11 +23,22 @@ uv run --group eval python -m tests.evals --suite workload --suite smoke --suite
 # Smaller contract checks remain available explicitly.
 uv run --group eval python -m tests.evals --suite smoke --suite contract --max-total-usd 1
 
+# Exercise a real CLI login file in an isolated home; reports contain no auth bytes.
+uv run --group eval python -m tests.evals.cli_auth --mode codex --auth-file ~/.codex/auth.json
+uv run --group eval python -m tests.evals.cli_auth --mode claude_code --keychain-probe
+
+# Forced refresh requires a disposable, separately authorized login file. The
+# refresh token may rotate even though the file itself is copied into isolation.
+uv run --group eval python -m tests.evals.cli_auth --mode codex --auth-file /path/to/disposable-auth.json \
+  --force-refresh --allow-refresh-token-rotation
+
 # Offline tests require no provider credentials or installed CLI execution.
 AGENTKIT_SKIP_REAL_CLI=1 uv run pytest tests/source/evaluation tests/source/conformance -q
 ```
 
 `--mode` accepts `claude_code`, `codex`, `anthropic_api` and `openai_api`. `--domain` accepts `coding`, `research`, `support`, `analytics`, `operations` and `security`. `--case`, `--mode`, `--domain` and `--suite` select the matrix; lifecycle cases advertise `supported_modes` and unsupported CLI combinations are not dispatched; `--list` shows the actual catalogue. `--max-total-usd` caps the matrix, and `--max-case-usd` caps each case. Multi-call cases share their case envelope across calls. Use `--env-file` to select another credential file.
+
+`tests.evals.cli_auth` is a separate opt-in CLI login probe. It copies one allowlisted login file into agentkit's temporary CLI home and records only sanitized status, usage and file names. It refuses a file with unknown or near-term access-token expiry unless refresh is explicitly forced. Forced refresh requires both a non-default auth-file path and `--allow-refresh-token-rotation`; use a disposable account because OAuth servers may revoke the source refresh token when they rotate it. `--keychain-probe` is Claude-only and checks whether the installed macOS CLI can authenticate with Keychain while agentkit uses an isolated config directory.
 
 ## Workloads and evidence
 

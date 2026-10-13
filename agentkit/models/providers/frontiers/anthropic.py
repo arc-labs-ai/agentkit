@@ -10,7 +10,7 @@ import warnings
 from collections.abc import AsyncIterator
 from typing import Any
 
-from agentkit.core.contracts.types import Delta, LLMResult, Message, ToolCall, Usage
+from agentkit.core.contracts.types import Delta, LLMResult, Message, ProviderUsage, ToolCall
 from agentkit.models.adapters._mapping import coerce_tool_args
 from agentkit.models.providers.auth import ANTHROPIC_API_VERSION, anthropic_credential
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
@@ -224,7 +224,7 @@ class AnthropicLLM(HttpLLM):
             if b.get("type") == "tool_use"
         )
         u = data.get("usage", {}) or {}
-        usage = Usage(
+        usage = ProviderUsage(
             input_tokens=int(u.get("input_tokens", 0) or 0),  # Anthropic input is already cache-fresh
             output_tokens=int(u.get("output_tokens", 0) or 0),
             cache_read_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
@@ -319,7 +319,7 @@ class AnthropicLLM(HttpLLM):
             for b in blocks.values()
             if b.get("type") == "tool_use"
         )
-        usage = Usage(
+        usage = ProviderUsage(
             input_tokens=in_tok,
             output_tokens=out_tok,
             cache_read_tokens=cache_read,

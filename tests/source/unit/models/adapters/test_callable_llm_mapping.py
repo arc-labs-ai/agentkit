@@ -2,14 +2,14 @@
 
 The coercion is best-effort by contract, which makes it exactly the place where a wrong answer is
 invisible: it has no schema to violate and no exception to raise, so a mis-read response becomes an
-empty string the agent reads as the model's answer, and a zero `Usage` the budget bills as free.
+empty string the agent reads as the model's answer, and a zero `ProviderUsage` the budget bills as free.
 """
 
 import asyncio
 
 import pytest
 
-from agentkit.core.contracts.types import LLMResult, Message, Usage
+from agentkit.core.contracts.types import LLMResult, Message, ProviderUsage
 from agentkit.models.adapters._mapping import _duck_to_result, result_to_delta
 from agentkit.models.adapters.callable import CallableLLM
 
@@ -49,7 +49,7 @@ class _SdkResponse:
 def test_a_dict_shaped_response_keeps_content_usage_cost_and_tool_calls() -> None:
     """Regression: `_duck_to_result` read every field with bare `getattr`, so the most common
     shape an injected fn returns — a plain dict — matched nothing. Measured before the fix:
-    `content='' usage=Usage(0, 0, 0.0)`, tool calls gone, no exception. The agent took the empty
+    `content='' usage=ProviderUsage(0, 0, 0.0)`, tool calls gone, no exception. The agent took the empty
     string as the model's final word and the call was billed as free."""
     llm = CallableLLM(lambda **_kw: _DICT_RESPONSE, cost_fn=lambda model, i, o: 0.5 * i)
     res = _run(llm.complete(system="s", user="u", model="m"))
@@ -72,7 +72,7 @@ def test_an_object_shaped_response_still_works() -> None:
 def test_an_llmresult_is_passed_through_untouched() -> None:
     """Positive control: the identity shortcut must survive. A fix that re-coerced everything
     would rebuild (and flatten) a result the caller had already assembled."""
-    original = LLMResult(content="done", usage=Usage(1, 2, 3.0))
+    original = LLMResult(content="done", usage=ProviderUsage(1, 2, 3.0))
     assert _duck_to_result(original) is original
 
 
@@ -85,7 +85,7 @@ def test_a_dict_missing_most_keys_degrades_field_by_field() -> None:
     res = _duck_to_result({"content": "just text"})
     assert res.content == "just text"
     assert res.model is None and res.provider is None and res.finish_reason is None
-    assert res.usage == Usage(cost_usd=None)
+    assert res.usage == ProviderUsage(cost_usd=None)
     assert res.tool_calls == ()
 
 
@@ -128,7 +128,7 @@ def test_a_response_with_no_recognisable_field_still_returns_a_result() -> None:
     """Edge: nothing we know about. Empty result is the CORRECT answer here — the point of the
     fix is that it stops being the answer for shapes we do understand."""
     res = _duck_to_result(object())
-    assert res.content == "" and res.usage == Usage(cost_usd=None)
+    assert res.content == "" and res.usage == ProviderUsage(cost_usd=None)
 
 
 # ── the chat() path ─────────────────────────────────────────────────────────

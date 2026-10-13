@@ -72,11 +72,9 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from agentkit.agents.control.elicitation import Decision, Elicitation
-from agentkit.agents.control.gate import Autonomy, should_gate
-from agentkit.core.contracts.protocols import AutonomyLiteral
 from agentkit.core.serialization._immutable import deep_freeze
 from agentkit.integrations.mcp._transport import (
     LoopbackMcpTransport,
@@ -87,8 +85,55 @@ from agentkit.integrations.mcp._transport import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
-    from agentkit.agents.control.elicitation import Asker
     from agentkit.core.contracts.ports import ClockPort
+    from agentkit.models.contracts.types import Workspace
+
+
+AutonomyLiteral = Literal["auto", "gated", "manual"]
+
+
+class Autonomy(StrEnum):
+    AUTO = "auto"
+    GATED = "gated"
+    MANUAL = "manual"
+
+
+@dataclass(frozen=True)
+class Elicitation:
+    id: str
+    prompt: str
+    kind: Literal["approval", "value"] = "approval"
+    choices: tuple[str, ...] = ()
+    tool_call: Any = None
+    secret: bool = False
+    deadline_s: float | None = None
+    run_id: str = ""
+    agent: str = ""
+
+
+@dataclass(frozen=True)
+class Decision:
+    kind: Literal["approve", "deny", "value", "modify", "expired"]
+    value: Any = None
+    actor: str = ""
+    at: float = 0.0
+    note: str = ""
+
+    @property
+    def approved(self) -> bool:
+        return self.kind in ("approve", "modify")
+
+
+class Asker(Protocol):
+    async def ask(self, request: Elicitation) -> Decision: ...
+
+
+def _should_gate(autonomy: Autonomy, *, requires_approval: bool = False, key_step: bool = False) -> bool:
+    if autonomy is Autonomy.MANUAL:
+        return True
+    if autonomy is Autonomy.GATED:
+        return requires_approval or key_step
+    return requires_approval
 
 # The MCP server name. It appears in the tool's fully-qualified name
 # (``mcp__<server>__<tool>``), which the caller passes to
@@ -546,7 +591,7 @@ class ApprovalServer:
         # surfaces once the listener is up is a wiring mistake discovered by
         # whoever is reading the transcript, not by whoever wrote the line.
         validated_auth(self.auth, where="ApprovalServer")
-        if self.asker is None and should_gate(self.autonomy, key_step=True):
+        if self.asker is None and _should_gate(Autonomy(self.autonomy), key_step=True):
             raise ValueError(
                 f"ApprovalServer: autonomy={self.autonomy!r} sends prompts to a human "
                 "but no asker is wired, so every permission prompt would be denied. "
@@ -737,6 +782,17 @@ class ApprovalServer:
             "setting_sources": (),
         }
 
+    def workspace(self) -> Workspace:
+        """Return the current CallRuntime workspace wiring for this approval gate."""
+        from agentkit.models.contracts.constants import ClaudePermissionMode
+        from agentkit.models.contracts.types import Workspace
+
+        return Workspace(
+            mcp_config=(self.mcp_config,),
+            permission_prompt_tool=self.tool_name,
+            permission_mode=ClaudePermissionMode.DEFAULT,
+        )
+
     # ---- the decision ----------------------------------------------------------------------
 
     async def _decide(self, tool_name: str, arguments: dict[str, Any]) -> str:
@@ -793,7 +849,7 @@ class ApprovalServer:
         ``Decision`` used to escape here as an ``AttributeError``.
         """
         tier = self._tier()
-        if not should_gate(tier, requires_approval=False, key_step=True):
+        if not _should_gate(tier, requires_approval=False, key_step=True):
             # AUTO: the Asker is not consulted at all. "Asked, and they
             # approved" would produce the identical allow and would still be
             # wrong — the tier's whole meaning is that no person is in this

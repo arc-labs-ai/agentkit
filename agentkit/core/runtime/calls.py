@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import inspect
 import json
 import random
+import secrets
 import time
 from collections.abc import Callable, Coroutine, Mapping
 from contextlib import AbstractAsyncContextManager
@@ -61,6 +64,20 @@ class RetryPolicy:
             raise ValueError("invalid retry bounds")
 
 
+@dataclass(frozen=True)
+class _ToolContext:
+    """Invocation scope and cancellation boundary shared with every tool call."""
+
+    scope: Scope
+    cancel: Any
+    correlation_id: str
+    autonomy: str = "auto"
+
+    def check_cancelled(self) -> None:
+        if self.cancel is not None:
+            self.cancel.raise_if_cancelled()
+
+
 _DEFAULT_RETRY = RetryPolicy()
 _DEFAULT_SETTINGS = ModelSettings()
 _DEFAULT_LIMITS = CallLimits()
@@ -76,7 +93,7 @@ class CallRuntime:
     def __init__(
         self,
         *,
-        adapters: Mapping[str, ModeAdapter] | None = None,
+        adapters: Mapping[str | Mode, ModeAdapter] | None = None,
         pricing: PriceTable | None = None,
         capabilities: CapabilityTable = DEFAULT_CAPABILITIES,
         retry: RetryPolicy = _DEFAULT_RETRY,
@@ -88,7 +105,7 @@ class CallRuntime:
         argument_masker: Callable[[str, Any], Any] | None = None,
         result_masker: Callable[[str, str], str] | None = None,
     ) -> None:
-        self.adapters = dict(adapters or {})
+        self.adapters = {Mode(mode): adapter for mode, adapter in (adapters or {}).items()}
         self.pricing = pricing or PriceTable.default()
         self.capabilities = capabilities
         self.retry = retry
@@ -99,7 +116,10 @@ class CallRuntime:
             raise ValueError("max_concurrent_cli must be positive")
         self.max_concurrent_cli = max_concurrent_cli
         self.acquire = acquire
-        self.argument_masker = argument_masker or _mask_tool_arguments
+        self._event_digest_key = secrets.token_bytes(32)
+        self.argument_masker = argument_masker or (
+            lambda name, value: _mask_tool_arguments(name, value, key=self._event_digest_key)
+        )
         self.result_masker = result_masker
         self._cli_semaphores: dict[Mode, asyncio.Semaphore] = {}
 
@@ -152,14 +172,28 @@ class CallRuntime:
         resume: SessionHandle | None = None,
         turns_per_slice: int | None = None,
         stable_prefix: bool = False,
+        capture_text: bool | None = None,
         fork: bool = False,
         context: WorkingContext | None = None,
         parent_call_id: str | None = None,
         native_agents: Mapping[str, Any] | None = None,
         workspace: Workspace | None = None,
+        scope: Scope | None = None,
+        context_policy: Any = None,
+        native_tool_policy: NativeToolPolicy | None = None,
     ) -> Answer[Any]:
         if not call_id:
             raise ValueError("call_id is required")
+        capture_text_for_call = self.capture_text if capture_text is None else capture_text
+        if capture_text_for_call and self.result_masker is None:
+            raise ValueError("capture_text requires a host result_masker so narration cannot disclose secrets")
+        effective_native_policy = self.native_tool_policy if native_tool_policy is None else NativeToolPolicy(
+            native_tool_policy
+        )
+        policy_rank = {NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}
+        if policy_rank[effective_native_policy] > policy_rank[self.native_tool_policy]:
+            raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
+        scope = scope or Scope()
         if turns_per_slice is not None and turns_per_slice < 1:
             raise ValueError("turns_per_slice must be positive")
         if turns_per_slice is not None and binding.mode == Mode.CODEX:
@@ -215,15 +249,49 @@ class CallRuntime:
 
         sequence = 0
 
+        event_sink_failure: str | None = None
+        event_sink_failure_streak = 0
+        event_sink_disabled = False
+
         async def emit(kind: str, **fields: Any) -> None:
-            nonlocal sequence
+            nonlocal sequence, event_sink_failure, event_sink_failure_streak, event_sink_disabled
             sequence += 1
-            if events is not None:
-                result = events(
-                    CallEvent(kind, call_id, fields, sequence, datetime.now(UTC).isoformat(), parent_call_id)
-                )
-                if inspect.isawaitable(result):
-                    await result
+            if events is not None and not event_sink_disabled:
+                event = CallEvent(kind, call_id, fields, sequence, datetime.now(UTC).isoformat(), parent_call_id)
+                try:
+                    result = events(event)
+                    if inspect.isawaitable(result):
+                        await result
+                    event_sink_failure_streak = 0
+                except Exception as exc:
+                    # Event delivery is observational. Preserve the answer,
+                    # report the first failure immediately, and keep trying;
+                    # only a sustained failure disables the sink.
+                    event_sink_failure = type(exc).__name__
+                    event_sink_failure_streak += 1
+                    if kind != EventKind.DEGRADED and event_sink_failure_streak < 3:
+                        sequence += 1
+                        degraded = CallEvent(
+                            EventKind.DEGRADED,
+                            call_id,
+                            {
+                                "setting": "event_sink",
+                                "requested": "enabled",
+                                "applied": "retrying delivery",
+                                "reason": f"subscriber raised {event_sink_failure}; answer is preserved",
+                            },
+                            sequence,
+                            datetime.now(UTC).isoformat(),
+                            parent_call_id,
+                        )
+                        try:
+                            result = events(degraded)
+                            if inspect.isawaitable(result):
+                                await result
+                        except Exception:
+                            event_sink_failure_streak += 1
+                    if event_sink_failure_streak >= 3:
+                        event_sink_disabled = True
 
         async def mode_event(event: CallEvent) -> None:
             nonlocal last_event, saw_event, effective
@@ -244,7 +312,7 @@ class CallRuntime:
                         ),
                     ),
                 )
-            if event.kind == EventKind.MESSAGE_DELTA and not self.capture_text:
+            if event.kind == EventKind.MESSAGE_DELTA and not capture_text_for_call:
                 fields = {"length": len(str(fields.get("text", "")))}
             if event.kind == EventKind.TOOL_CALL and "arguments" in fields:
                 fields["arguments"] = self.argument_masker(str(fields.get("name", "")), fields["arguments"])
@@ -255,6 +323,19 @@ class CallRuntime:
                     preview = self.result_masker(str(fields.get("name", "")), str(fields["result_preview"]))
                     fields["result_preview"] = preview.encode("utf-8")[:512].decode("utf-8", errors="ignore")
             await emit(event.kind, **fields)
+
+        async def apply_context_policy() -> None:
+            nonlocal working
+            if context_policy is None:
+                return
+            revised = context_policy(working)
+            if inspect.isawaitable(revised):
+                revised = await revised
+            from agentkit.state.context import WorkingContext
+
+            if not isinstance(revised, WorkingContext):
+                raise TypeError("context policy must return WorkingContext")
+            working = revised
 
         await emit(
             EventKind.CALL_STARTED,
@@ -322,18 +403,35 @@ class CallRuntime:
         current_session = resume
         model_in_flight = False
         started_tools: set[str] = set()
+        active_host_tools = 0
+
+        def tool_activity(active: bool | None = None) -> bool:
+            nonlocal active_host_tools
+            if active is None:
+                return active_host_tools > 0
+            active_host_tools = max(0, active_host_tools + (1 if active else -1))
+            return active_host_tools > 0
         if (
             model_changed
             or context_changed
             or (resume is None and (len(working.messages) > 1 or working.prefix.grounding))
         ):
+            keep_native_cli_session = (
+                resume is not None
+                and not model_changed
+                and not binding.mode.is_api
+                and resume.mode == binding.mode
+                and bool(getattr(adapter, "preserves_native_session", False))
+            )
             current_session = SessionHandle(
                 binding.mode,
                 call_id,
+                cli_session_id=resume.cli_session_id if keep_native_cli_session and resume is not None else None,
                 history=history_for((*working.prefix.grounding, *working.messages), binding.mode),
                 messages=tuple(working.messages),
                 model=binding.model,
                 prefix=working.prefix,
+                home_bundle_ref=resume.home_bundle_ref if keep_native_cli_session and resume is not None else None,
             )
         elif resume and resume.history:
             current_session = replace(resume, history=(*resume.history, {"role": "user", "content": prompt.user}))
@@ -345,7 +443,10 @@ class CallRuntime:
                     now = time.monotonic()
                     cancelled = cancel is not None and cancel.cancelled
                     wall = limits.wall_clock_s is not None and now - started >= limits.wall_clock_s
-                    idle = transport and saw_event and limits.idle_s is not None and now - last_event >= limits.idle_s
+                    idle = (
+                        transport and active_host_tools == 0 and saw_event and limits.idle_s is not None
+                        and now - last_event >= limits.idle_s
+                    )
                     first = (
                         transport
                         and not saw_event
@@ -398,12 +499,32 @@ class CallRuntime:
                     FailureClass.INVALID_REQUEST,
                     mode_detail={"reason": "workspace authority is available only to CLI modes"},
                 )
-            elif binding.mode == Mode.CODEX and self.native_tool_policy == NativeToolPolicy.DENY:
+            elif binding.mode == Mode.CODEX and limits.max_cost_usd is not None:
+                failure = Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={
+                        "reason": (
+                            "Codex CLI cannot enforce a hard mid-call cost cap; "
+                            "remove max_cost_usd or use another mode"
+                        )
+                    },
+                )
+            elif binding.mode == Mode.CODEX and effective_native_policy == NativeToolPolicy.DENY:
                 failure = Failure(
                     FailureClass.INVALID_REQUEST,
                     mode_detail={
                         "reason": "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"
                     },
+                )
+            elif (
+                binding.mode == Mode.CLAUDE_CODE
+                and effective_native_policy == NativeToolPolicy.DENY
+                and workspace is not None
+                and workspace.native_tools
+            ):
+                failure = Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "Claude native tools were explicitly granted while per-call policy is DENY"},
                 )
             elif (table is None or not table.has(binding.mode, binding.model)) and (
                 self.unpriced_policy == UnpricedPolicy.REFUSE
@@ -511,8 +632,22 @@ class CallRuntime:
                                         call_id=call_id,
                                         native_agents=agents_arg,
                                         workspace=workspace_arg,
+                                        scope=scope,
                                         stable_prefix=stable_prefix_arg,
                                         fork=fork_arg,
+                                        **(
+                                            {
+                                                "native_tool_policy": effective_native_policy,
+                                                "tool_activity": tool_activity,
+                                                **(
+                                                    {"context_policy": context_policy}
+                                                    if context_policy is not None
+                                                    else {}
+                                                ),
+                                            }
+                                            if not binding.mode.is_api
+                                            else {}
+                                        ),
                                     ),
                                 )
                             async with self.acquire(binding.mode):
@@ -531,8 +666,22 @@ class CallRuntime:
                                         call_id=call_id,
                                         native_agents=agents_arg,
                                         workspace=workspace_arg,
+                                        scope=scope,
                                         stable_prefix=stable_prefix_arg,
                                         fork=fork_arg,
+                                        **(
+                                            {
+                                                "native_tool_policy": effective_native_policy,
+                                                "tool_activity": tool_activity,
+                                                **(
+                                                    {"context_policy": context_policy}
+                                                    if context_policy is not None
+                                                    else {}
+                                                ),
+                                            }
+                                            if not binding.mode.is_api
+                                            else {}
+                                        ),
                                     ),
                                 )
 
@@ -556,7 +705,8 @@ class CallRuntime:
                         previous = current_session.reported_cost if current_session else None
                         if turn.reported_cost_cumulative and previous is not None and reported >= previous:
                             reported -= previous
-                        amount, source = reported, CostSource.REPORTED
+                        amount = reported
+                        source = CostSource.MIXED if not turn.usage_complete else CostSource.REPORTED
                     incomplete_accounting = (not turn.usage_complete and turn.reported_cost is None) or (
                         not turn.raw_usage and turn.reported_cost is None
                     )
@@ -569,13 +719,19 @@ class CallRuntime:
                         and not any(bool(value) for value in turn.raw_usage.values())
                         and not any(message.strip() for message in turn.messages)
                     )
+                    if cli_failure_without_usage_or_cost:
+                        # A pre-output CLI failure has done no billable work.
+                        # Keep the monetary ledger known at zero for this
+                        # attempt; token completeness remains an independent
+                        # fact on Answer.
+                        amount, source = Decimal(0), cost_source
                     if amount is None:
                         total_cost, cost_source = None, CostSource.UNPRICED
                         if limits.max_cost_usd is not None and not cli_failure_without_usage_or_cost:
                             budget_unknown = True
                     elif total_cost is not None:
                         total_cost += amount
-                        cost_source = source
+                        cost_source = CostSource.MIXED if CostSource.MIXED in (cost_source, source) else source
                     if amount is not None:
                         budget_spent += amount
                     await emit(EventKind.USAGE, raw_usage=raw, usage=asdict(usage))
@@ -592,7 +748,31 @@ class CallRuntime:
                     )
                     messages.extend(turn.messages)
                     for index, message in enumerate(turn.messages, len(messages) - len(turn.messages)):
-                        await emit(EventKind.MESSAGE_DONE, index=index, length=len(message), final=not turn.tool_calls)
+                        fields: dict[str, Any] = {
+                            "index": index,
+                            "length": len(message),
+                            "final": not turn.tool_calls,
+                        }
+                        if capture_text_for_call:
+                            try:
+                                assert self.result_masker is not None
+                                masked_text = self.result_masker("assistant", message)
+                                if not isinstance(masked_text, str):
+                                    raise TypeError("result_masker must return text")
+                                encoded = masked_text.encode("utf-8")
+                                fields["text"] = encoded[:4096].decode("utf-8", errors="ignore")
+                                if len(encoded) > 4096:
+                                    fields["text_truncated"] = True
+                            except Exception as exc:
+                                fields["text_omitted"] = True
+                                await emit(
+                                    EventKind.DEGRADED,
+                                    setting="capture_text",
+                                    requested="masked narration",
+                                    applied="length only",
+                                    reason=f"host masker failed ({type(exc).__name__})",
+                                )
+                        await emit(EventKind.MESSAGE_DONE, **fields)
                     text = turn.messages[-1] if turn.messages else ""
                     if not binding.mode.is_api:
                         working.extend(turn.canonical_messages)
@@ -632,7 +812,8 @@ class CallRuntime:
                         raw or (current_session.raw_usage if current_session else {}),
                         messages=tuple(working.messages),
                         model=binding.model,
-                        home_bundle=turn.home_bundle or (current_session.home_bundle if current_session else {}),
+                        home_bundle_ref=turn.home_bundle_ref
+                        or (current_session.home_bundle_ref if current_session else None),
                         prefix=working.prefix,
                         reported_cost=(
                             turn.reported_cost
@@ -755,33 +936,70 @@ class CallRuntime:
                         if tools is None:
                             failure = Failure(FailureClass.TOOL_ERROR, mode_detail={"reason": "tools are unavailable"})
                             break
-                        from agentkit.core.runtime import RunContext
-
-                        tool_ctx = RunContext(scope=Scope(), correlation_id=call_id, cancel=cancel)
+                        tool_ctx = _ToolContext(scope=scope, correlation_id=call_id, cancel=cancel)
                         history = list(current_session.history)
                         anthropic_results = []
-                        for call in turn.tool_calls:
-                            if call["name"] == "__pause_turn__":
-                                continue
+                        dispatchable = [call for call in turn.tool_calls if call["name"] != "__pause_turn__"]
+                        for call in dispatchable:
                             await emit(
                                 EventKind.TOOL_CALL,
                                 name=call["name"],
                                 tool_call_id=call["id"],
-                                argument_digest=digest(call["arguments"]),
+                                argument_digest=_keyed_digest(self._event_digest_key, call["arguments"]),
                                 arguments=self.argument_masker(call["name"], call["arguments"]),
                             )
-                            started_tools.add(call["id"])
-                            tool_turn = await monitored(
-                                _tool_turn(tools, call["name"], call["arguments"], tool_ctx), transport=False
-                            )
-                            if tool_turn.failure:
-                                failure = tool_turn.failure
-                                outcome = (
-                                    Outcome.CANCELLED
-                                    if failure.classification == FailureClass.CANCELLED
-                                    else Outcome.LIMIT_REACHED
+
+                        semaphore = asyncio.Semaphore(max(1, int(getattr(tools, "max_concurrency", 4))))
+
+                        registry = getattr(tools, "registry", None)
+                        def is_side_effect_free(
+                            call: Mapping[str, Any], *, registry: Any = registry,
+                        ) -> bool:
+                            if registry is None:
+                                return False
+                            try:
+                                tool = registry.get(str(call["name"]))
+                            except (KeyError, TypeError):
+                                # Deferred dispatchers and tools supplied by an adapter are
+                                # conservatively serialized because their effects are unknown.
+                                return False
+                            return not bool(getattr(tool, "side_effecting", False))
+
+                        async def execute_tool(
+                            call: Mapping[str, Any], *, tool_semaphore: asyncio.Semaphore = semaphore,
+                            run_ctx: _ToolContext = tool_ctx,
+                        ) -> Turn:
+                            async with tool_semaphore:
+                                if cancel is not None and cancel.cancelled:
+                                    return Turn(failure=Failure(
+                                        FailureClass.CANCELLED,
+                                        mode_detail={"reason": "tool was not started before cancellation"},
+                                    ))
+                                started_tools.add(call["id"])
+                                return await monitored(
+                                    _tool_turn(tools, call["name"], call["arguments"], run_ctx), transport=False
                                 )
-                                break
+
+                        if all(is_side_effect_free(call) for call in dispatchable):
+                            tool_turns = await asyncio.gather(*(execute_tool(call) for call in dispatchable))
+                        else:
+                            tool_turns = []
+                            for call in dispatchable:
+                                tool_turns.append(await execute_tool(call))
+                        tool_failed = False
+                        for call, tool_turn in zip(dispatchable, tool_turns, strict=True):
+                            if call["name"] == "__pause_turn__":
+                                continue
+                            if tool_turn.failure:
+                                if failure is None:
+                                    failure = tool_turn.failure
+                                    outcome = (
+                                        Outcome.CANCELLED
+                                        if failure.classification == FailureClass.CANCELLED
+                                        else Outcome.LIMIT_REACHED
+                                    )
+                                tool_failed = True
+                                continue
                             result = tool_turn.value
                             preview_fields = {}
                             if self.result_masker is not None:
@@ -826,10 +1044,13 @@ class CallRuntime:
                                         "output": tool_content(result.content, Mode.OPENAI_API),
                                     }
                                 )
+                        if tool_failed:
+                            break
                         if failure:
                             break
                         if anthropic_results:
                             history.append({"role": "user", "content": anthropic_results})
+                        await apply_context_policy()
                         current_session = replace(
                             current_session, history=tuple(history), messages=tuple(working.messages)
                         )
@@ -948,25 +1169,48 @@ class CallRuntime:
             cost_source=cost_source,
             duration_s=time.monotonic() - started,
         )
+        if event_sink_failure is not None:
+            degradation = Degradation(
+                "event_sink",
+                "enabled",
+                "disabled for this call",
+                f"subscriber raised {event_sink_failure}; answer was preserved",
+            )
+            answer = replace(answer, effective=replace(
+                answer.effective, degradations=(*answer.effective.degradations, degradation)
+            ))
         return answer
 
 
-def _mask_tool_arguments(name: str, arguments: Any) -> Any:
+def _mask_tool_arguments(name: str, arguments: Any, *, key: bytes | None = None) -> Any:
     """Digest every leaf and key before tool arguments enter the event journal."""
     if isinstance(arguments, Mapping):
         return {
-            f"key:{_masked_event_scalar(key)['sha256']}": _mask_tool_arguments(name, value)
-            for key, value in arguments.items()
+            f"key:{_masked_event_scalar(key_name, digest_key=key)['sha256']}": _mask_tool_arguments(
+                name, value, key=key
+            )
+            for key_name, value in arguments.items()
         }
     if isinstance(arguments, (tuple, list)):
-        return tuple(_mask_tool_arguments(name, item) for item in arguments)
-    return _masked_event_scalar(arguments)
+        return tuple(_mask_tool_arguments(name, item, key=key) for item in arguments)
+    return _masked_event_scalar(arguments, digest_key=key)
 
 
-def _masked_event_scalar(value: Any) -> dict[str, Any]:
+def _keyed_digest(key: bytes | None, value: Any) -> str:
+    encoded = repr(value).encode("utf-8", errors="replace")
+    if key is None:
+        return digest(value)
+    return hmac.new(key, encoded, hashlib.sha256).hexdigest()
+
+
+def _masked_event_scalar(value: Any, *, digest_key: bytes | None = None) -> dict[str, Any]:
     kind = type(value).__name__
     encoded = repr(value).encode("utf-8", errors="replace")
-    return {"type": kind, "length": len(encoded), "sha256": digest({"type": kind, "value": repr(value)})}
+    return {
+        "type": kind,
+        "length": len(encoded),
+        "sha256": _keyed_digest(digest_key, {"type": kind, "value": repr(value)}),
+    }
 
 
 async def _tool_turn(tools: Any, name: str, arguments: Any, ctx: Any) -> Turn:

@@ -13,9 +13,14 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
-from agentkit.core.telemetry.observation import TraceContext
+
+@dataclass(frozen=True)
+class TraceContext:
+    trace_id: str
+    span_id: str
 
 
 def otel_tracer(tracer_provider: Any = None) -> OtelTracePort:

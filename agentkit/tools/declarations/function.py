@@ -49,6 +49,7 @@ class FunctionTool:
         False  # safe to retry: read-only lookups, pure functions; independent of side_effecting
     )
     requires_approval: bool = False  # the loop suspends for human approval before this runs
+    timeout_s: float | None = None  # optional per-tool deadline; None inherits the ToolSet default
     caps: tuple[str, ...] = ()  # Rule-of-Two tags: "private_data" | "untrusted_content" | "egress"
     url_arg: str | None = None  # if set, this arg is a URL → egress middleware checks it
     output_schema: Any = None
@@ -72,6 +73,8 @@ class FunctionTool:
     _output_adapter: SchemaAdapter[Any] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.timeout_s is not None and self.timeout_s <= 0:
+            raise ValueError("tool timeout_s must be positive or None")
         # Build the adapter once at construction time so ``run()`` is a
         # straight ``isinstance``/dispatch on the hot path — never an
         # ``adapt()`` call per tool invocation. Failing here (unsupported
@@ -133,6 +136,7 @@ class FunctionTool:
         side_effecting: bool = False,
         idempotent: bool = False,
         requires_approval: bool = False,
+        timeout_s: float | None = None,
         caps: tuple[str, ...] = (),
         url_arg: str | None = None,
         output_schema: Any = _OUTPUT_AUTO,
@@ -312,6 +316,7 @@ class FunctionTool:
             side_effecting=side_effecting,
             idempotent=idempotent,
             requires_approval=requires_approval,
+            timeout_s=timeout_s,
             caps=tuple(caps),
             url_arg=url_arg,
             output_schema=resolved_output_schema,
@@ -331,6 +336,7 @@ def tool(
     name: str | None = None,
     description: str | None = None,
     requires_approval: bool = False,
+    timeout_s: float | None = None,
     caps: tuple[str, ...] = (),
     url_arg: str | None = None,
     output_schema: Any = _OUTPUT_AUTO,
@@ -359,6 +365,7 @@ def tool(
         "side_effecting": bool(side_effecting),
         "idempotent": idempotent,
         "requires_approval": requires_approval,
+        "timeout_s": timeout_s,
         "caps": caps,
         "url_arg": url_arg,
         "output_schema": output_schema,

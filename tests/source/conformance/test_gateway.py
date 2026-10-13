@@ -10,7 +10,7 @@ import pytest
 
 from agentkit.agents.prompts.composition import digest
 from agentkit.core.contracts.types import Scope
-from agentkit.core.runtime import RunContext
+from agentkit.core.testing import make_test_ctx
 from agentkit.integrations.mcp.gateway import (
     McpGateway,
     McpPolicy,
@@ -271,7 +271,7 @@ async def test_external_policy_deny_and_invocation_approval_override_pinned_appr
     async with McpGateway(client_factory=lambda _: Client()) as gateway:
         connection = await gateway.connect(config, policy)
         tools = gateway.tools()
-        ctx = RunContext(correlation_id="gateway", scope=Scope())
+        ctx = make_test_ctx(scope=Scope())
         name = tools.registry.names()[0]
         result = await tools.execute(name, {}, ctx)
         assert result.is_error and "not approved" in result.text
@@ -490,7 +490,7 @@ async def test_gateway_closes_owned_clients_and_revokes_previously_exported_tool
         tools = gateway.tools()
         name = tools.registry.names()[0]
     assert owned.closed
-    assert (await tools.execute(name, {}, RunContext(correlation_id="test", scope=Scope()))).is_error
+    assert (await tools.execute(name, {}, make_test_ctx(scope=Scope()))).is_error
     with pytest.raises(RuntimeError, match="closed"):
         await gateway.connect(config, McpPolicy())
 
@@ -571,5 +571,5 @@ async def test_host_factory_unhandled_input_requests_become_explicit_model_visib
     async with McpGateway(client_factory=lambda _: Client()) as gateway:
         await gateway.connect(config, policy)
         tools = gateway.tools()
-        result = await tools.execute(tools.registry.names()[0], {}, RunContext(correlation_id="test", scope=Scope()))
+        result = await tools.execute(tools.registry.names()[0], {}, make_test_ctx(scope=Scope()))
         assert result.is_error and "host client" in result.text

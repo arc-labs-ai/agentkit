@@ -7,7 +7,15 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from agentkit.core.contracts.types import Delta, LLMResult, Message, ToolCall, ToolSchema, Usage, assemble_deltas
+from agentkit.core.contracts.types import (
+    Delta,
+    LLMResult,
+    Message,
+    ProviderUsage,
+    ToolCall,
+    ToolSchema,
+    assemble_deltas,
+)
 from agentkit.models.adapters._mapping import _flatten
 
 
@@ -48,7 +56,7 @@ class Turn:
 
     content: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
-    usage: Usage | None = None
+    usage: ProviderUsage | None = None
 
 
 class FakeLLM:
@@ -70,7 +78,7 @@ class FakeLLM:
         self,
         responses: dict[str, str] | Callable[..., str] | str = "{}",
         *,
-        usage: Usage | None = None,
+        usage: ProviderUsage | None = None,
         fail_times: int = 0,
         fail_exc: BaseException | None = None,
         delay: float = 0.0,
@@ -78,7 +86,7 @@ class FakeLLM:
         repeat_last: bool = False,
     ):
         self._responses = responses
-        self._usage = usage or Usage(10, 5, 0.0001)
+        self._usage = usage or ProviderUsage(10, 5, 0.0001)
         self._fail_times = fail_times
         self._fail_exc = fail_exc or TimeoutError("temporary upstream timeout")
         self._delay = delay

@@ -27,81 +27,11 @@ def test_star_import_exposes_all():
         assert name in ns
 
 
-def test_key_surface_is_exported():
-    # Retain every headline contract while checking its actual public owner.
-    import importlib
+def test_runtime_and_runner_are_the_only_public_execution_entrypoints():
+    from agentkit.agents import AgentRunner
+    from agentkit.core.runtime import CallRuntime
 
-    owners = {
-        "agentkit.agents": ("Agent", "Workflow", "AgentResult", "WorkflowResult", "Suspended", "Handoff", "RunPolicy", "Autonomy"),
-        "agentkit.agents.prompts": ("Prompt",),
-        "agentkit.agents.requests": ("RequestBuilder",),
-        "agentkit.tools": ("tool", "ToolRegistry"),
-        "agentkit.state.context": ("WorkingContext", "PrefixContext", "ContextScope"),
-        "agentkit.state.memory": ("VectorMemory",),
-        "agentkit.core.guardrails": ("Guardrail",),
-        "agentkit.state.checkpoints": ("Checkpointer",),
-        "agentkit.core.runtime": ("RunContext", "Budget"),
-        "agentkit.core": ("collect",),
-        "agentkit.models.providers.frontiers": ("claude",),
-    }
-    for module_name, names in owners.items():
-        owner = importlib.import_module(module_name)
-        for name in names:
-            assert name in owner.__all__ and hasattr(owner, name), f"{module_name}.{name}"
-    from agentkit.models.client.chat import Chat
-
-    assert Chat.__module__ == "agentkit.models.client.chat"
-
-
-def test_legacy_pre_refactor_symbols_are_not_exported():
-    # The team/orchestrator/planner vocabulary was retired in favour of
-    # ``Agent(children=..., policy=...)`` + the four explicit policies in
-    # ``agentkit.agents.policies``.
-    # The autonomy module-level constants collapsed into the ``Autonomy`` enum. Guard against
-    # accidental reintroduction so callers can't silently depend on a dead surface.
-    legacy = {
-        # team/orchestrator vocabulary (replaced by Agent + Policy)
-        "RoundRobinTeam",
-        "SelectorTeam",
-        "Orchestrator",
-        "LedgerOrchestrator",
-        "TeamResult",
-        "OrchestratorResult",
-        "LedgerResult",
-        # request-shaping rename
-        "Composer",
-        # planner/step/task vocabulary (subsumed by Workflow + PlanPolicy)
-        "Step",
-        "Planner",
-        "StaticPlanner",
-        "Task",
-        "TaskLedger",
-        "ProgressLedger",
-        # autonomy constants (replaced by Autonomy enum)
-        "AUTO",
-        "GATED",
-        "MANUAL",
-        "LEVELS",
-    }
-    leaked = legacy & set(agentkit.__all__)
-    assert not leaked, f"legacy pre-refactor symbols still in __all__: {sorted(leaked)}"
-
-
-def test_kernel_subpackage_exports_its_own_primitives():
-    # importing from the documented L0 layer must reach the kernel's own contract + types
-    import agentkit.core as k
-
-    for name in (
-        "Delta",
-        "assemble_deltas",
-        "collect",
-        "collect_one",
-        "Cancelled",
-        "CancellationToken",
-        "Failure",
-        "compose_failures",
-        "Observation",
-        "ObserverPort",
-        "streams",
-    ):
-        assert name in k.__all__ and hasattr(k, name)
+    assert "AgentRunner" in agentkit.agents.__all__
+    assert "CallRuntime" in agentkit.core.runtime.__all__
+    assert CallRuntime.__module__ == "agentkit.core.runtime.calls"
+    assert AgentRunner.__module__ == "agentkit.agents.execution.runner"

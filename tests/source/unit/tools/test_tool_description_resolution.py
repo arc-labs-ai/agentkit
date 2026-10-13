@@ -99,24 +99,6 @@ def test_windows_line_endings_are_normalised_out_of_the_description() -> None:
     assert t.description == "Do the documented thing properly.\n\nAnd here is the second paragraph."
 
 
-def test_the_real_ask_human_tool_now_advertises_its_second_paragraph() -> None:
-    """The defect that motivated all of the above, asserted against the shipped tool.
-
-    ``ask_human`` is the one tool inside agentkit with a multi-paragraph docstring, and
-    the sentence in its second paragraph -- do not use this when the information is
-    available another way -- is the single most consequential thing it can tell a model,
-    because the failure it prevents is interrupting a person who did not need to be
-    interrupted. It was written, reviewed, and never sent.
-    """
-    from agentkit.agents.control.elicitation import ask_human_tool
-
-    t = ask_human_tool()
-    assert t.description.startswith("Ask the human operator a question")
-    assert "genuinely cannot be obtained any" in t.description
-    assert t.schema is not None
-    assert t.schema.description == t.description
-
-
 # ---- 2. the explicit cut ------------------------------------------------------------------
 
 

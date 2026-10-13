@@ -14,8 +14,8 @@ from agentkit.agents.prompts import Prompt
 from agentkit.agents.prompts.composition import PromptPart, compose, digest
 from agentkit.agents.skills.resources import FileSkillSource, SkillRef
 from agentkit.core.contracts.types import Scope
-from agentkit.core.runtime import RunContext
 from agentkit.core.runtime.calls import CallRuntime
+from agentkit.core.testing import make_test_ctx
 from agentkit.integrations.mcp.gateway import McpGateway, McpPolicy, ServerConfig
 from agentkit.models.contracts.failures import classify, retry_after
 from agentkit.models.contracts.settings import CapabilityTable
@@ -146,7 +146,7 @@ async def test_tool_policy_is_shared_for_error_overflow_images_and_deferred_load
     tools = ToolSet(
         ToolRegistry.from_tools([long_result, bad_result]), OverflowPolicy(256, tmp_path), deferred=("long_result",)
     )
-    ctx = RunContext(correlation_id="test", scope=Scope())
+    ctx = make_test_ctx(scope=Scope())
     assert "long_result" not in [s.name for s in tools.schemas()]
     refused = await tools.execute("long_result", {}, ctx)
     assert refused.is_error
@@ -179,11 +179,11 @@ async def test_gateway_pins_raw_definitions_and_deny_wins():
         connected = await gateway.connect(config, policy)
         tools = gateway.tools()
         name = tools.registry.names()[0]
-        assert (await tools.execute(name, {}, RunContext(correlation_id="test", scope=Scope()))).text == "ok"
+        assert (await tools.execute(name, {}, make_test_ctx(scope=Scope()))).text == "ok"
         definition["description"] = "changed"
         await connected.refresh()
         assert not gateway.tools().registry.names()
-        assert (await tools.execute(name, {}, RunContext(correlation_id="test", scope=Scope()))).is_error
+        assert (await tools.execute(name, {}, make_test_ctx(scope=Scope()))).is_error
         connected.policy = replace(policy, deny=("https://public.example/mcp#*",))
         assert not gateway.tools(approved_only=False).registry.names()
 

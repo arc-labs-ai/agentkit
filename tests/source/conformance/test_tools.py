@@ -117,6 +117,35 @@ async def test_tool_timeout_is_model_visible_and_cancels_body():
 
 
 @pytest.mark.asyncio
+async def test_per_tool_deadline_overrides_toolset_default():
+    @tool(side_effecting=False, timeout_s=0.2)
+    async def slow_lookup() -> str:
+        """Wait briefly for a remote read that has its own service deadline."""
+        await asyncio.sleep(0.04)
+        return "complete"
+
+    result = await ToolSet(ToolRegistry.from_tools([slow_lookup]), timeout_s=0.01).execute(
+        "slow_lookup", {}, make_test_ctx()
+    )
+    assert not result.is_error
+    assert result.text == "complete"
+
+
+@pytest.mark.asyncio
+async def test_per_tool_deadline_expires_even_when_toolset_default_is_unbounded():
+    @tool(side_effecting=False, timeout_s=0.01)
+    async def stalled_lookup() -> str:
+        """Wait forever to verify the declared per-tool deadline is enforced."""
+        await asyncio.Event().wait()
+        return "unreachable"
+
+    result = await ToolSet(ToolRegistry.from_tools([stalled_lookup]), timeout_s=None).execute(
+        "stalled_lookup", {}, make_test_ctx()
+    )
+    assert result.is_error and "TimeoutError" in result.text
+
+
+@pytest.mark.asyncio
 async def test_cancellation_propagates_instead_of_becoming_recoverable_tool_error():
     ctx = make_test_ctx(cancel=CancellationToken())
     ctx.cancel.cancel()

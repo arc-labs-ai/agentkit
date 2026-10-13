@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from agentkit.core.contracts.types import Delta, LLMResult, Message, ToolCall, Usage
+from agentkit.core.contracts.types import Delta, LLMResult, Message, ProviderUsage, ToolCall
 from agentkit.core.serialization._json import JSONDecodeError
 from agentkit.core.serialization._json import loads as _json_loads
 
@@ -109,7 +109,7 @@ def _duck_to_result(raw: Any, cost_fn: Callable[[Any, int, int], float | None] =
     Every field is read with `_get`, which handles BOTH a mapping and an object. It used to use
     bare `getattr`, so a dict-shaped response — the single most common shape for an injected
     `CallableLLM` fn — matched nothing and coerced to an empty result: measured, a fn returning
-    `{"content": "the answer is 42", "usage": {...}}` produced `content='' usage=Usage(0, 0, 0.0)`.
+    `{"content": "the answer is 42", "usage": {...}}` produced `content='' usage=ProviderUsage(0, 0, 0.0)`.
     Content, tool calls, tokens and cost were all lost with no exception, so the agent read the
     empty string as the model's answer and the call was billed as free."""
     if isinstance(raw, LLMResult):
@@ -131,7 +131,7 @@ def _duck_to_result(raw: Any, cost_fn: Callable[[Any, int, int], float | None] =
         model=model,
         provider=_get(raw, "provider"),
         finish_reason=_get(raw, "finish_reason"),
-        usage=Usage(
+        usage=ProviderUsage(
             in_tok,
             out_tok,
             None if measured is None else float(measured),

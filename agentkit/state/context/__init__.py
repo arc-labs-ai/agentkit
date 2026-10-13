@@ -1,37 +1,19 @@
-"""agentkit.state.context — in-flight reasoning state.
+"""In-flight conversation state and host policies for context and memory.
 
-The context subpackage owns the **data agents reason over**. It is the
-third leg of agentkit's run-state tripod:
-
-* ``RunContext`` (``agentkit.core.runtime``)  — execution wiring: identity,
-  budgets, services, cooperative cancellation. The *how* a run runs.
-* ``WorkingContext`` (this package)      — in-flight reasoning state.
-  A unified state object with four orthogonal axes:
-    - ``prefix``     — cache-stable system + grounding head
-    - ``messages``   — per-turn LLM transcript tail
-    - ``scratchpad`` — cross-step notes
-    - ``journal``    — append-only authored history (MutationJournal)
-
-Long-term recall lives on the agent — ``Agent.memory: MemorySource``
-(see ``agentkit.state.memory``). The cognition queries memory and grounds
-the prompt via the ``RequestBuilder`` seam.
-
-This package is deliberately narrow: it owns the data shapes and the
-pure operations on them (slice, fork, merge, freeze, diff, record,
-journal-diff, token estimate). It does NOT compact, retrieve, or
-call the LLM — those policies stay with their owners (``Compactor``,
-``MemorySource``, ``Invoker``).
-
-The split mirrors the KV-cache discipline: the prefix is the
-cache-stable head, the messages tail is per-turn churn, the journal
-is structured authored history, and they never bleed into each
-other.
+``WorkingContext`` keeps the stable prefix, transcript messages, scratchpad
+and journal as separate values. ``ContextPolicy`` transforms that state
+between slices or before portable replay. ``MemoryProvider`` supplies scoped,
+untrusted context parts during agent prompt composition. Neither policy calls
+a model; ``CallRuntime`` and ``AgentRunner`` own execution.
 """
 
 from __future__ import annotations
 
 from agentkit.state.context.context import ContextDiff, FrozenContext, JournalEntryT, MutationJournal, WorkingContext
+from agentkit.state.context.memory import MemoryContext, MemoryProvider
+from agentkit.state.context.policy import ContextPolicy, SlidingWindowContextPolicy
 from agentkit.state.context.prefix import PrefixContext
+from agentkit.state.context.replay import BoundedReplay, prepare_bounded_replay
 from agentkit.state.context.scope import AllOf, AnyOf, ContextScope, LastNTurns, Not, RoleFilter, Since, Tagged
 from agentkit.state.context.tokens import ApproxTokenCounter, TiktokenCounter, TokenCounter
 
@@ -40,11 +22,16 @@ __all__ = [
     "AnyOf",
     "ApproxTokenCounter",
     "ContextDiff",
+    "ContextPolicy",
+    "SlidingWindowContextPolicy",
     "ContextScope",
+    "BoundedReplay",
     "FrozenContext",
     "JournalEntryT",
     "LastNTurns",
     "MutationJournal",
+    "MemoryContext",
+    "MemoryProvider",
     "Not",
     "PrefixContext",
     "RoleFilter",
@@ -53,4 +40,5 @@ __all__ = [
     "TiktokenCounter",
     "TokenCounter",
     "WorkingContext",
+    "prepare_bounded_replay",
 ]

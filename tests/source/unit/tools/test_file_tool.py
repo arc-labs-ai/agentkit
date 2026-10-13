@@ -78,15 +78,3 @@ def test_the_class_name_and_the_tool_name_are_deliberately_different() -> None:
     surface), the tool is named for the MODEL."""
     assert FileTool.__name__ == "FileTool"
     assert FileTool.name == "memory"
-
-
-def test_the_tool_and_the_memory_package_are_different_surfaces() -> None:
-    """The collision is real and the resolution is that these answer different
-    questions: `FileMemory` scores notes against a query, `FileTool` lets the
-    model edit them. Anyone tempted to unify the names should have to delete
-    this test and explain which of the two questions goes away."""
-    from agentkit.state.memory import FileMemory
-
-    assert hasattr(FileMemory, "query")          # retrieval / scoring side
-    assert hasattr(FileTool, "run")              # model-driven edit side
-    assert not hasattr(FileMemory, "schema")     # not a Tool — never on the menu

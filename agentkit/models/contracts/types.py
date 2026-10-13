@@ -9,10 +9,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar
 
+from agentkit.core.contracts.sessions import SessionBundleRef
 from agentkit.core.contracts.types import Message, Mode
 from agentkit.core.serialization._immutable import deep_freeze
 from agentkit.models.contracts.constants import (
     CALL_EVENT_SCHEMA_VERSION,
+    CacheTtl,
     ClaudePermissionMode,
     CodexSandboxMode,
     CostSource,
@@ -52,6 +54,25 @@ class CredentialRef:
     resolve: CredentialResolver = field(repr=False, compare=False)
 
 
+@dataclass(frozen=True)
+class Allow:
+    """Explicitly allow a native CLI tool invocation."""
+
+
+@dataclass(frozen=True)
+class Deny:
+    """Explicitly refuse a native CLI tool invocation."""
+
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            raise ValueError("denial reason must be non-empty")
+
+
+PreToolUse = Callable[[str, Mapping[str, Any]], Awaitable[Allow | Deny]]
+
+
 async def resolve_credential(ref: CredentialRef | None) -> Credential:
     if ref is None:
         return Credential()
@@ -87,6 +108,11 @@ class ModelSettings:
     reasoning_summary: str | None = None
     verbosity: str | None = None
     tier: str | None = None
+    cache_ttl: CacheTtl | None = None
+
+    def __post_init__(self) -> None:
+        if self.cache_ttl is not None:
+            object.__setattr__(self, "cache_ttl", CacheTtl(self.cache_ttl))
 
 
 @dataclass(frozen=True)
@@ -117,6 +143,9 @@ class Workspace:
     native_tools: tuple[str, ...] = ()
     hooks: Mapping[str, Any] | None = field(default=None, repr=False, hash=False)
     sandbox: CodexSandboxMode | None = None
+    mcp_config: tuple[str | Path, ...] = ()
+    permission_prompt_tool: str | None = None
+    pre_tool_use: PreToolUse | None = field(default=None, repr=False, hash=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.permission_mode is not None:
@@ -127,6 +156,9 @@ class Workspace:
             raise ValueError("native tool names must be non-empty strings")
         object.__setattr__(self, "native_tools", tuple(dict.fromkeys(self.native_tools)))
         object.__setattr__(self, "add_dirs", tuple(self.add_dirs))
+        object.__setattr__(self, "mcp_config", tuple(self.mcp_config))
+        if self.permission_prompt_tool is not None and not self.permission_prompt_tool.strip():
+            raise ValueError("permission prompt tool must be a non-empty name")
         if self.hooks is not None:
             object.__setattr__(self, "hooks", deep_freeze(dict(self.hooks)))
 
@@ -210,13 +242,12 @@ class SessionHandle:
     raw_usage: Mapping[str, Any] = field(default_factory=dict, hash=False)
     messages: tuple[Message, ...] = ()
     model: str = ""
-    home_bundle: Mapping[str, str] = field(default_factory=dict, repr=False, hash=False)
+    home_bundle_ref: SessionBundleRef | None = None
     reported_cost: Decimal | None = None
     prefix: PrefixContext = field(default_factory=PrefixContext)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", Mode(self.mode))
-        object.__setattr__(self, "home_bundle", deep_freeze(dict(self.home_bundle)))
         object.__setattr__(self, "history", tuple(deep_freeze(dict(x)) for x in self.history))
         object.__setattr__(self, "raw_usage", deep_freeze(dict(self.raw_usage)))
 
@@ -267,7 +298,7 @@ class Turn:
     session_id: str | None = None
     usage_cumulative: bool = False
     usage_complete: bool = True
-    home_bundle: dict[str, str] = field(default_factory=dict, repr=False)
+    home_bundle_ref: SessionBundleRef | None = None
     canonical_messages: tuple[Message, ...] = ()
 
 

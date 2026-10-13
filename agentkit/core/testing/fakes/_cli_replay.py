@@ -33,8 +33,10 @@ to go fix.
 from __future__ import annotations
 
 import json
+import stat
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 __all__ = [
@@ -45,7 +47,24 @@ __all__ = [
     "_count_lines",
     "_exhausted_message",
     "_iter_lines",
+    "validate_subscription_login_file",
 ]
+
+
+def validate_subscription_login_file(env: Mapping[str, str], *, home_variable: str, filename: str) -> None:
+    """Validate the isolated login-file contract used by subscription CLI calls."""
+    home = env.get(home_variable)
+    if not home:
+        raise ValueError(f"{home_variable} must identify an isolated CLI home")
+    path = Path(home) / filename
+    try:
+        info = path.stat()
+    except FileNotFoundError as exc:
+        raise ValueError(f"credential file is missing: {filename}") from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("credential file must be a regular file")
+    if stat.S_IMODE(info.st_mode) != 0o600:
+        raise ValueError("credential file must have mode 0600")
 
 
 def _exhausted_message(*, double: str, have: int, idx: int) -> str:

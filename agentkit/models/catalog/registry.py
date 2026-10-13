@@ -3,7 +3,7 @@ capability mismatch before any spend.
 
 Two problems, one object. They are the same problem wearing different hats:
 
-**The last mile (Brief 3).** ``agentkit.models.client.chat`` ships ``claude()`` /
+**Provider registry.** ``agentkit.models.client.chat`` ships ``claude()`` /
 ``openai()`` / ``deepseek()`` / ``openrouter()``, and every one of them
 requires an explicit ``api_key=``. The package read no provider environment
 variable anywhere. So every application wrote the same bootstrap — read the

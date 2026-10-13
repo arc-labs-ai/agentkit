@@ -31,17 +31,34 @@ import signal
 import time
 import weakref
 from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
-from agentkit.agents.definitions.results import AgentStopReason, stop_reason_for
 from agentkit.core.contracts.protocols import Ctx
-from agentkit.core.contracts.types import StreamEvent, Usage
+from agentkit.core.contracts.types import ProviderUsage, StreamEvent
 
-if TYPE_CHECKING:
-    from agentkit.agents.execution.agent import Agent
+AgentStopReason = str
 
+
+class MeterExceeded(RuntimeError):
+    """Transport-side preflight refusal when a CLI budget has no headroom."""
+
+
+def stop_reason_for(reason: str | None) -> str:
+    return reason or "complete"
+
+
+@dataclass(frozen=True)
+class CliResult:
+    """Provider transport result consumed by CliAdapter, never a harness result."""
+
+    output: str
+    usage: ProviderUsage
+    partial: bool = False
+    evals: dict[str, Any] = field(default_factory=dict)
+    parsed: Any = None
+    stop_reason: str = "complete"
 
 # The transport seam's type. Deliberately ``...``-argumented: the spawn sites
 # pass different ``stdin=`` modes and future flags may add keywords, and a
@@ -131,7 +148,7 @@ def _tool_middleware_names(ctx: Ctx | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(_middleware_name(mw) for mw in chain))
 
 
-def _coerce_structured(agent: Agent | None, value: Any) -> tuple[Any, StructuredOutputFailure | None]:
+def _coerce_structured(agent: Any | None, value: Any) -> tuple[Any, StructuredOutputFailure | None]:
     """Turn a CLI's validated JSON into the type the agent declared.
 
     The CLI validates against the schema and hands back a plain dict. An agent
@@ -181,7 +198,7 @@ class _CliCall:
     request: Any = None
 
 
-async def _charge_meters(ctx: Ctx | None, usage: Usage, *, enabled: bool) -> str | None:
+async def _charge_meters(ctx: Ctx | None, usage: ProviderUsage, *, enabled: bool) -> str | None:
     """Put a CLI run's spend on the framework's books. Returns an error note.
 
     Both cognitions bypass the ``Invoker``, so the ``meter()`` middleware never
@@ -655,6 +672,7 @@ class CliTimeouts:
     first_event: float | None = None
     idle: float | None = None
     total: float | None = None
+    activity: Callable[[], bool] | None = None
 
     def __post_init__(self) -> None:
         for name in ("startup", "first_event", "idle", "total"):
@@ -765,7 +783,7 @@ class _CliDeadline:
     against a clock that started before the process did.
     """
 
-    __slots__ = ("_idle_from", "_now", "_seen_event", "_seen_line", "_started", "_t")
+    __slots__ = ("_idle_from", "_now", "_seen_event", "_seen_line", "_started", "_t", "_was_active")
 
     def __init__(self, timeouts: CliTimeouts, *, now: Callable[[], float] | None = None) -> None:
         self._t = timeouts
@@ -774,6 +792,7 @@ class _CliDeadline:
         self._idle_from = self._started
         self._seen_line = False
         self._seen_event = False
+        self._was_active = False
 
     def note_line(self) -> None:
         self._idle_from = self._now()
@@ -792,6 +811,10 @@ class _CliDeadline:
         ``Task``. A token-streamed run is thousands of lines, and a task per
         line to enforce a bound nobody configured is pure overhead.
         """
+        active = bool(self._t.activity and self._t.activity())
+        if self._was_active and not active:
+            self._idle_from = self._now()
+        self._was_active = active
         candidates: list[tuple[str, float, float]] = []
         if self._t.total is not None:
             candidates.append(("total_timeout", self._started + self._t.total, self._t.total))
@@ -799,7 +822,7 @@ class _CliDeadline:
             candidates.append(("startup_timeout", self._started + self._t.startup, self._t.startup))
         if not self._seen_event and self._t.first_event is not None:
             candidates.append(("first_event_timeout", self._started + self._t.first_event, self._t.first_event))
-        if self._seen_line and self._t.idle is not None:
+        if self._seen_line and not active and self._t.idle is not None:
             candidates.append(("idle_timeout", self._idle_from + self._t.idle, self._t.idle))
         if not candidates:
             return None

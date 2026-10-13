@@ -68,11 +68,11 @@ class Scope:
 
 
 @dataclass(frozen=True)
-class Usage:
+class ProviderUsage:
     """Per-call resource consumption. Token counts are exact; ``cost_usd`` is a
     running APPROXIMATION — see the field note below.
 
-    ``Budget`` accumulates a ``Usage`` for the token totals and keeps its own
+    ``Budget`` accumulates a ``ProviderUsage`` for the token totals and keeps its own
     exact ``Decimal`` ledger for money. ``Budget.spent()`` is what a run
     reconciles against; summing ``usage.cost_usd`` is not.
     """
@@ -81,7 +81,7 @@ class Usage:
     output_tokens: int = 0
     cost_usd: float | None = 0.0  # APPROXIMATE. ``__add__`` re-rounds to 6dp on every
     # addition, so this field is neither associative nor
-    # identity-preserving: ``Usage(cost_usd=1.4296875) + Usage()``
+    # identity-preserving: ``ProviderUsage(cost_usd=1.4296875) + ProviderUsage()``
     # yields 1.429688. It also rounds HALF_EVEN (Python's
     # ``round``) while ``Budget``'s ledger quantizes HALF_UP, so
     # on an exact tie the two differ by one unit in the last
@@ -115,8 +115,8 @@ class Usage:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
-    def __add__(self, other: Usage) -> Usage:
-        return Usage(
+    def __add__(self, other: ProviderUsage) -> ProviderUsage:
+        return ProviderUsage(
             self.input_tokens + other.input_tokens,
             self.output_tokens + other.output_tokens,
             None if self.cost_usd is None or other.cost_usd is None else round(self.cost_usd + other.cost_usd, 6),
@@ -125,9 +125,9 @@ class Usage:
             CostSource.UNPRICED
             if self.cost_usd is None or other.cost_usd is None
             else other.cost_source
-            if self == Usage()
+            if self == ProviderUsage()
             else self.cost_source
-            if other == Usage()
+            if other == ProviderUsage()
             else self.cost_source
             if self.cost_source == other.cost_source
             else CostSource.MIXED,
@@ -382,7 +382,7 @@ class LLMResult:
     model: str | None = None
     provider: str | None = None
     finish_reason: str | None = None
-    usage: Usage = field(default_factory=lambda: Usage(cost_usd=None))
+    usage: ProviderUsage = field(default_factory=lambda: ProviderUsage(cost_usd=None))
     tool_calls: tuple[ToolCall, ...] = ()  # calls the model requested this turn (empty = done)
     parsed: Any = None  # set by the response-coerce middleware when an output schema adapter
     # is wired on the run; stays None for unstructured calls. Kept on
@@ -402,7 +402,7 @@ class StreamEvent:
     tool_call: Any = None
     tool_result: Any = None
     result: Any = None  # AgentResult on a "final" event
-    usage: Usage | None = None
+    usage: ProviderUsage | None = None
     partial_output: Any = None  # the IN-PROGRESS typed object, forwarded verbatim from
     # ``Delta.partial`` on ``message_delta`` events. Non-None only
     # when BOTH an output schema is declared on the Agent (``output=``)
@@ -446,7 +446,7 @@ class Delta:
 
     text: str = ""
     model: str | None = None
-    usage: Usage | None = None  # set on the terminal delta
+    usage: ProviderUsage | None = None  # set on the terminal delta
     provider: str | None = None
     finish_reason: str | None = None  # set on the terminal delta
     tool_calls: tuple[ToolCall, ...] = ()  # tool calls revealed this delta (providers send them whole)
@@ -484,7 +484,7 @@ def assemble_deltas(deltas: list[Delta]) -> LLMResult:
     """
     content: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
-    usage, finish, model, provider = Usage(cost_usd=None), None, None, None
+    usage, finish, model, provider = ProviderUsage(cost_usd=None), None, None, None
     parsed: Any = None
     for d in deltas:
         content += d.text

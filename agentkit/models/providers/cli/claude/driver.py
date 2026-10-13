@@ -54,16 +54,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from agentkit.agents.control.safety import TRIFECTA
-from agentkit.agents.definitions.results import AgentResult
 from agentkit.agents.prompts.prompt import Prompt
 from agentkit.core.contracts.protocols import Ctx
-from agentkit.core.contracts.types import StreamEvent, ToolCall, Usage
+from agentkit.core.contracts.types import ProviderUsage, StreamEvent, ToolCall
 from agentkit.models.providers.cli._common import (
     _CANCEL_POLL_S,
     _STDOUT_LINE_LIMIT,
     START_NEW_SESSION,
     CliLineTooLong,
+    CliResult,
     CliSpawn,
     CliTimedOut,
     CliTimeouts,
@@ -102,8 +101,9 @@ from agentkit.models.providers.cli._common import (
 from agentkit.models.providers.cli._messages import MessageLog
 
 if TYPE_CHECKING:
-    from agentkit.agents.execution.agent import Agent
     from agentkit.state.context import WorkingContext
+
+Agent = Any
 
 
 PermissionMode = Literal[
@@ -226,6 +226,8 @@ _CLI_INVALID_OUTPUT_REASONS = frozenset(
 # to the full tool set: a subagent, or a user-authored command body, can do
 # whatever the session can. Tagging them narrowly would let a caller launder
 # the trifecta through one innocuous-looking name.
+TRIFECTA = ("private_data", "untrusted_content", "egress")
+
 CLI_TOOL_CAPS: dict[str, tuple[str, ...]] = {
     "Bash": ("private_data", "egress"),
     "BashOutput": (),  # only reads shells ``Bash`` already started
@@ -265,10 +267,10 @@ class ClaudeCliCognition:
     ``--include-partial-messages`` and streams the provider's own deltas;
     ``tool_call`` / ``tool_result`` for each CLI tool event; ``step`` for a
     provider retry; exactly one terminal ``final`` event carrying
-    ``AgentResult(output=<accumulated assistant text>, usage=<Usage>,
+    ``AgentResult(output=<accumulated assistant text>, usage=<ProviderUsage>,
     tests.evals={"session_id": ..., "cli_duration_ms": ...})``.
 
-    ``Usage.cost_usd`` is populated from the CLI's ``result.total_cost_usd``.
+    ``ProviderUsage.cost_usd`` is populated from the CLI's ``result.total_cost_usd``.
     Surface this as **a CLI-side estimate**, not a billed number — the CLI
     computes it from published per-token prices and can drift from provider
     invoices.
@@ -815,7 +817,7 @@ class ClaudeCliCognition:
         stderr_bytes: bytes,
         schema_requested: bool,
         timed_out: CliTimedOut | None = None,
-    ) -> AgentResult:
+    ) -> CliResult:
         """Turn one completed turn's state into its terminal ``AgentResult``.
 
         Shared by the one-shot ``drive`` and by a persistent
@@ -1051,7 +1053,7 @@ class ClaudeCliCognition:
                 # ``_redact_secrets``.
                 evals["stderr"] = stderr_text
 
-        return AgentResult(
+        return CliResult(
             output=state.text,
             usage=state.usage,
             partial=final_partial,
@@ -1294,7 +1296,7 @@ class ClaudeCliCognition:
         if headroom is None:  # no ceiling configured
             return None
         if headroom <= 0:
-            from agentkit.core.runtime.meter import MeterExceeded
+            from agentkit.models.providers.cli._common import MeterExceeded
 
             raise MeterExceeded(f"claude CLI not spawned: the run budget has {headroom} USD left")
         return f"{headroom:f}"
@@ -2460,7 +2462,7 @@ class _TurnState:
     messages: MessageLog = field(default_factory=MessageLog)
     text: str = ""
     thinking: str = ""
-    usage: Usage = field(default_factory=Usage)
+    usage: ProviderUsage = field(default_factory=ProviderUsage)
     raw_usage: dict[str, Any] = field(default_factory=dict)
     session_id: str | None = None
     duration_ms: int | None = None
@@ -2526,7 +2528,7 @@ class _EventDelta:
     api_error_status: int | None = None
     cli_error_code: str | None = None
     retry_after_s: str | float | None = None
-    usage: Usage | None = None
+    usage: ProviderUsage | None = None
     raw_usage: dict[str, Any] | None = None
     session_id: str | None = None
     duration_ms: int | None = None
@@ -2719,7 +2721,7 @@ async def _events_from_payload(
         # Match Anthropic wire shape: `usage.input_tokens` /
         # `usage.output_tokens` / `usage.cache_read_input_tokens` /
         # `usage.cache_creation_input_tokens`. All optional; default to 0.
-        usage = Usage(
+        usage = ProviderUsage(
             input_tokens=_as_int(usage_obj.get("input_tokens")),
             output_tokens=_as_int(usage_obj.get("output_tokens")),
             cost_usd=_as_cost(payload.get("total_cost_usd")) if payload.get("total_cost_usd") is not None else None,

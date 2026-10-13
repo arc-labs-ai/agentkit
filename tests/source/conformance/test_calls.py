@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -185,6 +186,178 @@ async def test_final_answer_through_actual_translators(mode: str) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", MODES)
+async def test_narration_capture_is_per_call_and_bounded(mode: str) -> None:
+    adapter = ScriptedAdapter(Turn(("answer contains secret",)), Turn(("answer contains secret",)))
+    binding = Binding(mode, "test")
+    captured = []
+    async with CallRuntime(
+        adapters={mode: adapter}, pricing=PRICES, result_masker=lambda _name, text: text.replace("secret", "[MASKED]")
+    ) as runtime:
+        await runtime.ask(binding, "answer", capture_text=True, events=captured.append, call_id="narration-on")
+        omitted = []
+        await runtime.ask(binding, "answer", capture_text=False, events=omitted.append, call_id="narration-off")
+    on = next(event for event in captured if event.kind == EventKind.MESSAGE_DONE)
+    off = next(event for event in omitted if event.kind == EventKind.MESSAGE_DONE)
+    assert on.fields["text"] == "answer contains [MASKED]"
+    assert "secret" not in json.dumps([event.fields for event in captured])
+    assert "text" not in off.fields and off.fields["length"] == len("answer contains secret")
+
+
+@pytest.mark.asyncio
+async def test_narration_capture_refuses_without_a_host_masker():
+    adapter = ScriptedAdapter(Turn(("secret",)))
+    runtime = CallRuntime(adapters={Mode.OPENAI_API: adapter}, pricing=PRICES)
+    with pytest.raises(ValueError, match="requires a host result_masker"):
+        await runtime.ask(
+            Binding(Mode.OPENAI_API, "test"), "q", capture_text=True, call_id="narration-no-masker"
+        )
+    assert not adapter.requests
+
+
+@pytest.mark.asyncio
+async def test_narration_masker_failure_keeps_answer_and_omits_text():
+    adapter = ScriptedAdapter(Turn(("private response",)))
+    events = []
+
+    def broken_masker(_name, _text):
+        raise RuntimeError("mask service unavailable")
+
+    answer = await CallRuntime(
+        adapters={Mode.OPENAI_API: adapter}, pricing=PRICES, result_masker=broken_masker
+    ).ask(
+        Binding(Mode.OPENAI_API, "test"),
+        "q",
+        capture_text=True,
+        events=events.append,
+        call_id="narration-masker-error",
+    )
+    done = next(event for event in events if event.kind == EventKind.MESSAGE_DONE)
+    assert answer.outcome == "answered" and answer.text == "private response"
+    assert done.fields["text_omitted"] is True and "text" not in done.fields
+
+
+@pytest.mark.asyncio
+async def test_anthropic_api_cache_ttl_is_sent_at_the_stable_prefix():
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, content=sse([
+            {"type": "message_start", "message": {"usage": {"input_tokens": 1}}},
+            {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+            {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "ok"}},
+            {"type": "content_block_stop", "index": 0},
+            {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 1}},
+            {"type": "message_stop"},
+        ]))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    adapter = ApiAdapter(client=client)
+    async with CallRuntime(adapters={Mode.ANTHROPIC_API: adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.ANTHROPIC_API, "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            replace(inline_prompt("question"), system="Stable research rules"),
+            settings=ModelSettings(cache_ttl="1h"),
+            call_id="cache-ttl-anthropic",
+        )
+    await client.aclose()
+    assert answer.outcome == "answered"
+    assert requests[0]["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [Mode.CLAUDE_CODE, Mode.CODEX, Mode.OPENAI_API])
+async def test_cache_ttl_refuses_modes_without_verified_transport_support(mode):
+    adapter = ScriptedAdapter(Turn(("must not dispatch",)))
+    runtime = CallRuntime(adapters={mode: adapter}, pricing=PRICES)
+    with pytest.raises(ValueError, match="no verified support for cache_ttl"):
+        await runtime.ask(
+            Binding(mode, "test"), "q", settings=ModelSettings(cache_ttl="1h"), call_id=f"cache-refuse-{mode}"
+        )
+    assert not adapter.requests
+
+
+@pytest.mark.asyncio
+async def test_openai_cache_ttl_uses_only_explicit_model_capability():
+    from agentkit.models.contracts.settings import CapabilityTable
+
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            content=sse([{
+                "type": "response.completed",
+                "response": {
+                    "status": "completed",
+                    "output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            }]),
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    runtime = CallRuntime(
+        adapters={Mode.OPENAI_API: ApiAdapter(client=client)},
+        capabilities=CapabilityTable(
+            "test", "today", {"openai_api/test": {"max_output_tokens": None, "cache_ttl": ["30m"]}}
+        ),
+        pricing=PRICES,
+    )
+    answer = await runtime.ask(
+        Binding(Mode.OPENAI_API, "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})),
+        "question",
+        settings=ModelSettings(cache_ttl="30m"),
+        call_id="cache-ttl-openai",
+    )
+    await client.aclose()
+    assert answer.outcome == "answered", answer.failure
+    assert requests[0]["prompt_cache_options"] == {"ttl": "30m"}
+
+
+@pytest.mark.asyncio
+async def test_cached_prefix_is_byte_stable_across_calls_with_different_tasks():
+    from agentkit.agents.prompts.composition import PromptPart, compose
+    from agentkit.agents.prompts.prompt import Prompt
+
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, content=sse([
+            {"type": "response.output_text.delta", "delta": "ok"},
+            {
+                "type": "response.completed",
+                "response": {
+                    "status": "completed",
+                    "output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            },
+        ]))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    runtime = CallRuntime(adapters={Mode.OPENAI_API: ApiAdapter(client=client)}, pricing=PRICES)
+    binding = Binding(
+        Mode.OPENAI_API, "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})
+    )
+    stable_rules = PromptPart(
+        Prompt("rules", "1", "Follow the shared research rules."), kind="rules", stable=True, trusted=True
+    )
+    first = compose([stable_rules, PromptPart(Prompt("task-a", "1", "Question A"))], {})
+    second = compose([stable_rules, PromptPart(Prompt("task-b", "1", "Question B"))], {})
+    await runtime.ask(binding, first, call_id="stable-prefix-a")
+    await runtime.ask(binding, second, call_id="stable-prefix-b")
+    await client.aclose()
+
+    assert requests[0]["instructions"].encode() == requests[1]["instructions"].encode()
+    assert requests[0]["prompt_cache_key"].encode() == requests[1]["prompt_cache_key"].encode()
+    assert requests[0]["input"] != requests[1]["input"]
+
+
+@pytest.mark.asyncio
 async def test_unpriced_policy_requires_a_cap_and_preserves_known_partial_cost() -> None:
     binding = Binding("openai_api", "unlisted-model")
     no_cap = ScriptedAdapter(Turn(messages=("answer",), raw_usage={"input_tokens": 5, "output_tokens": 3}))
@@ -346,6 +519,9 @@ async def test_cli_auth_failure_without_rotation_is_not_retried() -> None:
         )
     assert answer.outcome == "failed"
     assert answer.attempts == 1
+    assert answer.failure is not None
+    assert answer.failure.classification == FailureClass.AUTH
+    assert len(cli.invocations) == 1
 
 
 @pytest.mark.asyncio
@@ -369,6 +545,321 @@ async def test_claude_no_tools_supplies_a_real_empty_mcp_servers_record() -> Non
     assert cli.validated_mcp_configs == [{"mcpServers": {}}]
     assert cli.invocations[0].env["HTTPS_PROXY"] == "https://proxy.example"
     assert len(cli.invocations) == 1
+
+
+@pytest.mark.asyncio
+async def test_approval_server_workspace_wires_into_current_cli_adapter() -> None:
+    from agentkit.integrations.mcp import ApprovalServer
+    from agentkit.integrations.mcp.approvals import SERVER_NAME
+
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    adapter = CliAdapter(spawn=cli)
+    server = ApprovalServer(autonomy="auto")
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "task", call_id="approval-workspace", workspace=server.workspace(),
+        )
+    assert answer.outcome == "answered"
+    argv = cli.invocations[0].argv
+    assert argv[argv.index("--permission-prompt-tool") + 1] == server.tool_name
+    assert "--strict-mcp-config" in argv
+    assert any(SERVER_NAME in str(config) for config in cli.validated_mcp_configs)
+
+
+@pytest.mark.asyncio
+async def test_cli_permission_prompt_mcp_request_reaches_host_approval_callback() -> None:
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    from agentkit.integrations.mcp import ApprovalServer
+    from agentkit.integrations.mcp.approvals import Decision
+
+    class Reviewer:
+        def __init__(self):
+            self.requests = []
+
+        async def ask(self, request):
+            self.requests.append(request)
+            return Decision("approve", actor="test-reviewer")
+
+    reviewer = Reviewer()
+    approvals = ApprovalServer(asker=reviewer, timeout_s=2)
+    async with create_connected_server_and_client_session(approvals.build_mcp()) as session:
+        tools = await session.list_tools()
+        assert any(tool.name == "approve" for tool in tools.tools)
+        result = await session.call_tool(
+            "approve", {"tool_name": "Write", "input": {"file_path": "/workspace/result.txt"}},
+        )
+
+    assert len(reviewer.requests) == 1
+    assert reviewer.requests[0].tool_call == {"name": "Write", "arguments": {"file_path": "/workspace/result.txt"}}
+    assert approvals.decisions[0].allowed and approvals.decisions[0].source == "asker"
+    assert "\"behavior\": \"allow\"" in result.content[0].text
+
+
+@pytest.mark.asyncio
+async def test_cli_adapter_uses_per_mode_executable_override() -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    adapter = CliAdapter(spawn=cli, executable={Mode.CLAUDE_CODE: "claude-agentkit-test"})
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "executable override",
+            call_id="cli-executable-override",
+        )
+    assert answer.outcome == "answered"
+    assert cli.invocations[0].argv[0] == "claude-agentkit-test"
+
+
+@pytest.mark.asyncio
+async def test_codex_adapter_uses_its_per_mode_executable_override() -> None:
+    cli = FakeCodexCli.script(codex_turn(text="ok"))
+    adapter = CliAdapter(spawn=cli, executable={Mode.CODEX: "codex-agentkit-test"})
+    async with CallRuntime(adapters={Mode.CODEX: adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.CODEX, "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})),
+            "executable override",
+            call_id="codex-executable-override",
+        )
+    assert answer.outcome == "answered"
+    assert cli.invocations[0].argv[0] == "codex-agentkit-test"
+
+
+@pytest.mark.asyncio
+async def test_cli_request_hook_can_adjust_argv_without_replacing_executable() -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    seen = []
+
+    def request_hook(request: Any) -> dict[str, Any]:
+        seen.append(request["mode"])
+        return {"argv": (*request["argv"], "--verbose")}
+
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=cli, request_hook=request_hook)}, pricing=PRICES
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "hook",
+            call_id="cli-request-hook",
+        )
+    assert answer.outcome == "answered"
+    assert seen == [Mode.CLAUDE_CODE]
+    assert cli.invocations[0].argv[-1] == "--verbose"
+
+
+@pytest.mark.asyncio
+async def test_cli_request_hook_cannot_replace_the_executable() -> None:
+    cli = FakeClaudeCli.script(
+        [{"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+         {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}}]
+    )
+
+    def request_hook(request: Any) -> dict[str, Any]:
+        return {"argv": ("attacker-binary", *request["argv"][1:])}
+
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=cli, request_hook=request_hook)}, pricing=PRICES
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "reject replacement",
+            call_id="cli-hook-executable",
+        )
+    assert answer.outcome == "failed"
+    assert answer.failure is not None
+    assert cli.spawns == 0
+
+
+@pytest.mark.asyncio
+async def test_runtime_retries_a_cli_first_event_timeout() -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "recovered"}]}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "recovered",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+    )
+    spawns = 0
+
+    async def spawn(*argv: str, **kwargs: Any) -> Any:
+        nonlocal spawns
+        spawns += 1
+        if spawns == 1:
+            return await asyncio.create_subprocess_exec(sys.executable, "-c", "import time; time.sleep(20)", **kwargs)
+        return await cli(*argv, **kwargs)
+
+    events = []
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=spawn)},
+        pricing=PRICES,
+        retry=RetryPolicy(max_attempts=2, base_s=0, cap_s=0, max_elapsed_s=15),
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "retry the first-event timeout",
+            limits=CallLimits(first_event_s=0.05, wall_clock_s=15),
+            events=events.append,
+            call_id="first-event-timeout-retry",
+        )
+    assert answer.outcome == "answered" and answer.attempts == 2, (answer.outcome, answer.attempts, answer.failure)
+    assert any(
+        event.kind == EventKind.RETRY and event.fields.get("failure_class") == FailureClass.TIMEOUT for event in events
+    )
+    assert spawns == 2
+
+
+@pytest.mark.asyncio
+async def test_cli_mcp_tool_timeout_is_derived_from_tool_policy() -> None:
+    from agentkit.tools import FunctionTool, ToolRegistry
+    from agentkit.tools.execution.policy import ToolSet
+
+    async def lookup(key: str) -> str:
+        """Look up a record by its unique key and return its stored value."""
+        return key
+
+    tools = ToolSet(ToolRegistry.from_tools([FunctionTool.from_callable(lookup, side_effecting=False)]), timeout_s=7.5)
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    async with CallRuntime(adapters={"claude_code": CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "timeout",
+            tools=tools,
+            call_id="mcp-timeout-derived",
+        )
+    assert answer.outcome == "answered"
+    assert cli.invocations[0].env["MCP_TOOL_TIMEOUT"] == "12.5"
+
+
+@pytest.mark.asyncio
+async def test_cli_mcp_timeout_covers_largest_per_tool_deadline() -> None:
+    from agentkit.tools import FunctionTool, ToolRegistry
+    from agentkit.tools.execution.policy import ToolSet
+
+    async def quick(key: str) -> str:
+        """Read a value quickly using the default host-tool deadline."""
+        return key
+
+    async def long_read(key: str) -> str:
+        """Read a remote resource whose provider may take longer to answer."""
+        return key
+
+    tools = ToolSet(
+        ToolRegistry.from_tools(
+            [
+                FunctionTool.from_callable(quick, side_effecting=False),
+                FunctionTool.from_callable(long_read, side_effecting=False, timeout_s=17.0),
+            ]
+        ),
+        timeout_s=7.5,
+    )
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    async with CallRuntime(adapters={"claude_code": CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "timeout",
+            tools=tools,
+            call_id="mcp-largest-timeout",
+        )
+    assert answer.outcome == "answered"
+    assert cli.invocations[0].env["MCP_TOOL_TIMEOUT"] == "22.0"
+
+
+def test_cli_idle_deadline_pauses_during_a_hosted_tool():
+    from agentkit.models.providers.cli._common import CliTimeouts, _CliDeadline
+
+    now = [0.0]
+    active = [False]
+    deadline = _CliDeadline(CliTimeouts(idle=1, startup=None, activity=lambda: active[0]), now=lambda: now[0])
+    deadline.note_line()
+    assert deadline.next_deadline() == ("idle_timeout", 1, 1)
+    active[0] = True
+    now[0] = 3  # a hosted tool ran for three seconds, beyond the one-second idle bound
+    assert deadline.next_deadline() is None
+    active[0] = False
+    assert deadline.next_deadline() == ("idle_timeout", 1, 1)
+    now[0] = 4
+    assert deadline.next_deadline() == ("idle_timeout", 0, 1)
+
+
+@pytest.mark.asyncio
+async def test_codex_mcp_tool_timeout_is_derived_from_tool_policy() -> None:
+    from agentkit.tools import FunctionTool, ToolRegistry
+    from agentkit.tools.execution.policy import ToolSet
+
+    async def lookup(key: str) -> str:
+        """Look up a record by its unique key and return its stored value."""
+        return key
+
+    tools = ToolSet(ToolRegistry.from_tools([FunctionTool.from_callable(lookup, side_effecting=False)]), timeout_s=7.5)
+    cli = FakeCodexCli.script(codex_turn(text="ok"))
+    async with CallRuntime(adapters={Mode.CODEX: CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.CODEX, "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})),
+            "timeout",
+            tools=tools,
+            call_id="codex-mcp-timeout-derived",
+        )
+    assert answer.outcome == "answered"
+    argv = cli.invocations[0].argv
+    assert any("mcp_servers.agentkit.tool_timeout_sec=12.5" in item for item in argv)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("over_limit", [False, True])
+async def test_claude_system_prompt_argv_boundary(over_limit: bool) -> None:
+    from agentkit.models.providers.cli._common import _ARGV_TEXT_LIMIT
+
+    size = _ARGV_TEXT_LIMIT + (1 if over_limit else -1)
+    prompt = replace(inline_prompt("task"), system="x" * size)
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+    async with CallRuntime(adapters={Mode.CLAUDE_CODE: CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.CLAUDE_CODE, "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            prompt,
+            call_id=f"claude-argv-boundary-{over_limit}",
+        )
+    assert answer.outcome == "answered"
+    argv = cli.invocations[0].argv
+    if over_limit:
+        assert "--append-system-prompt-file" in argv
+        assert "--append-system-prompt" not in argv
+    else:
+        assert argv[argv.index("--append-system-prompt") + 1] == prompt.system
+        assert "--append-system-prompt-file" not in argv
 
 
 @pytest.mark.asyncio
@@ -426,6 +917,55 @@ async def test_cli_async_credential_resolver_and_unsafe_environment_refuse_befor
 
 
 @pytest.mark.asyncio
+async def test_cli_successful_async_credential_resolver_reaches_child() -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+
+    async def resolver() -> Credential:
+        return Credential(env={"ANTHROPIC_API_KEY": "async-resolved"})
+
+    async with CallRuntime(adapters={"claude_code": CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(resolver)), "async auth", call_id="async-credential-ok"
+        )
+    assert answer.outcome == "answered"
+    assert cli.invocations[0].env["ANTHROPIC_API_KEY"] == "async-resolved"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "fake_type", "home_variable", "auth_filename"),
+    [
+        ("claude_code", FakeClaudeCli, "CLAUDE_CONFIG_DIR", ".credentials.json"),
+        ("codex", FakeCodexCli, "CODEX_HOME", "auth.json"),
+    ],
+)
+async def test_strict_cli_fakes_require_private_subscription_login_files(
+    tmp_path: Path, mode, fake_type, home_variable, auth_filename,
+) -> None:
+    fake = fake_type([CliRun.of([])], require_auth_file=True)
+    isolated_home = tmp_path / mode
+    env = {home_variable: str(isolated_home)}
+    with pytest.raises(ValueError, match="credential file is missing"):
+        await fake("cli", env=env)
+
+    isolated_home.mkdir()
+    auth_path = isolated_home / auth_filename
+    auth_path.write_text("{}")
+    auth_path.chmod(0o644)
+    with pytest.raises(ValueError, match="must have mode 0600"):
+        await fake("cli", env=env)
+
+    auth_path.chmod(0o600)
+    await fake("cli", env=env)
+    assert fake.spawns == 1
+
+
+@pytest.mark.asyncio
 async def test_credential_callback_error_degrades_and_keeps_answer(tmp_path: Path) -> None:
     cli = FakeClaudeCli.script(
         [
@@ -461,6 +1001,68 @@ async def test_credential_callback_error_degrades_and_keeps_answer(tmp_path: Pat
     degraded = [event for event in events if event.kind == EventKind.DEGRADED]
     assert answer.outcome == "answered" and answer.text == "kept"
     assert any(event.fields.get("setting") == "credential_refresh" for event in degraded)
+    assert not await asyncio.to_thread(lambda: list(tmp_path.rglob(".credentials.json")))
+
+
+@pytest.mark.asyncio
+async def test_credential_refresh_bytes_are_delivered_once_through_cli(tmp_path: Path) -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "kept"}]}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "kept",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+    )
+    fresh = {".credentials.json": b'{"token":"new-bytes"}'}
+    changed: list[dict[str, bytes]] = []
+
+    async def persist(files: Any) -> None:
+        changed.append(dict(files))
+
+    async def spawn(*argv: str, **kwargs: Any) -> Any:
+        config_dir = Path(kwargs["env"]["CLAUDE_CONFIG_DIR"])
+        (config_dir / ".credentials.json").write_bytes(fresh[".credentials.json"])
+        return await cli(*argv, **kwargs)
+
+    binding = Binding(
+        "claude_code",
+        "test",
+        CredentialRef(lambda: Credential(home={".credentials.json": b'{"token":"old"}'}, on_changed=persist)),
+    )
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=spawn, home_parent=tmp_path)}, pricing=PRICES
+    ) as runtime:
+        answer = await runtime.ask(binding, "reply", call_id="credential-refresh-once")
+    assert answer.outcome == "answered"
+    assert changed == [fresh]
+
+
+@pytest.mark.asyncio
+async def test_refreshed_cli_login_is_discarded_without_on_changed(tmp_path: Path) -> None:
+    cli = FakeClaudeCli.script(
+        [
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "ok"}]}},
+            {"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}},
+        ]
+    )
+
+    async def spawn(*argv: str, **kwargs: Any) -> Any:
+        config_dir = Path(kwargs["env"]["CLAUDE_CONFIG_DIR"])
+        (config_dir / ".credentials.json").write_bytes(b'{"token":"refreshed"}')
+        return await cli(*argv, **kwargs)
+
+    binding = Binding(
+        "claude_code", "test", CredentialRef(lambda: Credential(home={".credentials.json": b'{"token":"old"}'}))
+    )
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=spawn, home_parent=tmp_path)}, pricing=PRICES
+    ) as runtime:
+        answer = await runtime.ask(binding, "reply", call_id="credential-refresh-discard")
+    assert answer.outcome == "answered"
     assert not await asyncio.to_thread(lambda: list(tmp_path.rglob(".credentials.json")))
 
 
@@ -501,6 +1103,16 @@ def test_default_tool_argument_masker_redacts_short_strings_recursively() -> Non
     assert "'value': True" not in repr(masked)
 
 
+def test_tool_argument_digests_are_keyed_per_runtime() -> None:
+    secret = {"pin": "734291"}
+    first = _mask_tool_arguments("Bash", secret, key=b"runtime-one-key")
+    same_runtime = _mask_tool_arguments("Bash", secret, key=b"runtime-one-key")
+    second = _mask_tool_arguments("Bash", secret, key=b"runtime-two-key")
+    assert first == same_runtime
+    assert first != second
+    assert "734291" not in repr(first)
+
+
 @pytest.mark.asyncio
 async def test_cli_tool_call_event_masks_arguments_by_default() -> None:
     class ToolEventAdapter:
@@ -530,6 +1142,27 @@ async def test_cli_tool_call_event_masks_arguments_by_default() -> None:
     assert "secret-key" not in repr(event.fields)
     assert "734291" not in repr(event.fields)
     assert "True" not in repr(event.fields)
+
+
+@pytest.mark.asyncio
+async def test_raising_event_sink_is_reported_and_delivery_resumes() -> None:
+    delivered = []
+    first = True
+
+    def sink(event):
+        nonlocal first
+        if first:
+            first = False
+            raise OSError("observer unavailable")
+        delivered.append(event)
+
+    adapter = ScriptedAdapter(Turn(messages=("answer",), raw_usage={"input_tokens": 1, "output_tokens": 1}))
+    async with CallRuntime(adapters={Mode.OPENAI_API: adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(Binding(Mode.OPENAI_API, "test"), "q", events=sink, call_id="sink-recovers")
+    assert answer.outcome == "answered" and answer.text == "answer"
+    assert any(event.kind == EventKind.DEGRADED for event in delivered)
+    assert any(event.kind == EventKind.CALL_FINISHED for event in delivered)
+    assert any(item.setting == "event_sink" for item in answer.effective.degradations)
 
 
 @pytest.mark.asyncio
@@ -756,24 +1389,149 @@ async def test_claude_cli_slices_resume_and_forks_with_stable_prefix() -> None:
 
 @pytest.mark.asyncio
 async def test_codex_resume_can_fork_a_cli_session() -> None:
-    from agentkit.models.contracts.types import SessionHandle
-
-    cli = FakeCodexCli.script(codex_turn(text="forked"))
-    session = SessionHandle(
-        mode="codex", run_id="prior", cli_session_id="thread-1", home_bundle={"sessions/thread.jsonl": "eA=="}
-    )
-    async with CallRuntime(adapters={"codex": CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+    cli = FakeCodexCli.answering("initial", "forked")
+    adapter = CliAdapter(spawn=cli)
+    async with CallRuntime(adapters={"codex": adapter}, pricing=PRICES) as runtime:
+        first = await runtime.ask(
+            Binding("codex", "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})),
+            "start",
+            call_id="codex-fork-base",
+        )
         answer = await runtime.ask(
             Binding("codex", "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})),
             "continue on a branch",
             call_id="codex-fork",
-            resume=session,
+            resume=first.session,
             fork=True,
         )
-    argv = cli.invocations[0].argv
+    argv = cli.invocations[1].argv
     fork_index = argv.index("fork")
     assert answer.outcome == "answered"
-    assert argv[fork_index + 1] == "thread-1"
+    assert first.session is not None and argv[fork_index + 1] == first.session.cli_session_id
+
+
+@pytest.mark.asyncio
+async def test_native_cli_bundle_reference_restores_across_adapter_instances(tmp_path):
+    from agentkit.state.sessions import FileSessionBundleStore
+
+    fake = FakeClaudeCli(
+        [
+            CliRun.of([
+                {"type": "assistant", "message": {"id": "one", "content": [{"type": "text", "text": "first"}]}},
+                {"type": "result", "subtype": "success", "result": "first", "session_id": "session-1",
+                 "usage": {"input_tokens": 1, "output_tokens": 1}},
+            ]),
+            CliRun.of([
+                {"type": "assistant", "message": {"id": "two", "content": [{"type": "text", "text": "second"}]}},
+                {"type": "result", "subtype": "success", "result": "second", "session_id": "session-1",
+                 "usage": {"input_tokens": 1, "output_tokens": 1}},
+            ]),
+        ]
+    )
+    restored_transcript_exists = []
+
+    async def writing_spawn(*argv, **kwargs):
+        config = Path(kwargs["env"]["CLAUDE_CONFIG_DIR"])
+        transcript = config / "projects" / "sample" / "session-1.jsonl"
+        if len(fake.invocations) == 0:
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text('{"sessionId":"session-1"}\n')
+        else:
+            restored_transcript_exists.append(transcript.is_file())
+            with transcript.open("a") as existing:
+                existing.write('{"message":"second slice"}\n')
+        return await fake(*argv, **kwargs)
+
+    store = FileSessionBundleStore(tmp_path / "bundles")
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=writing_spawn, bundle_store=store)}, pricing=PRICES
+    ) as first_runtime:
+        first = await first_runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "first task", call_id="bundle-first",
+        )
+    assert first.outcome == "answered" and first.session is not None
+    assert first.session.home_bundle_ref is not None
+
+    second_adapter = CliAdapter(spawn=writing_spawn, bundle_store=store)
+    async with CallRuntime(adapters={"claude_code": second_adapter}, pricing=PRICES) as second_runtime:
+        second = await second_runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "second task", resume=first.session, call_id="bundle-second",
+        )
+    assert second.outcome == "answered" and restored_transcript_exists == [True]
+    assert second.session is not None and second.session.home_bundle_ref != first.session.home_bundle_ref
+    assert "--resume" in fake.invocations[1].argv
+    assert fake.invocations[1].argv[fake.invocations[1].argv.index("--resume") + 1] == "session-1"
+
+
+@pytest.mark.asyncio
+async def test_portable_cli_replay_applies_policy_before_dispatch_and_obeys_byte_bound():
+    from agentkit.core.contracts.types import Message, MessageRole
+    from agentkit.models.contracts.types import SessionHandle
+
+    prior = SessionHandle(
+        mode=Mode.CLAUDE_CODE,
+        run_id="prior",
+        cli_session_id="missing-session",
+        messages=(
+            Message(MessageRole.USER, "obsolete evidence " * 200),
+            Message(MessageRole.ASSISTANT, "old answer"),
+            Message(MessageRole.USER, "keep this small fact"),
+        ),
+        model="test",
+    )
+    cli = FakeClaudeCli.script([
+        {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "done"}]}},
+        {"type": "result", "subtype": "success", "result": "done", "session_id": "next-session",
+         "usage": {"input_tokens": 1, "output_tokens": 1}},
+    ])
+    adapter = CliAdapter(spawn=cli, max_replay_bytes=512)
+
+    def compact(context):
+        context.messages[:] = context.messages[-1:]
+        return context
+
+    events = []
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "continue", resume=prior, context_policy=compact, events=events.append, call_id="bounded-replay",
+        )
+    assert answer.outcome == "answered", (answer.failure, [(e.kind, e.fields.get("setting"), e.fields.get("reason")) for e in events], cli.invocations)
+    submitted = cli.invocations[0].stdin.decode()
+    assert "keep this small fact" in submitted and "obsolete evidence" not in submitted
+
+
+@pytest.mark.asyncio
+async def test_portable_cli_replay_over_limit_stops_before_spawn():
+    from agentkit.core.contracts.types import Message, MessageRole
+    from agentkit.models.contracts.types import SessionHandle
+
+    prior = SessionHandle(
+        mode=Mode.CLAUDE_CODE,
+        run_id="prior",
+        cli_session_id="missing-session",
+        messages=(Message(MessageRole.USER, "x" * 4096),),
+        model="test",
+    )
+    cli = FakeClaudeCli.script([
+        {"type": "assistant", "message": {"id": "never", "content": [{"type": "text", "text": "bad"}]}},
+        {"type": "result", "subtype": "success", "result": "bad", "session_id": "never",
+         "usage": {"input_tokens": 1, "output_tokens": 1}},
+    ])
+    adapter = CliAdapter(spawn=cli, max_replay_bytes=512)
+    events = []
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "continue", resume=prior, events=events.append, call_id="oversized-replay",
+        )
+    assert answer.outcome == "limit_reached", answer.failure
+    assert answer.cost_usd == 0
+    assert not cli.invocations
+    assert any(event.kind == EventKind.DEGRADED and event.fields.get("setting") == "portable_replay_bytes"
+               for event in events)
 
 
 @pytest.mark.asyncio
@@ -1265,6 +2023,8 @@ async def test_claude_budgeted_retry_treats_failed_attempt_without_usage_as_zero
             call_id="budgeted-cli-retry-no-cost",
         )
     assert answer.outcome == "answered" and answer.attempts == 2
+    assert answer.cost_usd == Decimal("0.2")
+    assert answer.cost_source == CostSource.REPORTED
     retry_argv = cli.invocations[1].argv
     assert Decimal(retry_argv[retry_argv.index("--max-budget-usd") + 1]) == Decimal("1")
 
@@ -1647,22 +2407,33 @@ async def test_external_task_cancellation_rethrows_and_emits_terminal_event():
 
 
 @pytest.mark.asyncio
-async def test_cli_snapshot_failure_preserves_answer_and_records_degradation(monkeypatch):
-    from agentkit.models.providers.cli.isolation import IsolatedHome
+async def test_cli_bundle_store_failure_preserves_answer_and_records_degradation():
+    class BrokenBundleStore:
+        async def save(self, home, *, previous_ref=None):
+            raise OSError("store unavailable")
 
-    def unavailable(home):
-        raise OSError("snapshot unavailable")
+        async def restore(self, reference, home):
+            raise OSError("store unavailable")
 
-    monkeypatch.setattr(IsolatedHome, "snapshot", unavailable)
-    async with CallRuntime(adapters={"claude_code": real_adapter("claude_code", "answer")}, pricing=PRICES) as runtime:
+    adapter = CliAdapter(
+        spawn=FakeClaudeCli.script(
+            [
+                {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "answer"}]}},
+                {"type": "result", "subtype": "success", "result": "answer", "session_id": "session-1",
+                 "usage": {"input_tokens": 1, "output_tokens": 1}},
+            ]
+        ),
+        bundle_store=BrokenBundleStore(),
+    )
+    async with CallRuntime(adapters={"claude_code": adapter}, pricing=PRICES) as runtime:
         answer = await runtime.ask(
             Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
             "q",
-            call_id="snapshot-failure",
+            call_id="bundle-store-failure",
         )
     assert answer.outcome == "answered" and answer.text == "answer"
-    assert not answer.session.home_bundle
-    assert any(d.setting == "native_session" for d in answer.degradations)
+    assert answer.session.home_bundle_ref is None
+    assert any(d.setting == "native_session_bundle" for d in answer.degradations)
     assert answer.context.messages[-1].content == "answer"
 
 
@@ -1779,7 +2550,7 @@ async def test_missing_or_incomplete_accounting_is_unknown_instead_of_free(usage
 
 
 @pytest.mark.asyncio
-async def test_reported_cost_does_not_mark_partial_usage_complete() -> None:
+async def test_reported_cost_with_partial_usage_is_mixed_and_remains_incomplete() -> None:
     adapter = ScriptedAdapter(
         Turn(
             messages=("answer",),
@@ -1791,6 +2562,7 @@ async def test_reported_cost_does_not_mark_partial_usage_complete() -> None:
     async with CallRuntime(adapters={"openai_api": adapter}, pricing=PRICES) as runtime:
         answer = await runtime.ask(Binding("openai_api", "test"), "q", call_id="partial-usage-reported-cost")
     assert answer.cost_usd == Decimal("0.25")
+    assert answer.cost_source == CostSource.MIXED
     assert answer.usage_complete is False
 
 
@@ -1842,6 +2614,7 @@ async def test_codex_native_deny_refuses_before_dispatch():
 async def test_codex_native_warn_reduces_capabilities_and_reports_limit(policy):
     import tomllib
 
+    from agentkit.models.contracts.constants import NativeToolPolicy
     from agentkit.tools import FunctionTool, ToolRegistry
     from agentkit.tools.execution.policy import ToolSet
 
@@ -1853,7 +2626,9 @@ async def test_codex_native_warn_reduces_capabilities_and_reports_limit(policy):
     adapter = real_adapter("codex", "done")
     adapter.native_tool_policy = policy
     binding = Binding("codex", "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"}))
-    async with CallRuntime(adapters={"codex": adapter}, pricing=PRICES) as runtime:
+    async with CallRuntime(
+        adapters={"codex": adapter}, pricing=PRICES, native_tool_policy=NativeToolPolicy(policy)
+    ) as runtime:
         answer = await runtime.run(binding, "q", tools, call_id="native-policy")
     assert answer.outcome == "answered"
     argv = adapter.spawn.argv()
@@ -1871,6 +2646,62 @@ async def test_codex_native_warn_reduces_capabilities_and_reports_limit(policy):
 
 
 @pytest.mark.asyncio
+async def test_native_tool_policy_is_per_call_beneath_runtime_ceiling():
+    from agentkit.models.contracts.constants import NativeToolPolicy
+
+    claude = ScriptedAdapter(Turn(("claude answer",)))
+    codex = ScriptedAdapter(Turn(("codex answer",)))
+    runtime = CallRuntime(
+        adapters={Mode.CLAUDE_CODE: claude, Mode.CODEX: codex},
+        pricing=PRICES,
+        native_tool_policy=NativeToolPolicy.WARN,
+    )
+    await runtime.ask(Binding(Mode.CLAUDE_CODE, "test"), "q", call_id="claude-denied", native_tool_policy="deny")
+    await runtime.ask(Binding(Mode.CODEX, "test"), "q", call_id="codex-warned")
+    assert claude.requests[0][2]["native_tool_policy"] == NativeToolPolicy.DENY
+    assert codex.requests[0][2]["native_tool_policy"] == NativeToolPolicy.WARN
+    with pytest.raises(ValueError, match="policy ceiling"):
+        await runtime.ask(
+            Binding(Mode.CLAUDE_CODE, "test"), "q", call_id="claude-escalation", native_tool_policy="allow"
+        )
+
+
+@pytest.mark.asyncio
+async def test_claude_per_call_deny_refuses_explicit_native_tools_before_spawn():
+    from agentkit.models.contracts.constants import NativeToolPolicy
+
+    cli = FakeClaudeCli.script([])
+    runtime = CallRuntime(
+        adapters={Mode.CLAUDE_CODE: CliAdapter(spawn=cli)},
+        pricing=PRICES,
+        native_tool_policy=NativeToolPolicy.WARN,
+    )
+    answer = await runtime.ask(
+        Binding(Mode.CLAUDE_CODE, "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+        "run the native tool",
+        workspace=Workspace(native_tools=("Bash",)),
+        native_tool_policy=NativeToolPolicy.DENY,
+        call_id="claude-native-deny",
+    )
+    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.INVALID_REQUEST
+    assert not cli.invocations
+
+
+@pytest.mark.asyncio
+async def test_codex_hard_cost_cap_refuses_before_spawn():
+    cli = FakeCodexCli.answering("would exceed hard cap")
+    runtime = CallRuntime(adapters={Mode.CODEX: CliAdapter(spawn=cli)}, pricing=PRICES)
+    answer = await runtime.ask(
+        Binding(Mode.CODEX, "test", CredentialRef(lambda: {"OPENAI_API_KEY": "test"})),
+        "run under a hard cap",
+        limits=CallLimits(max_cost_usd=Decimal("0.01")),
+        call_id="codex-hard-cost-cap",
+    )
+    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.INVALID_REQUEST
+    assert not cli.invocations
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["openai_api", "anthropic_api"])
 async def test_cancelled_tool_batch_closes_pending_pairs_and_retains_confirmed_results(mode):
     from agentkit.tools.execution.policy import ToolResult
@@ -1882,6 +2713,8 @@ async def test_cancelled_tool_batch_closes_pending_pairs_and_retains_confirmed_r
     )
 
     class Tools:
+        max_concurrency = 2
+
         def schemas(self):
             return []
 
@@ -1965,19 +2798,10 @@ async def test_turn_limit_retains_latest_result_in_both_session_axes(mode):
 @pytest.mark.parametrize("mode", ["codex", "claude_code"])
 async def test_cli_resume_floors_only_compact_budget_boundary(mode, monkeypatch):
     """Exact provider costs may leave a finer-than-microdollar invocation cap."""
-    from agentkit.core import runtime as runtime_exports
     from agentkit.core.contracts.types import Message
     from agentkit.models.contracts.types import CallLimits
     from agentkit.state.context import WorkingContext
 
-    ceilings = []
-    original_budget = runtime_exports.Budget
-
-    def capture_budget(*args, **kwargs):
-        ceilings.append(kwargs.get("max_cost_usd"))
-        return original_budget(*args, **kwargs)
-
-    monkeypatch.setattr(runtime_exports, "Budget", capture_budget)
     if mode == "codex":
         cli = FakeCodexCli.script(codex_turn(text="submitted", usage=(10, 0, 5)), repeat_last=True)
     else:
@@ -2012,7 +2836,7 @@ async def test_cli_resume_floors_only_compact_budget_boundary(mode, monkeypatch)
             ),
             "Repair source",
             context=context,
-            limits=CallLimits(max_cost_usd=Decimal(".95")),
+            limits=CallLimits(max_cost_usd=Decimal(".95") if mode == "claude_code" else None),
             call_id="precision",
         )
         context.append(Message("user", "Private verifier rejected the initial submission; recover."))
@@ -2031,13 +2855,21 @@ async def test_cli_resume_floors_only_compact_budget_boundary(mode, monkeypatch)
             "Repair source",
             context=context,
             resume=first.session,
-            limits=CallLimits(max_cost_usd=remaining),
+            limits=CallLimits(max_cost_usd=remaining if mode == "claude_code" else None),
             call_id="precision/verify-1",
         )
     assert first.outcome == second.outcome == "answered"
     assert len(cli.invocations) == 2
-    assert ceilings == [Decimal(".950000"), Decimal(".913601")]
-    assert ceilings[1] <= remaining and remaining == Decimal(".9136016")
+    if mode == "claude_code":
+        argv = [call.argv for call in cli.invocations]
+        ceilings = [args[args.index("--max-budget-usd") + 1] for args in argv]
+        assert ceilings == ["0.950000", "0.913601"]
+        assert Decimal(ceilings[1]) <= remaining
+    else:
+        # Codex exposes no per-turn budget flag; CallRuntime still carries the
+        # exact remaining ceiling for its preflight/accounting contract.
+        assert all("--max-budget-usd" not in call.argv for call in cli.invocations)
+    assert remaining == Decimal(".9136016")
     assert second.cost_usd == (Decimal(".0363984") if mode == "claude_code" else Decimal(".000035"))
 
 

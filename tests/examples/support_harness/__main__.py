@@ -34,6 +34,7 @@ async def _run(mode: Mode, model: str) -> None:
                 org_id=1,
                 files=files,
                 orders={"order-1042": "Order 1042: duplicate payment captured; no refund issued."},
+                policy_documents=(("/orgs/1/approved/refunds.md", await files.view("/orgs/1/approved/refunds.md")),),
                 events=events,
             )
             answer = await harness.respond("What should we do about this duplicate payment?", order_id="order-1042")

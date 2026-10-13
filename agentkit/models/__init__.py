@@ -44,6 +44,9 @@ __all__ = [
     "CallLimits",
     "Credential",
     "CredentialRef",
+    "Allow",
+    "Deny",
+    "PreToolUse",
     "UnpricedPolicy",
     "ClaudePermissionMode",
     "CodexSandboxMode",
@@ -58,6 +61,7 @@ __all__ = [
     "MindKind",
     "ModelSelection",
     "NativeToolPolicy",
+    "CacheTtl",
     "OutputSpec",
     "CAPABILITY_NAMES",
     "CallableLLM",
@@ -84,6 +88,7 @@ __all__ = [
 
 from agentkit.core.contracts.types import CostSource
 from agentkit.models.contracts.constants import (
+    CacheTtl,
     ClaudePermissionMode,
     CodexSandboxMode,
     MindKind,
@@ -94,12 +99,15 @@ from agentkit.models.contracts.constants import (
 )
 from agentkit.models.contracts.schema import OutputSpec, compile_schema, validate_output, validate_schema
 from agentkit.models.contracts.types import (
+    Allow,
     Answer,
     Binding,
     CallLimits,
     Credential,
     CredentialRef,
+    Deny,
     ModelSettings,
+    PreToolUse,
     SessionHandle,
     Workspace,
 )

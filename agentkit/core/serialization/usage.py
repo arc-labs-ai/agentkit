@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from agentkit.core.contracts.types import Usage
+from agentkit.core.contracts.types import ProviderUsage
 
 
-def usage_to_dict(usage: Usage) -> dict[str, Any]:
+def usage_to_dict(usage: ProviderUsage) -> dict[str, Any]:
     return {
         "input": usage.input_tokens,
         "output": usage.output_tokens,
@@ -19,11 +19,11 @@ def usage_to_dict(usage: Usage) -> dict[str, Any]:
     }
 
 
-def usage_from_dict(value: Mapping[str, Any] | None) -> Usage:
+def usage_from_dict(value: Mapping[str, Any] | None) -> ProviderUsage:
     """Missing accounting is unpriced; it is never inferred to be a free call."""
     if value is None:
-        return Usage(cost_usd=None)
-    return Usage(
+        return ProviderUsage(cost_usd=None)
+    return ProviderUsage(
         int(value.get("input", 0)),
         int(value.get("output", 0)),
         None if value.get("cost") is None else float(value["cost"]),

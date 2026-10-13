@@ -45,7 +45,7 @@ class EvalConfig:
         if self.repetitions < 1:
             raise ValueError("evaluation repetitions must be positive")
 
-    def credentials(self) -> CredentialRef:
+    def credentials(self, mode: Mode | None = None) -> CredentialRef:
         from dotenv import dotenv_values
 
         values = dotenv_values(self.env_file, interpolate=False)
@@ -54,6 +54,16 @@ class EvalConfig:
             k: str(values.get(k) or os.environ.get(k) or "")
             for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
         }
+        # Each adapter receives only the credential material its backend can
+        # consume. Passing the whole .env.eval map to a CLI correctly trips
+        # the CLI credential allowlist, and can accidentally select an
+        # unrelated provider's credential.
+        if mode in (Mode.CODEX, Mode.OPENAI_API):
+            keys = {"OPENAI_API_KEY": keys["OPENAI_API_KEY"]}
+        elif mode == Mode.ANTHROPIC_API:
+            keys = {k: v for k, v in keys.items() if k != "OPENAI_API_KEY"}
+        elif mode == Mode.CLAUDE_CODE:
+            keys = {k: v for k, v in keys.items() if k != "OPENAI_API_KEY"}
         return CredentialRef(lambda: {k: v for k, v in keys.items() if v})
 
     def binding(self, mode: Mode, credential: CredentialRef | None) -> Binding:

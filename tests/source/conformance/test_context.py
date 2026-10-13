@@ -146,7 +146,9 @@ async def test_cli_host_tool_evidence_survives_api_switch(monkeypatch, target):
     from tests.source.conformance.test_calls import real_adapter
 
     @asynccontextmanager
-    async def fake_serve(tools, *, ctx, execution_observer, timeout_s=None):
+    async def fake_serve(tools, *, ctx, execution_observer, timeout_s=None, activity_observer=None):
+        if activity_observer is not None:
+            activity_observer(True)
         execution_observer(
             "lookup",
             {"code": "812"},
@@ -158,6 +160,8 @@ async def test_cli_host_tool_evidence_survives_api_switch(monkeypatch, target):
                 is_error=True,
             ),
         )
+        if activity_observer is not None:
+            activity_observer(False)
         yield None
 
     monkeypatch.setattr("agentkit.tools.execution.policy.serve", fake_serve)

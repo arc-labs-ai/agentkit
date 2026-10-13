@@ -98,7 +98,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from agentkit.core.testing.fakes._cli_replay import CliInvocation, CliRun, CliStderr, _exhausted_message, _ReplayProcess
+from agentkit.core.testing.fakes._cli_replay import (
+    CliInvocation,
+    CliRun,
+    CliStderr,
+    _exhausted_message,
+    _ReplayProcess,
+    validate_subscription_login_file,
+)
 from agentkit.core.testing.fakes.llm import ScriptExhausted
 
 __all__ = ["CliInvocation", "CliRun", "CliStderr", "FakeClaudeCli"]
@@ -122,9 +129,12 @@ class FakeClaudeCli:
     deliberately drives an unbounded number of spawns.
     """
 
-    def __init__(self, runs: Sequence[CliRun] = (), *, repeat_last: bool = False) -> None:
+    def __init__(
+        self, runs: Sequence[CliRun] = (), *, repeat_last: bool = False, require_auth_file: bool = False,
+    ) -> None:
         self._runs = tuple(runs)
         self._repeat_last = repeat_last
+        self._require_auth_file = require_auth_file
         self._cursor = 0
         self.invocations: list[CliInvocation] = []
         self.validated_mcp_configs: list[Mapping[str, Any]] = []
@@ -187,6 +197,8 @@ class FakeClaudeCli:
         changed a pipe mode, which is not a change any test of parsing or event
         mapping should notice.
         """
+        if self._require_auth_file:
+            validate_subscription_login_file(env or {}, home_variable="CLAUDE_CONFIG_DIR", filename=".credentials.json")
         await self._validate_mcp_config(argv)
         run = self._next_run()
         invocation = CliInvocation(

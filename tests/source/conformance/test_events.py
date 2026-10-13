@@ -4,8 +4,7 @@ from dataclasses import replace
 import pytest
 
 from agentkit.core.contracts.types import Mode
-from agentkit.core.events import BusEventSink, EventDeliveryError, EventHub, MaskingSink
-from agentkit.core.events.bus import EventBus
+from agentkit.core.events import EventDeliveryError, EventHub, MaskingSink
 from agentkit.core.runtime.calls import CallRuntime
 from agentkit.models.contracts.constants import EventKind, Outcome
 from agentkit.models.contracts.types import Binding, CallEvent, Turn
@@ -83,24 +82,43 @@ async def test_event_subscriber_failure_is_visible_and_does_not_skip_other_subsc
 
 
 @pytest.mark.asyncio
-async def test_runtime_event_ids_and_existing_bus_replay():
-    bus = EventBus()
-    sink = BusEventSink(bus)
-    runtime = CallRuntime(adapters={Mode.OPENAI_API: ScriptedAdapter(Turn(("42",)))}, pricing=PRICES)
-    answer = await runtime.ask(Binding(Mode.OPENAI_API, "test"), "6 times 7", events=sink, call_id="run")
-    assert answer.outcome is Outcome.ANSWERED
-    subscriber = bus.subscribe("run", from_version=0)
+async def test_isolated_event_subscriber_does_not_fail_publication_or_skip_others(caplog):
+    hub = EventHub()
+    seen = []
+
+    async def broken(event):
+        raise ValueError("handler failure")
+
+    async def other(event):
+        seen.append(event.kind)
+
+    hub.subscribe("isolated", broken, isolate=True)
+    hub.subscribe("other", other)
+    await hub.publish(CallEvent(EventKind.USAGE, "isolated-run"))
+    assert seen == [EventKind.USAGE]
+    assert "isolated event subscriber failed" in caplog.text
+    with pytest.raises(ExceptionGroup):
+        await hub.drain()
+    await hub.aclose()
+
+
+@pytest.mark.asyncio
+async def test_runtime_events_are_published_through_event_hub():
+    hub = EventHub()
     replay = []
-    async for wrapped in subscriber:
-        replay.append(wrapped.event)
-        if wrapped.event.kind == EventKind.CALL_FINISHED:
-            break
-    await subscriber.aclose()
-    await bus.close_stream("run")
+    hub.subscribe("test", lambda event: _record(replay, event), call_id="run")
+    runtime = CallRuntime(adapters={Mode.OPENAI_API: ScriptedAdapter(Turn(("42",)))}, pricing=PRICES)
+    answer = await runtime.ask(Binding(Mode.OPENAI_API, "test"), "6 times 7", events=hub, call_id="run")
+    assert answer.outcome is Outcome.ANSWERED
     assert replay[0].kind == EventKind.CALL_STARTED and replay[-1].kind == EventKind.CALL_FINISHED
     assert [e.sequence for e in replay] == list(range(1, len(replay) + 1))
     assert len({e.event_id for e in replay}) == len(replay)
     assert all(e.timestamp and e.schema_version == "1" for e in replay)
+    await hub.aclose()
+
+
+async def _record(events, event):
+    events.append(event)
 
 
 @pytest.mark.asyncio

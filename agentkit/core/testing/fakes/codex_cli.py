@@ -55,7 +55,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from agentkit.core.testing.fakes._cli_replay import CliInvocation, CliRun, CliStderr, _exhausted_message, _ReplayProcess
+from agentkit.core.testing.fakes._cli_replay import (
+    CliInvocation,
+    CliRun,
+    CliStderr,
+    _exhausted_message,
+    _ReplayProcess,
+    validate_subscription_login_file,
+)
 from agentkit.core.testing.fakes.llm import ScriptExhausted
 
 __all__ = ["FakeCodexCli", "codex_turn"]
@@ -149,9 +156,12 @@ class FakeCodexCli:
     not care how many turns it takes wants.
     """
 
-    def __init__(self, runs: Sequence[CliRun] = (), *, repeat_last: bool = False) -> None:
+    def __init__(
+        self, runs: Sequence[CliRun] = (), *, repeat_last: bool = False, require_auth_file: bool = False,
+    ) -> None:
         self._runs = tuple(runs)
         self._repeat_last = repeat_last
+        self._require_auth_file = require_auth_file
         self._cursor = 0
         self.invocations: list[CliInvocation] = []
 
@@ -228,6 +238,8 @@ class FakeCodexCli:
         whatever flags a future call site adds: they describe how the REAL
         implementation should wire file descriptors, and there are none here.
         """
+        if self._require_auth_file:
+            validate_subscription_login_file(env or {}, home_variable="CODEX_HOME", filename="auth.json")
         run = self._next_run()
         invocation = CliInvocation(
             argv=tuple(argv),

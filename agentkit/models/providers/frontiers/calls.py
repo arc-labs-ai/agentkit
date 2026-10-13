@@ -113,7 +113,10 @@ class ApiAdapter:
             history = list(anthropic_history(history))
             payload.update(messages=history, max_tokens=cap)
             if prompt.system:
-                payload["system"] = [{"type": "text", "text": prompt.system, "cache_control": {"type": "ephemeral"}}]
+                cache_control = {"type": "ephemeral"}
+                if settings.cache_ttl is not None:
+                    cache_control["ttl"] = settings.cache_ttl.value
+                payload["system"] = [{"type": "text", "text": prompt.system, "cache_control": cache_control}]
             for name in ("temperature", "top_p", "top_k"):
                 if name in opts:
                     payload[name] = opts[name]
@@ -138,6 +141,8 @@ class ApiAdapter:
                 max_output_tokens=cap,
                 prompt_cache_key=prompt.prefix_digest,
             )
+            if settings.cache_ttl is not None:
+                payload["prompt_cache_options"] = {"ttl": settings.cache_ttl.value}
             if prompt.system:
                 payload["instructions"] = prompt.system
             for name in ("temperature", "top_p"):

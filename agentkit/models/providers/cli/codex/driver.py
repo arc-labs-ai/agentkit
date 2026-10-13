@@ -55,7 +55,7 @@ instructions the way ``--system-prompt`` replaces Claude Code's.
 
 **The CLI does not report cost.** ``claude``'s ``result`` payload carries
 ``total_cost_usd``; ``codex``'s ``turn.completed`` carries only token counts.
-``Usage.cost_usd`` is therefore *computed* from
+``ProviderUsage.cost_usd`` is therefore *computed* from
 :func:`agentkit.models.catalog.compact.cost`. Unknown or ambiguous
 prices are marked ``tests.evals["cost_source"] = "unpriced"``.
 The compact cost is None for those results; unknown spend is never a priced zero. Inject ``pricing=`` for
@@ -86,12 +86,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from agentkit.agents.definitions.results import AgentResult
 from agentkit.agents.prompts.prompt import Prompt
 from agentkit.core.contracts.protocols import Ctx
-from agentkit.core.contracts.types import CostSource, StreamEvent, ToolCall, Usage
+from agentkit.core.contracts.types import CostSource, ProviderUsage, StreamEvent, ToolCall
 from agentkit.models.providers.cli._common import (
     CliLineTooLong,
+    CliResult,
     CliSpawn,
     CliTimedOut,
     CliTimeouts,
@@ -121,8 +121,9 @@ from agentkit.models.providers.cli._common import (
 from agentkit.models.providers.cli._messages import MessageLog
 
 if TYPE_CHECKING:
-    from agentkit.agents.execution.agent import Agent
     from agentkit.state.context import WorkingContext
+
+Agent = Any
 
 
 # ``--sandbox``: what the session's own tools may DO. This is Codex's whole
@@ -286,7 +287,7 @@ _DEFAULT_SANDBOX: SandboxMode = "read-only"
 
 # Codex's ``turn.completed`` usage counts input tokens INCLUSIVE of the cached
 # prefix, and reports the cached part separately. agentkit's convention is the
-# other one: ``Usage.input_tokens`` is the FRESH (billed-at-full-rate) input
+# other one: ``ProviderUsage.input_tokens`` is the FRESH (billed-at-full-rate) input
 # and ``cache_read_tokens`` is the discount. Subtracting is therefore not a
 # tidy-up, it is the difference between a cost estimate and a cost estimate
 # that double-counts every cached token in a long session — and Codex sessions
@@ -303,7 +304,7 @@ def _split_input_tokens(total_input: int, cached: int) -> tuple[int, int]:
     return max(0, total_input - cached), cached
 
 
-def _default_pricing(model: str | None, usage: Usage) -> float:
+def _default_pricing(model: str | None, usage: ProviderUsage) -> float:
     """The framework's own best-effort price table.
 
     Imported lazily so this module stays importable with nothing installed and
@@ -334,7 +335,7 @@ class CodexCliCognition:
     ``tool_call`` / ``tool_result`` for each shell command, patch, MCP call and
     web search; ``step`` for a plan update or a non-fatal item error; exactly
     one terminal ``final`` event carrying ``AgentResult(output=<assistant
-    text>, usage=<Usage>, tests.evals={"session_id": ..., "cli_duration_ms": ...})``.
+    text>, usage=<ProviderUsage>, tests.evals={"session_id": ..., "cli_duration_ms": ...})``.
 
     **The middleware chain does not apply to a native CLI tool call.** The CLI
     bypasses the ``Invoker``, so for every ``shell`` command, ``apply_patch``
@@ -559,7 +560,7 @@ class CodexCliCognition:
     # ONLY source of one. The default is agentkit's best-effort public price
     # table, which returns 0.0 for a model it does not know — most Codex models
     # today. A run whose cost matters passes its own contractual rates here.
-    pricing: Callable[[str | None, Usage], float] | None = None
+    pricing: Callable[[str | None, ProviderUsage], float] | None = None
 
     # ── the transport seam ──────────────────────────────────────────────────
     # How the subprocess gets created. ``None`` — the default, and the only
@@ -971,7 +972,7 @@ class CodexCliCognition:
         schema_requested: bool,
         elapsed_ms: int | None = None,
         timed_out: CliTimedOut | None = None,
-    ) -> AgentResult:
+    ) -> CliResult:
         """Turn one completed turn's state into its terminal ``AgentResult``.
 
         ``return_code`` is ``None`` when the process is still alive and ``-1``
@@ -1038,7 +1039,7 @@ class CodexCliCognition:
         # ── cost ────────────────────────────────────────────────────────────
         # Before the structured-output decision and before metering, because
         # both the meters and the terminal event must see the same number. The
-        # CLI supplies none, so this is where ``Usage.cost_usd`` comes from at
+        # CLI supplies none, so this is where ``ProviderUsage.cost_usd`` comes from at
         # all — see the ``pricing`` field for what 0.0 means.
         usage = self._priced(state)
 
@@ -1150,7 +1151,7 @@ class CodexCliCognition:
                 # ``_redact_secrets``.
                 evals["stderr"] = stderr_text
 
-        return AgentResult(
+        return CliResult(
             output=state.text,
             usage=usage,
             partial=final_partial,
@@ -1240,7 +1241,7 @@ class CodexCliCognition:
 
         return compile_schema(adapter.json_schema(), Mode.CODEX, self.model or getattr(agent, "model", "") or "")
 
-    def _priced(self, state: _TurnState) -> Usage:
+    def _priced(self, state: _TurnState) -> ProviderUsage:
         """``state.usage`` with a ``cost_usd`` on it.
 
         Never raises. A caller-supplied ``pricing=`` that blows up must not
@@ -1264,7 +1265,7 @@ class CodexCliCognition:
 
             state.cost_source = CostSource.UNPRICED
             return replace(state.usage, cost_usd=None, cost_source=CostSource.UNPRICED)
-        return Usage(
+        return ProviderUsage(
             input_tokens=state.usage.input_tokens,
             output_tokens=state.usage.output_tokens,
             cost_usd=round(cost_usd, 6),
@@ -1297,7 +1298,7 @@ class CodexCliCognition:
         if headroom is None:  # no ceiling configured
             return
         if headroom <= 0:
-            from agentkit.core.runtime.meter import MeterExceeded
+            from agentkit.models.providers.cli._common import MeterExceeded
 
             raise MeterExceeded(f"codex CLI not spawned: the run budget has {headroom} USD left")
 
@@ -1935,7 +1936,7 @@ class _TurnState:
     messages: MessageLog = field(default_factory=MessageLog)
     text: str = ""
     thinking: str = ""
-    usage: Usage = field(default_factory=Usage)
+    usage: ProviderUsage = field(default_factory=ProviderUsage)
     raw_usage: dict[str, Any] = field(default_factory=dict)
     session_id: str | None = None
     model: str | None = None
@@ -1996,7 +1997,7 @@ class _EventDelta:
     authoritative_text: str | None = None
     text: str = ""
     thinking: str = ""
-    usage: Usage | None = None
+    usage: ProviderUsage | None = None
     raw_usage: dict[str, Any] | None = None
     session_id: str | None = None
     model: str | None = None
@@ -2282,8 +2283,8 @@ def _flatten_content(result: Any) -> str:
     return str(result)
 
 
-def _usage_from(raw: Any) -> Usage:
-    """Codex's token counts → agentkit's ``Usage``.
+def _usage_from(raw: Any) -> ProviderUsage:
+    """Codex's token counts → agentkit's ``ProviderUsage``.
 
     The subtraction in :func:`_split_input_tokens` is the load-bearing line;
     see its docstring. ``cache_write_tokens`` stays 0 because Codex reports no
@@ -2291,9 +2292,9 @@ def _usage_from(raw: Any) -> Usage:
     with no source.
     """
     if not isinstance(raw, dict):
-        return Usage()
+        return ProviderUsage()
     fresh, cached = _split_input_tokens(_as_int(raw.get("input_tokens")), _as_int(raw.get("cached_input_tokens")))
-    return Usage(
+    return ProviderUsage(
         input_tokens=fresh,
         output_tokens=_as_int(raw.get("output_tokens")),
         cache_read_tokens=cached,
