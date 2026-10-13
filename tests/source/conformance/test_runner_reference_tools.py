@@ -8,11 +8,37 @@ import pytest
 
 from agentkit.agents import AgentDefinition, AgentRunner, DelegationPolicy, InstructionSet, ToolGrant
 from agentkit.agents.definitions.store import MemoryAgentStore
-from agentkit.agents.skills.resources import FileSkillSource, SkillRef
+from agentkit.agents.skills.resources import FileSkillSource, McpSkillSource, SkillRef
 from agentkit.core.runtime.calls import CallRuntime
 from agentkit.models.contracts.types import Binding, CallLimits, Turn
 from agentkit.tools import FunctionTool, ToolRegistry
 from tests.source.conformance.test_calls import PRICES, ScriptedAdapter
+
+
+@pytest.mark.asyncio
+async def test_mcp_skill_source_pins_resource_tree_and_rejects_changed_content():
+    from types import SimpleNamespace
+
+    resources = {
+        "skill://registry/repair/SKILL.md": "---\nname: repair\ndescription: Repair incidents safely.\n---\nUse the approved workflow.",
+        "skill://registry/repair/references.md": "Evidence requirements.",
+    }
+
+    class Client:
+        async def list_resources(self, *, force_refresh=False):
+            assert force_refresh
+            return [SimpleNamespace(uri=uri) for uri in resources]
+
+        async def read_resource(self, uri):
+            return resources[uri]
+
+    source = McpSkillSource(Client())
+    doc = (await source.list())[0]
+    assert doc.ref.uri == "skill://registry/repair/SKILL.md"
+    assert await source.read(doc.ref, "references.md") == "Evidence requirements."
+    resources["skill://registry/repair/references.md"] = "tampered"
+    with pytest.raises(PermissionError, match="changed since approval"):
+        await source.read(doc.ref, "references.md")
 
 
 @pytest.mark.asyncio

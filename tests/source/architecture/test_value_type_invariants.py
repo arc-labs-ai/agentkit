@@ -147,6 +147,9 @@ FACTORIES: dict[str, Any] = {
     ),
     # `VersionedEvent` is generic over the application's event type.
     "VersionedEvent": lambda: agentkit.core.events.bus.VersionedEvent(version=1, event="e"),
+    "Credential": lambda: agentkit.models.Credential(env={"API_TOKEN": "secret"}, home={"auth.json": b"x"}),
+    "ImagePart": lambda: agentkit.agents.prompts.ImagePart("image/png", b"png"),
+    "Workspace": lambda: agentkit.models.Workspace(working_dir="/tmp", native_tools=("Read",)),
 }
 
 

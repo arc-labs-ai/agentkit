@@ -21,6 +21,7 @@ mutation, dynamic loading, or a UI to inspect prompt history ship
 their own infrastructure on top of this skeleton.
 """
 
+from agentkit.agents.prompts.composition import ComposedPrompt, ImagePart, Manifest, PromptPart, compose
 from agentkit.agents.prompts.prompt import Prompt
 
-__all__ = ["Prompt"]
+__all__ = ["Prompt", "ComposedPrompt", "ImagePart", "Manifest", "PromptPart", "compose"]

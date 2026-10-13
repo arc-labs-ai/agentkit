@@ -32,7 +32,7 @@ def describe_cases() -> list[dict[str, Any]]:
             "max_calls": case.max_calls,
             "expectation": case.expectation if isinstance(case, WorkloadCase) else "success",
             "pair_id": case.pair_id if isinstance(case, WorkloadCase) else None,
-            "supported_modes": case.supported_modes if isinstance(case, WorkloadCase) else (),
+            "supported_modes": case.supported_modes,
         }
         for case in CASES
     ]

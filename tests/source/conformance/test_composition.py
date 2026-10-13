@@ -27,6 +27,17 @@ from agentkit.tools.execution.policy import OverflowPolicy, ToolResult, ToolSet
 from tests.source.conformance.test_calls import PRICES, ScriptedAdapter
 
 
+def test_untrusted_persona_passes_through_host_screening_before_manifesting():
+    prompt = Prompt("persona", "1", "Act as {role}.", inputs=("role",))
+    screened = compose(
+        [PromptPart(prompt, kind="persona")],
+        {"role": "operator"},
+        persona_screening=lambda text: text.replace("Act as", "You may assist as"),
+    )
+    assert screened.user == "You may assist as operator."
+    assert screened.manifest.parts[0][2] == digest("You may assist as operator.")
+
+
 @pytest.mark.parametrize(
     "values,kind",
     [

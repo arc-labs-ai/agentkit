@@ -2,6 +2,8 @@
 
 The default `workload` suite contains fourteen success/recovery workflows plus thirteen paired refusal, insufficient-evidence, authentication, cancellation or limit variants across coding, research, support, analytics, operations and security with actual configured models and installed CLIs. The `smoke`, `contract` and `probes` suites provide smaller transport/conformance checks. A passing arithmetic check is separate evidence from a passing application workflow.
 
+The `contract` suite includes `provider_auth_rejection`, which uses a deliberately invalid temporary credential to observe each provider's real authentication error shape. It must fail as `AUTH` in one attempt; the confirmed pre-generation rejection is recorded at zero spend. `claude_large_schema` runs only on Claude Code: it exercises the bounded system-prompt-file fallback and agentkit's local schema validation for a schema too large for inline argv. This is degraded structured output, not provider-native constrained decoding. Live probes on 2026-10-13 passed on all four backends for authentication rejection and on Claude Code for the large schema; report paths are recorded in `docs/design/mirror-gaps.md`.
+
 Install dependencies with `uv sync --all-extras --group eval`. Place `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` in root `.env.eval`; credentials and generated reports are gitignored. Anthropic OAuth access tokens in the legacy API-key slot are recognized as bearer authentication. The host must refresh expired credentials. These opt-in evaluations incur provider charges and execute approved coding tests in disposable, restricted workspaces.
 
 ```sh

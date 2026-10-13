@@ -14,7 +14,7 @@ from typing import Any
 
 from agentkit.core.contracts.types import Mode
 from agentkit.core.runtime.calls import CallRuntime, RetryPolicy
-from agentkit.models.contracts.constants import EventKind
+from agentkit.models.contracts.constants import EventKind, FailureClass
 from agentkit.models.providers.auth import anthropic_credential
 from tests.evals.catalog import CASES, WORKLOAD_EXECUTORS
 from tests.evals.engine.config import EvalConfig
@@ -109,7 +109,8 @@ async def run_matrix(
                 call_id = f"eval/{timestamp}/{mode}/{case.id}/trial-{trial}"
                 domain = case.domain if isinstance(case, WorkloadCase) else "conformance"
                 reason = "credentials/binary unavailable" if unavailable else None
-                unsupported = isinstance(case, WorkloadCase) and mode not in case.supported_modes
+                supported_modes = case.supported_modes
+                unsupported = bool(supported_modes) and mode not in supported_modes
                 if unsupported:
                     reason = "scenario unsupported on this mode"
                 if is_workload and domain == EvalDomain.CODING and not WorkspaceSandbox.process_available():
@@ -207,7 +208,31 @@ async def run_matrix(
                             or events[-1].kind != EventKind.CALL_FINISHED
                         ):
                             checks.append("missing lifecycle events")
-                        amount = case_spend(events, envelope, dispatched=dispatched)
+                        usage = answer.usage if answer is not None else None
+                        confirmed_auth_rejection = (
+                            isinstance(case, EvalCase)
+                            and case.id == "provider_auth_rejection"
+                            and answer is not None
+                            and answer.failure is not None
+                            and answer.failure.classification == FailureClass.AUTH
+                            and answer.attempts == 1
+                            and usage is not None
+                            and not any(
+                                (
+                                    usage.input_uncached,
+                                    usage.input_cache_read,
+                                    usage.input_cache_write_5m,
+                                    usage.input_cache_write_1h,
+                                    usage.output,
+                                )
+                            )
+                        )
+                        amount = case_spend(
+                            events,
+                            envelope,
+                            dispatched=dispatched,
+                            confirmed_no_billable_work=confirmed_auth_rejection,
+                        )
                         if amount > envelope:
                             checks.append("case spend exceeded its declared envelope")
                         row = {

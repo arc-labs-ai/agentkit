@@ -8,7 +8,7 @@ import secrets
 import struct
 import zlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -16,9 +16,11 @@ from agentkit.agents.definitions.agent import AgentDefinition, ToolGrant
 from agentkit.agents.definitions.instructions import InstructionSet
 from agentkit.agents.execution.runner import AgentRunner
 from agentkit.agents.skills.resources import FileSkillSource, SkillRef
-from agentkit.core.contracts.types import Message, MessageRole
+from agentkit.core.contracts.types import Message, MessageRole, Mode
 from agentkit.core.execution.concurrency import CancellationToken
+from agentkit.models.contracts.constants import FailureClass
 from agentkit.models.contracts.schema import OutputSpec
+from agentkit.models.contracts.types import CredentialRef
 from agentkit.state.context import WorkingContext
 from agentkit.tools import ToolRegistry
 from agentkit.tools.declarations.function import FunctionTool
@@ -33,11 +35,14 @@ class EvalCase:
     suite: str
     max_calls: int = 1
     expected_pre_dispatch_rejection: bool = False
+    supported_modes: tuple[Mode, ...] = ()
 
 
 CASES = (
     EvalCase("plain_answer", ("C1", "C4", "C5"), "smoke"),
     EvalCase("nested_structured", ("C2",), "smoke"),
+    EvalCase("provider_auth_rejection", ("G3", "retry"), "contract"),
+    EvalCase("claude_large_schema", ("C2",), "contract", supported_modes=(Mode.CLAUDE_CODE,)),
     EvalCase("tool_evidence", ("C4", "7.1"), "contract"),
     EvalCase("tool_error_recovery", ("7.2",), "contract"),
     EvalCase("image_result", ("7.2",), "contract"),
@@ -93,6 +98,40 @@ async def execute(
     case: EvalCase, runtime: Any, binding: Any, limits: Any, events: Any, workdir: Path, call_id: str
 ) -> tuple[Any, list[str]]:
     kwargs = {"limits": limits, "events": events, "call_id": call_id}
+    if case.id == "provider_auth_rejection":
+        env_name = "ANTHROPIC_API_KEY" if binding.mode in (Mode.CLAUDE_CODE, Mode.ANTHROPIC_API) else "OPENAI_API_KEY"
+        invalid = f"agentkit-eval-invalid-{secrets.token_hex(16)}"
+        rejected_binding = replace(
+            binding,
+            credential=CredentialRef(lambda: {env_name: invalid}),
+        )
+        answer = await runtime.ask(rejected_binding, "Reply with only OK.", **kwargs)
+        failure = answer.failure
+        checks = []
+        if answer.outcome != "failed" or failure is None or failure.classification != FailureClass.AUTH:
+            checks.append("provider auth rejection was not classified as authentication failure")
+        if answer.attempts != 1:
+            checks.append("non-retryable authentication rejection dispatched more than once")
+        return answer, checks
+    if case.id == "claude_large_schema":
+        schema = {
+            "type": "object",
+            "properties": {"value": {"type": "string", "description": "Allowed value. " * 3000}},
+            "required": ["value"],
+            "additionalProperties": False,
+        }
+        answer = await runtime.ask(
+            binding,
+            "Return a JSON object with value set to the string ok.",
+            OutputSpec(schema),
+            **kwargs,
+        )
+        checks = []
+        if answer.outcome != "answered" or answer.value != {"value": "ok"}:
+            checks.append("long schema output was not locally validated")
+        if not any(degradation.setting == "structured_output" for degradation in answer.degradations):
+            checks.append("large schema did not take the prompt-file fallback")
+        return answer, checks
     if case.id == "event_reaction":
         from agentkit.core.events import EventHub
         from agentkit.models.contracts.constants import EventKind

@@ -42,7 +42,12 @@ __all__ = [
     "Answer",
     "Binding",
     "CallLimits",
+    "Credential",
     "CredentialRef",
+    "UnpricedPolicy",
+    "ClaudePermissionMode",
+    "CodexSandboxMode",
+    "Workspace",
     "ModelSettings",
     "SessionHandle",
     "CostSource",
@@ -78,6 +83,23 @@ __all__ = [
 ]
 
 from agentkit.core.contracts.types import CostSource
-from agentkit.models.contracts.constants import MindKind, ModelSelection, NativeToolPolicy, Outcome
+from agentkit.models.contracts.constants import (
+    ClaudePermissionMode,
+    CodexSandboxMode,
+    MindKind,
+    ModelSelection,
+    NativeToolPolicy,
+    Outcome,
+    UnpricedPolicy,
+)
 from agentkit.models.contracts.schema import OutputSpec, compile_schema, validate_output, validate_schema
-from agentkit.models.contracts.types import Answer, Binding, CallLimits, CredentialRef, ModelSettings, SessionHandle
+from agentkit.models.contracts.types import (
+    Answer,
+    Binding,
+    CallLimits,
+    Credential,
+    CredentialRef,
+    ModelSettings,
+    SessionHandle,
+    Workspace,
+)

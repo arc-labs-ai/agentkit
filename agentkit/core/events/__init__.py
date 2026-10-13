@@ -1,6 +1,6 @@
 """Structured agent events, local subscriptions and host persistence ports."""
 
-from agentkit.core.events.adapters import BusEventSink, TraceEventSink
+from agentkit.core.events.adapters import BusEventSink, MaskingSink, TraceEventSink
 from agentkit.core.events.bus import EventBus, VersionedEvent
 from agentkit.core.events.hub import EventDeliveryError, EventHandler, EventHub
 from agentkit.core.events.ports import EventJournal, EventPublisher
@@ -11,6 +11,7 @@ __all__ = [
     "EventBus",
     "VersionedEvent",
     "BusEventSink",
+    "MaskingSink",
     "EventKind",
     "TraceEventSink",
     "CallEvent",

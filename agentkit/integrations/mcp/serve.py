@@ -61,6 +61,7 @@ bearer token rather than a Unix socket.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -166,6 +167,40 @@ def _text_result(text: str, *, is_error: bool) -> mcp_types.CallToolResult:
         content=[mcp_types.TextContent(type="text", text=text)],
         isError=is_error,
     )
+
+
+def _tool_result(value: Any) -> mcp_types.CallToolResult:
+    """Preserve supported multimodal blocks returned by an agentkit tool.
+
+    MCP image data is base64 text on the wire. ToolResult keeps image bytes in
+    memory, so encode them only at this transport boundary. Unsupported blocks
+    remain visible as text instead of being silently dropped.
+    """
+    content = getattr(value, "content", None)
+    if content is None:
+        return _text_result(_render(value), is_error=False)
+    parts: list[Any] = []
+    for block in content:
+        kind = block.get("type")
+        if kind == "text":
+            parts.append(mcp_types.TextContent(type="text", text=str(block.get("text", ""))))
+        elif kind == "image":
+            data = block.get("data")
+            mime_type = block.get("mimeType") or block.get("mime_type")
+            if not isinstance(data, bytes) or not isinstance(mime_type, str):
+                return _text_result("tool returned an invalid image block", is_error=True)
+            if len(data) > 20 * 1024 * 1024:
+                return _text_result("tool image exceeds the 20 MiB MCP response limit", is_error=True)
+            parts.append(
+                mcp_types.ImageContent(
+                    type="image", data=base64.b64encode(data).decode("ascii"), mimeType=mime_type
+                )
+            )
+        else:
+            parts.append(mcp_types.TextContent(type="text", text=_render(block)))
+    if not parts:
+        parts.append(mcp_types.TextContent(type="text", text=""))
+    return mcp_types.CallToolResult(content=parts, isError=bool(getattr(value, "is_error", False)))
 
 
 def _tools_of(registry: ToolRegistry | Sequence[Tool] | Iterable[Tool]) -> list[Tool]:
@@ -535,7 +570,7 @@ class McpServerSpec:
                 result = await result
         if isinstance(result, mcp_types.CallToolResult):
             return result
-        return _text_result(_render(result), is_error=False)
+        return _tool_result(result)
 
     # ---- lifecycle -------------------------------------------------------------------------
 

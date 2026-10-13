@@ -1,11 +1,59 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import signal
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from agentkit.models.providers.cli.isolation import IsolatedHome
+
+
+@pytest.mark.parametrize(
+    ("mode", "name"),
+    [("claude_code", ".credentials.json"), ("codex", "auth.json")],
+)
+def test_mode_scoped_credential_install_has_private_permissions(tmp_path, mode, name):
+    home = tmp_path / "home"
+    home.mkdir(mode=0o700)
+    IsolatedHome.install_credentials(home, mode, {name: b"{}"})
+    assert (home / name).read_bytes() == b"{}"
+    assert (home / name).stat().st_mode & 0o777 == 0o600
+    with pytest.raises(ValueError, match="allowlist"):
+        IsolatedHome.install_credentials(home, mode, {"unexpected.json": b"{}"})
+
+
+@pytest.mark.asyncio
+async def test_changed_credential_is_returned_once_and_removed_even_on_cancellation(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir(mode=0o700)
+    updates = []
+
+    async def save_changed(files):
+        updates.append(dict(files))
+
+    lifecycle = await IsolatedHome.credential_lifecycle(home, "codex", {"auth.json": b"old"}, save_changed)
+    with pytest.raises(asyncio.CancelledError):
+        async with lifecycle:
+            (home / "auth.json").write_bytes(b"refreshed")
+            raise asyncio.CancelledError
+    assert updates == [{"auth.json": b"refreshed"}]
+    assert not (home / "auth.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_unchanged_credential_does_not_call_refresh_callback(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir(mode=0o700)
+    updates = []
+    lifecycle = await IsolatedHome.credential_lifecycle(
+        home, "claude_code", {".credentials.json": b"same"}, updates.append
+    )
+    async with lifecycle:
+        pass
+    assert updates == []
+    assert not (home / ".credentials.json").exists()
 
 
 def test_snapshot_roundtrip_excludes_credentials_and_preserves_private_permissions(tmp_path):
@@ -116,6 +164,26 @@ def test_owner_creation_and_sweeping_keep_all_live_owners(tmp_path):
         for owner in owners:
             owner.close()
     assert not list(tmp_path.glob("owner-*"))
+
+
+def test_signal_cleanup_removes_credentials_then_chains_existing_handler(tmp_path):
+    signum = signal.SIGTERM
+    prior = signal.getsignal(signum)
+    prior_int = signal.getsignal(signal.SIGINT)
+    chained = []
+    signal.signal(signum, lambda received, _frame: chained.append(received))
+    owner = IsolatedHome(tmp_path)
+    root = owner.root
+    IsolatedHome.install_credentials(owner.create(), "codex", {"auth.json": b"secret"})
+    try:
+        IsolatedHome._handle_signal(signum, None)
+        assert not root.exists()
+        assert chained == [signum]
+    finally:
+        owner.close()
+        signal.signal(signum, prior)
+        signal.signal(signal.SIGINT, prior_int)
+        IsolatedHome._previous_signal_handlers.clear()
 
 
 def test_crashed_creation_without_lock_is_swept(tmp_path):

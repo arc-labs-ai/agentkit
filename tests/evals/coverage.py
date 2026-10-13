@@ -46,6 +46,8 @@ A = FeatureAspect
 CONFORMANCE_COVERAGE: Mapping[str, tuple[FeatureAspect, ...]] = {
     "plain_answer": (A.FINAL_ANSWER, A.EVENTS, A.USAGE_PRICING),
     "nested_structured": (A.STRUCTURED_OUTPUT,),
+    "provider_auth_rejection": (A.FAILURE_RECOVERY,),
+    "claude_large_schema": (A.STRUCTURED_OUTPUT,),
     "tool_evidence": (A.TOOLS, A.EVENTS, A.MCP),
     "tool_error_recovery": (A.TOOLS, A.FAILURE_RECOVERY, A.MCP),
     "image_result": (A.TOOLS, A.MCP),

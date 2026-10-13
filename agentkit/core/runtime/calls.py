@@ -3,24 +3,33 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
 import json
 import random
 import time
-from collections.abc import Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Mapping
+from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from agentkit.agents.prompts.composition import ComposedPrompt, digest, inline_prompt
 from agentkit.core.contracts.types import Message, MessageRole, Mode, Scope, ToolCall
 from agentkit.core.execution.concurrency import CancellationToken, Cancelled
 from agentkit.models.adapters.messages import canonical_turn, close_pending_tools, history_for, tool_content
 from agentkit.models.catalog.pricing import PriceTable, normalize_usage, price, usage_delta
-from agentkit.models.contracts.constants import CostSource, EventKind, FailureClass, NativeToolPolicy, Outcome
+from agentkit.models.contracts.constants import (
+    CostSource,
+    EventKind,
+    FailureClass,
+    NativeToolPolicy,
+    Outcome,
+    UnpricedPolicy,
+)
 from agentkit.models.contracts.failures import classify
-from agentkit.models.contracts.schema import OutputSpec, compile_schema, validate_output
+from agentkit.models.contracts.schema import OutputSpec, compile_schema, tolerant_json_object, validate_output
 from agentkit.models.contracts.settings import DEFAULT_CAPABILITIES, CapabilityTable
 from agentkit.models.contracts.types import (
     Answer,
@@ -35,6 +44,7 @@ from agentkit.models.contracts.types import (
     SessionHandle,
     Turn,
     Usage,
+    Workspace,
 )
 from agentkit.state.context import PrefixContext, WorkingContext
 
@@ -72,6 +82,11 @@ class CallRuntime:
         retry: RetryPolicy = _DEFAULT_RETRY,
         capture_text: bool = False,
         native_tool_policy: NativeToolPolicy = NativeToolPolicy.WARN,
+        unpriced_policy: UnpricedPolicy = UnpricedPolicy.REFUSE,
+        max_concurrent_cli: int = 8,
+        acquire: Callable[[Mode], AbstractAsyncContextManager[Any]] | None = None,
+        argument_masker: Callable[[str, Any], Any] | None = None,
+        result_masker: Callable[[str, str], str] | None = None,
     ) -> None:
         self.adapters = dict(adapters or {})
         self.pricing = pricing or PriceTable.default()
@@ -79,6 +94,14 @@ class CallRuntime:
         self.retry = retry
         self.capture_text = capture_text
         self.native_tool_policy = NativeToolPolicy(native_tool_policy)
+        self.unpriced_policy = UnpricedPolicy(unpriced_policy)
+        if max_concurrent_cli < 1:
+            raise ValueError("max_concurrent_cli must be positive")
+        self.max_concurrent_cli = max_concurrent_cli
+        self.acquire = acquire
+        self.argument_masker = argument_masker or _mask_tool_arguments
+        self.result_masker = result_masker
+        self._cli_semaphores: dict[Mode, asyncio.Semaphore] = {}
 
     async def __aenter__(self) -> CallRuntime:
         return self
@@ -128,13 +151,23 @@ class CallRuntime:
         call_id: str,
         resume: SessionHandle | None = None,
         turns_per_slice: int | None = None,
+        stable_prefix: bool = False,
+        fork: bool = False,
         context: WorkingContext | None = None,
         parent_call_id: str | None = None,
+        native_agents: Mapping[str, Any] | None = None,
+        workspace: Workspace | None = None,
     ) -> Answer[Any]:
         if not call_id:
             raise ValueError("call_id is required")
         if turns_per_slice is not None and turns_per_slice < 1:
             raise ValueError("turns_per_slice must be positive")
+        if turns_per_slice is not None and binding.mode == Mode.CODEX:
+            raise ValueError("Codex CLI does not expose a verifiable agentic-turn slice limit")
+        if stable_prefix and binding.mode != Mode.CLAUDE_CODE:
+            raise ValueError("stable_prefix is currently supported only by Claude Code CLI")
+        if fork and (binding.mode.is_api or resume is None or not resume.cli_session_id):
+            raise ValueError("fork requires a resumable CLI session")
         model_changed = resume is not None and (
             resume.mode != binding.mode or (resume.model and resume.model != binding.model)
         )
@@ -156,7 +189,15 @@ class CallRuntime:
             tuple(working.messages) != resume.messages or working.prefix != resume.prefix
         )
         working.append(
-            Message(MessageRole.USER, prompt.user, metadata={"call_id": call_id, "agent_id": working.get("agent_id")})
+            Message(
+                MessageRole.USER,
+                prompt.user,
+                content_blocks=tuple(
+                    {"type": "image", "mimeType": image.mime_type, "data": base64.b64encode(image.data).decode("ascii")}
+                    for image in prompt.images
+                ),
+                metadata={"call_id": call_id, "agent_id": working.get("agent_id")},
+            )
         )
         effective = self.capabilities.check(binding, settings)
         schema_adapter = None
@@ -205,6 +246,14 @@ class CallRuntime:
                 )
             if event.kind == EventKind.MESSAGE_DELTA and not self.capture_text:
                 fields = {"length": len(str(fields.get("text", "")))}
+            if event.kind == EventKind.TOOL_CALL and "arguments" in fields:
+                fields["arguments"] = self.argument_masker(str(fields.get("name", "")), fields["arguments"])
+            if event.kind == EventKind.TOOL_RESULT and "result_preview" in fields:
+                if self.result_masker is None:
+                    fields.pop("result_preview", None)
+                else:
+                    preview = self.result_masker(str(fields.get("name", "")), str(fields["result_preview"]))
+                    fields["result_preview"] = preview.encode("utf-8")[:512].decode("utf-8", errors="ignore")
             await emit(event.kind, **fields)
 
         await emit(
@@ -309,7 +358,7 @@ class CallRuntime:
                             result = Turn()
                         result.failure = Failure(
                             FailureClass.CANCELLED if cancelled else FailureClass.TIMEOUT,
-                            False,
+                            bool(first and not binding.mode.is_api),
                             mode_detail={"limit": "wall" if wall else "idle" if idle else "first_event"},
                         )
                         return result
@@ -329,16 +378,39 @@ class CallRuntime:
                         pass
 
         try:
-            if binding.mode == Mode.CODEX and self.native_tool_policy == NativeToolPolicy.DENY:
+            if prompt.images and binding.mode == Mode.CLAUDE_CODE:
+                degradation = Degradation(
+                    "images", "image prompt parts", "refused", "Claude Code CLI transport has no image input contract"
+                )
+                await emit(EventKind.DEGRADED, **asdict(degradation))
+                effective = replace(effective, degradations=(*effective.degradations, degradation))
+                failure = Failure(FailureClass.INVALID_REQUEST, mode_detail={"reason": degradation.reason})
+            elif native_agents and binding.mode != Mode.CLAUDE_CODE:
+                failure = Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "native subagents are supported only by Claude Code"},
+                )
+            elif workspace is not None and binding.mode.is_api:
+                failure = Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "workspace authority is available only to CLI modes"},
+                )
+            elif binding.mode == Mode.CODEX and self.native_tool_policy == NativeToolPolicy.DENY:
                 failure = Failure(
                     FailureClass.INVALID_REQUEST,
                     mode_detail={
                         "reason": "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"
                     },
                 )
-            elif table is None or not table.has(binding.mode, binding.model):
+            elif (table is None or not table.has(binding.mode, binding.model)) and (
+                self.unpriced_policy == UnpricedPolicy.REFUSE
+                or (limits.max_turns is None and limits.max_output_tokens is None)
+            ):
                 failure = Failure(
-                    FailureClass.INVALID_REQUEST, mode_detail={"reason": "unpriced model; supply a PriceTable"}
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={
+                        "reason": "unpriced model; supply a PriceTable or enable proceed_unpriced with a turn/token cap"
+                    },
                 )
                 total_cost, cost_source = None, CostSource.UNPRICED
             else:
@@ -373,18 +445,80 @@ class CallRuntime:
                         if binding.mode.is_api:
                             turn_settings = replace(turn_settings, max_output_tokens=cap)
                     model_in_flight = True
-                    turn = await monitored(
-                        adapter.turn(
-                            binding,
-                            prompt,
-                            settings=turn_settings,
-                            limits=turn_limits,
-                            schema=schema,
-                            tools=tools,
-                            session=current_session,
-                            cancel=cancel,
-                            emit=mode_event,
+                    await emit(EventKind.ATTEMPT_STARTED, attempt=attempts, mode=binding.mode, model=binding.model)
+
+                    async def invoke_adapter(
+                        prompt_arg: ComposedPrompt = prompt,
+                        settings_arg: ModelSettings = turn_settings,
+                        limits_arg: CallLimits = turn_limits,
+                        session_arg: SessionHandle | None = current_session,
+                        agents_arg: Mapping[str, Any] | None = native_agents,
+                        workspace_arg: Workspace | None = workspace,
+                        slice_arg: int | None = turns_per_slice,
+                        stable_prefix_arg: bool = stable_prefix,
+                        fork_arg: bool = fork,
+                    ) -> Turn:
+                        if slice_arg is not None and binding.mode == Mode.CLAUDE_CODE:
+                            limits_arg = replace(
+                                limits_arg,
+                                max_turns=min(limits_arg.max_turns or slice_arg, slice_arg),
+                            )
+                        if binding.mode.is_api:
+                            return await adapter.turn(
+                                binding,
+                                prompt_arg,
+                                settings=settings_arg,
+                                limits=limits_arg,
+                                schema=schema,
+                                tools=tools,
+                                session=session_arg,
+                                cancel=cancel,
+                                emit=mode_event,
+                                call_id=call_id,
+                                native_agents=agents_arg,
+                                workspace=workspace_arg,
+                            )
+                        if self.acquire is not None:
+                            async with self.acquire(binding.mode):
+                                return cast(Turn, await cast(Any, adapter).turn(
+                                    binding,
+                                    prompt_arg,
+                                    settings=settings_arg,
+                                    limits=limits_arg,
+                                    schema=schema,
+                                    tools=tools,
+                                    session=session_arg,
+                                    cancel=cancel,
+                                    emit=mode_event,
+                                    call_id=call_id,
+                                    native_agents=agents_arg,
+                                    workspace=workspace_arg,
+                                    stable_prefix=stable_prefix_arg,
+                                    fork=fork_arg,
+                                ))
+                        semaphore = self._cli_semaphores.setdefault(
+                            binding.mode, asyncio.Semaphore(self.max_concurrent_cli)
                         )
+                        async with semaphore:
+                            return cast(Turn, await cast(Any, adapter).turn(
+                                binding,
+                                prompt_arg,
+                                settings=settings_arg,
+                                limits=limits_arg,
+                                schema=schema,
+                                tools=tools,
+                                session=session_arg,
+                                cancel=cancel,
+                                emit=mode_event,
+                                call_id=call_id,
+                                native_agents=agents_arg,
+                                workspace=workspace_arg,
+                                stable_prefix=stable_prefix_arg,
+                                fork=fork_arg,
+                            ))
+
+                    turn = await monitored(
+                        invoke_adapter()
                     )
                     model_in_flight = False
                     turns += 1
@@ -393,7 +527,13 @@ class CallRuntime:
                         normalized = usage_delta(normalized, normalize_usage(binding.mode, current_session.raw_usage))
                     usage += normalized
                     raw = turn.raw_usage
-                    amount, source = price(binding.model, normalized, table, mode=binding.mode)
+                    amount, source = price(
+                        binding.model,
+                        normalized,
+                        table,
+                        mode=binding.mode,
+                        allow_partial=self.unpriced_policy == UnpricedPolicy.PROCEED_UNPRICED,
+                    )
                     if turn.reported_cost is not None:
                         reported = turn.reported_cost
                         previous = current_session.reported_cost if current_session else None
@@ -411,6 +551,17 @@ class CallRuntime:
                         total_cost += amount
                         cost_source = source
                     await emit(EventKind.USAGE, raw_usage=raw, usage=asdict(usage))
+                    await emit(
+                        EventKind.ATTEMPT_FINISHED,
+                        attempt=attempts,
+                        mode=binding.mode,
+                        model=binding.model,
+                        outcome="failed" if turn.failure else "completed",
+                        failure_class=turn.failure.classification if turn.failure else None,
+                        usage=asdict(normalized),
+                        cost_usd=str(amount) if amount is not None else None,
+                        cost_source=source,
+                    )
                     messages.extend(turn.messages)
                     for index, message in enumerate(turn.messages, len(messages) - len(turn.messages)):
                         await emit(EventKind.MESSAGE_DONE, index=index, length=len(message), final=not turn.tool_calls)
@@ -472,14 +623,19 @@ class CallRuntime:
                         if failure.classification == FailureClass.TIMEOUT and not failure.retryable:
                             outcome = Outcome.LIMIT_REACHED
                             break
-                        if (
-                            not failure.retryable
-                            or retry_streak >= self.retry.max_attempts
-                            or time.monotonic() - started >= self.retry.max_elapsed_s
-                        ):
-                            break
-                        # CLI internal retries are opaque; never multiply them.
-                        if not binding.mode.is_api:
+                        retry_allowed = (
+                            failure.retryable
+                            and retry_streak < self.retry.max_attempts
+                            and time.monotonic() - started < self.retry.max_elapsed_s
+                        )
+                        if retry_allowed and failure.classification == FailureClass.AUTH:
+                            prepare = getattr(adapter, "prepare_retry", None)
+                            retry_allowed = bool(
+                                prepare
+                                and retry_streak == 1
+                                and await prepare(binding, failure, call_id=call_id)
+                            )
+                        if not retry_allowed:
                             break
                         wait = max(
                             failure.retry_after_s or 0,
@@ -491,7 +647,13 @@ class CallRuntime:
                             EventKind.RETRY,
                             failure_class=failure.classification,
                             wait_seconds=wait,
-                            source="retry-after" if failure.retry_after_s is not None else "backoff",
+                            source=(
+                                "transport"
+                                if not binding.mode.is_api
+                                else "retry-after"
+                                if failure.retry_after_s is not None
+                                else "backoff"
+                            ),
                             attempt=attempts,
                         )
                         # Backoff is cancellable and shares the wall deadline.
@@ -504,16 +666,26 @@ class CallRuntime:
                                 else Outcome.LIMIT_REACHED
                             )
                             break
+                        if not binding.mode.is_api:
+                            # A transport retry is a fresh process and home.
+                            current_session = None
                         continue
                     failure = None
                     retry_streak = 0
+                    if turn.limit_reached:
+                        outcome = Outcome.LIMIT_REACHED
+                        break
                     if turn.refused:
                         outcome, failure = Outcome.REFUSED, Failure(FailureClass.REFUSED)
                         break
                     if turn.truncated:
                         outcome = Outcome.TRUNCATED
                         break
-                    if amount is None and not incomplete_accounting:
+                    if (
+                        amount is None
+                        and not incomplete_accounting
+                        and self.unpriced_policy == UnpricedPolicy.REFUSE
+                    ):
                         failure = Failure(
                             FailureClass.INVALID_REQUEST, mode_detail={"reason": "usage contains unpriced token kinds"}
                         )
@@ -540,6 +712,7 @@ class CallRuntime:
                                 name=call["name"],
                                 tool_call_id=call["id"],
                                 argument_digest=digest(call["arguments"]),
+                                arguments=self.argument_masker(call["name"], call["arguments"]),
                             )
                             started_tools.add(call["id"])
                             tool_turn = await monitored(
@@ -554,13 +727,21 @@ class CallRuntime:
                                 )
                                 break
                             result = tool_turn.value
+                            preview_fields = {}
+                            if self.result_masker is not None:
+                                preview = self.result_masker(call["name"], result.text)
+                                preview_fields["result_preview"] = (
+                                    preview.encode("utf-8")[:512].decode("utf-8", errors="ignore")
+                                )
                             await emit(
                                 EventKind.TOOL_RESULT,
                                 name=call["name"],
                                 tool_call_id=call["id"],
                                 result_size=len(result.text),
+                                result_digest=digest(result.content),
                                 overflowed=result.overflowed,
                                 is_error=result.is_error,
+                                **preview_fields,
                             )
                             working.append(
                                 Message(
@@ -602,14 +783,27 @@ class CallRuntime:
                         continue
                     if output:
                         try:
-                            raw_value = turn.value if turn.value is not None else json.loads(text)
+                            if turn.value is not None:
+                                raw_value = turn.value
+                            else:
+                                try:
+                                    raw_value = json.loads(text)
+                                except json.JSONDecodeError:
+                                    raw_value = tolerant_json_object(text)
                             value = validate_output(raw_value, output.schema)
                             if schema_adapter:
                                 value = schema_adapter.validate(value)
+                            validator_errors = [
+                                error
+                                for validator in output.validators
+                                for error in validator(value)
+                            ]
+                            if validator_errors:
+                                raise ValueError("; ".join(str(error) for error in validator_errors)[:2000])
                         except Exception as exc:
                             # A single correction turn on every transport. Do
                             # not repair refusal/truncation or terminal failures.
-                            if corrections >= 1:
+                            if corrections >= output.max_corrections:
                                 failure = Failure(
                                     FailureClass.INVALID_REQUEST,
                                     mode_detail={"reason": "canonical output validation failed"},
@@ -702,6 +896,21 @@ class CallRuntime:
             duration_s=time.monotonic() - started,
         )
         return answer
+
+
+def _mask_tool_arguments(name: str, arguments: Any, *, max_string_bytes: int = 4096) -> Any:
+    """Bound long strings in audited arguments while preserving their shape and digest."""
+    if isinstance(arguments, str):
+        raw = arguments.encode("utf-8")
+        return {"length": len(raw), "sha256": digest(arguments)} if len(raw) > max_string_bytes else arguments
+    if isinstance(arguments, Mapping):
+        return {
+            str(key): _mask_tool_arguments(str(key), value, max_string_bytes=max_string_bytes)
+            for key, value in arguments.items()
+        }
+    if isinstance(arguments, (tuple, list)):
+        return tuple(_mask_tool_arguments(name, item, max_string_bytes=max_string_bytes) for item in arguments)
+    return arguments
 
 
 async def _tool_turn(tools: Any, name: str, arguments: Any, ctx: Any) -> Turn:

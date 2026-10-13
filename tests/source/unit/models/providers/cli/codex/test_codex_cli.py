@@ -25,8 +25,26 @@ from agentkit.agents import Agent
 from agentkit.core.contracts.types import StreamEvent
 from agentkit.core.testing.fakes import CliRun, CliStderr, FakeCodexCli, codex_turn
 from agentkit.core.testing.fakes.ctx import FakeCtx
-from agentkit.models.providers.cli.codex.driver import CodexCliCognition
+from agentkit.models.providers.cli.codex.driver import CodexCliCognition, _events_from_payload, _ItemLog, _TurnState
 from agentkit.state.context import WorkingContext
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_codex_turn_failed_keeps_structured_retry_facts() -> None:
+    state = _TurnState()
+    for _, delta in _events_from_payload(
+        {
+            "type": "turn.failed",
+            "error": {"code": "rate_limit_exceeded", "status": 429, "retry_after": "0.025"},
+        },
+        _ItemLog(),
+    ):
+        state.fold(delta)
+    assert state.cli_error_code == "rate_limit_exceeded"
+    assert state.api_error_status == 429
+    assert state.retry_after_s == "0.025"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # helpers shared with the rest of the codex test files

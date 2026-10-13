@@ -115,6 +115,18 @@ def test_unpublished_cache_write_rate_is_unpriced_rather_than_guessed():
     assert price("gpt-5.4-mini", Usage(output=10), table, modifiers=("unknown",))[0] is None
 
 
+def test_partial_prices_preserve_known_amount_and_toml_host_tables(tmp_path):
+    table = PriceTable("partial", "2026-10-13", {"model": {"input_uncached": "2"}})
+    amount, source = price("model", Usage(input_uncached=5, output=3), table, allow_partial=True)
+    assert amount == Decimal("0.00001")
+    assert source == "mixed"
+
+    path = tmp_path / "prices.toml"
+    path.write_text('version = "v1"\ndate = "2026-10-13"\n[rates.model]\ninput_uncached = "2"\noutput = "4"\n')
+    assert PriceTable.load(path).row(Mode.OPENAI_API, "model")["output"] == "4"
+    assert PriceTable.derive(input="2", output="8", cache_read_ratio="0.1")["input_cache_read"] == "0.2"
+
+
 @pytest.mark.parametrize("value", ["-1", "NaN", "Infinity"])
 def test_invalid_price_modifiers_are_refused(value):
     with pytest.raises(ValueError):

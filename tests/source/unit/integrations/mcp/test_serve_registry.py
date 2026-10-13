@@ -22,6 +22,7 @@ contract, not this module's.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import pathlib
@@ -46,6 +47,7 @@ from agentkit.core.testing import make_test_ctx
 from agentkit.integrations.mcp import McpServerSpec, serve_registry
 from agentkit.integrations.mcp._transport import LoopbackMcpTransport
 from agentkit.tools import FunctionTool, ToolRegistry, tool
+from agentkit.tools.execution.policy import ToolResult
 
 # ── fixtures the whole file shares ─────────────────────────────────────────
 
@@ -89,6 +91,29 @@ async def _session(spec: McpServerSpec) -> AsyncIterator[Any]:
 
 def _text(result: Any) -> str:
     return "".join(b.text for b in result.content if getattr(b, "text", None) is not None)
+
+
+@pytest.mark.asyncio
+async def test_tool_image_results_remain_native_mcp_image_blocks() -> None:
+    """A CLI connected over MCP must receive tool images as images, not JSON text."""
+    image = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+    )
+
+    @tool(side_effecting=False)
+    def fetch_image() -> ToolResult:
+        """Return a one-pixel PNG for visual inspection."""
+        return ToolResult(({"type": "image", "data": image, "mimeType": "image/png"},))
+
+    async with _session(_spec(fetch_image)) as session:
+        result = await session.call_tool("fetch_image", {})
+
+    assert result.isError is False
+    assert len(result.content) == 1
+    block = result.content[0]
+    assert block.type == "image"
+    assert block.mimeType == "image/png"
+    assert base64.b64decode(block.data) == image
 
 
 # ── 1. the config the CLI is actually handed ───────────────────────────────

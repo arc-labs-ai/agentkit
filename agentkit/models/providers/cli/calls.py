@@ -7,19 +7,26 @@ vendor output blocks verbatim so reasoning signatures survive continuation.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import inspect
 import json
+from collections.abc import Mapping
 from contextlib import AsyncExitStack
 from dataclasses import asdict, replace
 from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from agentkit.core.contracts.types import Message, MessageRole, Mode, Scope, ToolCall
 from agentkit.models.contracts.constants import EventKind, FailureClass, NativeToolPolicy, Outcome
-from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn
+from agentkit.models.contracts.failures import classify
+from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, Workspace, resolve_credential
 from agentkit.models.providers._events import _emit
-from agentkit.models.providers.auth import anthropic_credential
+from agentkit.models.providers.auth import AuthKind, anthropic_credential
+
+_MCP_TIMEOUT_MARGIN_S = 5.0
+_CLAUDE_SCHEMA_PROMPT_MAX_BYTES = 256 * 1024
 
 
 class CliAdapter:
@@ -31,12 +38,28 @@ class CliAdapter:
         spawn: Any = None,
         working_dir: Path | None = None,
         native_tool_policy: NativeToolPolicy = NativeToolPolicy.WARN,
+        executable: dict[Mode, str] | None = None,
+        env: Any = None,
+        home_parent: Path | None = None,
+        request_hook: Any = None,
     ) -> None:
         self.spawn = spawn
         self.native_tool_policy = NativeToolPolicy(native_tool_policy)
         self.working_dir = working_dir
+        self.executable = {Mode(key): value for key, value in (executable or {}).items()}
+        self.env = dict(env or {})
+        sensitive_terms = ("_API_KEY", "TOKEN", "SECRET", "CREDENTIAL", "PASSWORD", "AUTH")
+        forbidden_env = {key for key in self.env if any(term in key.upper() for term in sensitive_terms)}
+        if forbidden_env:
+            raise ValueError("CLI credentials must be supplied through CredentialRef, not adapter env")
+        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.env.items()):
+            raise TypeError("CLI adapter env must map strings to strings")
+        self.home_parent = home_parent
+        self.request_hook = request_hook
         self._homes: Any = None
         self._sessions: dict[str, Path] = {}
+        self._auth_fingerprints: dict[str, str] = {}
+        self._pending_credentials: dict[str, Any] = {}
 
     async def aclose(self) -> None:
         if self._homes is not None:
@@ -55,6 +78,11 @@ class CliAdapter:
         session: SessionHandle | None,
         cancel: Any,
         emit: Any,
+        call_id: str = "",
+        native_agents: Mapping[str, Any] | None = None,
+        workspace: Workspace | None = None,
+        stable_prefix: bool = False,
+        fork: bool = False,
     ) -> Turn:
         from agentkit.agents import Agent
         from agentkit.models.providers.cli._common import CliTimeouts
@@ -86,6 +114,43 @@ class CliAdapter:
                     },
                 )
             )
+        if native_agents and binding.mode != Mode.CLAUDE_CODE:
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "native subagents are supported only by Claude Code"},
+                )
+            )
+        if workspace is not None and binding.mode == Mode.CODEX and (
+            workspace.native_tools or workspace.hooks or workspace.permission_mode
+        ):
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={
+                        "reason": (
+                            "Codex workspace supports sandbox and paths, not Claude tools, hooks or permission mode"
+                        )
+                    },
+                )
+            )
+        if workspace is not None and binding.mode == Mode.CLAUDE_CODE and workspace.sandbox is not None:
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "Codex sandbox settings cannot be applied to Claude Code"},
+                )
+            )
+        if stable_prefix and binding.mode != Mode.CLAUDE_CODE:
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST, mode_detail={"reason": "unsupported stable prefix mode"}
+                )
+            )
+        if fork and (session is None or not session.cli_session_id):
+            return Turn(
+                failure=Failure(FailureClass.INVALID_REQUEST, mode_detail={"reason": "fork requires a CLI session"})
+            )
         if binding.mode == Mode.CODEX and self.native_tool_policy == NativeToolPolicy.WARN:
             await _emit(
                 emit,
@@ -114,7 +179,7 @@ class CliAdapter:
             )
 
         if self._homes is None:
-            self._homes = await asyncio.to_thread(IsolatedHome)
+            self._homes = await asyncio.to_thread(IsolatedHome, self.home_parent)
         home = self._sessions.get(session.cli_session_id or "") if session else None
         restored = False
         if home is None:
@@ -160,20 +225,70 @@ class CliAdapter:
             cancel=cancel,
             budget=Budget(max_cost_usd=compact_ceiling),
         )
-        credentials = dict(binding.credential.resolve()) if binding.credential else {}
+        credential = self._pending_credentials.pop(call_id, None) or await resolve_credential(binding.credential)
+        if native_agents and not credential.home:
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "native Claude subagents require an isolated home credential"},
+                )
+            )
+        credentials = dict(credential.env)
         if binding.mode == Mode.CLAUDE_CODE:
             auth = anthropic_credential(credentials)
             credentials = auth.cli_env() if auth else credentials
         assert home is not None
+        image_paths = (
+            await asyncio.to_thread(IsolatedHome.materialize_images, home, prompt.images)
+            if binding.mode == Mode.CODEX and prompt.images
+            else ()
+        )
+        if workspace and workspace.hooks and not (credential.home or credentials):
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "Claude hooks require a supplied API or home credential"},
+                )
+            )
+        spawn = self.spawn
+        if self.request_hook is not None:
+            base_spawn = spawn or asyncio.create_subprocess_exec
+
+            async def hooked_spawn(*argv: str, **kwargs: Any) -> Any:
+                request = {"mode": binding.mode, "argv": tuple(argv), "cwd": kwargs.get("cwd")}
+                updated = self.request_hook(request)
+                if inspect.isawaitable(updated):
+                    updated = await updated
+                if not isinstance(updated, Mapping) or set(updated) - {"argv"}:
+                    raise ValueError("CLI request_hook may only return a replacement argv")
+                new_argv = updated.get("argv", argv)
+                if not isinstance(new_argv, (tuple, list)) or not new_argv or not all(
+                    isinstance(arg, str) for arg in new_argv
+                ):
+                    raise ValueError("CLI request_hook returned an invalid argv")
+                if new_argv[0] != argv[0]:
+                    raise ValueError("CLI request_hook cannot replace the configured executable")
+                return await base_spawn(*new_argv, **kwargs)
+
+            spawn = hooked_spawn
         common: dict[str, Any] = dict(
             model=binding.model,
-            working_dir=self.working_dir or home,
-            spawn=self.spawn,
+            working_dir=(workspace.working_dir if workspace and workspace.working_dir else None)
+            or self.working_dir
+            or home,
+            spawn=spawn,
             json_schema=schema,
             effort=settings.effort,
             env_policy="isolated",
             env={
+                **self.env,
                 **credentials,
+                **({"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"} if binding.mode == Mode.CLAUDE_CODE else {}),
+                **(
+                    {"MCP_TOOL_TIMEOUT": str(tools.timeout_s + _MCP_TIMEOUT_MARGIN_S)}
+                    if tools is not None and getattr(tools, "timeout_s", None) is not None
+                    else {}
+                ),
                 **(
                     {"CODEX_API_KEY": credentials["OPENAI_API_KEY"]}
                     if binding.mode == Mode.CODEX and "OPENAI_API_KEY" in credentials
@@ -182,11 +297,33 @@ class CliAdapter:
             },
             timeouts=CliTimeouts(total=limits.wall_clock_s, idle=limits.idle_s, first_event=limits.first_event_s),
             resume_session_id=native_session,
-            meter_spend=False,
+            meter_spend=binding.mode == Mode.CLAUDE_CODE,
         )
         async with AsyncExitStack() as stack:
+            credential_home = await IsolatedHome.credential_lifecycle(
+                home,
+                binding.mode.value,
+                credential.home,
+                credential.on_changed,
+                lambda exc: _emit(
+                    emit,
+                    EventKind.DEGRADED,
+                    setting="credential_refresh",
+                    requested="persist refreshed credential",
+                    applied="discarded",
+                    reason=f"credential callback failed ({type(exc).__name__})",
+                ),
+            )
+            await stack.enter_async_context(credential_home)
             spec = (
-                await stack.enter_async_context(serve(tools, ctx=ctx, execution_observer=observe_execution))
+                await stack.enter_async_context(
+                    serve(
+                        tools,
+                        ctx=ctx,
+                        execution_observer=observe_execution,
+                        timeout_s=getattr(tools, "timeout_s", None),
+                    )
+                )
                 if tools
                 else None
             )
@@ -195,17 +332,80 @@ class CliAdapter:
             cognition: Any
             wiring: dict[str, Any]
             if binding.mode == Mode.CLAUDE_CODE:
+                claude_schema = schema
+                if schema is not None:
+                    from agentkit.models.providers.cli._common import _ARGV_TEXT_LIMIT
+
+                    schema_json = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+                    schema_size = len(schema_json.encode("utf-8"))
+                    if schema_size > _ARGV_TEXT_LIMIT:
+                        if schema_size > _CLAUDE_SCHEMA_PROMPT_MAX_BYTES:
+                            return Turn(
+                                failure=Failure(
+                                    FailureClass.INVALID_REQUEST,
+                                    mode_detail={
+                                        "reason": "Claude schema exceeds the bounded prompt-file fallback limit",
+                                        "schema_bytes": schema_size,
+                                        "max_schema_bytes": _CLAUDE_SCHEMA_PROMPT_MAX_BYTES,
+                                    },
+                                )
+                            )
+                        schema_guidance = (
+                            "The host requires the final answer to satisfy this JSON Schema. "
+                            "After completing any necessary tool work, return exactly one JSON value "
+                            "that conforms to it, with no Markdown or surrounding prose. The host "
+                            "will validate the result and may ask for a correction.\n\n"
+                            "JSON Schema:\n"
+                            + schema_json
+                        )
+                        prompt = replace(
+                            prompt,
+                            system="\n\n".join(value for value in (prompt.system, schema_guidance) if value),
+                        )
+                        claude_schema = None
+                        await _emit(
+                            emit,
+                            EventKind.DEGRADED,
+                            setting="structured_output",
+                            requested="Claude Code native JSON Schema output",
+                            applied="prompt-file guidance with agentkit local validation and correction",
+                            reason=(
+                                f"schema is {schema_size} UTF-8 bytes; Claude Code accepts inline --json-schema "
+                                "but no documented file-backed schema flag"
+                            ),
+                        )
                 wiring = (
                     spec.cli_kwargs(builtin_tools=False) if spec else {"tools": ("",), "disallowed_tools": ("mcp__*",)}
                 )
+                if workspace and workspace.native_tools:
+                    wiring["tools"] = workspace.native_tools
                 cognition = ClaudeCliCognition(
-                    **common,
+                    **{**common, "json_schema": claude_schema},
+                    claude_bin=self.executable.get(binding.mode, "claude"),
                     config_dir=home,
-                    bare=True,
+                    bare=not bool(
+                        credential.home
+                        or (workspace and workspace.hooks)
+                        or auth is not None and auth.kind == AuthKind.BEARER
+                    ),
+                    setting_sources=(),
+                    agents=dict(native_agents) if native_agents else None,
+                    add_dirs=workspace.add_dirs if workspace else (),
+                    permission_mode=(
+                        cast(
+                            Any,
+                            workspace.permission_mode.value
+                            if workspace and workspace.permission_mode
+                            else "default",
+                        )
+                    ),
+                    settings=(json.dumps({"hooks": dict(workspace.hooks)}) if workspace and workspace.hooks else None),
                     partial_messages=True,
                     max_turns=limits.max_turns,
+                    stable_prompt_prefix=stable_prefix,
+                    fork_session=fork,
                     allowed_tools=spec.auto_approve if spec else (),
-                    native_tool_policy="deny",
+                    native_tool_policy="allow" if workspace and workspace.native_tools else "deny",
                     **wiring,
                 )
             else:
@@ -223,21 +423,31 @@ class CliAdapter:
                     overrides["model_verbosity"] = settings.verbosity
                 if settings.reasoning_summary:
                     overrides["model_reasoning_summary"] = settings.reasoning_summary
-                wiring = spec.codex_kwargs() if spec else {}
+                wiring = (
+                    spec.codex_kwargs(
+                        tool_timeout_s=(spec.timeout_s + _MCP_TIMEOUT_MARGIN_S if spec.timeout_s is not None else None)
+                    )
+                    if spec
+                    else {}
+                )
                 for server_table in wiring.get("mcp_servers", {}).values():
                     server_table["required"] = True
                     server_table["startup_timeout_sec"] = 20
                 common["env"] = {**common["env"], **dict(wiring.pop("env", {}) or {})}
                 cognition = CodexCliCognition(
                     **common,
+                    codex_bin=self.executable.get(binding.mode, "codex"),
                     config_home=home,
+                    images=image_paths,
+                    add_dirs=workspace.add_dirs if workspace else (),
                     ignore_user_config=True,
                     ignore_rules=True,
-                    sandbox="read-only",
+                    sandbox=workspace.sandbox.value if workspace and workspace.sandbox else "read-only",
                     ask_for_approval="never",
                     skip_git_repo_check=True,
                     native_tool_policy="allow",
                     config_overrides=overrides,
+                    fork_session=fork,
                     **wiring,
                 )
             agent = Agent(name="call", prompt=prompt.system, cognition=cognition)
@@ -248,7 +458,22 @@ class CliAdapter:
                     if event.type == EventKind.MESSAGE_DELTA:
                         await _emit(emit, EventKind.MESSAGE_DELTA, text=event.text)
                     elif event.type in (EventKind.TOOL_CALL, EventKind.TOOL_RESULT):
-                        await _emit(emit, event.type, name=event.tool_call.name if event.tool_call else "")
+                        call = event.tool_call
+                        fields = {"name": getattr(call, "name", "")}
+                        if event.type == EventKind.TOOL_CALL and call is not None:
+                            fields["tool_call_id"] = getattr(call, "id", None)
+                            fields["arguments"] = getattr(call, "arguments", None)
+                        if event.type == EventKind.TOOL_RESULT and event.tool_result is not None:
+                            result = event.tool_result
+                            result_text = str(getattr(result, "text", ""))
+                            fields.update(
+                                result_size=len(result_text.encode("utf-8")),
+                                result_digest=hashlib.sha256(result_text.encode("utf-8")).hexdigest(),
+                                result_preview=result_text,
+                                overflowed=bool(getattr(result, "overflowed", False)),
+                                is_error=bool(getattr(result, "is_error", False)),
+                            )
+                        await _emit(emit, event.type, **fields)
                     elif event.type == "final":
                         result = event.result
             except asyncio.CancelledError:
@@ -281,17 +506,20 @@ class CliAdapter:
         reason = result.evals.get("stop_reason")
         failure = None
         if result.partial:
-            classification: FailureClass = (
-                FailureClass.CANCELLED if reason == Outcome.CANCELLED else FailureClass.UNKNOWN
-            )
-            if reason in ("structured_output_missing", "structured_output_mismatch"):
-                failure = None  # core owns one correction turn
+            failure = _classify_cli_failure(binding.mode, reason, result.evals)
+            if reason in (
+                "structured_output_missing",
+                "structured_output_mismatch",
+                "error_max_turns",
+                "error_max_budget_usd",
+            ):
+                failure = None  # core owns structured correction and limit outcomes
             else:
                 from agentkit.models.providers.cli._common import _redact_secrets
 
-                failure = Failure(
-                    classification,
-                    mode_detail={
+                assert failure is not None
+                detail = {
+                        **dict(failure.mode_detail),
                         "stop_reason": reason,
                         "return_code": result.evals.get("cli_return_code"),
                         "diagnostic": _redact_secrets(
@@ -303,7 +531,14 @@ class CliAdapter:
                                 or ""
                             )
                         )[:1000],
-                    },
+                    }
+                if failure.classification == FailureClass.AUTH:
+                    self._auth_fingerprints[call_id] = _credential_digest(credential)
+                failure = Failure(
+                    failure.classification,
+                    failure.retryable,
+                    failure.retry_after_s,
+                    detail,
                 )
         messages = tuple(result.evals.get("messages") or ())
         # Claude's result is authoritative; intermediate assistant messages are
@@ -331,10 +566,75 @@ class CliAdapter:
             else None,
             reported_cost_cumulative=binding.mode == Mode.CLAUDE_CODE,
             usage_cumulative=binding.mode == Mode.CODEX,
-            usage_complete=not result.partial,
+            usage_complete=not result.partial or reason in ("error_max_turns", "error_max_budget_usd"),
             failure=failure,
             truncated=reason in ("error_max_turns", "error_max_budget_usd"),
+            limit_reached=reason in ("error_max_turns", "error_max_budget_usd"),
             session_id=sid or None,
             home_bundle=home_bundle,
             canonical_messages=tuple(canonical_messages),
         )
+
+    async def prepare_retry(self, binding: Binding, failure: Failure, *, call_id: str) -> bool:
+        """Retry auth once only when the host has supplied a rotated credential."""
+        previous = self._auth_fingerprints.pop(call_id, None)
+        if previous is None:
+            return False
+        refreshed = await resolve_credential(binding.credential)
+        if _credential_digest(refreshed) == previous:
+            return False
+        self._pending_credentials[call_id] = refreshed
+        return True
+
+
+def _credential_digest(credential: Any) -> str:
+    payload = json.dumps(
+        {
+            "env": dict(credential.env),
+            "home": {name: hashlib.sha256(value).hexdigest() for name, value in credential.home.items()},
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _classify_cli_failure(mode: Mode, reason: Any, evals: Any) -> Failure:
+    detail = evals if isinstance(evals, Mapping) else {}
+    error_code = detail.get("cli_error_code")
+    status = detail.get("api_error_status")
+    errors = detail.get("cli_errors") or ()
+    diagnostic = " ".join(str(x) for x in errors if isinstance(x, str)).lower()
+    stop = str(reason or "").lower()
+    code = str(error_code or "").lower()
+    try:
+        status = int(status) if status is not None else None
+    except (TypeError, ValueError):
+        status = None
+    raw_headers = detail.get("headers")
+    headers = dict(raw_headers) if isinstance(raw_headers, Mapping) else {}
+    retry_after_s = detail.get("retry_after_s")
+    if retry_after_s is not None and "retry-after" not in headers and "Retry-After" not in headers:
+        headers = {**headers, "retry-after": str(retry_after_s)}
+    facts = {"status": status, "code": code, "type": stop, "headers": headers}
+    classified = classify(facts)
+    if classified is not None and classified.classification != FailureClass.UNKNOWN:
+        if classified.classification == FailureClass.AUTH:
+            return Failure(FailureClass.AUTH, True, mode_detail={"reason": "cli_authentication"})
+        return classified
+    combined = f"{stop} {code} {diagnostic}"
+    auth_markers = ("unauthorized", "authentication", "invalid_api_key", "not logged in", "login required")
+    if any(marker in combined for marker in auth_markers):
+        return Failure(FailureClass.AUTH, True, mode_detail={"reason": "cli_authentication"})
+    rate_markers = ("429", "rate_limit", "rate limit", "too many requests")
+    if any(marker in combined for marker in rate_markers):
+        return Failure(FailureClass.RATE_LIMITED, True, mode_detail={"reason": "cli_rate_limit"})
+    if any(marker in combined for marker in ("529", "overloaded", "overload")):
+        return Failure(FailureClass.OVERLOADED, True, mode_detail={"reason": "cli_overloaded"})
+    if stop in ("timeout", "startup_timeout", "idle_timeout", "first_event_timeout"):
+        return Failure(FailureClass.TIMEOUT, stop == "first_event_timeout", mode_detail={"reason": stop})
+    return Failure(
+        FailureClass.CANCELLED if reason == Outcome.CANCELLED else FailureClass.UNKNOWN,
+        False,
+        mode_detail={"mode": mode, "reason": stop or "cli_failure"},
+    )

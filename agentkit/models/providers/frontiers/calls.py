@@ -15,7 +15,7 @@ from agentkit.core.contracts.types import Mode
 from agentkit.models.adapters.messages import anthropic_history
 from agentkit.models.contracts.constants import EventKind, FailureClass
 from agentkit.models.contracts.failures import classify
-from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn
+from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, resolve_credential
 from agentkit.models.providers._events import _emit
 from agentkit.models.providers.auth import anthropic_credential
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
@@ -41,11 +41,24 @@ class ApiAdapter:
         session: SessionHandle | None,
         cancel: Any,
         emit: Any,
+        call_id: str = "",
+        native_agents: Any = None,
+        workspace: Any = None,
     ) -> Turn:
+        if native_agents or workspace:
+            return Turn(
+                failure=Failure(
+                    FailureClass.INVALID_REQUEST,
+                    mode_detail={"reason": "CLI workspace features are unavailable on API modes"},
+                )
+            )
         from agentkit.models.providers.frontiers.base import HttpLLM
 
         anthropic = binding.mode == Mode.ANTHROPIC_API
-        credentials = binding.credential.resolve() if binding.credential else {}
+        credential = await resolve_credential(binding.credential)
+        if credential.home:
+            raise ValueError("frontier API credentials must be supplied as environment values")
+        credentials = credential.env
         auth = anthropic_credential(credentials) if anthropic else None
         key = auth.secret if auth else credentials.get("OPENAI_API_KEY") if not anthropic else None
         if not key:
@@ -69,8 +82,30 @@ class ApiAdapter:
             timeout=limits.wall_clock_s or 180,
         )
         history = [dict(x) for x in session.history] if session else []
+        user_content: Any = prompt.user
+        if prompt.images:
+            if anthropic:
+                user_content = [{"type": "text", "text": prompt.user}]
+                user_content.extend(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": image.mime_type,
+                            "data": image.data_url().split(",", 1)[1],
+                        },
+                    }
+                    for image in prompt.images
+                )
+            else:
+                user_content = [{"type": "input_text", "text": prompt.user}]
+                user_content.extend(
+                    {"type": "input_image", "image_url": image.data_url()} for image in prompt.images
+                )
         if not history:
-            history.append({"role": "user", "content": prompt.user})
+            history.append({"role": "user", "content": user_content})
+        elif prompt.images and history[-1].get("role") == "user" and history[-1].get("content") == prompt.user:
+            history[-1] = {**history[-1], "content": user_content}
         opts = {k: v for k, v in asdict(settings).items() if v is not None}
         payload: dict[str, Any] = {"model": binding.model, "stream": True}
         cap = settings.max_output_tokens or limits.max_output_tokens or 4096

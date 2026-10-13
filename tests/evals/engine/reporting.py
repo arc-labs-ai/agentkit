@@ -32,9 +32,15 @@ def source_digest() -> str:
     return checksum.hexdigest()
 
 
-def case_spend(events: list[Any], envelope: Decimal, *, dispatched: bool) -> Decimal:
+def case_spend(
+    events: list[Any], envelope: Decimal, *, dispatched: bool, confirmed_no_billable_work: bool = False
+) -> Decimal:
     """Sum every call in a case; incomplete/unknown calls reserve the envelope."""
     starts = {e.call_id for e in events if e.kind == EventKind.CALL_STARTED}
+    if confirmed_no_billable_work and not any(
+        e.kind in (EventKind.MESSAGE_DELTA, EventKind.TOOL_CALL, EventKind.TOOL_RESULT) for e in events
+    ):
+        return Decimal(0)
     costs: dict[str, Decimal] = {}
     for event in events:
         if event.kind != EventKind.CALL_FINISHED:

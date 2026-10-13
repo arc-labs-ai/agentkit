@@ -12,6 +12,27 @@ class NativeToolPolicy(StrEnum):
     ALLOW = "allow"
 
 
+class UnpricedPolicy(StrEnum):
+    REFUSE = "refuse"
+    PROCEED_UNPRICED = "proceed_unpriced"
+
+
+class ClaudePermissionMode(StrEnum):
+    DEFAULT = "default"
+    ACCEPT_EDITS = "acceptEdits"
+    BYPASS_PERMISSIONS = "bypassPermissions"
+    PLAN = "plan"
+    AUTO = "auto"
+    MANUAL = "manual"
+    DONT_ASK = "dontAsk"
+
+
+class CodexSandboxMode(StrEnum):
+    READ_ONLY = "read-only"
+    WORKSPACE_WRITE = "workspace-write"
+    DANGER_FULL_ACCESS = "danger-full-access"
+
+
 class ModelSelection(StrEnum):
     INHERIT = "inherit"
 
@@ -48,6 +69,8 @@ class EventKind(StrEnum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     USAGE = "usage"
+    ATTEMPT_STARTED = "attempt_started"
+    ATTEMPT_FINISHED = "attempt_finished"
     RETRY = "retry"
     DEGRADED = "degraded"
     CALL_FINISHED = "call_finished"
@@ -81,6 +104,9 @@ __all__ = [
     "AuthKind",
     "ModelSelection",
     "NativeToolPolicy",
+    "UnpricedPolicy",
+    "ClaudePermissionMode",
+    "CodexSandboxMode",
     "CostSource",
     "Effort",
     "EventKind",

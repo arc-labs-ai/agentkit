@@ -89,7 +89,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from agentkit.agents.cognition import CoordinatorCognition, ReActCognition, SingleCallCognition
@@ -185,6 +185,75 @@ def as_cli_agents(skills: Iterable[Skill]) -> dict[str, dict[str, Any]]:
             "(MAX_ARG_STRLEN), so this would die with E2BIG mid-spawn. Shorten the prompts, or "
             "split the roster across sessions."
         )
+    return roster
+
+
+async def as_cli_agents_from_definitions(
+    definitions: Iterable[Any], sources: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """Project narrowly supported public agent definitions to ``--agents``.
+
+    Persona references are resolved through their approved SkillSource and
+    must be digest-pinned. Features Claude's native subagent schema cannot
+    enforce (memory, discovery, host delegation, settings, or call limits) are
+    refused instead of silently disappearing from the projected agent.
+    """
+    from agentkit.agents.definitions.agent import AgentDefinition, DelegationPolicy
+    from agentkit.core.contracts.types import Mode
+    from agentkit.models.contracts.constants import MindKind, ModelSelection
+    from agentkit.models.contracts.types import Binding, CallLimits, ModelSettings
+
+    roster: dict[str, dict[str, Any]] = {}
+    for definition in definitions:
+        if not isinstance(definition, AgentDefinition):
+            raise SkillNotProjectable("native Claude agents require AgentDefinition values")
+        if not _CLI_AGENT_NAME.fullmatch(definition.id):
+            raise SkillNotProjectable(f"agent id {definition.id!r} is not a Claude subagent name")
+        if not definition.description.strip():
+            raise SkillNotProjectable(f"agent {definition.id!r} needs a non-empty delegation description")
+        if definition.id in roster:
+            raise SkillNotProjectable(f"duplicate Claude subagent id {definition.id!r}")
+        if definition.discoverable_skills or definition.triggered_skills:
+            raise SkillNotProjectable(f"agent {definition.id!r} has skills Claude subagents cannot resolve")
+        if definition.mind != MindKind.REACT:
+            raise SkillNotProjectable(f"agent {definition.id!r} uses an unsupported mind strategy")
+        if definition.settings != ModelSettings() or definition.limits != CallLimits():
+            raise SkillNotProjectable(f"agent {definition.id!r} has settings or limits Claude cannot enforce")
+        if definition.delegation != DelegationPolicy():
+            raise SkillNotProjectable(f"agent {definition.id!r} has a host delegation policy Claude cannot enforce")
+        if definition.model != ModelSelection.INHERIT and (
+            not isinstance(definition.model, Binding) or definition.model.mode != Mode.CLAUDE_CODE
+        ):
+            raise SkillNotProjectable(f"agent {definition.id!r} selects a model unavailable to Claude subagents")
+
+        tool_names = definition.tools.allow
+        if any(any(marker in name for marker in "*?[]") for name in (*tool_names, *definition.tools.deny)):
+            raise SkillNotProjectable(f"agent {definition.id!r} uses wildcard tool grants that cannot be projected")
+        allowed_tools = [name for name in tool_names if name not in definition.tools.deny]
+        prompt_sections = [definition.description]
+        for ref in definition.persona:
+            if not ref.digest:
+                raise SkillNotProjectable(f"agent {definition.id!r} has an unpinned persona skill")
+            source = sources.get(ref.source)
+            if source is None:
+                raise SkillNotProjectable(f"no approved skill source is configured for {ref.source!r}")
+            document = await source.get(ref)
+            if document.ref.digest != ref.digest or set(document.files) - {"SKILL.md"}:
+                raise SkillNotProjectable(f"persona {ref.uri!r} has changed or has unsupported companion files")
+            prompt_sections.append(f"## {document.name}\n{document.description}\n\n{document.body}")
+
+        projected: dict[str, Any] = {
+            "description": definition.description,
+            "prompt": "\n\n".join(prompt_sections),
+            "tools": allowed_tools,
+        }
+        if isinstance(definition.model, Binding):
+            projected["model"] = definition.model.model
+        roster[definition.id] = projected
+
+    size = len(json.dumps(roster).encode("utf-8"))
+    if size > _MAX_AGENTS_JSON_BYTES:
+        raise SkillNotProjectable("projected Claude subagent roster exceeds the CLI argv size bound")
     return roster
 
 

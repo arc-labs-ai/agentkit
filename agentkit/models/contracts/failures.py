@@ -81,10 +81,13 @@ def classify(exc_or_event: Any) -> Failure | None:
         category = FailureClass.OVERLOADED
     elif status in (408, 504):
         category = FailureClass.TIMEOUT
+    elif status in (400, 402, 404, 413, 422) or kind == "invalid_request_error":
+        # A structured client status outranks a generic provider type such as
+        # ``api_error``. In particular, HTTP 400 must never become a retryable
+        # transient merely because the CLI omitted a more specific subtype.
+        category = FailureClass.INVALID_REQUEST
     elif status in (500, 502) or kind in ("api_error", "server_error"):
         category = FailureClass.TRANSIENT_NETWORK
-    elif status in (400, 402, 404, 413, 422) or kind == "invalid_request_error":
-        category = FailureClass.INVALID_REQUEST
     elif kind == "refusal":
         category = FailureClass.REFUSED
     elif kind == Outcome.CANCELLED:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -106,8 +107,34 @@ class PriceTable:
 
     @classmethod
     def load(cls, path: Path | str) -> PriceTable:
-        """Load a versioned JSON price file supplied by the host."""
-        return cls(**json.loads(Path(path).read_text()))
+        """Load a versioned JSON or TOML price file supplied by the host."""
+        source = Path(path)
+        data = source.read_bytes()
+        if source.suffix.lower() == ".toml":
+            return cls(**tomllib.loads(data.decode("utf-8")))
+        return cls(**json.loads(data))
+
+    @staticmethod
+    def derive(
+        *,
+        input: str | Decimal,
+        output: str | Decimal,
+        cache_read_ratio: str | Decimal = "1",
+        cache_write_ratio: str | Decimal = "1",
+    ) -> dict[str, str]:
+        """Derive explicit cache rates from published input/output rate ratios."""
+        input_rate, output_rate = Decimal(input), Decimal(output)
+        read_ratio, write_ratio = Decimal(cache_read_ratio), Decimal(cache_write_ratio)
+        values = (input_rate, output_rate, read_ratio, write_ratio)
+        if any(not value.is_finite() or value < 0 for value in values):
+            raise ValueError("price rates and ratios must be finite and nonnegative")
+        return {
+            "input_uncached": str(input_rate),
+            "input_cache_read": str(input_rate * read_ratio),
+            "input_cache_write_5m": str(input_rate * write_ratio),
+            "input_cache_write_1h": str(input_rate * write_ratio),
+            "output": str(output_rate),
+        }
 
     def has(self, mode: Mode, model: str) -> bool:
         return self.row(mode, model) is not None
@@ -122,22 +149,32 @@ class PriceTable:
 
 
 def price(
-    model: str, usage: Usage, table: PriceTable, *, mode: Mode = Mode.OPENAI_API, modifiers: tuple[str, ...] = ()
+    model: str,
+    usage: Usage,
+    table: PriceTable,
+    *,
+    mode: Mode = Mode.OPENAI_API,
+    modifiers: tuple[str, ...] = (),
+    allow_partial: bool = False,
 ) -> tuple[Decimal | None, CostSource]:
     rates = table.row(mode, model)
     if rates is None:
         return None, CostSource.UNPRICED
     total = Decimal(0)
+    missing = False
     for key in ("input_uncached", "input_cache_read", "input_cache_write_5m", "input_cache_write_1h", "output"):
         count = getattr(usage, key)
         if count and key not in rates:
-            return None, CostSource.UNPRICED
+            if not allow_partial:
+                return None, CostSource.UNPRICED
+            missing = True
+            continue
         total += Decimal(count) * Decimal(rates.get(key, "0")) / Decimal(1_000_000)
     for modifier in modifiers:
         if modifier not in table.modifiers:
             return None, CostSource.UNPRICED
         total *= Decimal(table.modifiers[modifier])
-    return total, CostSource.PRICE_TABLE
+    return total, CostSource.MIXED if missing else CostSource.PRICE_TABLE
 
 
 class PriceUnavailableError(ValueError):

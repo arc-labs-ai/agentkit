@@ -6,21 +6,63 @@ import math
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar
 
 from agentkit.core.contracts.types import Message, Mode
 from agentkit.core.serialization._immutable import deep_freeze
-from agentkit.models.contracts.constants import CALL_EVENT_SCHEMA_VERSION, CostSource, EventKind, FailureClass, Outcome
+from agentkit.models.contracts.constants import (
+    CALL_EVENT_SCHEMA_VERSION,
+    ClaudePermissionMode,
+    CodexSandboxMode,
+    CostSource,
+    EventKind,
+    FailureClass,
+    Outcome,
+)
 from agentkit.state.context import PrefixContext
 
 T = TypeVar("T")
 
 
 @dataclass(frozen=True)
-class CredentialRef:
-    """Host-owned credential resolver; secrets are excluded from repr."""
+class Credential:
+    """Resolved host credentials. Home files are installed only by allowlisted CLI adapters."""
 
-    resolve: Callable[[], Mapping[str, str]] = field(repr=False, compare=False)
+    env: Mapping[str, str] = field(default_factory=dict, repr=False, hash=False)
+    home: Mapping[str, bytes] = field(default_factory=dict, repr=False, hash=False)
+    on_changed: Callable[[Mapping[str, bytes]], Awaitable[None]] | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.env.items()):
+            raise TypeError("credential environment must map strings to strings")
+        if any(not isinstance(k, str) or not isinstance(v, bytes) for k, v in self.home.items()):
+            raise TypeError("credential home must map paths to bytes")
+        object.__setattr__(self, "env", deep_freeze(dict(self.env)))
+        object.__setattr__(self, "home", deep_freeze(dict(self.home)))
+
+
+CredentialResolver = Callable[[], Mapping[str, str] | Credential | Awaitable[Mapping[str, str] | Credential]]
+
+
+@dataclass(frozen=True)
+class CredentialRef:
+    """Host-owned sync or async credential resolver; secrets are excluded from repr."""
+
+    resolve: CredentialResolver = field(repr=False, compare=False)
+
+
+async def resolve_credential(ref: CredentialRef | None) -> Credential:
+    if ref is None:
+        return Credential()
+    value = ref.resolve()
+    if hasattr(value, "__await__"):
+        value = await value
+    if isinstance(value, Credential):
+        return value
+    if isinstance(value, Mapping):
+        return Credential(env=value)
+    raise TypeError("credential resolver must return Credential or an environment mapping")
 
 
 @dataclass(frozen=True)
@@ -63,6 +105,30 @@ class CallLimits:
                 finite = value.is_finite() if isinstance(value, Decimal) else math.isfinite(value)
                 if not finite or value <= 0:
                     raise ValueError(f"{key} must be finite and positive")
+
+
+@dataclass(frozen=True)
+class Workspace:
+    """Per-call CLI filesystem and native-tool authority."""
+
+    working_dir: Path | str | None = None
+    add_dirs: tuple[Path | str, ...] = ()
+    permission_mode: ClaudePermissionMode | None = None
+    native_tools: tuple[str, ...] = ()
+    hooks: Mapping[str, Any] | None = field(default=None, repr=False, hash=False)
+    sandbox: CodexSandboxMode | None = None
+
+    def __post_init__(self) -> None:
+        if self.permission_mode is not None:
+            object.__setattr__(self, "permission_mode", ClaudePermissionMode(self.permission_mode))
+        if self.sandbox is not None:
+            object.__setattr__(self, "sandbox", CodexSandboxMode(self.sandbox))
+        if any(not name or not isinstance(name, str) for name in self.native_tools):
+            raise ValueError("native tool names must be non-empty strings")
+        object.__setattr__(self, "native_tools", tuple(dict.fromkeys(self.native_tools)))
+        object.__setattr__(self, "add_dirs", tuple(self.add_dirs))
+        if self.hooks is not None:
+            object.__setattr__(self, "hooks", deep_freeze(dict(self.hooks)))
 
 
 @dataclass(frozen=True)
@@ -194,6 +260,7 @@ class Turn:
     failure: Failure | None = None
     refused: bool = False
     truncated: bool = False
+    limit_reached: bool = False
     tool_calls: tuple[dict[str, Any], ...] = ()
     history: tuple[Mapping[str, Any], ...] = ()
     session_id: str | None = None
@@ -218,4 +285,7 @@ class ModeAdapter(Protocol):
         session: SessionHandle | None,
         cancel: Any,
         emit: EventSink,
+        call_id: str,
+        native_agents: Mapping[str, Any] | None,
+        workspace: Workspace | None,
     ) -> Turn: ...

@@ -14,6 +14,22 @@ The framework ships ZERO concrete Skills — apps build their own, the
 same way they bring their own Tools.
 """
 
+from agentkit.agents.skills.resources import (
+    FileSkillSource,
+    McpSkillSource,
+    MemorySkillSource,
+    SkillDocument,
+    SkillRef,
+    SkillSource,
+)
 from agentkit.agents.skills.skill import Skill
 
-__all__ = ["Skill"]
+__all__ = [
+    "Skill",
+    "SkillRef",
+    "SkillDocument",
+    "SkillSource",
+    "FileSkillSource",
+    "MemorySkillSource",
+    "McpSkillSource",
+]

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import copy
 import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,11 +24,86 @@ class SchemaError(ValueError):
 class OutputSpec:
     schema: dict[str, Any] = field(hash=False)
     name: str = "answer"
+    max_corrections: int = 1
+    validators: tuple[Callable[[Any], list[str]], ...] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
         from agentkit.core.serialization._immutable import deep_freeze
 
         object.__setattr__(self, "schema", deep_freeze(self.schema))
+        object.__setattr__(self, "validators", tuple(self.validators))
+        if self.max_corrections < 0:
+            raise ValueError("max_corrections must be nonnegative")
+        if any(not callable(validator) for validator in self.validators):
+            raise TypeError("output validators must be callable")
+
+
+def tolerant_json_object(text: str) -> Any:
+    """Extract one unambiguous JSON object from a last-message response."""
+    candidate = text.strip()
+    fence = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", candidate, flags=re.IGNORECASE)
+    if fence:
+        candidate = fence.group(1).strip()
+    try:
+        value = json.loads(candidate)
+        if isinstance(value, dict):
+            return value
+    except json.JSONDecodeError:
+        pass
+
+    starts: list[int] = []
+    depth = 0
+    quoted = escaped = False
+    spans: list[tuple[int, int]] = []
+    for index, char in enumerate(candidate):
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+            continue
+        if char == '"':
+            quoted = True
+        elif char == "{":
+            if depth == 0:
+                starts.append(index)
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0:
+                spans.append((starts.pop(), index + 1))
+    if depth == 1 and starts and candidate.endswith("}"):
+        # A single stray close brace after the last complete object.
+        candidate = candidate[:-1].rstrip()
+        depth = 0
+        spans = []
+        starts = []
+        quoted = escaped = False
+        for index, char in enumerate(candidate):
+            if quoted:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    quoted = False
+                continue
+            if char == '"':
+                quoted = True
+            elif char == "{":
+                if depth == 0:
+                    starts.append(index)
+                depth += 1
+            elif char == "}" and depth:
+                depth -= 1
+                if depth == 0:
+                    spans.append((starts.pop(), index + 1))
+    if len(spans) != 1:
+        raise ValueError("response does not contain one unambiguous JSON object")
+    start, end = spans[0]
+    return json.loads(candidate[start:end])
 
 
 def _validator(schema: Any) -> Any:

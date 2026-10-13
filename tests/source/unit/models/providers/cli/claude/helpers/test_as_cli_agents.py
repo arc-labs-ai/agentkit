@@ -26,9 +26,12 @@ from typing import Any
 import pytest
 
 from agentkit.agents.cognition import CoordinatorCognition, ReActCognition, SingleCallCognition
+from agentkit.agents.definitions.agent import AgentDefinition, ToolGrant
 from agentkit.agents.prompts.prompt import Prompt
 from agentkit.agents.skills import Skill
-from agentkit.models.providers.cli.claude import SkillNotProjectable, as_cli_agents
+from agentkit.agents.skills.resources import MemorySkillSource, SkillDocument, SkillRef
+from agentkit.models.contracts.types import CallLimits
+from agentkit.models.providers.cli.claude import SkillNotProjectable, as_cli_agents, as_cli_agents_from_definitions
 from agentkit.models.providers.cli.claude.driver import ClaudeCliCognition
 from agentkit.tools import tool
 
@@ -78,6 +81,58 @@ def test_a_tool_free_skill_projects_an_explicit_empty_list() -> None:
     skill = Skill("summariser", "Summarises.", "Be terse.", SingleCallCognition())
     agents = as_cli_agents([skill])
     assert agents["summariser"]["tools"] == []
+
+
+@pytest.mark.asyncio
+async def test_public_agent_definition_projects_only_pinned_personas_and_exact_tools() -> None:
+    ref = SkillRef("memory", "review-policy", "pinned-digest")
+    document = SkillDocument(
+        ref,
+        "review-policy",
+        "Review policy",
+        "Never make edits; identify only evidence-backed defects.",
+        {"SKILL.md": ("sha256", 8)},
+    )
+    definition = AgentDefinition(
+        id="reviewer",
+        version="1",
+        description="Reviews source changes.",
+        persona=(ref,),
+        tools=ToolGrant(allow=("Read", "Edit"), deny=("Edit",)),
+        limits=CallLimits(),
+    )
+    projected = await as_cli_agents_from_definitions(
+        [definition], {"memory": MemorySkillSource({"review-policy": document})}
+    )
+    assert projected["reviewer"]["description"] == "Reviews source changes."
+    assert "Never make edits" in projected["reviewer"]["prompt"]
+    assert projected["reviewer"]["tools"] == ["Read"]
+
+
+@pytest.mark.asyncio
+async def test_agent_definition_projection_refuses_wildcard_tools() -> None:
+    definition = AgentDefinition(
+        id="reviewer",
+        version="1",
+        description="Reviews source changes.",
+        tools=ToolGrant(allow=("Read*",)),
+        limits=CallLimits(),
+    )
+    with pytest.raises(SkillNotProjectable, match="wildcard"):
+        await as_cli_agents_from_definitions([definition], {})
+
+
+@pytest.mark.asyncio
+async def test_agent_definition_projection_refuses_unpinned_persona() -> None:
+    definition = AgentDefinition(
+        id="reviewer",
+        version="1",
+        description="Reviews source changes.",
+        persona=(SkillRef("memory", "policy"),),
+        limits=CallLimits(),
+    )
+    with pytest.raises(SkillNotProjectable, match="unpinned"):
+        await as_cli_agents_from_definitions([definition], {"memory": MemorySkillSource({})})
 
 
 def test_a_react_skill_with_no_tools_also_projects_an_explicit_empty_list() -> None:

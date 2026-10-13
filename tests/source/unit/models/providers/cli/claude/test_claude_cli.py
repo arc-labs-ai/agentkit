@@ -21,8 +21,35 @@ import pytest
 from agentkit.agents import Agent
 from agentkit.agents.prompts.prompt import Prompt
 from agentkit.core.testing.fakes.ctx import FakeCtx
-from agentkit.models.providers.cli.claude.driver import ClaudeCliCognition, _get_semaphore
+from agentkit.models.providers.cli.claude.driver import (
+    ClaudeCliCognition,
+    _events_from_payload,
+    _get_semaphore,
+    _TurnState,
+)
 from agentkit.state.context import WorkingContext
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_claude_result_keeps_structured_retry_facts() -> None:
+    state = _TurnState()
+    async for _, delta in _events_from_payload(
+        {
+            "type": "result",
+            "subtype": "api_error",
+            "is_error": True,
+            "api_error_status": 429,
+            "retry_after": "0.025",
+            "error": {"type": "rate_limit_error", "code": "rate_limit_error"},
+        }
+    ):
+        state.fold(delta)
+    assert state.api_error_status == 429
+    assert state.cli_error_code == "rate_limit_error"
+    assert state.retry_after_s == "0.025"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fake subprocess plumbing

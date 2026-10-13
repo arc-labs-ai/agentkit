@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import quote, unquote, urlsplit
 
 from agentkit.agents.prompts.composition import digest
 from agentkit.core.serialization._immutable import deep_freeze
@@ -162,3 +163,102 @@ class MemorySkillSource:
         if doc.files.get(path) != fingerprint:
             raise PermissionError("skill resource changed since approval")
         return value
+
+
+class McpSkillSource:
+    """Load Open Standard Skills from an MCP resource catalog.
+
+    Each skill is a resource named ``.../<skill-name>/SKILL.md``; additional
+    resources beneath that URI's directory become pinned supporting files.
+    Content is fetched on demand and every read revalidates the approved digest.
+    """
+
+    def __init__(self, client: Any, *, source_id: str = "mcp", max_file_bytes: int = 200_000) -> None:
+        if max_file_bytes < 1:
+            raise ValueError("max_file_bytes must be positive")
+        self.client = client
+        self.source_id = source_id
+        self.max_file_bytes = max_file_bytes
+
+    async def _resources(self) -> tuple[Any, ...]:
+        return tuple(await self.client.list_resources(force_refresh=True))
+
+    @staticmethod
+    def _uri(resource: Any) -> str:
+        uri = getattr(resource, "uri", None)
+        if not isinstance(uri, str) or not uri:
+            raise ValueError("MCP skill resources require a URI")
+        return uri
+
+    async def _read_uri(self, uri: str) -> bytes:
+        value = await self.client.read_resource(uri)
+        if not isinstance(value, str):
+            raise TypeError("MCP skill resources must be text")
+        blob = value.encode("utf-8")
+        if len(blob) > self.max_file_bytes:
+            raise ValueError("skill resource exceeds size bound")
+        return blob
+
+    async def list(self) -> tuple[SkillDocument, ...]:
+        resources = await self._resources()
+        roots = sorted(
+            uri for uri in (self._uri(resource) for resource in resources) if urlsplit(uri).path.endswith("/SKILL.md")
+        )
+        documents = []
+        for uri in roots:
+            parts = urlsplit(uri).path.rstrip("/").split("/")
+            documents.append(await self.get(SkillRef(self.source_id, uri)))
+            if len(parts) < 2:
+                raise ValueError("MCP skill URI must include a skill directory")
+        return tuple(documents)
+
+    async def get(self, ref: SkillRef) -> SkillDocument:
+        if ref.source != self.source_id or not urlsplit(ref.uri).path.endswith("/SKILL.md"):
+            raise ValueError("invalid MCP skill reference")
+        all_resources = await self._resources()
+        uris = {self._uri(resource) for resource in all_resources}
+        if ref.uri not in uris:
+            raise FileNotFoundError(ref.uri)
+        directory_uri = ref.uri.rsplit("/", 1)[0]
+        prefix = directory_uri + "/"
+        files: dict[str, tuple[str, int]] = {}
+        body: str | None = None
+        for uri in sorted(item for item in uris if item == ref.uri or item.startswith(prefix)):
+            relative = "SKILL.md" if uri == ref.uri else item_relative(uri, prefix)
+            if not relative or relative.startswith("../") or "\\" in relative:
+                raise PermissionError("invalid MCP skill resource path")
+            blob = await self._read_uri(uri)
+            files[relative] = (hashlib.sha256(blob).hexdigest(), len(blob))
+            if uri == ref.uri:
+                body = blob.decode("utf-8")
+        if body is None:
+            raise FileNotFoundError(ref.uri)
+        directory_name = urlsplit(directory_uri).path.rstrip("/").split("/")[-1]
+        return parse_skill(body, ref, files, directory_name=directory_name)
+
+    async def read(self, ref: SkillRef, path: str) -> str:
+        if Path(path).is_absolute() or ".." in Path(path).parts or "\\" in path:
+            raise PermissionError("invalid MCP skill resource path")
+        doc = await self.get(ref)
+        if path not in doc.files:
+            raise PermissionError("resource is outside the pinned MCP manifest")
+        root_uri = ref.uri.rsplit("/", 1)[0]
+        encoded_path = quote(path, safe="/")
+        uri = f"{root_uri}/{encoded_path}"
+        blob = await self._read_uri(uri)
+        if (hashlib.sha256(blob).hexdigest(), len(blob)) != doc.files[path]:
+            raise PermissionError("MCP skill resource changed since approval")
+        return blob.decode("utf-8")
+
+
+def item_relative(uri: str, prefix: str) -> str:
+    """Return a relative URI path without allowing encoded traversal."""
+    path = urlsplit(uri).path
+    root = urlsplit(prefix).path
+    if not path.startswith(root):
+        return ""
+    relative = unquote(path[len(root) :])
+    parts = relative.split("/")
+    if not relative or any(part in ("", ".", "..") for part in parts) or "\\" in relative:
+        return ""
+    return relative

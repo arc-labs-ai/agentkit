@@ -989,6 +989,12 @@ class ClaudeCliCognition:
             evals["external_run_id"] = str(external_id)
         if final_stop_reason is not None:
             evals["stop_reason"] = final_stop_reason
+        if state.api_error_status is not None:
+            evals["api_error_status"] = state.api_error_status
+        if state.cli_error_code is not None:
+            evals["cli_error_code"] = state.cli_error_code
+        if state.retry_after_s is not None:
+            evals["retry_after_s"] = state.retry_after_s
         if timed_out is not None:
             # The number that fired, so the fix ("raise it" / "this was a real
             # hang") does not need the cognition's construction site to hand.
@@ -2463,6 +2469,9 @@ class _TurnState:
     structured_output: Any = None
     init: dict[str, Any] = field(default_factory=dict)
     api_retries: list[dict[str, Any]] = field(default_factory=list)
+    api_error_status: int | None = None
+    cli_error_code: str | None = None
+    retry_after_s: str | float | None = None
     saw_terminal: bool = False
 
     def fold(self, delta: _EventDelta) -> None:
@@ -2495,6 +2504,12 @@ class _TurnState:
             self.init = delta.init
         if delta.api_retry is not None:
             self.api_retries.append(delta.api_retry)
+        if delta.api_error_status is not None:
+            self.api_error_status = delta.api_error_status
+        if delta.cli_error_code is not None:
+            self.cli_error_code = delta.cli_error_code
+        if delta.retry_after_s is not None:
+            self.retry_after_s = delta.retry_after_s
 
 
 @dataclass(slots=True)
@@ -2508,6 +2523,9 @@ class _EventDelta:
     authoritative_text: str | None = None
     text: str = ""
     thinking: str = ""
+    api_error_status: int | None = None
+    cli_error_code: str | None = None
+    retry_after_s: str | float | None = None
     usage: Usage | None = None
     raw_usage: dict[str, Any] | None = None
     session_id: str | None = None
@@ -2690,6 +2708,14 @@ async def _events_from_payload(
 
     if ptype == "result":
         usage_obj = _as_dict(payload.get("usage"))
+        error = _as_dict(payload.get("error"))
+        raw_status = payload.get("api_error_status", error.get("status", error.get("status_code")))
+        try:
+            error_status = int(raw_status) if raw_status is not None else None
+        except (TypeError, ValueError):
+            error_status = None
+        error_code = payload.get("cli_error_code", error.get("code", error.get("type")))
+        retry_after_s = payload.get("retry_after_s", payload.get("retry_after"))
         # Match Anthropic wire shape: `usage.input_tokens` /
         # `usage.output_tokens` / `usage.cache_read_input_tokens` /
         # `usage.cache_creation_input_tokens`. All optional; default to 0.
@@ -2725,6 +2751,9 @@ async def _events_from_payload(
                 stop_reason=stop_reason,
                 authoritative_text=payload.get("result") if isinstance(payload.get("result"), str) else None,
                 structured_output=payload.get("structured_output"),
+                api_error_status=error_status,
+                cli_error_code=str(error_code) if error_code is not None else None,
+                retry_after_s=retry_after_s if isinstance(retry_after_s, (str, int, float)) else None,
                 # The CLI's own end-of-turn marker. Reaching it is what
                 # separates "the run finished" from "the stream stopped".
                 saw_terminal=True,

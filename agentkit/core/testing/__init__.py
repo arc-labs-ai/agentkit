@@ -46,6 +46,7 @@ from agentkit.core.testing.fakes import (
     codex_turn,
 )
 from agentkit.core.testing.make_ctx import make_test_ctx
+from agentkit.core.testing.scripted import ScriptedAdapter, ScriptedAdapterExhausted, scripted_runtime
 
 __all__ = [
     "CliInvocation",
@@ -68,4 +69,7 @@ __all__ = [
     "Turn",
     "codex_turn",
     "make_test_ctx",
+    "ScriptedAdapterExhausted",
+    "ScriptedAdapter",
+    "scripted_runtime",
 ]

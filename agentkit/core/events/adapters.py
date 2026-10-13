@@ -2,11 +2,62 @@
 
 from __future__ import annotations
 
+import hashlib
+import inspect
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from agentkit.core.events.bus import EventBus
 from agentkit.models.contracts.constants import EventKind
-from agentkit.models.contracts.types import CallEvent
+from agentkit.models.contracts.types import CallEvent, EventSink
+
+
+class MaskingSink:
+    """Apply a host masker and bound every nested event field before delivery."""
+
+    def __init__(
+        self,
+        inner: EventSink,
+        masker: Callable[[CallEvent], CallEvent] | None = None,
+        *,
+        max_field_bytes: int = 4096,
+    ) -> None:
+        if max_field_bytes < 1:
+            raise ValueError("max_field_bytes must be positive")
+        self.inner = inner
+        self.masker = masker
+        self.max_field_bytes = max_field_bytes
+
+    def _bound(self, value: Any) -> Any:
+        if isinstance(value, str):
+            raw = value.encode("utf-8")
+            if len(raw) > self.max_field_bytes:
+                return {"truncated": True, "length": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+            return value
+        if isinstance(value, bytes):
+            if len(value) > self.max_field_bytes:
+                return {"truncated": True, "length": len(value), "sha256": hashlib.sha256(value).hexdigest()}
+            return value
+        if isinstance(value, Mapping):
+            return {str(key): self._bound(item) for key, item in value.items()}
+        if isinstance(value, (tuple, list)):
+            return tuple(self._bound(item) for item in value)
+        return value
+
+    async def __call__(self, event: CallEvent) -> None:
+        masked = self.masker(event) if self.masker is not None else event
+        bounded = CallEvent(
+            masked.kind,
+            masked.call_id,
+            self._bound(masked.fields),
+            sequence=masked.sequence,
+            timestamp=masked.timestamp,
+            parent_call_id=masked.parent_call_id,
+            schema_version=masked.schema_version,
+        )
+        result = self.inner(bounded)
+        if inspect.isawaitable(result):
+            await result
 
 
 class BusEventSink:

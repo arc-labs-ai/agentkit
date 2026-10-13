@@ -500,6 +500,7 @@ class CodexCliCognition:
     #   continue_session   codex exec resume --last    CONTINUE the latest one
     resume_session_id: str | None = None
     continue_session: bool = False
+    fork_session: bool = False
 
     extra_args: tuple[str, ...] = ()  # escape hatch for future CLI flags
 
@@ -588,6 +589,8 @@ class CodexCliCognition:
                 "CodexCliCognition: continue_session resumes the most recent thread and "
                 "resume_session_id resumes a specific one — pass one, not both"
             )
+        if self.fork_session and (self.resume_session_id is None or self.continue_session):
+            raise ValueError("CodexCliCognition: fork_session requires a specific resume_session_id")
         if self.bypass_sandbox and (self.sandbox is not None or self.ask_for_approval is not None):
             raise ValueError(
                 "CodexCliCognition: bypass_sandbox turns OFF both the sandbox and the "
@@ -1123,6 +1126,12 @@ class CodexCliCognition:
             # retried tool). A run that took 40s and looks fine is explained by
             # these and nothing else in the result.
             evals["cli_errors"] = list(state.errors)
+        if state.cli_error_code is not None:
+            evals["cli_error_code"] = state.cli_error_code
+        if state.api_error_status is not None:
+            evals["api_error_status"] = state.api_error_status
+        if state.retry_after_s is not None:
+            evals["retry_after_s"] = state.retry_after_s
         if fatal_exc is not None:
             # Redacted like stderr: an exception message can carry a URL with a
             # token in it, and this string is checkpointed and fanned out to
@@ -1203,9 +1212,9 @@ class CodexCliCognition:
         return text or None
 
     def _resume_target(self) -> tuple[str, ...]:
-        """The ``resume`` subcommand's argv fragment, or ``()`` for a fresh run."""
+        """The resume/fork subcommand fragment, or ``()`` for a fresh run."""
         if self.resume_session_id is not None:
-            return ("resume", self.resume_session_id)
+            return ("fork" if self.fork_session else "resume", self.resume_session_id)
         if self.continue_session:
             return ("resume", "--last")
         return ()
@@ -1935,6 +1944,9 @@ class _TurnState:
     stop_reason: str | None = None
     saw_terminal: bool = False
     errors: list[str] = field(default_factory=list)
+    cli_error_code: str | None = None
+    api_error_status: int | None = None
+    retry_after_s: str | float | None = None
     cost_source: str = "unpriced"
 
     def fold(self, delta: _EventDelta) -> None:
@@ -1965,6 +1977,12 @@ class _TurnState:
             self.stop_reason = delta.stop_reason
         if delta.error is not None:
             self.errors.append(delta.error)
+        if delta.cli_error_code is not None:
+            self.cli_error_code = delta.cli_error_code
+        if delta.api_error_status is not None:
+            self.api_error_status = delta.api_error_status
+        if delta.retry_after_s is not None:
+            self.retry_after_s = delta.retry_after_s
 
 
 @dataclass(slots=True)
@@ -2000,6 +2018,9 @@ class _EventDelta:
     # folded into ``is_error``: the run continues and usually succeeds, and
     # promoting "command output truncated" to a failed run would be wrong.
     error: str | None = None
+    cli_error_code: str | None = None
+    api_error_status: int | None = None
+    retry_after_s: str | float | None = None
 
 
 def _events_from_payload(payload: dict[str, Any], log: _ItemLog) -> list[tuple[StreamEvent | None, _EventDelta]]:
@@ -2049,6 +2070,13 @@ def _thread_events(payload: dict[str, Any], log: _ItemLog) -> list[tuple[StreamE
     if ptype == "turn.failed":
         error = _as_dict(payload.get("error"))
         message = str(error.get("message") or "the CLI reported a failed turn")
+        raw_status = error.get("status", payload.get("status"))
+        try:
+            error_status = int(raw_status) if raw_status is not None else None
+        except (TypeError, ValueError):
+            error_status = None
+        error_code = error.get("code", payload.get("error_code"))
+        retry_after_s = error.get("retry_after", payload.get("retry_after"))
         return [
             (
                 StreamEvent("step", text=f"turn_failed:{message}"),
@@ -2056,6 +2084,9 @@ def _thread_events(payload: dict[str, Any], log: _ItemLog) -> list[tuple[StreamE
                     is_error=True,
                     stop_reason="turn_failed",
                     error=message,
+                    cli_error_code=str(error_code) if error_code is not None else None,
+                    api_error_status=error_status,
+                    retry_after_s=retry_after_s if isinstance(retry_after_s, (str, int, float)) else None,
                     # A FAILED turn is still a completed stream: the CLI said
                     # how it ended. Only a stream that stops without saying
                     # anything is malformed.

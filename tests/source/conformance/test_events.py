@@ -4,12 +4,30 @@ from dataclasses import replace
 import pytest
 
 from agentkit.core.contracts.types import Mode
-from agentkit.core.events import BusEventSink, EventDeliveryError, EventHub
+from agentkit.core.events import BusEventSink, EventDeliveryError, EventHub, MaskingSink
 from agentkit.core.events.bus import EventBus
 from agentkit.core.runtime.calls import CallRuntime
 from agentkit.models.contracts.constants import EventKind, Outcome
 from agentkit.models.contracts.types import Binding, CallEvent, Turn
 from tests.source.conformance.test_calls import PRICES, ScriptedAdapter
+
+
+@pytest.mark.asyncio
+async def test_masking_sink_masks_then_bounds_nested_event_fields():
+    received = []
+
+    def mask(event):
+        fields = dict(event.fields)
+        fields["credential"] = "[redacted]"
+        return replace(event, fields=fields)
+
+    sink = MaskingSink(received.append, mask, max_field_bytes=12)
+    await sink(CallEvent(EventKind.TOOL_CALL, "run", {"arguments": {"token": "secret", "body": "x" * 30}}))
+    fields = received[0].fields
+    assert fields["credential"] == "[redacted]"
+    assert fields["arguments"]["token"] == "secret"
+    assert fields["arguments"]["body"]["truncated"] is True
+    assert fields["arguments"]["body"]["length"] == 30
 
 
 @pytest.mark.asyncio

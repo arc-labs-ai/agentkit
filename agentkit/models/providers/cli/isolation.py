@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import base64
 import importlib
+import inspect
 import os
 import shutil
+import signal
 import tempfile
+import threading
 import time
 import unicodedata
-from collections.abc import Iterator
+import weakref
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, ClassVar
 
 try:
     fcntl: Any = importlib.import_module("fcntl")
@@ -59,6 +64,9 @@ def _parent_lock(parent: Path) -> Iterator[None]:
 class IsolatedHome:
     """One lock-owning process root. Never sweeps a live owner's directory."""
 
+    _active: ClassVar[weakref.WeakSet[IsolatedHome]] = weakref.WeakSet()
+    _previous_signal_handlers: ClassVar[dict[int, Any]] = {}
+
     def __init__(self, parent: Path | None = None) -> None:
         if fcntl is None or not hasattr(os, "getuid"):
             raise NotImplementedError("isolated CLI homes require POSIX file locking")
@@ -73,11 +81,157 @@ class IsolatedHome:
             self._lock: IO[bytes] | None = (self.root / "owner.lock").open("w+b")
             fcntl.flock(self._lock, fcntl.LOCK_EX)
         atexit.register(self.close)
+        self._active.add(self)
+        self._install_signal_cleanup()
+
+    @classmethod
+    def _install_signal_cleanup(cls) -> None:
+        """Chain process signals so owned credential homes are removed first."""
+        if threading.current_thread() is not threading.main_thread():
+            return  # Python only permits process signal handlers on the main thread.
+        for signum in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGINT", None)):
+            if signum is None or signum in cls._previous_signal_handlers:
+                continue
+            previous = signal.getsignal(signum)
+            if previous == signal.SIG_IGN:
+                continue
+            signal.signal(signum, cls._handle_signal)
+            cls._previous_signal_handlers[signum] = previous
+
+    @classmethod
+    def _handle_signal(cls, signum: int, frame: Any) -> None:
+        previous = cls._previous_signal_handlers.get(signum, signal.SIG_DFL)
+        for owner in tuple(cls._active):
+            try:
+                owner.close()
+            except OSError:
+                # Preserve signal delivery even if the filesystem is already
+                # unavailable; the next owner sweep removes any orphan.
+                pass
+        if callable(previous):
+            previous(signum, frame)
+        elif previous == signal.SIG_DFL:
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+        # SIG_IGN is never installed above, but retaining this branch makes
+        # restoration behavior explicit if a host changes handlers at runtime.
+
+    @classmethod
+    def _restore_signal_cleanup(cls) -> None:
+        if cls._active or threading.current_thread() is not threading.main_thread():
+            return
+        for signum, previous in tuple(cls._previous_signal_handlers.items()):
+            if signal.getsignal(signum) == cls._handle_signal:
+                signal.signal(signum, previous)
+        cls._previous_signal_handlers.clear()
 
     def create(self) -> Path:
         if self._lock is None:
             raise RuntimeError("home owner is closed")
         return Path(tempfile.mkdtemp(prefix="call-", dir=self.root))
+
+    @staticmethod
+    def install_credentials(home: Path, mode: str, files: Mapping[str, bytes]) -> dict[str, bytes]:
+        """Install only the native login files supported by each CLI, at mode 0600."""
+        allowed = {
+            "claude_code": {".credentials.json"},
+            "codex": {"auth.json"},
+        }.get(str(mode), set())
+        if not allowed and files:
+            raise ValueError("this CLI mode does not accept home credentials")
+        if home.is_symlink() or not home.is_dir():
+            raise ValueError("credential home must be an owned directory")
+        if set(files) - allowed:
+            raise ValueError("credential file is outside the mode allowlist")
+        for name, data in files.items():
+            if name not in allowed or "/" in name or "\\" in name or not isinstance(data, bytes):
+                raise ValueError("invalid credential file")
+            if (home / name).exists() or (home / name).is_symlink():
+                raise FileExistsError("credential install cannot overwrite an existing file")
+        installed: dict[str, bytes] = {}
+        try:
+            for name, data in files.items():
+                target = home / name
+                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(data)
+                os.chmod(target, 0o600)
+                installed[name] = data
+        except BaseException:
+            for name in files:
+                (home / name).unlink(missing_ok=True)
+            raise
+        return installed
+
+    @staticmethod
+    def materialize_images(home: Path, images: Any) -> tuple[Path, ...]:
+        """Write bounded prompt images beneath the isolated home for Codex CLI."""
+        suffixes = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}
+        paths: list[Path] = []
+        total = 0
+        try:
+            for image in images:
+                data = image.data
+                mime = image.mime_type
+                total += len(data)
+                if mime not in suffixes or total > 40 * 1024 * 1024:
+                    raise ValueError("unsupported or oversized prompt images")
+                target = home / f"agentkit-image-{len(paths)}{suffixes[mime]}"
+                paths.append(target)
+                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(data)
+            return tuple(paths)
+        except BaseException:
+            for path in paths:
+                path.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    async def credential_lifecycle(
+        home: Path,
+        mode: str,
+        files: Mapping[str, bytes],
+        on_changed: Any = None,
+        on_error: Any = None,
+    ) -> Any:
+        """Async context that returns rotated logins once and always removes them."""
+        original = IsolatedHome.install_credentials(home, mode, files)
+
+        class _Lifecycle:
+            async def __aenter__(self) -> None:
+                return None
+
+            async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+                changed: dict[str, bytes] = {}
+                try:
+                    for name, old in original.items():
+                        path = home / name
+                        if path.is_symlink():
+                            continue
+                        if path.exists():
+                            current = await asyncio.to_thread(path.read_bytes)
+                            if current != old:
+                                changed[name] = current
+                    if changed and on_changed is not None:
+                        result = on_changed(changed)
+                        if inspect.isawaitable(result):
+                            await result
+                except Exception as callback_error:
+                    if on_error is not None:
+                        try:
+                            result = on_error(callback_error)
+                            if inspect.isawaitable(result):
+                                await result
+                        except Exception:
+                            # Persistence and diagnostic hooks must never replace
+                            # the model answer or cancellation outcome.
+                            pass
+                finally:
+                    for name in original:
+                        (home / name).unlink(missing_ok=True)
+
+        return _Lifecycle()
 
     @staticmethod
     def snapshot(home: Path, *, max_bytes: int = 16 * 1024 * 1024) -> dict[str, str]:
@@ -153,6 +307,8 @@ class IsolatedHome:
         finally:
             lock.close()
             atexit.unregister(self.close)
+            self._active.discard(self)
+            self._restore_signal_cleanup()
 
     @staticmethod
     def sweep(parent: Path) -> None:

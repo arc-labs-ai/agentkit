@@ -33,6 +33,21 @@ def test_missing_terminal_event_reserves_envelope_even_after_first_completed_cal
     assert case_spend([], Decimal("0.5"), dispatched=False) == 0
 
 
+def test_confirmed_auth_rejection_without_generation_has_no_billable_spend():
+    events = [
+        event(EventKind.CALL_STARTED, "auth"),
+        event(EventKind.ATTEMPT_STARTED, "auth"),
+        event(EventKind.ATTEMPT_FINISHED, "auth"),
+        event(EventKind.CALL_FINISHED, "auth", None),
+    ]
+    assert case_spend(
+        events,
+        Decimal("0.25"),
+        dispatched=True,
+        confirmed_no_billable_work=True,
+    ) == Decimal(0)
+
+
 def test_report_checkpoint_redacts_credentials_recursively_and_replaces_atomically(tmp_path: Path):
     target = tmp_path / "reports" / "matrix.json"
     secret = "synthetic-private-test-token"

@@ -261,6 +261,7 @@ def serve(
     ctx: Any,
     name: str = "agentkit",
     execution_observer: Callable[[str, Mapping[str, Any], ToolResult], Any] | None = None,
+    timeout_s: float | None = None,
 ) -> Any:
     """Serve the same execution policy to CLI modes via the existing MCP transport."""
     from agentkit.integrations.mcp import serve_registry
@@ -316,6 +317,7 @@ def serve(
         result_hook=_mcp_result,
         json_response=not bool(tools.deferred),
         tools_provider=visible,
+        timeout_s=timeout_s,
     )
 
 
