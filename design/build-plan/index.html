@@ -1104,8 +1104,8 @@ run; commit IDs will be added when this implementation is committed.</p>
 </tr>
 <tr>
 <td>Phase 5 matrix</td>
-<td>Scoped stable-revision run complete; four-mode execution is partial</td>
-<td><code>tests/evals/reports/20261013T194002512614Z/summary.json</code>: source unchanged at fingerprint <code>3226f3883ee9bdc9346d0e06956130b0b2cfd25e86fe9782862313f11c652209</code>; 40 selected rows, 30 passed, 10 failed, $0.1359731500000000036 spend and the same spend upper bound. Claude Code, Anthropic API and OpenAI API passed 10/10 rows each. Codex failed all 10 before spawn with the expected <code>INVALID_REQUEST</code> hard-cost-cap refusal (0 attempts, $0); this proves fail-closed behavior, not Codex task execution. No live retry/429 occurred.</td>
+<td>Broad three-provider coverage complete; Codex workload proof remains blocked by its spend contract</td>
+<td>Latest full report <code>tests/evals/reports/20261014T000759886243Z/summary.json</code>: source unchanged at fingerprint <code>992f7f3c5cada01ccf16e9b03d7c1b045bb9820b8e7b26279b490fe25fb5d0f1</code>; 184 rows, 123 passed, 7 failed, 54 not applicable, and $2.3216311000000000044 reported spend. Claude Code, Anthropic API and OpenAI API were dispatched; all 46 Codex rows were refused before dispatch as <code>not_applicable</code> because Codex cannot enforce the matrix's hard per-case dollar ceiling. Failures remain visible: OpenAI inventory allocation; Anthropic analytics and tool-error recovery; Claude analytics, insufficient-evidence SQLite research, insufficient-evidence incident support and delegation. A focused post-fix run <code>tests/evals/reports/20261014T000709774052Z/summary.json</code> passed all nine SQLite research, model-switch and tool-context-switch rows across the three dispatched providers ($0.08797495). OpenAI's SQLite insufficient-evidence case passed 3/3 fresh trials after adding an exact, auditable event-count tool (<code>tests/evals/reports/20261013T235341734717Z/summary.json</code>, $0.03166740). This run does not prove Codex workload behavior, all-four-mode conformance, or retry/429 behavior.</td>
 </tr>
 </tbody>
 </table>
@@ -1432,7 +1432,7 @@ hook (for G46 and G47). Phase 5 runs at the end of each phase on whatever it unl
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 13, 2026 21:28:12 UTC">October 13, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 14, 2026 11:37:44 UTC">October 14, 2026</span>
   </span>
 
     
