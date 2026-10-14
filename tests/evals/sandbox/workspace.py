@@ -1,8 +1,9 @@
 """Workspace tools with explicit write/test grants and sandboxed test processes.
 
 Model-authored code never executes in the credential-bearing runner process.
-The macOS process sandbox denies network and files outside the disposable
-workspace and Python runtime. Unsupported platforms refuse process execution.
+macOS sandbox-exec and Linux bubblewrap deny network access and writes outside
+the disposable workspace and Python runtime. Unsupported platforms refuse
+process execution.
 """
 
 from __future__ import annotations
@@ -11,8 +12,10 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -130,8 +133,25 @@ class WorkspaceSandbox:
         return await self.write_file(path, content.replace(old_text, new_text, 1))
 
     @staticmethod
+    @lru_cache(maxsize=1)
     def process_available() -> bool:
-        return sys.platform == "darwin" and shutil.which("sandbox-exec") is not None
+        if sys.platform == "darwin":
+            return shutil.which("sandbox-exec") is not None
+        executable = shutil.which("bwrap") if sys.platform.startswith("linux") else None
+        if executable is None:
+            return False
+        try:
+            probe = subprocess.run(
+                [executable, "--unshare-all", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "/bin/true"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return probe.returncode == 0
 
     def _profile(self) -> str:
         allowed_reads = {
@@ -173,7 +193,7 @@ class WorkspaceSandbox:
     async def run_tests(self, paths: list[str]) -> dict[str, Any]:
         """Run approved pytest files in the isolated project. Returns exit code, bounded output and duration."""
         if not self.process_available():
-            raise SandboxUnavailable("sandboxed Python tests require the configured macOS process sandbox")
+            raise SandboxUnavailable("sandboxed Python tests require macOS sandbox-exec or Linux bubblewrap")
         if not paths or len(paths) > 32:
             raise ValueError("provide one to thirty-two approved test paths")
         selected = [self._path(p).relative_to(self.root).as_posix() for p in paths]
@@ -195,10 +215,7 @@ class WorkspaceSandbox:
             "raise SystemExit(pytest.main(['-q', '--import-mode=importlib', '-p', 'no:cacheprovider', "
             "*sys.argv[3:]]))"
         )
-        command = [
-            shutil.which("sandbox-exec") or "sandbox-exec",
-            "-p",
-            self._profile(),
+        python_command = [
             sys.executable,
             "-I",
             "-c",
@@ -207,6 +224,10 @@ class WorkspaceSandbox:
             json.dumps([str(path) for path in self._runtime_sites]),
             *selected,
         ]
+        if sys.platform == "darwin":
+            command = [shutil.which("sandbox-exec") or "sandbox-exec", "-p", self._profile(), *python_command]
+        else:
+            command = self._bubblewrap_command(python_command)
         started = time.monotonic()
         process = await asyncio.create_subprocess_exec(
             *command,
@@ -252,6 +273,53 @@ class WorkspaceSandbox:
         }
         self.test_runs.append(result)
         return result
+
+    def _bubblewrap_command(self, command: list[str]) -> list[str]:
+        """Expose only system runtime files and this read-only task workspace.
+
+        The user, PID, IPC, UTS and network namespaces prevent the test process
+        from inspecting the credential-bearing runner or reaching host services.
+        Its only writable mount is the bounded per-run scratch directory.
+        """
+        executable = shutil.which("bwrap")
+        if executable is None:
+            raise SandboxUnavailable("Linux process isolation requires bubblewrap")
+        if not self.root.is_relative_to(Path("/tmp")):
+            raise SandboxUnavailable("Linux process isolation requires the task workspace beneath /tmp")
+        args = [executable, "--die-with-parent", "--unshare-all", "--tmpfs", "/"]
+        for path in (Path("/usr"), Path("/etc")):
+            args.extend(("--dir", str(path), "--ro-bind", str(path), str(path)))
+        for path in (Path("/bin"), Path("/sbin"), Path("/lib"), Path("/lib64")):
+            if path.is_symlink():
+                args.extend(("--symlink", os.readlink(path), str(path)))
+            elif path.exists():
+                args.extend(("--dir", str(path), "--ro-bind", str(path), str(path)))
+        prefix = Path(sys.prefix).resolve()
+        if not prefix.is_relative_to(Path("/usr")):
+            for parent in reversed(prefix.parents):
+                if parent == Path("/"):
+                    break
+                args.extend(("--dir", str(parent)))
+            args.extend(("--ro-bind", str(prefix), str(prefix)))
+        args.extend(("--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"))
+        for parent in reversed(self.root.parents):
+            if parent in (Path("/"), Path("/tmp")):
+                continue
+            args.extend(("--dir", str(parent)))
+        args.extend(("--dir", str(self.root), "--ro-bind", str(self.root), str(self.root)))
+        scratch = self.root / ".process"
+        args.extend(("--bind", str(scratch), str(scratch), "--chdir", str(self.root), "--clearenv"))
+        for key, value in {
+            "PATH": os.defpath,
+            "HOME": str(scratch),
+            "TMPDIR": str(scratch),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "AGENTKIT_SKIP_REAL_CLI": "1",
+            "LANG": "en_US.UTF-8",
+        }.items():
+            args.extend(("--setenv", key, value))
+        return [*args, *command]
 
     @property
     def registry(self) -> ToolRegistry:

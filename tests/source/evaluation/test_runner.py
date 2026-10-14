@@ -33,6 +33,20 @@ def test_eval_credentials_are_scoped_to_the_selected_backend(tmp_path, monkeypat
 from tests.evals.engine.reporting import case_spend, redact, write_report
 
 
+def test_lifecycle_check_allows_skill_events_before_call_start():
+    from types import SimpleNamespace
+
+    from tests.evals.engine.runner import _valid_call_lifecycle
+
+    events = [
+        SimpleNamespace(kind=EventKind.SKILL_LOADED),
+        SimpleNamespace(kind=EventKind.CALL_STARTED),
+        SimpleNamespace(kind=EventKind.CALL_FINISHED),
+    ]
+    assert _valid_call_lifecycle(events)
+    assert not _valid_call_lifecycle([events[0], events[2]])
+
+
 def event(kind, call_id, cost=None):
     return CallEvent(kind, call_id, {"cost_usd": cost})
 
@@ -111,7 +125,7 @@ async def test_matrix_stops_before_next_two_call_case_exceeds_remaining_budget(m
         async def __aexit__(self, *args):
             pass
 
-    async def execute(case, runtime, binding, limits, events, directory, call_id):
+    async def execute(case, runtime, binding, limits, events, directory, call_id, **kwargs):
         for suffix in ("", "/resume"):
             events(event(EventKind.CALL_STARTED, call_id + suffix))
             events(event(EventKind.CALL_FINISHED, call_id + suffix, "0.1"))
@@ -276,6 +290,109 @@ async def test_unsupported_modes_are_not_applicable_and_never_reserve_or_dispatc
 
 
 @pytest.mark.asyncio
+async def test_codex_hard_cost_limited_eval_is_not_applicable_before_dispatch(monkeypatch, tmp_path):
+    import tests.evals.engine.runner as runner
+    from agentkit.core.contracts.types import Mode
+    from agentkit.models.contracts.types import CredentialRef
+    from tests.evals.suites.conformance import EvalCase
+
+    case = EvalCase("budgeted_codex_case", ("C1",), "smoke")
+    dispatched = []
+
+    async def execute(*args, **kwargs):
+        dispatched.append(True)
+        raise AssertionError("Codex must not be dispatched under a hard cost ceiling")
+
+    monkeypatch.setattr(runner, "CASES", (case,))
+    monkeypatch.setattr(runner, "execute", execute)
+    monkeypatch.setattr(EvalConfig, "credentials", lambda self, mode=None: CredentialRef(
+        lambda: {"OPENAI_API_KEY": "synthetic-test"}
+    ))
+    monkeypatch.setattr(runner.shutil, "which", lambda binary: "/usr/bin/codex" if binary == "codex" else None)
+    config = EvalConfig(modes=(Mode.CODEX,), report_dir=tmp_path)
+
+    target, passed = await runner.run_matrix(config, suites=("smoke",))
+    report = json.loads(target.read_text())
+    row = report["rows"][0]
+    assert not passed  # A skipped-only run is not evidence of a passing live eval.
+    assert dispatched == []
+    assert row["status"] == "not_applicable"
+    assert "hard per-case cost ceiling" in row["reason"]
+    assert "Codex CLI" in row["reason"]
+    assert report["spend_usd"] == "0"
+    assert report["spend_upper_bound_usd"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_cross_mode_workflows_exclude_codex_when_hard_cost_cap_is_required(monkeypatch, tmp_path):
+    import tests.evals.engine.runner as runner
+    from agentkit.core.contracts.types import Mode
+    from agentkit.models.contracts.types import CredentialRef
+    from tests.evals.engine.contracts import EvalDomain, WorkflowResult, WorkloadCase
+
+    case = WorkloadCase("sqlite_migration_research", EvalDomain.RESEARCH, "handoff test", ("context",))
+    destinations = []
+
+    async def execute(case, env):
+        destination = env.alternate_binding()
+        destinations.append((env.binding.mode, destination.mode, tuple(env.available_modes)))
+        env.event_sink(event(EventKind.CALL_STARTED, env.call_id))
+        env.event_sink(event(EventKind.CALL_FINISHED, env.call_id, "0"))
+        from types import SimpleNamespace
+
+        from agentkit.models.contracts.types import Usage
+
+        answer = SimpleNamespace(
+            text="done", value=None, outcome="answered", failure=None,
+            cost_usd=Decimal("0"), usage=Usage(), attempts=1,
+        )
+        return WorkflowResult(answer)
+
+    monkeypatch.setattr(runner, "CASES", (case,))
+    monkeypatch.setattr(runner, "WORKLOAD_EXECUTORS", {case.id: execute})
+    monkeypatch.setattr(EvalConfig, "credentials", lambda self, mode=None: CredentialRef(lambda: {
+        "OPENAI_API_KEY": "synthetic-test", "ANTHROPIC_API_KEY": "synthetic-test",
+    }))
+    monkeypatch.setattr(runner.shutil, "which", lambda binary: "/usr/bin/claude" if binary == "claude" else "/usr/bin/codex")
+    config = EvalConfig(
+        modes=(Mode.CLAUDE_CODE, Mode.CODEX, Mode.OPENAI_API), report_dir=tmp_path, max_total_usd=Decimal("1")
+    )
+
+    target, _ = await runner.run_matrix(config)
+    rows = json.loads(target.read_text())["rows"]
+    assert destinations == [
+        (Mode.CLAUDE_CODE, Mode.OPENAI_API, (Mode.CLAUDE_CODE, Mode.OPENAI_API)),
+        (Mode.OPENAI_API, Mode.CLAUDE_CODE, (Mode.CLAUDE_CODE, Mode.OPENAI_API)),
+    ]
+    assert next(row for row in rows if row["mode"] == "codex")["status"] == "not_applicable"
+
+
+@pytest.mark.asyncio
+async def test_cross_mode_case_is_not_applicable_when_only_one_mode_is_selected(monkeypatch, tmp_path):
+    import tests.evals.engine.runner as runner
+    from agentkit.core.contracts.types import Mode
+    from agentkit.models.contracts.types import CredentialRef
+    from tests.evals.suites.conformance import EvalCase
+
+    case = EvalCase("model_switch", ("C10",), "contract", max_calls=2)
+    monkeypatch.setattr(runner, "CASES", (case,))
+    monkeypatch.setattr(EvalConfig, "credentials", lambda self, mode=None: CredentialRef(
+        lambda: {"ANTHROPIC_API_KEY": "synthetic-test"}
+    ))
+    monkeypatch.setattr(runner.shutil, "which", lambda binary: "/usr/bin/claude" if binary == "claude" else None)
+
+    target, passed = await runner.run_matrix(
+        EvalConfig(modes=(Mode.CLAUDE_CODE,), report_dir=tmp_path), suites=("contract",),
+    )
+    report = json.loads(target.read_text())
+    row = report["rows"][0]
+    assert not passed
+    assert row["status"] == "not_applicable"
+    assert "at least two selected modes" in row["reason"]
+    assert report["spend_usd"] == "0"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("flag,dispatch,executor_checks,expected_status,expected_spend", (
     (True, False, [], "passed", "0"),
     (False, False, [], "failed", "0.1"),
@@ -296,7 +413,7 @@ async def test_only_declared_clean_pre_dispatch_rejection_can_omit_an_answer(
         async def __aexit__(self, *args): pass
 
     case = EvalCase("rejection_contract", ("C3",), "probes", expected_pre_dispatch_rejection=flag)
-    async def execute(case, runtime, binding, limits, events, directory, call_id):
+    async def execute(case, runtime, binding, limits, events, directory, call_id, **kwargs):
         if dispatch:
             events(event(EventKind.CALL_STARTED, call_id))
         return None, executor_checks

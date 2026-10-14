@@ -31,6 +31,7 @@ def test_handbook_revision_changes_prefix_at_start_and_oracle_rejects_stale_appr
     original, warm, revised = policy_prompt("scope"), policy_prompt("scope"), policy_prompt("scope", revoked=True)
     assert original.prefix_digest == warm.prefix_digest != revised.prefix_digest
     assert original.system != revised.system and len(original.system) > 40000
+    assert "captured payment" in original.user.lower()
     assert not decision_checks(review().value, revoked=False)
     assert decision_checks(review().value, revoked=True)
 

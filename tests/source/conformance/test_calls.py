@@ -849,6 +849,21 @@ async def test_api_rate_limit_without_usage_retries_under_cost_cap_and_keeps_cos
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["anthropic_api", "openai_api"])
+async def test_api_auth_rejection_without_usage_remains_auth_failure_under_cost_cap(mode):
+    adapter = ScriptedAdapter(Turn(failure=Failure(FailureClass.AUTH, retryable=False)))
+    async with CallRuntime(adapters={mode: adapter}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding(mode, "test"), "reject invalid credential",
+            limits=CallLimits(max_cost_usd=Decimal("1")), call_id=f"api-auth-{mode}",
+        )
+    assert answer.outcome == "failed"
+    assert answer.failure is not None and answer.failure.classification == FailureClass.AUTH
+    assert answer.attempts == 1
+    assert answer.cost_usd == Decimal(0)
+
+
+@pytest.mark.asyncio
 async def test_runtime_idle_deadline_restarts_after_hosted_tool_finishes():
     from agentkit.models.contracts.types import CallEvent
 

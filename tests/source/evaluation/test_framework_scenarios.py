@@ -83,6 +83,9 @@ async def test_real_diagnostic_lifecycle_and_safe_continuation(mode, case, tmp_p
     runtime = CallRuntime(adapters={mode: adapter}, pricing=PRICES)
     result = await execute_workload(case, environment(runtime, mode, tmp_path, case))
     assert result.checks == (), result.evidence
+    if case.expectation == ScenarioExpectation.SUCCESS:
+        assert result.evidence["verification_submissions"]
+        assert result.evidence["verification_submissions"][-1]["accepted"] is True
     assert len(result.evidence["recommendations"]) == 1
     assert result.evidence["cleanup_observed"]
     if case.expectation != ScenarioExpectation.SUCCESS:

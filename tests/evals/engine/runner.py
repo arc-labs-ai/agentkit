@@ -31,6 +31,18 @@ from tests.evals.engine.reporting import case_spend, redact, source_digest, writ
 from tests.evals.sandbox.workspace import SandboxUnavailable, WorkspaceSandbox
 from tests.evals.suites.conformance import EvalCase, execute
 
+_CROSS_MODE_CASES = frozenset({"sqlite_migration_research", "model_switch", "tool_context_switch"})
+
+
+def _valid_call_lifecycle(events: list[Any]) -> bool:
+    """Permit skill-load prelude events while requiring call start and finish."""
+    start = next((index for index, event in enumerate(events) if event.kind == EventKind.CALL_STARTED), None)
+    return (
+        start is not None
+        and all(event.kind == EventKind.SKILL_LOADED for event in events[:start])
+        and events[-1].kind == EventKind.CALL_FINISHED
+    )
+
 
 async def run_matrix(
     config: EvalConfig,
@@ -39,7 +51,25 @@ async def run_matrix(
     case_filter: tuple[str, ...] = (),
     domain_filter: tuple[EvalDomain, ...] = (),
 ) -> tuple[Path, bool]:
-    credentials = {mode: config.credentials(mode) for mode in config.modes}
+    selected = tuple(
+        case
+        for case in CASES
+        if case.suite in suites
+        and (not case_filter or case.id in case_filter)
+        and (not domain_filter or isinstance(case, WorkloadCase) and case.domain in domain_filter)
+    )
+    missing = set(case_filter) - {case.id for case in selected}
+    if missing:
+        raise ValueError("no selected evaluation matches: " + ", ".join(sorted(missing)))
+
+    binding_modes = tuple(dict.fromkeys(config.modes))
+    credentials = {mode: config.credentials(mode) for mode in binding_modes}
+    bindings = {mode: config.binding(mode, credential) for mode, credential in credentials.items()}
+    # Codex rows remain visible in reports, but Codex cannot participate in
+    # workflows whose host contract requires a provider-enforced dollar cap.
+    # Cross-mode handoffs must only target modes that the runner may dispatch.
+    dispatchable_modes = tuple(mode for mode in binding_modes if mode != Mode.CODEX)
+    dispatchable_bindings = {mode: bindings[mode] for mode in dispatchable_modes}
     prices = config.prices()
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     run_dir = config.report_dir / timestamp
@@ -72,23 +102,12 @@ async def run_matrix(
         report["spend_upper_bound_usd"] = str(spent + reserved)
         write_report(target, report, secrets)
 
-    selected = tuple(
-        case
-        for case in CASES
-        if case.suite in suites
-        and (not case_filter or case.id in case_filter)
-        and (not domain_filter or isinstance(case, WorkloadCase) and case.domain in domain_filter)
-    )
-    missing = set(case_filter) - {case.id for case in selected}
-    if missing:
-        raise ValueError("no selected evaluation matches: " + ", ".join(sorted(missing)))
-
     async with CallRuntime(pricing=prices, retry=RetryPolicy(max_attempts=2)) as runtime:
 
         async def backend(mode: Mode) -> None:
             nonlocal spent, reserved
             credential = credentials[mode]
-            binding = config.binding(mode, credential)
+            binding = bindings[mode]
             values = credential.resolve()
             available = (
                 anthropic_credential(values) is not None
@@ -114,6 +133,16 @@ async def run_matrix(
                 unsupported = bool(supported_modes) and mode not in supported_modes
                 if unsupported:
                     reason = "scenario unsupported on this mode"
+                elif case.id in _CROSS_MODE_CASES and len(dispatchable_modes) < 2:
+                    unsupported = True
+                    reason = "cross-mode scenario requires at least two selected modes"
+                elif mode == Mode.CODEX and not unavailable:
+                    # Every matrix case gets a hard per-call dollar ceiling.
+                    # Codex CLI cannot enforce that ceiling, so calling it
+                    # would violate the eval's spend contract. Keep this
+                    # distinct from a failed live evaluation: no call is made.
+                    unsupported = True
+                    reason = "Codex CLI cannot enforce the hard per-case cost ceiling required by this eval matrix"
                 if is_workload and domain == EvalDomain.CODING and not WorkspaceSandbox.process_available():
                     reason = "required OS process sandbox unavailable"
                 async with concurrency:
@@ -176,11 +205,14 @@ async def run_matrix(
                                     workspace,
                                     call_id,
                                     WorkspaceSandbox(workspace),
+                                    dispatchable_bindings,
+                                    dispatchable_modes,
                                 )
                                 result = await WORKLOAD_EXECUTORS[case.id](case, environment)
                             else:
                                 answer, checks = await execute(
-                                    case, runtime, binding, limits, events.append, workspace, call_id
+                                    case, runtime, binding, limits, events.append, workspace, call_id,
+                                    bindings=dispatchable_bindings,
                                 )
                                 result = WorkflowResult(answer, tuple(checks))
                         except SandboxUnavailable:
@@ -203,11 +235,7 @@ async def run_matrix(
                         )
                         if answer is None and not setup_unavailable and not expected_rejection:
                             checks.append("workflow produced no model answer")
-                        if answer is not None and (
-                            not events
-                            or events[0].kind != EventKind.CALL_STARTED
-                            or events[-1].kind != EventKind.CALL_FINISHED
-                        ):
+                        if answer is not None and not _valid_call_lifecycle(events):
                             checks.append("missing lifecycle events")
                         usage = answer.usage if answer is not None else None
                         confirmed_auth_rejection = (

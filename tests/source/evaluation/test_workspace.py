@@ -34,7 +34,7 @@ def workspace(tmp_path):
 @pytest.fixture
 def os_workspace(workspace):
     if not WorkspaceSandbox.process_available():
-        pytest.skip("actual process isolation requires macOS sandbox-exec")
+        pytest.skip("actual process isolation requires macOS sandbox-exec or Linux bubblewrap")
     return workspace
 
 
@@ -186,9 +186,8 @@ import pytest
 
 def test_outside_file_denied():
     target = Path({target})
-    with pytest.raises(PermissionError):
+    with pytest.raises(OSError):
         target.read_text()
-    with pytest.raises(PermissionError):
         target.write_text('attempted overwrite')
 """,
     )
@@ -216,7 +215,7 @@ import socket
 import pytest
 
 def test_network_denied():
-    with pytest.raises(PermissionError):
+    with pytest.raises(OSError):
         socket.create_connection(('127.0.0.1', {port}), timeout=1)
 """,
     )
@@ -294,7 +293,7 @@ from pathlib import Path
 import pytest
 
 def test_immutable_file_denied():
-    with pytest.raises(PermissionError):
+    with pytest.raises(OSError):
         Path('tests/test_visible.py').write_text('tampered')
 """,
     )
@@ -316,7 +315,7 @@ from pathlib import Path
 import pytest
 
 def test_symlink_target_denied():
-    with pytest.raises(PermissionError):
+    with pytest.raises(OSError):
         Path('linked-canary.txt').read_text()
 """,
     )
@@ -334,7 +333,7 @@ from pathlib import Path
 import pytest
 
 def test_parent_only_source_writes():
-    with pytest.raises(PermissionError):
+    with pytest.raises(OSError):
         Path('source.py').write_text('VALUE = 99')
 """,
     )

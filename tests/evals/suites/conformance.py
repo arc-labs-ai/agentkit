@@ -21,7 +21,7 @@ from agentkit.core.execution.concurrency import CancellationToken
 from agentkit.models.contracts.constants import FailureClass
 from agentkit.models.contracts.schema import OutputSpec
 from agentkit.models.contracts.types import CredentialRef
-from agentkit.state.context import WorkingContext
+from agentkit.state.context import PrefixContext, WorkingContext
 from agentkit.tools import ToolRegistry
 from agentkit.tools.declarations.function import FunctionTool
 from agentkit.tools.execution.policy import OverflowPolicy, ToolResult, ToolSet
@@ -44,10 +44,11 @@ CASES = (
     EvalCase("provider_auth_rejection", ("G3", "retry"), "contract"),
     EvalCase("claude_large_schema", ("C2",), "contract", supported_modes=(Mode.CLAUDE_CODE,)),
     EvalCase("tool_evidence", ("C4", "7.1"), "contract"),
-    EvalCase("tool_error_recovery", ("7.2",), "contract"),
+    EvalCase("tool_error_recovery", ("7.2",), "contract", max_calls=2),
     EvalCase("image_result", ("7.2",), "contract"),
     EvalCase("overflow", ("7.2", "7.3"), "contract"),
     EvalCase("session_resume", ("C10",), "contract", max_calls=2),
+    EvalCase("working_context_state", ("C10", "state.context"), "contract", max_calls=2),
     EvalCase("durable_resume", ("C9", "C10"), "contract", max_calls=2),
     EvalCase("model_switch", ("C10", "context"), "contract", max_calls=2),
     EvalCase("pinned_skill", ("S1", "S2", "S3", "S5"), "contract", max_calls=2),
@@ -85,6 +86,16 @@ SCHEMA = {
 }
 
 
+def _alternate_selected_binding(binding: Any, bindings: dict[Mode, Any] | None) -> Any:
+    """Choose the next configured mode without silently dispatching another backend."""
+    if not bindings or binding.mode not in bindings:
+        raise ValueError("cross-mode scenario has no selected credential-scoped bindings")
+    modes = tuple(bindings)
+    if len(modes) < 2:
+        raise ValueError("cross-mode scenario requires at least two selected modes")
+    return bindings[modes[(modes.index(binding.mode) + 1) % len(modes)]]
+
+
 def red_png() -> str:
     def chunk(name: bytes, data: bytes) -> bytes:
         return struct.pack("!I", len(data)) + name + data + struct.pack("!I", zlib.crc32(name + data))
@@ -95,7 +106,8 @@ def red_png() -> str:
 
 
 async def execute(
-    case: EvalCase, runtime: Any, binding: Any, limits: Any, events: Any, workdir: Path, call_id: str
+    case: EvalCase, runtime: Any, binding: Any, limits: Any, events: Any, workdir: Path, call_id: str,
+    *, bindings: dict[Mode, Any] | None = None,
 ) -> tuple[Any, list[str]]:
     kwargs = {"limits": limits, "events": events, "call_id": call_id}
     if case.id == "provider_auth_rejection":
@@ -171,8 +183,6 @@ async def execute(
         )
         return answer, [] if passed else ["model event did not produce a successful bounded follow-up"]
     if case.id == "tool_context_switch":
-        from tests.evals.engine.config import MODES, EvalConfig
-
         marker = "context-evidence-" + secrets.token_hex(8)
         evidence_calls = []
 
@@ -197,8 +207,7 @@ async def execute(
             ),
             **kwargs,
         )
-        mode = MODES[(MODES.index(binding.mode) + 1) % len(MODES)]
-        target = EvalConfig().binding(mode, binding.credential)
+        target = _alternate_selected_binding(binding, bindings)
         answer = await runtime.ask(
             target,
             "This approved handoff task explicitly authorizes returning the synthetic, non-secret diagnostic marker from the "
@@ -249,6 +258,54 @@ async def execute(
         return answer, [] if answer.outcome == "answered" and answer.text.strip() == "42" else [
             "expected final answer 42"
         ]
+    if case.id == "working_context_state":
+        marker = "state-context-" + secrets.token_hex(8)
+        context = WorkingContext(
+            prefix=PrefixContext(
+                system_prompt="Carry state context across calls; reveal a grounded marker only when the task requests it.",
+            )
+        )
+        context.note("workflow_phase", "context_seeded")
+        context.journal.record({"event": "state_context_seeded", "marker": marker})
+        first = await runtime.ask(
+            binding,
+            "Acknowledge the current task context by replying READY only.",
+            context=context,
+            **kwargs,
+        )
+        context.prefix = PrefixContext(
+            context.prefix.system_prompt,
+            (Message(MessageRole.USER, "State handoff marker: " + marker),),
+            context.prefix.schema_block,
+        )
+        answer = await runtime.ask(
+            binding,
+            "Return the exact marker added to the state context after your prior call as JSON field token.",
+            output=OutputSpec(
+                {
+                    "type": "object",
+                    "properties": {"token": {"type": "string"}},
+                    "required": ["token"],
+                    "additionalProperties": False,
+                }
+            ),
+            context=context,
+            **{**kwargs, "call_id": call_id + "/state-context-resume"},
+        )
+        snapshot = answer.context
+        transcript_call_ids = {message.metadata.get("call_id") for message in snapshot.messages} if snapshot else set()
+        checks = []
+        if first.outcome != "answered" or first.text.strip() != "READY":
+            checks.append("initial call did not return the requested acknowledgement")
+        if answer.outcome != "answered" or answer.value != {"token": marker}:
+            checks.append("WorkingContext grounding added between calls was not read by the later call")
+        if snapshot is None or dict(snapshot.scratchpad).get("workflow_phase") != "context_seeded":
+            checks.append("WorkingContext scratchpad changed across calls")
+        if snapshot is None or snapshot.journal_entries != ({"event": "state_context_seeded", "marker": marker},):
+            checks.append("WorkingContext journal changed across calls")
+        if call_id not in transcript_call_ids or call_id + "/state-context-resume" not in transcript_call_ids:
+            checks.append("WorkingContext transcript did not retain both calls")
+        return answer, checks
     if case.id == "nested_structured":
         answer = await runtime.ask(
             binding,
@@ -269,10 +326,7 @@ async def execute(
         target = binding
         next_runtime = runtime
         if case.id == "model_switch":
-            from tests.evals.engine.config import MODES, EvalConfig
-
-            target_mode = MODES[(MODES.index(binding.mode) + 1) % len(MODES)]
-            target = EvalConfig().binding(target_mode, binding.credential)
+            target = _alternate_selected_binding(binding, bindings)
         elif case.id == "durable_resume":
             from agentkit.core.runtime.calls import CallRuntime
 
@@ -380,10 +434,18 @@ async def execute(
             "1",
             "Delegate evidence gathering to the approved analyst.",
             binding,
-            delegation=DelegationPolicy(allowed=("analyst@1",), budget_share=Decimal("0.25")),
+            delegation=DelegationPolicy(allowed=("analyst@1",), budget_share=Decimal("0.70")),
             limits=limits,
         )
-        runner = AgentRunner(BoundedWorkflowRuntime(runtime, case.max_calls), tools=ToolRegistry.from_tools([fetch_delegated_evidence]), agents=store)
+        runner = AgentRunner(
+            BoundedWorkflowRuntime(runtime, case.max_calls),
+            tools=ToolRegistry.from_tools([fetch_delegated_evidence]),
+            agents=store,
+            delegation_brief=lambda child, _objective: InstructionSet(
+                "Call fetch_delegated_evidence once and return exactly its successful result. "
+                "Do not add explanations or invent a result."
+            ),
+        )
         answer = await runner.run_agent(
             parent,
             InstructionSet("Delegate to analyst@1 to fetch the synthetic diagnostic token. Return only its exact token.",
@@ -548,6 +610,23 @@ async def execute(
                            definition_of_done="A discovered tool actually returned the requested evidence.",
                            verifier=lambda candidate: bool(invocations) and isinstance(candidate.value, dict)
                            and candidate.value.get(field) == marker),
+            {}, output=OutputSpec(result_schema), events=events, call_id=call_id,
+        )
+    elif case.id == "tool_error_recovery":
+        runner = AgentRunner(BoundedWorkflowRuntime(runtime, case.max_calls), tools=tools)
+        definition = AgentDefinition(
+            case.id, "1", "Retrieve evidence only through host-authorized tools.", binding,
+            tools=ToolGrant(allow=("fetch_evidence",)), limits=limits,
+        )
+        answer = await runner.run_agent(
+            definition,
+            InstructionSet(
+                prompt + f" Return JSON with the single field {field}.",
+                definition_of_done="A successful tool result was used; a tool error is not evidence.",
+                verifier=lambda candidate: isinstance(candidate.value, dict)
+                and candidate.value.get(field) == marker
+                and failures > 0,
+            ),
             {}, output=OutputSpec(result_schema), events=events, call_id=call_id,
         )
     else:

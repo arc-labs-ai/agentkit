@@ -22,6 +22,7 @@ from agentkit.models.contracts.types import Binding, CredentialRef
 from agentkit.tools import ToolRegistry
 from agentkit.tools.declarations.function import FunctionTool
 from agentkit.tools.execution.policy import ToolSet
+from tests.evals.engine.acceptance import run_verified
 from tests.evals.engine.contracts import (
     EvalDomain,
     ScenarioExpectation,
@@ -38,6 +39,7 @@ CASES = (
         EvalDomain.OPERATIONS,
         "Diagnose a degraded canary from scoped telemetry and record one approved recommendation.",
         ("real_tool_execution", "trusted_evidence", "scoped_business_write"),
+        max_calls=3,
         max_turns=8,
         max_output_tokens=4000,
         max_cost_usd=Decimal("0.30"),
@@ -256,8 +258,20 @@ async def execute_workload(case: WorkloadCase, environment: WorkflowEnvironment)
             },
         )
     if case.expectation == ScenarioExpectation.SUCCESS:
-        answer = await environment.runtime.run(environment.binding, prompt, state.tools(), **kwargs)
-        return WorkflowResult(answer, tuple(grade_completed(state, answer)), state.evidence())
+        answer, submissions = await run_verified(
+            environment,
+            case,
+            prompt,
+            state.tools(),
+            lambda candidate: grade_completed(state, candidate),
+            output=_SCHEMA,
+            max_calls=case.max_calls,
+        )
+        return WorkflowResult(
+            answer,
+            tuple(grade_completed(state, answer)),
+            {**state.evidence(), "verification_submissions": submissions},
+        )
     if cancellation:
         token = CancellationToken()
         task = asyncio.create_task(

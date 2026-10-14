@@ -301,7 +301,7 @@ async def test_workload_exports_reviewable_committed_business_evidence(case, tmp
                     adjustment_cents=-1000,
                     approval_ref="APR-REC-410",
                 )
-            return SimpleNamespace(outcome="answered", value=None, text="Completed using tools.")
+            return completed_answer("Completed using tools.")
 
     env = SimpleNamespace(
         runtime=ToolUsingRuntime(),
@@ -314,6 +314,8 @@ async def test_workload_exports_reviewable_committed_business_evidence(case, tmp
     )
     result = await execute_workload(case, env)
     assert result.checks == ()
+    if case.id == "operations_partner_revocation":
+        assert result.evidence["verification_submissions"][-1]["accepted"] is True
     stored = json.loads((tmp_path / (case.id + "-evidence.json")).read_text())
     assert stored["journal"] and result.evidence["state"] == stored["state"]
 
@@ -364,6 +366,7 @@ async def test_inventory_cannot_consume_another_customers_reservation_or_skip_ba
         tools, "reserve_order_stock", order_id="ORD-3051", warehouse="north", quantity=7, approval_ref="APR-FUL-3051"
     )
     assert rejected.is_error and ledger.data["allocations"] == {}
+    assert "2 free units" in rejected.text
     assert (await invoke(tools, "ship_reserved_order", order_id="ORD-3051", approval_ref="APR-FUL-3051")).is_error
     assert ledger.data["shipped_quantity"] == 0
     assert ledger.data["warehouses"]["north"] == {"on_hand": 7, "reserved_for_others": 5}

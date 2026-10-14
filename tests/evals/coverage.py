@@ -47,6 +47,7 @@ CONFORMANCE_COVERAGE: Mapping[str, tuple[FeatureAspect, ...]] = {
     "image_result": (A.TOOLS, A.MCP),
     "overflow": (A.TOOLS, A.LIMITS, A.MCP),
     "session_resume": (A.SESSIONS_CONTEXT,),
+    "working_context_state": (A.SESSIONS_CONTEXT,),
     "durable_resume": (A.SESSIONS_CONTEXT, A.ISOLATION),
     "model_switch": (A.SESSIONS_CONTEXT,),
     "pinned_skill": (A.SKILLS,),

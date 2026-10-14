@@ -108,9 +108,28 @@ class WorkflowEnvironment:
     workspace: Path
     call_id: str
     sandbox: WorkspaceSandbox
+    bindings: Mapping[Mode, Binding] = field(default_factory=dict, repr=False)
+    available_modes: tuple[Mode, ...] = ()
+
+    def __post_init__(self) -> None:
+        modes = tuple(Mode(mode) for mode in self.available_modes)
+        if not modes:
+            modes = tuple(Mode(mode) for mode in self.bindings) or (Mode(self.binding.mode),)
+        if len(set(modes)) != len(modes):
+            raise ValueError("workflow modes must be distinct")
+        self.available_modes = modes
+
+    def binding_for_mode(self, mode: Mode) -> Binding:
+        if mode in self.bindings:
+            return self.bindings[mode]
+        raise ValueError(f"no credential-scoped binding was supplied for {mode}")
 
     def alternate_binding(self) -> Binding:
-        from tests.evals.engine.config import MODES, EvalConfig
-
-        mode = MODES[(MODES.index(self.binding.mode) + 1) % len(MODES)]
-        return EvalConfig().binding(mode, self.binding.credential)
+        if len(self.available_modes) < 2:
+            raise ValueError("cross-mode scenarios require at least two selected modes")
+        try:
+            index = self.available_modes.index(self.binding.mode)
+        except ValueError as exc:
+            raise ValueError("the current mode is outside this evaluation's selected modes") from exc
+        mode = self.available_modes[(index + 1) % len(self.available_modes)]
+        return self.binding_for_mode(mode)

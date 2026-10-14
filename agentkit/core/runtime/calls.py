@@ -727,23 +727,22 @@ class CallRuntime:
                     )
                     if incomplete_accounting:
                         amount, source = None, CostSource.UNPRICED
-                    retry_failure_without_usage_or_cost = (
+                    rejected_failure_without_usage_or_cost = (
                         turn.failure is not None
                         and turn.reported_cost is None
                         and not any(bool(value) for value in turn.raw_usage.values())
                         and not any(message.strip() for message in turn.messages)
                         and not turn.tool_calls
-                        and turn.failure.classification == FailureClass.RATE_LIMITED
+                        and turn.failure.classification in (FailureClass.RATE_LIMITED, FailureClass.AUTH)
                     )
-                    if retry_failure_without_usage_or_cost:
-                        # A pre-output rate limit has done no billable work.
-                        # Keep the monetary ledger known at zero for this
-                        # attempt; token completeness remains an independent
-                        # fact on Answer.
+                    if rejected_failure_without_usage_or_cost:
+                        # A pre-output provider rejection has done no billable
+                        # work. Keep its failure classification and monetary
+                        # ledger intact; token completeness remains separate.
                         amount, source = Decimal(0), cost_source
                     if amount is None:
                         total_cost, cost_source = None, CostSource.UNPRICED
-                        if limits.max_cost_usd is not None and not retry_failure_without_usage_or_cost:
+                        if limits.max_cost_usd is not None and not rejected_failure_without_usage_or_cost:
                             budget_unknown = True
                     elif total_cost is not None:
                         total_cost += amount

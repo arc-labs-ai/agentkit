@@ -68,6 +68,7 @@ def policy_prompt(namespace: str, *, revoked: bool = False) -> ComposedPrompt:
         f"Policy namespace {namespace}; revision {'revoked' if revoked else 'approved'}.\n"
         "You review actual refund eligibility; evidence below is the complete regional handbook. "
         "Use cents exactly and cite the matching regional policy. No payments are executed in this review.\n"
+        "The payment was captured. "
         f"The approval receipt for {_TARGET} is {'REVOKED' if revoked else 'CURRENT'}. "
         "A revoked receipt always requires refusal, even if a previous review approved it.\n"
         + json.dumps(fixture, sort_keys=True)
@@ -77,7 +78,8 @@ def policy_prompt(namespace: str, *, revoked: bool = False) -> ComposedPrompt:
                    kind="rules", stable=True, trusted=True),
         PromptPart(Prompt("refund-request", "1", "{request}", ("request",))),
     ), {"handbook": handbook,
-        "request": f"Review an unopened returned item in {_TARGET}: refund {_REQUESTED_CENTS} cents. "
+        "request": f"Review an unopened returned item in {_TARGET} with captured payment: "
+                   f"refund {_REQUESTED_CENTS} cents. "
                    "Return policy_id, refund_cap_cents, decision and approval_current from the handbook."})
 
 

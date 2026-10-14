@@ -5,6 +5,7 @@ import hashlib
 import json
 import sqlite3
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -134,6 +135,45 @@ def test_research_and_incident_oracles_reject_stale_claims_and_unsafe_actions():
     assert "incident:log_citations" in incident_checks({**INCIDENT, "evidence_ids": ["fabricated"]})
 
 
+def test_workflow_alternate_binding_uses_the_destination_modes_credential():
+    from agentkit.core.contracts.types import Mode
+    from agentkit.models.contracts.types import CredentialRef
+    from tests.evals.engine.contracts import WorkflowEnvironment
+
+    target = Binding(Mode.CLAUDE_CODE, "claude-test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "claude"}))
+    source = Binding(Mode.OPENAI_API, "openai-test", CredentialRef(lambda: {"OPENAI_API_KEY": "openai"}))
+    environment = WorkflowEnvironment(
+        runtime=None, binding=source, limits=CallLimits(), event_sink=lambda _: None,
+        workspace=Path("."), call_id="switch", sandbox=None,
+        bindings={Mode.OPENAI_API: source, Mode.CLAUDE_CODE: target},
+    )
+    alternate = environment.alternate_binding()
+    assert alternate.mode == Mode.CLAUDE_CODE
+    assert alternate.credential.resolve() == {"ANTHROPIC_API_KEY": "claude"}
+
+
+def test_workflow_alternate_binding_stays_with_the_selected_live_modes():
+    from agentkit.core.contracts.types import Mode
+    from agentkit.models.contracts.types import CredentialRef
+    from tests.evals.engine.contracts import WorkflowEnvironment
+
+    source = Binding(Mode.CLAUDE_CODE, "claude-test")
+    anthropic = Binding(Mode.ANTHROPIC_API, "anthropic-test", CredentialRef(lambda: {
+        "ANTHROPIC_API_KEY": "anthropic-api-test",
+    }))
+    codex = Binding(Mode.CODEX, "codex-test")
+    environment = WorkflowEnvironment(
+        runtime=None, binding=source, limits=CallLimits(), event_sink=lambda _: None,
+        workspace=Path("."), call_id="selected-switch", sandbox=None,
+        bindings={Mode.CLAUDE_CODE: source, Mode.ANTHROPIC_API: anthropic, Mode.CODEX: codex},
+        available_modes=(Mode.CLAUDE_CODE, Mode.ANTHROPIC_API, Mode.OPENAI_API),
+    )
+
+    alternate = environment.alternate_binding()
+    assert alternate.mode == Mode.ANTHROPIC_API
+    assert alternate.credential.resolve() == {"ANTHROPIC_API_KEY": "anthropic-api-test"}
+
+
 @pytest.mark.asyncio
 async def test_research_workflow_loads_sources_revokes_skill_and_switches_model(tmp_path):
     adapter = ScriptedAdapter(
@@ -160,6 +200,9 @@ async def test_research_workflow_loads_sources_revokes_skill_and_switches_model(
 
 @pytest.mark.asyncio
 async def test_incident_event_reactor_runs_peer_review_with_actual_logs_and_evidence(tmp_path):
+    incomplete_incident = {**INCIDENT, "evidence_ids": ["log-025", "log-026", "log-027", "log-028",
+                                                        "log-029", "log-030", "log-031", "log-032",
+                                                        "log-033", "log-034", "log-035"]}
     adapter = ScriptedAdapter(
         turn(
             calls=(
@@ -168,12 +211,14 @@ async def test_incident_event_reactor_runs_peer_review_with_actual_logs_and_evid
                 call("read_source", {"source_id": "sqlite-busy-timeout"}, "busy"),
             )
         ),
+        turn(incomplete_incident),
         turn(INCIDENT),
         turn(INCIDENT),
     )
     env = environment(tmp_path, adapter)
     result = await execute_workload(CASES[1], env)
     assert not result.checks and result.evidence["reaction_event_ids"]
+    assert "incident:log_citations" in result.evidence["verification_submissions"]["triage"][0]["checks"]
     assert any(event.call_id == "knowledge/peer" and event.parent_call_id == "knowledge" for event in env.events)
     assert "billing-9" in str(adapter.requests[-1][2]["session"].history)
 
@@ -361,6 +406,7 @@ async def test_negative_support_requires_actual_evidence_and_safe_escalation_not
         call("read_incident"),
         call("read_source", {"source_id": "sqlite-wal-current"}, "wal"),
         call("read_source", {"source_id": "sqlite-busy-timeout"}, "timeout"),
+        call("count_incident_events", {"event": "write_failed", "error": "SQLITE_BUSY"}, "count"),
     )
     adapter = ScriptedAdapter(turn(calls=reads), turn(expected))
     case = next(case for case in CASES if case.id == "sqlite_incident_insufficient_evidence")
@@ -377,6 +423,65 @@ async def test_negative_support_requires_actual_evidence_and_safe_escalation_not
     result = await execute_workload(case, environment(tmp_path / "guessed", adapter))
     assert "insufficient:fabricated_blocking_writer" in result.checks
     assert "insufficient:invented_evidence_citations" in result.checks
+
+
+@pytest.mark.asyncio
+async def test_insufficient_incident_verifier_allows_one_bounded_count_repair_after_repeat_error(tmp_path):
+    wrong = {
+        "status": "insufficient_evidence",
+        "missing_evidence": ["transaction_identity_traces", "approval_for_state_change"],
+        "evidence_ids": ["incident-packet-001"],
+        "source_ids": ["sqlite-wal-current", "sqlite-busy-timeout"],
+        "busy_errors": 12,
+        "blocking_writer": None,
+        "checkpoint_reader": None,
+        "action": "request_transaction_traces",
+    }
+    corrected = {**wrong, "busy_errors": 11}
+    reads = (
+        call("read_incident"),
+        call("read_source", {"source_id": "sqlite-wal-current"}, "wal"),
+        call("read_source", {"source_id": "sqlite-busy-timeout"}, "timeout"),
+        call("count_incident_events", {"event": "write_failed", "error": "SQLITE_BUSY"}, "count"),
+    )
+    adapter = ScriptedAdapter(turn(calls=reads), turn(wrong), turn(wrong), turn(corrected))
+    case = next(case for case in CASES if case.id == "sqlite_incident_insufficient_evidence")
+    result = await execute_workload(case, environment(tmp_path, adapter))
+    assert not result.checks, result.checks
+    submissions = result.evidence["verification_submissions"]
+    assert len(submissions) == 3
+    assert [submission["accepted"] for submission in submissions] == [False, False, True]
+
+
+@pytest.mark.asyncio
+async def test_insufficient_incident_uses_exact_event_count_tool_for_busy_errors(tmp_path):
+    expected = {
+        "status": "insufficient_evidence",
+        "missing_evidence": ["transaction_identity_traces"],
+        "evidence_ids": ["incident-packet-001", *[f"log-{index:03d}" for index in range(25, 36)]],
+        "source_ids": ["sqlite-wal-current", "sqlite-busy-timeout"],
+        "busy_errors": 11,
+        "blocking_writer": None,
+        "checkpoint_reader": None,
+        "action": "request_transaction_traces",
+    }
+    reads = (
+        call("read_incident"),
+        call("read_source", {"source_id": "sqlite-wal-current"}, "wal"),
+        call("read_source", {"source_id": "sqlite-busy-timeout"}, "timeout"),
+        call("count_incident_events", {"event": "write_failed", "error": "SQLITE_BUSY"}, "count"),
+    )
+    adapter = ScriptedAdapter(turn(calls=reads), turn(expected))
+    case = next(case for case in CASES if case.id == "sqlite_incident_insufficient_evidence")
+    result = await execute_workload(case, environment(tmp_path, adapter))
+    assert not result.checks, result.checks
+    evidence = result.evidence
+    assert any(
+        receipt.get("tool") == "count_incident_events"
+        and receipt.get("count") == 11
+        and len(receipt.get("event_ids", ())) == 11
+        for receipt in evidence["receipts"]
+    )
 
 
 @pytest.mark.asyncio
@@ -432,6 +537,7 @@ async def test_negative_incident_read_document_cannot_be_observation_receipt(tmp
                 call("read_incident"),
                 call("read_source", {"source_id": "sqlite-wal-current"}, "wal"),
                 call("read_source", {"source_id": "sqlite-busy-timeout"}, "timeout"),
+                call("count_incident_events", {"event": "write_failed", "error": "SQLITE_BUSY"}, "count"),
             )
         ),
         turn(value),
@@ -439,7 +545,7 @@ async def test_negative_incident_read_document_cannot_be_observation_receipt(tmp
     case = next(case for case in CASES if case.id == "sqlite_incident_insufficient_evidence")
     result = await execute_workload(case, environment(tmp_path, adapter))
     assert result.checks
-    assert result.evidence["verification_submissions"][0]["checks"] == ["insufficient:invented_evidence_citations"]
+    assert "insufficient:invented_evidence_citations" in result.evidence["verification_submissions"][0]["checks"]
     assert result.evidence["changes_committed"] == 0
 
 
@@ -464,7 +570,7 @@ def test_negative_schemas_describe_disjoint_citation_namespaces():
         ("sqlite_incident_triage", "triage", "peer_review", INCIDENT),
     ),
 )
-async def test_phase_evidence_preserves_limit_failure_despite_correct_final_review(
+async def test_phase_evidence_preserves_limit_failure_when_final_review_is_correct(
     tmp_path,
     case_id,
     first_phase,
@@ -500,7 +606,10 @@ async def test_phase_evidence_preserves_limit_failure_despite_correct_final_revi
     assert first["usage"]["output"] > env.limits.max_output_tokens
     assert final["phase"] == final_phase and final["outcome"] == "answered"
     assert final["value"] == value and not final["checks"]
-    assert result.checks, "A correct review must not erase the first phase's failure"
+    if case_id == "sqlite_incident_triage":
+        assert not result.checks, "the corrected peer assessment is the accepted final result"
+    else:
+        assert result.checks, "the research handoff still requires its own successful answer"
     json.dumps(result.evidence)
 
 
@@ -508,13 +617,17 @@ def test_knowledge_bounds_preserve_money_wall_clock_and_call_counts():
     expected = {
         "sqlite_migration_research": (4, Decimal(".80")),
         "sqlite_incident_triage": (4, Decimal(".80")),
-        "bank_campaign_analytics": (2, Decimal(".60")),
+        "bank_campaign_analytics": (4, Decimal(".60")),
         "sqlite_research_insufficient_evidence": (2, Decimal(".45")),
-        "sqlite_incident_insufficient_evidence": (2, Decimal(".45")),
+        "sqlite_incident_insufficient_evidence": (3, Decimal(".45")),
         "bank_dataset_insufficient_evidence": (2, Decimal(".40")),
     }
     for case in CASES:
-        assert case.max_turns == 16 and case.max_output_tokens == 4096
+        assert case.max_turns == 16
+        expected_output_tokens = 8192 if case.id in {
+            "sqlite_research_insufficient_evidence", "sqlite_incident_insufficient_evidence"
+        } else 4096
+        assert case.max_output_tokens == expected_output_tokens
         assert (case.max_calls, case.max_cost_usd) == expected[case.id]
         assert case.wall_clock_s == 300
 
@@ -541,7 +654,7 @@ async def test_incident_verification_recovers_wrong_count_without_oracle_answers
 
 
 @pytest.mark.asyncio
-async def test_incident_verifier_exhaustion_preserves_failure_despite_correct_peer(tmp_path):
+async def test_incident_verifier_exhaustion_can_recover_with_correct_peer(tmp_path):
     wrong = {**INCIDENT, "busy_errors": 10}
     reads = (
         call("read_incident"),
@@ -550,7 +663,7 @@ async def test_incident_verifier_exhaustion_preserves_failure_despite_correct_pe
     )
     adapter = ScriptedAdapter(turn(calls=reads), turn(wrong), turn(wrong), turn(INCIDENT))
     result = await execute_workload(CASES[1], environment(tmp_path, adapter))
-    assert result.checks
+    assert not result.checks
     submissions = result.evidence["verification_submissions"]["triage"]
     assert len(submissions) == 2 and all(not s["accepted"] for s in submissions)
     assert result.evidence["phases"][1]["value"] == INCIDENT
@@ -596,6 +709,7 @@ async def test_research_missing_authoritative_lookup_recovers_only_after_real_to
         ("incident:busy_errors", ("SQLITE_BUSY", "complete incident packet", "Count")),
         ("incident:safe_grounded_actions", ("transaction", "checkpoint", "source documentation")),
         ("analytics:campaign_bands", ("ROUND", "floating-point division", "actual query-returned")),
+        ("analytics:query_campaigns_not_used", ("No SQL query result", "query_campaigns", "three")),
     ],
 )
 def test_guided_knowledge_feedback_preserves_oracle_codes_without_fixture_answers(failure, keywords):
