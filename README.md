@@ -45,7 +45,7 @@ import asyncio
 
 from agentkit.agents import AgentDefinition, AgentRunner, InstructionSet
 from agentkit.core.runtime import CallRuntime
-from agentkit.models import Binding, PriceTable
+from agentkit.models import Binding, Mode, PriceTable
 
 
 async def main():
@@ -56,7 +56,7 @@ async def main():
             AgentDefinition("answerer", "1", "Answer briefly."),
             InstructionSet("What is 6 times 7?"),
             {},
-            binding=Binding("openai_api", "gpt-4.1-mini"),
+            binding=Binding(Mode.OPENAI_API, "gpt-4.1-mini"),
             call_id="quickstart-1",
         )
         print(answer.text)
@@ -78,4 +78,4 @@ See [`tests/examples/`](./tests/examples) for deterministic, runnable examples a
 | `tools` | Tool declarations, registries, execution policy, and filesystem tools |
 | `integrations` | MCP and optional observability adapters |
 
-Validation lives under `tests/source`, live provider evaluations under `tests/evals`, and examples under `tests/examples`. The architecture and migration decisions are recorded in [`docs/design/`](./docs/design/).
+Validation lives under `tests/source`, live provider evaluations under `tests/evals`, and examples under `tests/examples`.

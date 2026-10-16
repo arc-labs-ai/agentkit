@@ -1,52 +1,38 @@
-"""Example 01 — a single agent, driven by a fake LLM.
-
-This is the README quickstart, expanded into a runnable script. It shows the
-minimum viable wire-up:
-
-- Build a `RunContext` bound to a `FakeLLM` (via `make_test_ctx`).
-- Declare an `Agent` — name, model, prompt.
-- Call `agent.run(task, ctx)` and read the typed `AgentResult`.
-
-`FakeLLM` is a deterministic, offline-only LLM double from `agentkit.core.testing`.
-It always returns the string it was constructed with, and it charges a small
-scripted `Usage` on each call — enough to exercise the whole runtime without
-an API key.
-
-Run:
-    uv run python tests/examples/01_single_agent.py
-"""
+"""A one-agent, offline harness using the canonical AgentRunner and CallRuntime."""
 
 from __future__ import annotations
 
 import asyncio
 
-from agentkit.agents import Agent
-from agentkit.core.testing import FakeLLM, make_test_ctx
+from agentkit.agents import AgentDefinition, AgentRunner, InstructionSet
+from agentkit.core.testing import scripted_runtime
+from agentkit.models import Binding, Mode, PriceTable
+from agentkit.models.contracts.types import Turn
+
+PRICES = PriceTable(
+    "example",
+    "2026-10-13",
+    {"test-model": {"input_uncached": "1", "input_cache_read": "0.1", "input_cache_write_5m": "1.25",
+                    "input_cache_write_1h": "2", "output": "5"}},
+)
 
 
 async def main() -> None:
-    # `make_test_ctx` builds a REAL RunContext. Only the LLM is faked; the
-    # invoker, budget, meters, and services are the same objects a real run
-    # would use — no separate "test mode" branch in the framework.
-    ctx = make_test_ctx(llm=FakeLLM("42"))
-
-    agent = Agent(
-        name="answerer",
-        model="gpt-4o-mini",
-        prompt="Answer the question in as few words as possible.",
-    )
-
-    result = await agent.run("what is 6 * 7?", ctx)
-
-    print(f"output:        {result.output!r}")
-    print(f"usage.tokens:  {result.usage.total_tokens}")
-    print(f"usage.cost_usd: {result.usage.cost_usd}")
-
-
-# Expected output:
-#   output:        '42'
-#   usage.tokens:  15
-#   usage.cost_usd: 0.0001
+    async with scripted_runtime(
+        [Turn(messages=("42",), raw_usage={"input_tokens": 10, "output_tokens": 5})], PRICES
+    ) as runtime:
+        runner = AgentRunner(runtime)
+        answer = await runner.run_agent(
+            AgentDefinition("answerer", "1", "Answer briefly."),
+            InstructionSet("What is 6 times 7?"),
+            {},
+            binding=Binding(Mode.OPENAI_API, "test-model"),
+            call_id="single-agent-example",
+        )
+        print(f"output:         {answer.text!r}")
+        input_tokens = answer.usage.input_uncached + answer.usage.input_cache_read + answer.usage.input_cache_write_5m + answer.usage.input_cache_write_1h
+        print(f"usage.tokens:   {input_tokens + answer.usage.output}")
+        print(f"usage.cost_usd: {answer.cost_usd}")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from agentkit.models.contracts.types import Answer, Usage
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "agentkit"
+EXAMPLES = ROOT / "tests" / "examples"
 RETIRED_MODULES = (
     "agentkit.agents.cognition",
     "agentkit.agents.control",
@@ -84,6 +85,24 @@ def test_retired_modules_are_absent_and_nobody_imports_them() -> None:
         except ModuleNotFoundError:
             continue
         raise AssertionError(f"retired module still imports: {retired}")
+
+
+def test_runnable_examples_use_the_current_runtime_contracts() -> None:
+    """Source examples must not teach the removed Agent/Invoker runtime path."""
+    retired_names = {"Agent", "AgentResult", "Workflow", "WorkflowResult", "Invoker", "RunContext", "Services"}
+    for path in EXAMPLES.rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                assert not any(
+                    node.module == module or node.module.startswith(module + ".") for module in RETIRED_MODULES
+                ), f"{path.relative_to(ROOT)} imports retired module {node.module}"
+                if node.module in {"agentkit.agents", "agentkit.core.runtime"}:
+                    imported = {alias.name for alias in node.names}
+                    assert not imported.intersection(retired_names), (
+                        f"{path.relative_to(ROOT)} imports retired runtime names "
+                        f"{sorted(imported.intersection(retired_names))}"
+                    )
 
 
 def test_provider_usage_is_converted_at_the_pricing_boundary() -> None:

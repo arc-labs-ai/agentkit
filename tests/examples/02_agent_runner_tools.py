@@ -5,7 +5,8 @@ import asyncio
 from agentkit.agents import AgentDefinition, AgentRunner, InstructionSet, ToolGrant
 from agentkit.core.runtime import CallRuntime
 from agentkit.core.testing import ScriptedAdapter
-from agentkit.models import Binding, PriceTable, Turn
+from agentkit.models import Binding, Mode, PriceTable
+from agentkit.models.contracts.types import Turn
 from agentkit.tools import FunctionTool, ToolRegistry
 
 PRICES = PriceTable(
@@ -28,7 +29,7 @@ async def main() -> None:
         Turn(("The order was captured twice, and no refund has been issued yet.",),
              raw_usage={"input_tokens": 20, "output_tokens": 15}),
     ])
-    async with CallRuntime(adapters={"openai_api": adapter}, pricing=PRICES) as runtime:
+    async with CallRuntime(adapters={Mode.OPENAI_API: adapter}, pricing=PRICES) as runtime:
         runner = AgentRunner(runtime, tools=tools)
         agent = AgentDefinition(
             id="support", version="1", description="Answer order questions.",
@@ -36,7 +37,7 @@ async def main() -> None:
         )
         answer = await runner.run_agent(
             agent, InstructionSet("Check order-42 and state what happened."), {},
-            binding=Binding("openai_api", "test-model"), call_id="support-42",
+            binding=Binding(Mode.OPENAI_API, "test-model"), call_id="support-42",
         )
         print(answer.text)
         print(f"outcome={answer.outcome}, turns={len(adapter.requests)}")

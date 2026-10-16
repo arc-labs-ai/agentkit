@@ -24,12 +24,19 @@ from agentkit.models.catalog.pricing import PriceTable
 from agentkit.models.contracts.constants import FailureClass, UnpricedPolicy
 from agentkit.models.contracts.types import Binding, CallLimits, Credential, CredentialRef
 from agentkit.models.providers.cli.calls import CliAdapter
+from tests.evals.engine.config import DEFAULT_MODELS
 from tests.evals.engine.environment import runtime_versions
 from tests.evals.engine.reporting import source_digest, write_report
 
 _AUTH_FILES = {
     Mode.CLAUDE_CODE: ".credentials.json",
     Mode.CODEX: "auth.json",
+}
+_DEFAULT_LOGIN_MODELS = {
+    Mode.CLAUDE_CODE: DEFAULT_MODELS[Mode.CLAUDE_CODE],
+    # Codex CLI's ChatGPT login catalog is distinct from OpenAI API model
+    # availability; use a current CLI account model for this auth-only probe.
+    Mode.CODEX: "gpt-6.1-sol",
 }
 
 
@@ -67,7 +74,7 @@ def force_expired_access_token(mode: Mode, document: Any) -> Any:
     def visit(value: Any, key: str = "") -> Any:
         nonlocal changed
         if isinstance(value, dict):
-            out = {}
+            out: dict[str, Any] = {}
             for child_key, child in value.items():
                 folded = child_key.casefold().replace("_", "")
                 if mode == Mode.CLAUDE_CODE and folded in {"expiresat", "expiry", "expires"}:
@@ -178,10 +185,7 @@ async def run_login_check(
         changed_files.update(name for name, value in files.items() if isinstance(value, bytes))
 
     credential = CredentialRef(lambda: Credential(home={filename: auth_bytes}, on_changed=on_changed))
-    model = os.environ.get(
-        f"AGENTKIT_EVAL_MODEL_{mode.upper()}",
-        "claude-haiku-4-5" if mode == Mode.CLAUDE_CODE else "gpt-5.5",
-    )
+    model = os.environ.get(f"AGENTKIT_EVAL_MODEL_{mode.upper()}", _DEFAULT_LOGIN_MODELS[mode])
     events: list[Any] = []
     async with CallRuntime(
         adapters={mode: CliAdapter()},

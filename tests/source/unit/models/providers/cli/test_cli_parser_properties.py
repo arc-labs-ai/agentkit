@@ -37,12 +37,15 @@ import asyncio
 import math
 from typing import Any
 
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from agentkit.core.contracts.types import StreamEvent
 from agentkit.models.providers.cli.claude import driver as cc
 from agentkit.models.providers.cli.codex import driver as cx
+
+pytestmark = pytest.mark.timeout(180)
 
 # Any JSON value a binary could emit, nested. Bounded because the parsers are
 # not recursive over depth and a deeper tree only slows the run down.

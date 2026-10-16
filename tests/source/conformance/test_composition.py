@@ -89,7 +89,7 @@ def test_retry_after_formats_and_structural_settings():
     assert retry_after("Wed, 21 Oct 2015 07:28:00 GMT") == 0
     assert retry_after("unknown") is None
     caps = CapabilityTable("1", "today", {"codex": {"effort": ["low", "high"]}})
-    effective = caps.check(Binding("codex", "test"), ModelSettings(effort="max", tier="fast"))
+    effective = caps.check(Binding("codex", "test"), ModelSettings(effort="max", tier="flex"))
     assert effective.settings.effort == "high" and effective.settings.tier is None
     assert len(effective.degradations) == 2
     with pytest.raises(ValueError):

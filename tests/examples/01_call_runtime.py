@@ -3,7 +3,8 @@
 import asyncio
 
 from agentkit.core.testing import scripted_runtime
-from agentkit.models import Binding, PriceTable, Turn
+from agentkit.models import Binding, Mode, PriceTable
+from agentkit.models.contracts.types import Turn
 
 PRICES = PriceTable(
     "example",
@@ -14,8 +15,8 @@ PRICES = PriceTable(
 
 
 async def main() -> None:
-    async with scripted_runtime([Turn(("42",), raw_usage={"input_tokens": 10, "output_tokens": 5})], PRICES) as runtime:
-        answer = await runtime.ask(Binding("openai_api", "test-model"), "What is 6 times 7?", call_id="quickstart")
+    async with scripted_runtime([Turn(messages=("42",), raw_usage={"input_tokens": 10, "output_tokens": 5})], PRICES) as runtime:
+        answer = await runtime.ask(Binding(Mode.OPENAI_API, "test-model"), "What is 6 times 7?", call_id="quickstart")
         print(answer.text)
         print(answer.usage)
         print(answer.cost_usd)

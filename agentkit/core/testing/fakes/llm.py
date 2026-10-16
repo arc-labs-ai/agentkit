@@ -1,4 +1,4 @@
-"""`FakeLLM`/`Turn` — deterministic offline LLM for tests (single answers or scripted tool loops)."""
+"""`FakeLLM`/`FakeTurn` — deterministic offline LLM for tests and scripted tool loops."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class ScriptExhausted(BaseException):
 
 
 @dataclass
-class Turn:
+class FakeTurn:
     """One scripted reply for `FakeLLM.script` — a final answer, or a turn that requests tools."""
 
     content: str = ""
@@ -61,7 +61,7 @@ class Turn:
 
 class FakeLLM:
     """Deterministic offline LLM. dict {substring_of_user: content} | callable | str for single
-    answers; `FakeLLM.script([Turn(...), …])` replays a multi-step tool loop across `chat` calls.
+    answers; `FakeLLM.script([FakeTurn(...), …])` replays a multi-step tool loop across `chat` calls.
 
     The two forms differ ON PURPOSE once they run out of material:
 
@@ -71,7 +71,7 @@ class FakeLLM:
     * a script is a finite, ordered claim about how many turns the run takes.
       Asking for turn N+1 contradicts the claim, so it raises
       `ScriptExhausted`. Pass `repeat_last=True` for the deliberate
-      never-terminating script — a single tool-call `Turn` used to drive a
+      never-terminating script — a single tool-call `FakeTurn` used to drive a
       loop until `max_iterations` or a budget cuts it."""
 
     def __init__(
@@ -82,7 +82,7 @@ class FakeLLM:
         fail_times: int = 0,
         fail_exc: BaseException | None = None,
         delay: float = 0.0,
-        turns: list[Turn] | None = None,
+        turns: list[FakeTurn] | None = None,
         repeat_last: bool = False,
     ):
         self._responses = responses
@@ -96,7 +96,7 @@ class FakeLLM:
         self.calls = 0
 
     @classmethod
-    def script(cls, turns: list[Turn], *, repeat_last: bool = False, **kw: Any) -> FakeLLM:
+    def script(cls, turns: list[FakeTurn], *, repeat_last: bool = False, **kw: Any) -> FakeLLM:
         """Replay `turns` in order, one per `chat`/`stream` call, then raise `ScriptExhausted`.
 
         `repeat_last=True` replays the final turn forever instead. Spelled out
@@ -227,7 +227,7 @@ def _exhausted_message(have: int, idx: int) -> str:
         f"for turn {idx + 1}. The agent kept calling the LLM after the script ran out — "
         "that is usually the defect under test (a loop that does not terminate, a stop "
         "condition that never fires), not a problem with the script. Either add the "
-        f"missing Turn(...)s if {idx + 1} calls are genuinely expected, or pass "
+        f"missing FakeTurn(...)s if {idx + 1} calls are genuinely expected, or pass "
         "FakeLLM.script([...], repeat_last=True) to replay the final turn forever when "
         "the test deliberately drives an unbounded loop until max_iterations or a budget "
         "stops it."

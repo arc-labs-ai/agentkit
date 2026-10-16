@@ -1,6 +1,6 @@
 """core contracts package."""
 
 from agentkit.core.contracts.sessions import SessionBundleRef, SessionBundleStore
-from agentkit.core.contracts.types import CostSource
+from agentkit.core.contracts.types import CostSource, Mode
 
-__all__ = ["CostSource", "SessionBundleRef", "SessionBundleStore"]
+__all__ = ["CostSource", "Mode", "SessionBundleRef", "SessionBundleStore"]

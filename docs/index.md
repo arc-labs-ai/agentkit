@@ -13,23 +13,24 @@ import asyncio
 
 from agentkit.agents import AgentDefinition, AgentRunner, InstructionSet
 from agentkit.core.runtime import CallRuntime
-from agentkit.models.contracts import ModelMode
+from agentkit.models import Binding, Mode, PriceTable
 
 
 async def main() -> None:
     # Supply an adapter configured for the selected mode/model.
-    adapter = ...
-    async with CallRuntime() as runtime:
+    adapter = ...  # A provider adapter configured for the selected model.
+    async with CallRuntime(adapters={Mode.OPENAI_API: adapter}, pricing=PriceTable.default()) as runtime:
         runner = AgentRunner(runtime)
         answer = await runner.run_agent(
             AgentDefinition(
-                name="assistant",
-                mode=ModelMode.OPENAI_API,
-                model="your-configured-model",
-                instructions=InstructionSet(system="Answer clearly and accurately."),
+                id="assistant",
+                version="1",
+                description="Answer clearly and accurately.",
             ),
-            "What does this service do?",
-            adapter=adapter,
+            InstructionSet("What does this service do?"),
+            {},
+            binding=Binding(Mode.OPENAI_API, "your-configured-model"),
+            call_id="docs-example",
         )
         print(answer.text)
 
@@ -49,7 +50,7 @@ The package supports Anthropic API, OpenAI API, Claude Code CLI, and Codex CLI a
 - **EventHub** exposes call and agent events to host subscribers. Subscribers can opt into isolated failure handling.
 - **Pricing, limits, output validation, retries, and continuation** are configured through the runtime call contract.
 
-See [the build plan](design/build-plan.md) for the implementation source of truth and [the Mirror gap record](design/mirror-gaps.md) for the history and evidence behind those requirements. The runnable examples live under `tests/examples`; offline tests live under `tests/source`, and provider-backed evaluations live under `tests/evals`.
+Runnable examples live under `tests/examples`; offline tests live under `tests/source`, and provider-backed evaluations live under `tests/evals`.
 
 ## Development checks
 

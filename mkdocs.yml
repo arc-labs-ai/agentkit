@@ -118,10 +118,6 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Design:
-      - Build plan: design/build-plan.md
-      - Mirror gaps: design/mirror-gaps.md
-      - Implementation status: design/implementation-status.md
   - Contributing: contributing.md
 
 extra:

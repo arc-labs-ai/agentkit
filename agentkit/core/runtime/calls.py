@@ -101,6 +101,7 @@ class CallRuntime:
         native_tool_policy: NativeToolPolicy = NativeToolPolicy.WARN,
         unpriced_policy: UnpricedPolicy = UnpricedPolicy.REFUSE,
         max_concurrent_cli: int = 8,
+        max_concurrent_api: int = 32,
         acquire: Callable[[Mode], AbstractAsyncContextManager[Any]] | None = None,
         argument_masker: Callable[[str, Any], Any] | None = None,
         result_masker: Callable[[str, str], str] | None = None,
@@ -114,7 +115,10 @@ class CallRuntime:
         self.unpriced_policy = UnpricedPolicy(unpriced_policy)
         if max_concurrent_cli < 1:
             raise ValueError("max_concurrent_cli must be positive")
+        if max_concurrent_api < 1:
+            raise ValueError("max_concurrent_api must be positive")
         self.max_concurrent_cli = max_concurrent_cli
+        self.max_concurrent_api = max_concurrent_api
         self.acquire = acquire
         self._event_digest_key = secrets.token_bytes(32)
         self.argument_masker = argument_masker or (
@@ -122,6 +126,7 @@ class CallRuntime:
         )
         self.result_masker = result_masker
         self._cli_semaphores: dict[Mode, asyncio.Semaphore] = {}
+        self._api_semaphores: dict[Mode, asyncio.Semaphore] = {}
 
     async def __aenter__(self) -> CallRuntime:
         return self
@@ -611,20 +616,24 @@ class CallRuntime:
                                 max_turns=min(limits_arg.max_turns or slice_arg, slice_arg),
                             )
                         if binding.mode.is_api:
-                            return await adapter.turn(
-                                binding,
-                                prompt_arg,
-                                settings=settings_arg,
-                                limits=limits_arg,
-                                schema=schema,
-                                tools=tools,
-                                session=session_arg,
-                                cancel=cancel,
-                                emit=mode_event,
-                                call_id=call_id,
-                                native_agents=agents_arg,
-                                workspace=workspace_arg,
+                            semaphore = self._api_semaphores.setdefault(
+                                binding.mode, asyncio.Semaphore(self.max_concurrent_api)
                             )
+                            async with semaphore:
+                                return await adapter.turn(
+                                    binding,
+                                    prompt_arg,
+                                    settings=settings_arg,
+                                    limits=limits_arg,
+                                    schema=schema,
+                                    tools=tools,
+                                    session=session_arg,
+                                    cancel=cancel,
+                                    emit=mode_event,
+                                    call_id=call_id,
+                                    native_agents=agents_arg,
+                                    workspace=workspace_arg,
+                                )
                         semaphore = self._cli_semaphores.setdefault(
                             binding.mode, asyncio.Semaphore(self.max_concurrent_cli)
                         )

@@ -64,15 +64,17 @@ class AgentDefinition:
     settings: ModelSettings = ModelSettings()
     limits: CallLimits = CallLimits(max_turns=10)
     delegation: DelegationPolicy = DelegationPolicy()
-    mind: MindKind | str = MindKind.REACT
+    mind: MindKind = MindKind.REACT
 
     def __post_init__(self) -> None:
         if not self.id or not self.version or len(self.description) > 1024:
             raise ValueError("agent requires id, version and bounded description")
         if not isinstance(self.model, Binding):
             object.__setattr__(self, "model", ModelSelection(self.model))
-        if self.mind in tuple(MindKind):
+        try:
             object.__setattr__(self, "mind", MindKind(self.mind))
+        except ValueError as exc:
+            raise ValueError(f"mind must be one of: {', '.join(item.value for item in MindKind)}") from exc
 
     @property
     def digest(self) -> str:

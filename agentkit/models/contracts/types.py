@@ -18,9 +18,13 @@ from agentkit.models.contracts.constants import (
     ClaudePermissionMode,
     CodexSandboxMode,
     CostSource,
+    Effort,
     EventKind,
     FailureClass,
     Outcome,
+    ReasoningSummary,
+    ServiceTier,
+    Verbosity,
 )
 from agentkit.state.context import PrefixContext
 
@@ -100,17 +104,30 @@ class Binding:
 
 @dataclass(frozen=True)
 class ModelSettings:
-    effort: str | None = None
+    effort: Effort | None = None
     temperature: float | None = None
     top_p: float | None = None
     top_k: int | None = None
     max_output_tokens: int | None = None
-    reasoning_summary: str | None = None
-    verbosity: str | None = None
-    tier: str | None = None
+    reasoning_summary: ReasoningSummary | None = None
+    verbosity: Verbosity | None = None
+    tier: ServiceTier | None = None
     cache_ttl: CacheTtl | None = None
 
     def __post_init__(self) -> None:
+        for name, enum_type in (
+            ("effort", Effort),
+            ("reasoning_summary", ReasoningSummary),
+            ("verbosity", Verbosity),
+            ("tier", ServiceTier),
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                try:
+                    object.__setattr__(self, name, enum_type(value))
+                except ValueError as exc:
+                    choices = ", ".join(item.value for item in enum_type)
+                    raise ValueError(f"{name} must be one of: {choices}") from exc
         if self.cache_ttl is not None:
             object.__setattr__(self, "cache_ttl", CacheTtl(self.cache_ttl))
 

@@ -461,6 +461,37 @@ async def test_call_runtime_bounds_cli_concurrency_across_unique_homes() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [Mode.OPENAI_API, Mode.ANTHROPIC_API])
+async def test_call_runtime_bounds_api_concurrency(mode: Mode) -> None:
+    entered = 0
+    peak = 0
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowAdapter:
+        async def turn(self, binding, prompt, **kwargs):
+            nonlocal entered, peak
+            entered += 1
+            peak = max(peak, entered)
+            started.set()
+            await release.wait()
+            entered -= 1
+            return Turn(messages=("ok",), raw_usage={"input_tokens": 1, "output_tokens": 1})
+
+    runtime = CallRuntime(adapters={mode: SlowAdapter()}, pricing=PRICES, max_concurrent_api=1)
+    async with runtime:
+        first = asyncio.create_task(runtime.run(Binding(mode, "test"), "q", call_id="one"))
+        await started.wait()
+        second = asyncio.create_task(runtime.run(Binding(mode, "test"), "q", call_id="two"))
+        await asyncio.sleep(0)
+        assert peak == entered == 1
+        release.set()
+        answers = await asyncio.gather(first, second)
+    assert all(answer.outcome == "answered" for answer in answers)
+    assert peak == 1
+
+
+@pytest.mark.asyncio
 async def test_cli_auth_retry_requires_a_rotated_credential() -> None:
     calls = 0
 

@@ -56,6 +56,8 @@ async def test_codex_login_check_accepts_custom_auth_file_when_default_home_is_a
         json.dumps({"tokens": {"access_token": _jwt({"exp": int(time.time()) + 86_400}), "refresh_token": "opaque"}})
     )
 
+    captured_models: list[str] = []
+
     class FakeRuntime:
         def __init__(self, **kwargs: object) -> None:
             pass
@@ -67,6 +69,7 @@ async def test_codex_login_check_accepts_custom_auth_file_when_default_home_is_a
             pass
 
         async def ask(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            captured_models.append(str(args[0].model))
             return SimpleNamespace(
                 outcome="answered",
                 text="AUTH_OK",
@@ -86,3 +89,4 @@ async def test_codex_login_check_accepts_custom_auth_file_when_default_home_is_a
 
     assert passed
     assert report.is_file()
+    assert captured_models == ["gpt-6.1-sol"]

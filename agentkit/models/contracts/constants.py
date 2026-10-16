@@ -97,6 +97,26 @@ class Effort(StrEnum):
     ULTRA = "ultra"
 
 
+class ReasoningSummary(StrEnum):
+    AUTO = "auto"
+    CONCISE = "concise"
+    DETAILED = "detailed"
+    NONE = "none"
+
+
+class Verbosity(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ServiceTier(StrEnum):
+    AUTO = "auto"
+    DEFAULT = "default"
+    FLEX = "flex"
+    PRIORITY = "priority"
+
+
 class MindKind(StrEnum):
     SINGLE_CALL = "single_call"
     REACT = "react"
@@ -116,6 +136,9 @@ __all__ = [
     "CodexSandboxMode",
     "CostSource",
     "Effort",
+    "ReasoningSummary",
+    "Verbosity",
+    "ServiceTier",
     "EventKind",
     "FailureClass",
     "MindKind",
