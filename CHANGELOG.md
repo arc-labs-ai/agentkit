@@ -19,6 +19,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed CLI final-answer selection and preserved message content blocks and
   metadata through durable checkpoints.
 
+## [0.2.0](https://github.com/arc-labs-ai/agentkit/compare/v0.1.0...v0.2.0) (2026-10-16)
+
+
+### Fixes
+
+* close runtime reliability gaps ([5ebe4c0](https://github.com/arc-labs-ai/agentkit/commit/5ebe4c0787ada75d3ba5db3c148c2f85916632a8))
+* harden cli retries and event safety ([6238e7e](https://github.com/arc-labs-ai/agentkit/commit/6238e7e1cf6b7963643bce26d692250ad528a57f))
+* install all extras in local test matrix ([7c8f6f9](https://github.com/arc-labs-ai/agentkit/commit/7c8f6f94826f54c15721fb2e64cdd6a5d4fea7bf))
+* make coverage gate reproducible ([13ff01e](https://github.com/arc-labs-ai/agentkit/commit/13ff01eed6ee1bef6844619a5533c96f19873f3d))
+
+
+### Features
+
+* complete agentkit runtime and provider verification ([abd5c44](https://github.com/arc-labs-ai/agentkit/commit/abd5c44967c644b3dedb5d410f17b89c365a8d0f))
+
+
+### Refactoring
+
+* consolidate runtime and close production gaps ([b1ae92f](https://github.com/arc-labs-ai/agentkit/commit/b1ae92fcb487bda03b7886345d84051e2310ac2f))
+* reorganize AgentKit and add real-world evals ([f8d20c1](https://github.com/arc-labs-ai/agentkit/commit/f8d20c1b8710baf298cbf7cf0a6dda50f9abe2c7))
+
+
+### Build and tooling
+
+* bring release automation up to the standard the SDKs use ([#4](https://github.com/arc-labs-ai/agentkit/issues/4)) ([e1e6337](https://github.com/arc-labs-ai/agentkit/commit/e1e633767034e757cf098db3508aa3bbc2c0077f))
+
+
+### Documentation
+
+* fix strict eval report references ([e90428b](https://github.com/arc-labs-ai/agentkit/commit/e90428bdf98e4b05f6d04d42458a4b5c376da293))
+
 ## [0.1.0] — 2026-10-08
 
 Initial public release. Distributed on PyPI as `arc-agentkit`; imported as
