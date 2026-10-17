@@ -124,6 +124,7 @@ markers = [
     "asyncio: an async test driven by pytest-asyncio",
     "integration: needs a real backend (postgres / redis / a provider key)",
     "slow: takes more than a second; excluded from the fast inner loop",
+    "live: talks to a real provider or a real CLI and SPENDS MONEY; opt in with AGENTKIT_LIVE=1",
 ]
 
 # ── coverage ─────────────────────────────────────────────────────────────────
