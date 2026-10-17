@@ -323,38 +323,6 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="hashable",
-        why="AgentResult hashes free-form evals, so the framework's most-returned type breaks again",
-        path="agentkit/agents/definitions/results.py",
-        before="        return hash((self.output, self.usage, self.partial, self.prompt_version, self.stop_reason))",
-        after="        return hash((self.output, self.usage, self.partial, str(self.evals)))",
-        tests=RESULT_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="WorkflowResult keys on insertion ORDER, so two equal results hash differently",
-        path="agentkit/agents/definitions/results.py",
-        before="        return hash((frozenset(self.outputs), self.usage, self.steps, self.stop_reason))",
-        after="        return hash((tuple(self.outputs), self.usage, self.steps, self.stop_reason))",
-        tests=RESULT_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="MemoryItem folds backend metadata into identity, so one passage lands in two buckets",
-        path="agentkit/state/memory/base.py",
-        before="        return hash((self.content, self.source, self.score))",
-        after="        return hash((self.content, self.source, self.score, str(self.metadata)))",
-        tests=MEMITEM_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="Skill hashes its cognition, which is a mutable dataclass with __hash__ = None",
-        path="agentkit/agents/skills/skill.py",
-        before="        return hash((self.name, self.description, self.prompt, self.model))",
-        after="        return hash((self.name, self.description, self.prompt, self.model, self.cognition))",
-        tests=SKILL_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
         why="ContextDiff keys on insertion ORDER, breaking the hash invariant for equal diffs",
         path="agentkit/state/context/context.py",
         before="                frozenset(self.scratchpad_changes),",
@@ -383,14 +351,6 @@ MUTANTS: tuple[Mutant, ...] = (
         path="agentkit/core/contracts/ports.py",
         before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
         after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
-        tests=PORTS_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="Observation hashes its payload, so it is unhashable the moment it carries a dict",
-        path="agentkit/core/telemetry/observation.py",
-        before="        return hash((self.run_id, self.agent, self.kind))",
-        after="        return hash((self.run_id, self.agent, self.kind, self.payload))",
         tests=PORTS_TESTS,
     ),
     Mutant(
@@ -451,155 +411,11 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="parsed",
-        why="a replayed/cached chat result loses its typed object again",
-        path="agentkit/core/contracts/middleware.py",
-        before='            parsed=getattr(result, "parsed", None),',
-        after="",
-        tests=PARSED_TESTS,
-    ),
-    Mutant(
-        tag="parsed",
         why="CallableLLM.stream drops parsed, so chat() and stream() disagree on the same call",
         path="agentkit/models/adapters/_mapping.py",
         before="        parsed=res.parsed,\n",
         after="",
         tests=MAPPING_TESTS,
-    ),
-    Mutant(
-        tag="bus",
-        why="`closed` goes back to being dead state, so a mid-attach subscriber hangs forever",
-        path="agentkit/core/events/bus.py",
-        before="            attached = not channel.closed",
-        after="            attached = True",
-        tests=BUS_TESTS,
-    ),
-    Mutant(
-        tag="bus",
-        why="a late subscriber manufactures a live channel for a closed id and waits on a sentinel nobody sends",
-        path="agentkit/core/events/bus.py",
-        before="            if not reopen and stream_id in self._closed_ids:",
-        after="            if False:",
-        tests=BUS_TESTS,
-    ),
-    Mutant(
-        tag="bus",
-        why="publish stops reopening, so a legitimately reused stream id is poisoned forever",
-        path="agentkit/core/events/bus.py",
-        before="            self._forget_closed(stream_id)",
-        after="            pass",
-        tests=BUS_TESTS,
-    ),
-    Mutant(
-        tag="bus",
-        why="the closed-id set stops mirroring the deque's eviction, so it grows without bound",
-        path="agentkit/core/events/bus.py",
-        before="            self._closed_ids.discard(self._closed_order[0])",
-        after="            pass",
-        tests=BUS_TESTS,
-    ),
-    Mutant(
-        tag="bus",
-        why="re-closing one id in a loop evicts every other tombstone behind it",
-        path="agentkit/core/events/bus.py",
-        before="        if self._closed_capacity == 0 or stream_id in self._closed_ids:",
-        after="        if self._closed_capacity == 0:",
-        tests=BUS_TESTS,
-    ),
-    Mutant(
-        tag="signals",
-        why="a signal payload stops being copied, so the sender keeps editing what it already emitted",
-        path="agentkit/agents/control/signals.py",
-        before="        return deep_freeze(dict(value))",
-        after="        return value",
-        tests=SIGNAL_TESTS,
-    ),
-    Mutant(
-        tag="signals",
-        why="a bare str payload silently explodes into one option per character",
-        path="agentkit/agents/control/signals.py",
-        before="    if isinstance(value, (str, bytes)):",
-        after="    if False:",
-        tests=SIGNAL_TESTS,
-    ),
-    Mutant(
-        tag="signals",
-        why="an opaque payload re-enters the hash, so a signal is unhashable whenever it carries one",
-        path="agentkit/agents/control/signals.py",
-        before="    new_state: StateT | None = field(default=None, hash=False)",
-        after="    new_state: StateT | None = field(default=None)",
-        tests=SIGNAL_TESTS,
-    ),
-    Mutant(
-        tag="signals",
-        why="a signal mapping payload stops being frozen, so an audited used_cost is rewritable",
-        path="agentkit/agents/control/signals.py",
-        before="        return deep_freeze(dict(value))",
-        after="        return dict(value)",
-        tests=SIGNAL_TESTS,
-    ),
-    Mutant(
-        tag="replay",
-        why="a wrong-shape JSON document escapes get() as a TypeError instead of reading as a miss",
-        path="agentkit/state/replay/file.py",
-        before="            self._failed_reads += 1\n            self._warn_once(\n                \"decode-failed\",",
-        after="            raise",
-        tests=REPLAY_TESTS,
-    ),
-    Mutant(
-        tag="replay",
-        why="a failed rename leaves one orphaned .tmp per call in the operator's data directory",
-        path="agentkit/state/replay/file.py",
-        before="            tmp_path.unlink(missing_ok=True)\n            raise",
-        after="            raise",
-        tests=REPLAY_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="an unbound prompt stops being refused at construction and dies mid-run instead",
-        path="agentkit/agents/execution/agent.py",
-        before="        self.check_prompt()",
-        after="        pass",
-        tests=AGENT_PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="check_prompt reports every declared input instead of only the unbound ones",
-        path="agentkit/agents/execution/agent.py",
-        before="        missing = sorted(set(p.inputs) - set(p.bound))",
-        after="        missing = sorted(p.inputs)",
-        tests=AGENT_PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="memoize() caches a SIDE-EFFECTING tool again — the second send_email is faked",
-        path="agentkit/core/policies/memoize.py",
-        before="        return allow_side_effects or not _side_effecting(call)",
-        after="        return True",
-        tests=MEMOIZE_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="_side_effecting reads only the REQUEST flag, missing every positionally-built ToolRequest",
-        path="agentkit/core/policies/memoize.py",
-        before='    return bool(getattr(getattr(r, "tool", None), "side_effecting", False))',
-        after="    return False",
-        tests=MEMOIZE_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="idempotent() loses its opt-in, so an at-least-once retry re-fires the mutation",
-        path="agentkit/core/policies/memoize.py",
-        before="    return memoize(key=key, store=store, when=_side_effecting, allow_side_effects=True)",
-        after="    return memoize(key=key, store=store, when=_side_effecting)",
-        tests=MEMOIZE_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="the chat key drops tool_calls, so two ReAct branches are served each other's answer",
-        path="agentkit/core/policies/memoize.py",
-        before="def _message_identity(m: Any) -> dict[str, Any]:",
-        after='def _message_identity(m: Any) -> dict[str, Any]:\n    return {"role": m.role, "content": m.content}',
-        tests=MEMOIZE_TESTS,
     ),
     Mutant(
         tag="regress",
@@ -616,14 +432,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        frozen = deep_freeze(dict(self.bound))",
         after="        frozen = dict(self.bound)",
         tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="signals",
-        why="a signal SEQUENCE payload stops freezing its elements, so nested dicts stay editable",
-        path="agentkit/agents/control/signals.py",
-        before="    return tuple(deep_freeze(v) for v in value)",
-        after="    return tuple(value)",
-        tests=SIGNAL_TESTS,
     ),
     Mutant(
         tag="regress",
@@ -684,30 +492,6 @@ MUTANTS: tuple[Mutant, ...] = (
     # ── the deferred design items ───────────────────────────────────────────
     Mutant(
         tag="deferred",
-        why="a caller's summariser raising takes down the run it was observing",
-        path="agentkit/integrations/observers/cadence.py",
-        before="            except Exception as exc:  # noqa: BLE001 — see above",
-        after="            except _NeverRaisedByAnything as exc:",
-        tests=OBS_TESTS,
-    ),
-    Mutant(
-        tag="deferred",
-        why="the containment widens to BaseException, so a summariser can ignore cancellation",
-        path="agentkit/integrations/observers/cadence.py",
-        before="            except Exception as exc:  # noqa: BLE001 — see above",
-        after="            except BaseException as exc:",
-        tests=OBS_TESTS,
-    ),
-    Mutant(
-        tag="deferred",
-        why="dropped batches are not counted, so a partial rollup looks complete",
-        path="agentkit/integrations/observers/cadence.py",
-        before="                self._dropped += len(buf)",
-        after="                pass",
-        tests=OBS_TESTS,
-    ),
-    Mutant(
-        tag="deferred",
         why="a state transition stops taking the lock, so two threads can both be the probe",
         path="agentkit/core/execution/resilience.py",
         before="        with self._lock:\n            if exc is not None:",
@@ -722,23 +506,7 @@ MUTANTS: tuple[Mutant, ...] = (
         after="default_factory=threading.Lock, repr=False, compare=True",
         tests=BREAKER_TESTS,
     ),
-    Mutant(
-        tag="deferred",
-        why="a started wave is abandoned mid-flight, dropping siblings",
-        path="agentkit/agents/workflows/graph.py",
-        before="                if steps >= self.max_steps:",
-        after="                if steps >= self.max_steps or len(ready) > 1:",
-        tests=WF_TESTS,
-    ),
     # ── the leftovers ───────────────────────────────────────────────────────
-    Mutant(
-        tag="leftover",
-        why="the lock table stops reclaiming, leaking one lock per key ever touched",
-        path="agentkit/state/stores/_keylock.py",
-        before="        if entry.users == 0 and table.get(key) is entry:",
-        after="        if False:",
-        tests=STORELOCK_TESTS,
-    ),
     # NOTE: "the refcount is zeroed instead of decremented" has no mutant. It
     # is EQUIVALENT, and working out why is worth recording. The decrement runs
     # in the ``finally``, so while callers are in flight nothing has reached it
@@ -753,68 +521,12 @@ MUTANTS: tuple[Mutant, ...] = (
     # directly by ``test_the_lock_entry_is_shared_while_callers_are_in_flight``),
     # but forcing a kill here would mean inventing a scenario the code cannot
     # reach.
-    Mutant(
-        tag="leftover",
-        why="an audit record covering three charges reads exactly like one covering one",
-        path="agentkit/core/policies/resilience.py",
-        before='            call.meta["attempts"] = attempt',
-        after="            pass",
-        tests=AUDIT2_TESTS,
-    ),
-    Mutant(
-        tag="leftover",
-        why="the request-builder pre-check drifts from the compactor again",
-        path="agentkit/agents/requests/base.py",
-        before="    return estimate_message_tokens(messages)",
-        after='    return sum(len(m.content or "") for m in messages) // 4',
-        tests=EST_TESTS,
-    ),
     # ── observers / stores / vectors ────────────────────────────────────────
-    Mutant(
-        tag="obs",
-        why="the queue bound counts lifetime emissions again, dropping 8 of 12 with an idle queue",
-        path="agentkit/integrations/observers/sinks.py",
-        before="            if item.kind not in CRITICAL_KINDS:\n                self._noncritical -= 1",
-        after="            if False:\n                self._noncritical -= 1",
-        tests=OBS_TESTS,
-    ),
-    Mutant(
-        tag="obs",
-        why="the rollup buffer is read after the await again, raising IndexError into emit()",
-        path="agentkit/integrations/observers/cadence.py",
-        before="        buf, self._buf = self._buf, []",
-        after="        buf = self._buf",
-        tests=OBS_TESTS,
-    ),
-    Mutant(
-        tag="obs",
-        why="close() stops forwarding, so a wrapped rollup loses its trailing summary",
-        path="agentkit/integrations/observers/hooks.py",
-        before="    async def close(self) -> None:",
-        after="    async def _disabled_close(self) -> None:",
-        tests=OBS_TESTS,
-    ),
-    Mutant(
-        tag="store",
-        why="a cached None reads as a miss, so a null-returning producer re-runs every call",
-        path="agentkit/state/stores/redis.py",
-        # Target ``_lookup`` itself, not either ``is not _MISS`` guard: there
-        # are two of those (a fast path outside the lock and the decision
-        # inside it), so breaking one alone is EQUIVALENT — the other still
-        # catches it and only an extra lock acquisition changes. ``_lookup`` is
-        # where the miss/stored-null distinction is actually recovered.
-        before="        return _MISS if raw is None else json.loads(raw)",
-        after="        return _MISS if raw is None else (json.loads(raw) or _MISS)",
-        tests=STORE2_TESTS,
-    ),
-    Mutant(
-        tag="vec",
-        why="a repeated id inside one upsert is appended twice, breaking upsert-by-id",
-        path="agentkit/state/vectors/in_memory.py",
-        before="        bucket.extend((ch, _vec(ch.text)) for ch in incoming.values())",
-        after="        bucket.extend((ch, _vec(ch.text)) for ch in chunks)",
-        tests=VEC_TESTS,
-    ),
+    # Target ``_lookup`` itself, not either ``is not _MISS`` guard: there
+    # are two of those (a fast path outside the lock and the decision
+    # inside it), so breaking one alone is EQUIVALENT — the other still
+    # catches it and only an extra lock acquisition changes. ``_lookup`` is
+    # where the miss/stored-null distinction is actually recovered.
     # ── providers ───────────────────────────────────────────────────────────
     Mutant(
         tag="prov",
@@ -874,62 +586,6 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=SCHEMA2_TESTS,
     ),
     # ── middlewares: bill it, key it, and report the failure ────────────────
-    Mutant(
-        tag="mw",
-        why="tool calls share one memo key again, so every tool returns the first one's result",
-        path="agentkit/core/policies/memoize.py",
-        before="    if _is_tool_call(call):",
-        after="    if False:",
-        tests=MW_MEMO_TESTS,
-    ),
-    Mutant(
-        tag="mw",
-        why="an abandoned stream escapes the meter, so real tokens are billed unseen",
-        path="agentkit/core/policies/meter.py",
-        before="        except BaseException:",
-        after="        except _NeverRaisedByAnything:",
-        tests=MW_METER_TESTS,
-    ),
-    Mutant(
-        tag="mw",
-        why="a cache hit is charged again, tripping a ceiling on money never spent",
-        path="agentkit/core/policies/meter.py",
-        before='        if ctx.call.meta.get("cache_hit"):',
-        after="        if False:",
-        tests=MW_METER_TESTS,
-    ),
-    Mutant(
-        tag="mw",
-        why="a tool-call turn poisons the semantic cache, so the loop returns an empty answer",
-        path="agentkit/core/policies/memoize.py",
-        before='        if content and not getattr(result, "tool_calls", None):',
-        after="        if content is not None:",
-        tests=MW_SEM_TESTS,
-    ),
-    Mutant(
-        tag="mw",
-        why="a failed call is exported as a successful span, hiding provider errors",
-        path="agentkit/core/policies/tracing.py",
-        before="            stack.__exit__(type(exc), exc, exc.__traceback__)",
-        after="            stack.close()",
-        tests=MW_TRACE_TESTS,
-    ),
-    Mutant(
-        tag="mw",
-        why="a misbehaving tracer kills the run from the compaction seam",
-        path="agentkit/core/policies/compaction.py",
-        before="with _safe_trace_span(",
-        after="with _unsafe_trace_span(",
-        tests=MW_COMPACT_TESTS,
-    ),
-    Mutant(
-        tag="mw",
-        why="a failed side effect leaves no audit record at all",
-        path="agentkit/core/policies/egress_audit.py",
-        before="    async def on_error(",
-        after="    async def _disabled_on_error(",
-        tests=MW_AUDIT_TESTS,
-    ),
     # ── a failure must never look like a clean finish ───────────────────────
     Mutant(
         tag="merge",
@@ -999,81 +655,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=CONC_TESTS,
     ),
     # ── a declared ceiling must actually hold ───────────────────────────────
-    Mutant(
-        tag="workflow",
-        why="max_steps is checked after the wave again, so a self-route loops forever",
-        path="agentkit/agents/workflows/graph.py",
-        before="                if steps >= self.max_steps:",
-        after="                if steps >= self.max_steps and pending and steps:",
-        tests=WF_TESTS,
-    ),
-    Mutant(
-        tag="workflow",
-        why="routes read `done` again, so a second route from a self-routing node KeyErrors",
-        path="agentkit/agents/workflows/graph.py",
-        before="                        if when(wave_outputs[node.name]):",
-        after="                        if when(done[node.name]):",
-        tests=WF_TESTS,
-    ),
-    Mutant(
-        tag="workflow",
-        why="a tool node drops the tool's url_arg, so egress() never sees a URL to check",
-        path="agentkit/agents/workflows/graph.py",
-        before='        url_arg = url_arg if url_arg is not None else getattr(tool, "url_arg", None)',
-        after="        url_arg = url_arg",
-        tests=WF_TESTS,
-    ),
-    Mutant(
-        tag="workflow",
-        why="a node can downgrade a side-effecting tool, so a mutation skips the approval gate",
-        path="agentkit/agents/workflows/graph.py",
-        before='        side_effecting = side_effecting or bool(getattr(tool, "side_effecting", False))',
-        after=(
-            "        side_effecting = side_effecting if side_effecting else "
-            'bool(getattr(tool, "side_effecting", False)) and side_effecting is not False'
-        ),
-        tests=WF_TESTS,
-    ),
-    Mutant(
-        tag="ceiling",
-        why="a budget ceiling below an as_tool boundary is reflected to the model again",
-        path="agentkit/agents/cognition/react.py",
-        before="        except _ceiling_errors():",
-        after="        except ():",
-        tests=CEILING_TESTS,
-    ),
-    Mutant(
-        tag="ceiling",
-        why="the ceiling reaches the caller wrapped in an ExceptionGroup nobody catches",
-        path="agentkit/agents/cognition/react.py",
-        before="                    breached = _unwrap_ceiling(group)",
-        after="                    breached = None",
-        tests=CEILING_TESTS,
-    ),
-    Mutant(
-        tag="ceiling",
-        why="a genuine multi-failure fan-out is unwrapped, hiding every failure but one",
-        path="agentkit/agents/execution/_helpers.py",
-        before="        if isinstance(exc, _ceiling_errors()):\n            return exc",
-        after="        return exc",
-        tests=CEILING_TESTS,
-    ),
     # ── a documented entry point must actually work ─────────────────────────
-    Mutant(
-        tag="surface",
-        why="a submodule shadows an exported callable again (the bug, reintroduced)",
-        path="agentkit/core/policies/__init__.py",
-        # Mutating the RATCHET to disable its own assertion would prove nothing
-        # — a test cannot vouch for itself. This re-creates the defect in the
-        # SOURCE instead: bind an exported name to a module, exactly as the
-        # ``security.py`` submodule import did, and check the ratchet fails.
-        before="from agentkit.core.policies.tracing import tracing",
-        after=(
-            "from agentkit.core.policies import egress_audit as security\n"
-            "from agentkit.core.policies.tracing import tracing"
-        ),
-        tests=SURFACE_TESTS,
-    ),
+    # Mutating the RATCHET to disable its own assertion would prove nothing
+    # — a test cannot vouch for itself. This re-creates the defect in the
+    # SOURCE instead: bind an exported name to a module, exactly as the
+    # ``security.py`` submodule import did, and check the ratchet fails.
     Mutant(
         tag="prompt",
         why="declared inputs are ignored, so placeholders ship to the model verbatim",
@@ -1126,14 +712,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before='                state.stop_reason = "interrupted"',
         after="                pass",
         tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="an interrupt is categorised as a failure rather than a deliberate stop",
-        path="agentkit/agents/definitions/results.py",
-        before='    "interrupted": "terminated",',
-        after='    "interrupted": "failed",',
-        tests=("tests/source/unit/agents/test_stop_reason_taxonomy.py",),
     ),
     # ── the offline CLI double, and the two bugs it surfaced ────────────────
     Mutant(
@@ -1853,360 +1431,11 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=TOOLARG_TESTS,
     ),
     # ── the signal channel's audit tap must not wedge the run ───────────────
-    Mutant(
-        tag="channel",
-        why="the unread audit tap is awaited, so a healthy run stops at buffer_size emits",
-        path="agentkit/agents/control/channel.py",
-        before="        self._offer_to_outbox(stamped)",
-        after="        await self.outbox.put(stamped)",
-        tests=CHANNEL_TESTS,
-    ),
-    Mutant(
-        tag="channel",
-        why="a full tap drops the NEWEST, going blind exactly when the run gets busy",
-        path="agentkit/agents/control/channel.py",
-        before=(
-            "        with contextlib.suppress(asyncio.QueueEmpty):\n"
-            "            self.outbox.get_nowait()  # evict the oldest"
-        ),
-        after="        if True:\n            return",
-        tests=CHANNEL_TESTS,
-    ),
-    Mutant(
-        tag="channel",
-        why="dropped audit entries are not counted, so a window reads as a transcript",
-        path="agentkit/agents/control/channel.py",
-        before="        self._outbox_dropped += 1",
-        after="        pass",
-        tests=CHANNEL_TESTS,
-    ),
-    Mutant(
-        tag="channel",
-        why="the parent stops applying backpressure, so a slow parent grows unbounded",
-        path="agentkit/agents/control/channel.py",
-        before="            await self._parent_merge_inbox.put((self.agent_id, stamped))",
-        after="            self._parent_merge_inbox.put_nowait((self.agent_id, stamped))",
-        tests=CHANNEL_TESTS,
-    ),
     # ── termination: run-local state, and a judge read literally ────────────
-    Mutant(
-        tag="termination",
-        why="the coordinator shares one condition, so concurrent runs eat each other's turns",
-        path="agentkit/agents/policies/roundrobin.py",
-        before="    return copy.deepcopy(getattr(cognition, \"termination\", None) or fallback)",
-        after="    return getattr(cognition, \"termination\", None) or fallback",
-        tests=TERM_TESTS,
-    ),
-    Mutant(
-        tag="termination",
-        why="the selector policy keeps its own uncloned resolution",
-        path="agentkit/agents/policies/selector_policy.py",
-        before=(
-            "        termination: TerminationCondition = _run_local_termination(\n"
-            "            cognition, MaxTurns(self.max_turns)\n"
-            "        )"
-        ),
-        after=(
-            "        termination: TerminationCondition = getattr(cognition, \"termination\", None) or MaxTurns(self.max_turns)"
-        ),
-        tests=TERM_TESTS,
-    ),
-    Mutant(
-        tag="termination",
-        why="cloning the external switch, so set() cannot reach a running loop",
-        path="agentkit/agents/control/termination.py",
-        before=(
-            "    def __deepcopy__(self, memo: dict[int, Any]) -> ExternalTermination:\n"
-            "        memo[id(self)] = self\n"
-            "        return self\n"
-            ""
-        ),
-        after="",
-        tests=TERM_TESTS,
-    ),
-    Mutant(
-        tag="termination",
-        why="the deepcopy carve-out leaks to every condition, undoing run-locality",
-        path="agentkit/agents/control/termination.py",
-        before="class ExternalTermination(TerminationCondition):",
-        after="class ExternalTermination(TerminationCondition):\n    pass\n\n\nclass _Unused(TerminationCondition):",
-        tests=TERM_TESTS,
-    ),
-    Mutant(
-        tag="termination",
-        why="the judge's YES is matched anywhere, so 'yesterday' stops the run",
-        path="agentkit/agents/control/termination.py",
-        before='        return re.match(rf"\\W*{re.escape(yes)}(?!\\w)", out, re.IGNORECASE) is not None',
-        after="        return yes.upper() in out.upper()",
-        tests=TERM_TESTS,
-    ),
-    Mutant(
-        tag="termination",
-        why="the judge's affirmative need not be a whole word ('yes/no' counts)",
-        path="agentkit/agents/control/termination.py",
-        before='        return re.match(rf"\\W*{re.escape(yes)}(?!\\w)", out, re.IGNORECASE) is not None',
-        after='        return re.search(rf"(?<!\\w){re.escape(yes)}(?!\\w)", out, re.IGNORECASE) is not None',
-        tests=TERM_TESTS,
-    ),
-    Mutant(
-        tag="termination",
-        why="a latched Stop is mutable, so a consumer can rewrite why the run stopped",
-        path="agentkit/agents/control/termination.py",
-        before="@dataclass(frozen=True)\nclass Stop:",
-        after="@dataclass\nclass Stop:",
-        tests=TERM_TESTS,
-    ),
     # ── routing: who speaks next is who the model named ─────────────────────
-    Mutant(
-        tag="routing",
-        why="the roster is scanned in its own order, so a negated name wins",
-        path="agentkit/agents/policies/selector_policy.py",
-        before="        if best is None or cand[:2] > best[:2]:",
-        after="        if best is None:",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="substring matching, so 'bob' is found inside 'nobody' and 'bobby'",
-        path="agentkit/agents/policies/selector_policy.py",
-        before='        for m in re.finditer(rf"(?<!\\w){re.escape(n)}(?!\\w)", reply):',
-        after="        for m in re.finditer(re.escape(n), reply):",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="the FIRST mention wins, so reasoning-aloud beats the conclusion",
-        path="agentkit/agents/policies/selector_policy.py",
-        before="            last = m.start()",
-        after="            last = m.start() if last is None else last",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="an exact reply loses to a longer roster entry containing it",
-        path="agentkit/agents/policies/selector_policy.py",
-        before="    stripped = reply.strip()\n    for n in names:\n        if stripped == n:\n            return n\n",
-        after="",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="an invented handoff target is returned verbatim, ignoring the default",
-        path="agentkit/agents/control/handoff.py",
-        before="        resolved = _resolve_target(ho.target, agents)",
-        after="        resolved = ho.target",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="an invented target falls back in silence",
-        path="agentkit/agents/control/handoff.py",
-        before="        if ho.target not in warned:",
-        after="        if False:",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="the same hallucination warns once per turn",
-        path="agentkit/agents/control/handoff.py",
-        before="            warned.add(ho.target)",
-        after="            pass",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="an ambiguous case-fold is GUESSED instead of deferring to the default",
-        path="agentkit/agents/control/handoff.py",
-        before="    return folded[0] if len(folded) == 1 else None",
-        after="    return folded[0] if folded else None",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="an empty roster rejects every target, breaking direct callers",
-        path="agentkit/agents/control/handoff.py",
-        before="    if not names:\n        return target",
-        after="    if not names:\n        return None",
-        tests=ROUTING_TESTS,
-    ),
-    Mutant(
-        tag="routing",
-        why="trailing punctuation stays on the target, matching no roster entry",
-        path="agentkit/agents/control/handoff.py",
-        before='    target = parts[0].rstrip(".,;:!?)\\"\'")',
-        after="    target = parts[0]",
-        tests=ROUTING_TESTS,
-    ),
     # ── the plan's human gate must be durable on a REAL store ───────────────
-    Mutant(
-        tag="plangate",
-        why="the checkpoint holds live dataclasses, so any serializing store raises",
-        path="agentkit/agents/policies/plan.py",
-        before="                        _encode_plan_state(",
-        after="                        dict(",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="a gate with no durable seam suspends in silence",
-        path="agentkit/agents/policies/plan.py",
-        before="                    _warn_unpersisted_gate(gate_name, run_id)",
-        after="                    pass",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="the plan writes at the bare run id, colliding with a nested coordinator",
-        path="agentkit/agents/policies/plan.py",
-        before='    return f"{run_id}:plan"',
-        after="    return run_id",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="the snapshot is RUNNING, so resume() reads it as engine-in-motion",
-        path="agentkit/agents/policies/plan.py",
-        before="                        status=CheckpointStatus.SUSPENDED,",
-        after="                        status=CheckpointStatus.RUNNING,",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="a pre-upgrade checkpoint is decoded as if it were encoded",
-        path="agentkit/agents/policies/plan.py",
-        before='    if state.get("v") is None:  # legacy: live objects, no encoding',
-        after="    if False:  # legacy: live objects, no encoding",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="an unserialisable child payload takes the whole run down at the gate",
-        path="agentkit/agents/policies/plan.py",
-        before="    if _serializable(payload):\n        return payload",
-        after="    return payload\n    if _serializable(payload):",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="results are stripped unconditionally, losing evals nobody asked to drop",
-        path="agentkit/agents/policies/plan.py",
-        before="    if _serializable(payload):\n        return payload\n",
-        after="",
-        tests=PLAN_GATE_TESTS,
-    ),
-    Mutant(
-        tag="plangate",
-        why="resume ignores the legacy key, stranding a plan suspended across the upgrade",
-        path="agentkit/agents/policies/plan.py",
-        before="        if not saved and ctx.store is not None:",
-        after="        if False and ctx.store is not None:",
-        tests=PLAN_GATE_TESTS,
-    ),
     # ── plan shape: refuse before dispatch, never mid-flight ─────────────────
-    Mutant(
-        tag="plan",
-        why="an unknown child is only discovered mid-dispatch, after earlier groups spent",
-        path="agentkit/agents/policies/plan.py",
-        before=(
-            "        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n"
-            "\n"
-            "        total = len(steps)"
-        ),
-        after="        dropped: list[tuple[str | None, Failure]] = []\n\n        total = len(steps)",
-        tests=PLAN_TESTS,
-    ),
-    Mutant(
-        tag="plan",
-        why="best_effort refuses an unknown child instead of isolating it",
-        path="agentkit/agents/policies/plan.py",
-        before="            if not best_effort:",
-        after="            if True:",
-        tests=PLAN_TESTS,
-    ),
-    Mutant(
-        tag="plan",
-        why="a gate co-grouped with work is accepted, silently dropping those steps",
-        path="agentkit/agents/policies/plan.py",
-        before="        if gates and work:",
-        after="        if gates and work and False:",
-        tests=PLAN_TESTS,
-    ),
-    Mutant(
-        tag="plan",
-        why="resume trusts the pre-suspend roster, so a shrunken one KeyErrors mid-flight",
-        path="agentkit/agents/policies/plan.py",
-        before=(
-            "        steps, dropped = _validate_plan(steps, children, best_effort=self.best_effort)\n"
-            "        errors.extend(dropped)"
-        ),
-        after="        dropped = []",
-        tests=PLAN_TESTS,
-    ),
-    Mutant(
-        tag="plan",
-        why="an unknown child is dropped SILENTLY instead of recorded as a failure",
-        path="agentkit/agents/policies/plan.py",
-        before="            results=[],\n            errors=list(dropped),",
-        after="            results=[],\n            errors=[],",
-        tests=PLAN_TESTS,
-    ),
-    Mutant(
-        tag="plan",
-        why="the validator sorts its output, silently rewriting the plan's order",
-        path="agentkit/agents/policies/plan.py",
-        before="    return keep, dropped",
-        after="    return sorted(keep, key=lambda s: s.group), dropped",
-        tests=PLAN_TESTS,
-    ),
-    Mutant(
-        tag="plan",
-        why="an unknown child is reported as retriable, so a caller re-dispatches forever",
-        path="agentkit/agents/policies/plan.py",
-        before="                    Failure(category=ErrorClass.PERMANENT, source=\"PlanPolicy\", message=msg),",
-        after="                    Failure(category=ErrorClass.TRANSIENT, source=\"PlanPolicy\", message=msg),",
-        tests=PLAN_TESTS,
-    ),
     # ── stop reasons: the typed field must not outlive its meaning ───────────
-    Mutant(
-        tag="stopreason",
-        why="a plan parked on a human gate reports itself complete (the original bug)",
-        path="agentkit/agents/policies/plan.py",
-        before='                    stop_reason=stop_reason_for("awaiting_decision"),\n',
-        after="",
-        tests=STOP_REASON_TESTS,
-    ),
-    Mutant(
-        tag="stopreason",
-        why="a gate suspend is categorised as terminal, so nothing ever resumes it",
-        path="agentkit/agents/definitions/results.py",
-        before='    "awaiting_decision": "suspended",',
-        after='    "awaiting_decision": "terminated",',
-        tests=STOP_REASON_TESTS,
-    ),
-    Mutant(
-        tag="stopreason",
-        why="a coordinator out of turns is indistinguishable from one that finished",
-        path="agentkit/agents/policies/roundrobin.py",
-        before="        stop_reason=stop_reason_for(stop_reason),\n",
-        after="",
-        tests=STOP_REASON_TESTS,
-    ),
-    Mutant(
-        tag="stopreason",
-        why="a ledger out of rounds claims the goal was met",
-        path="agentkit/agents/policies/ledger.py",
-        before="            stop_reason=stop_reason_for(stop_reason),\n",
-        after="",
-        tests=STOP_REASON_TESTS,
-    ),
-    Mutant(
-        tag="stopreason",
-        why="an unrecognised reason is GUESSED as completion instead of terminated",
-        path="agentkit/agents/definitions/results.py",
-        before='    return _REASON_TO_STOP.get(reason, "terminated")',
-        after='    return _REASON_TO_STOP.get(reason, "complete")',
-        tests=STOP_REASON_TESTS,
-    ),
     Mutant(
         tag="stopreason",
         why="a CLI subprocess that exited non-zero reads as a deliberate stop",
@@ -2215,132 +1444,12 @@ MUTANTS: tuple[Mutant, ...] = (
         after="    if reason in failure_reasons:",
         tests=STOP_REASON_TESTS,
     ),
-    Mutant(
-        tag="stopreason",
-        why="the typed reason is dropped on the durable round trip",
-        path="agentkit/state/checkpoints/persistence.py",
-        before='        "stop_reason": r.stop_reason,\n',
-        after="",
-        tests=STOP_REASON_TESTS,
-    ),
-    Mutant(
-        tag="stopreason",
-        why="a legacy record without the field reads back as a bare completion",
-        path="agentkit/state/checkpoints/persistence.py",
-        before='        stop_reason=d.get("stop_reason") or stop_reason_for((d.get("evals") or {}).get("stop_reason")),',
-        after='        stop_reason=d.get("stop_reason", "complete"),',
-        tests=STOP_REASON_TESTS,
-    ),
     # ── money: the ledger must stay exact ────────────────────────────────────
-    Mutant(
-        tag="money",
-        why="the exact ledger accessor silently degrades to float",
-        path="agentkit/core/runtime/meter.py",
-        # Trailing newline matters: without it this is a PREFIX of
-        # ``return self._spent.quantize(...)`` two methods down, and the
-        # anchor silently matches twice. `--verify` catches exactly this.
-        before="        return self._spent\n",
-        after="        return float(self._spent)\n",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="accumulation round-trips through float, losing precision at scale",
-        path="agentkit/core/runtime/meter.py",
-        before="            self._spent += to_money(usage.cost_usd)",
-        after="            self._spent = to_money(float(self._spent) + usage.cost_usd)",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="to_money reads the BINARY float instead of its decimal spelling",
-        path="agentkit/core/runtime/meter.py",
-        before="        amount = Decimal(str(value))",
-        after="        amount = Decimal(value)",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="quantizing per charge instead of at read rounds sub-cent calls to zero",
-        path="agentkit/core/runtime/meter.py",
-        before="            self._spent += to_money(usage.cost_usd)",
-        after="            self._spent += to_money(usage.cost_usd).quantize(_CENTS)",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="invoicing truncates instead of rounding half-up (systematic under-billing)",
-        path="agentkit/core/runtime/meter.py",
-        before="        return self._spent.quantize(_CENTS, rounding=ROUND_HALF_UP)",
-        after="        return self._spent.quantize(_CENTS, rounding='ROUND_DOWN')",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="guard() stops enforcing, so an exhausted budget still buys a call",
-        path="agentkit/core/runtime/meter.py",
-        before="        async with self._get_lock():\n            verdict = self._verdict()",
-        after="        async with self._get_lock():\n            verdict = Charge(ok=True)",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="token totals stop accumulating, so a run's usage under-reports",
-        path="agentkit/core/runtime/meter.py",
-        before="            self.usage = self.usage + usage",
-        after="            pass",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="the ceiling stops re-deriving, so raising it post-construction is ignored",
-        path="agentkit/core/runtime/meter.py",
-        before="        if self.max_cost_usd != self._ceiling_src:",
-        after="        if False:",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="the float mirror stops tracking the ledger and silently goes stale",
-        path="agentkit/core/runtime/meter.py",
-        before="        self.spent_usd = float(self._spent)",
-        after="        pass",
-        tests=MONEY_TESTS,
-    ),
+    # Trailing newline matters: without it this is a PREFIX of
+    # ``return self._spent.quantize(...)`` two methods down, and the
+    # anchor silently matches twice. `--verify` catches exactly this.
     # ── budget recovery: exhaustion must stay recoverable ────────────────────
-    Mutant(
-        tag="budget",
-        why="the tool loop stops pre-flighting, so each retry burns another call",
-        path="agentkit/agents/cognition/react.py",
-        before="            ceiling = self._budget_exhausted(ctx)\n            if ceiling is not None:",
-        after="            ceiling = self._budget_exhausted(ctx)\n            if False:",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="budget",
-        why="the budget-exhausted checkpoint is written as running, not suspended",
-        path="agentkit/agents/cognition/react.py",
-        before='                        ctx, run_id, agent, context, usage, i + 1, repaired, status="suspended"',
-        after="                        ctx, run_id, agent, context, usage, i + 1, repaired",
-        tests=MONEY_TESTS,
-    ),
     # ── concurrency: nested fan-out must not deadlock ────────────────────────
-    Mutant(
-        tag="concurrency",
-        why="the permit pool goes back to one-per-tree, deadlocking nested fan-out",
-        path="agentkit/core/runtime/context.py",
-        before="        return self.budget.semaphore(self.depth)",
-        after="        return self.budget.semaphore(0)",
-        tests=CONCURRENCY_TESTS,
-    ),
-    Mutant(
-        tag="concurrency",
-        why="the per-level concurrency cap stops being enforced",
-        path="agentkit/core/runtime/meter.py",
-        before="            sem = asyncio.Semaphore(self.max_concurrency)",
-        after="            sem = asyncio.Semaphore(1000)",
-        tests=CONCURRENCY_TESTS,
-    ),
     Mutant(
         tag="concurrency",
         why="cooperative cancellation is isolated into a Failure slot again",
@@ -2348,49 +1457,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before="            except Cancelled:\n",
         after="            except _NeverRaised:\n",
         tests=CONCURRENCY_TESTS,
-    ),
-    Mutant(
-        tag="concurrency",
-        why="a starved slice floors to zero, producing silent no-op children",
-        path="agentkit/core/execution/concurrency.py",
-        before="    return max(1, units)",
-        after="    return units",
-        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
-    ),
-    Mutant(
-        tag="concurrency",
-        why="a fan-out from an already-spent envelope stops failing fast",
-        path="agentkit/core/execution/concurrency.py",
-        before="        if parent_actor_budget.exhausted():",
-        after="        if False:",
-        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
-    ),
-    Mutant(
-        tag="concurrency",
-        why="the money slice round-trips through the float mirror again",
-        path="agentkit/core/execution/concurrency.py",
-        before="        base_cost = parent_actor_budget.remaining_cost()  # exact, not the float mirror",
-        after="        base_cost = to_money(parent_actor_budget.remaining_cost_usd())",
-        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
-    ),
-    Mutant(
-        tag="concurrency",
-        why="a child is over-granted a step the parent never reserved",
-        path="agentkit/core/execution/concurrency.py",
-        before="                    max_steps=slice_steps,",
-        after="                    max_steps=max(slice_steps, 1) + 1,",
-        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
-    ),
-    Mutant(
-        tag="concurrency",
-        why="reservations leak when a fan-out fails (the finally settlement)",
-        path="agentkit/core/execution/concurrency.py",
-        before=(
-            "        if parent_actor_budget is not None:\n"
-            "            for idx, slice_ in enumerate(reserved_slices):"
-        ),
-        after="        if False:\n            for idx, slice_ in enumerate(reserved_slices):",
-        tests=("tests/source/unit/core/test_run_agents_actor_slicing.py",),
     ),
     # ── budget: the sibling float axes ───────────────────────────────────────
     # NOTE: mutating ``remaining_cost() <= 0`` to ``remaining_cost_usd() == 0.0``
@@ -2400,69 +1466,13 @@ MUTANTS: tuple[Mutant, ...] = (
     # load-bearing invariant here is that the float MIRRORS track the ledger.
     Mutant(
         tag="budget",
-        why="ActorBudget float mirrors stop tracking the Decimal ledger",
-        path="agentkit/agents/control/budget.py",
-        before="        self.used_cost_usd = float(self._used_cost)",
-        after="        pass",
-        tests=("tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",),
-    ),
-    Mutant(
-        tag="budget",
-        why="Quota stops evicting expired tenants (unbounded key growth)",
-        path="agentkit/core/runtime/meter.py",
-        before="            self._sweep(now)  # evict long-dead tenants; at most once per window",
-        after="            pass  # no sweep",
-        tests=("tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",),
-    ),
-    Mutant(
-        tag="budget",
-        why="the per-actor envelope stops being charged (an inert ActorBudget again)",
-        path="agentkit/core/policies/meter.py",
-        before="            actor = getattr(ctx.run, \"actor_budget\", None)",
-        after="            actor = None",
-        tests=("tests/source/unit/agents/test_actor_budget.py",),
-    ),
-    Mutant(
-        tag="budget",
         why="no loop consults the actor envelope, so exhausting it stops nothing",
-        path="agentkit/agents/execution/_helpers.py",
+        path="agentkit/models/providers/cli/_common.py",
         before="    actor = getattr(ctx, \"actor_budget\", None)",
         after="    actor = None",
         tests=("tests/source/unit/agents/test_actor_budget.py",),
     ),
-    Mutant(
-        tag="budget",
-        why="ActorBudget cost accumulates through float, losing exactness",
-        path="agentkit/agents/control/budget.py",
-        before="        self._used_cost += to_money(cost_usd)",
-        after="        self._used_cost = to_money(float(self._used_cost) + cost_usd)",
-        tests=("tests/source/unit/core/runtime/test_budget_decimal_and_verdict.py",),
-    ),
     # ── isolation + resilience ───────────────────────────────────────────────
-    Mutant(
-        tag="security",
-        why="cache keys stop being tenant-partitioned (cross-tenant answer leak)",
-        path="agentkit/core/policies/memoize.py",
-        before="        cache_key = _scoped(call, key(call))",
-        after="        cache_key = key(call)",
-        tests=SECURITY_TESTS,
-    ),
-    Mutant(
-        tag="security",
-        why="the default cache key ignores the model (a cheap answer served as a good one)",
-        path="agentkit/core/policies/memoize.py",
-        before='            "model": getattr(r, "model", None),',
-        after='            "model": None,',
-        tests=SECURITY_TESTS,
-    ),
-    Mutant(
-        tag="security",
-        why="egress can be constructed inert, silently disabling every URL check",
-        path="agentkit/core/policies/egress_audit.py",
-        before="        if guardrail is None:",
-        after="        if False:",
-        tests=SECURITY_TESTS,
-    ),
     Mutant(
         tag="resilience",
         why="a late success closes an OPEN breaker, bypassing the cooldown",
@@ -2496,149 +1506,21 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=PROVIDER_TESTS,
     ),
     # ── checkpoint slots: one producer per slot ──────────────────────────────
-    Mutant(
-        tag="checkpoint",
-        why="producers share a slot again (a child's completion deletes the coordinator's state)",
-        path="agentkit/agents/cognition/react.py",
-        before='        return f"{run_id}:agent:{agent_name}"',
-        after="        return run_id",
-        tests=SLOT_TESTS,
-    ),
-    Mutant(
-        tag="checkpoint",
-        why="coordinator policies drop back to a third resolution order (no store bridge)",
-        path="agentkit/agents/policies/roundrobin.py",
-        before='    return resolve_checkpointer(ctx, getattr(coordinator.cognition, "checkpointer", None))',
-        after='    return getattr(coordinator.cognition, "checkpointer", None) or getattr(ctx, "checkpointer", None)',
-        tests=SLOT_TESTS,
-    ),
     # ── stores: the reference contract every backend must match ──────────────
-    Mutant(
-        tag="store",
-        why="FileStore.get_or_set keys on truthiness again (single-flight breaks on None)",
-        path="agentkit/state/stores/file.py",
-        # Targets `_exists` itself, not one of its two call sites: mutating
-        # only the pre-lock check leaves the in-lock double-check correct, and
-        # the mutant survives for the wrong reason.
-        before="        return await asyncio.to_thread(path.exists)",
-        after="        return (await self.get(key)) is not None",
-        tests=STORE_TESTS,
-    ),
-    Mutant(
-        tag="store",
-        why="FileStore writes non-atomically again (a crash mid-write orphans the checkpoint)",
-        path="agentkit/state/stores/file.py",
-        before="        await asyncio.to_thread(self._write_atomic, path, json.dumps(value))",
-        after="        await asyncio.to_thread(lambda: path.write_text(json.dumps(value)))",
-        tests=STORE_TESTS,
-    ),
-    Mutant(
-        tag="store",
-        why="one unparseable log line takes the whole audit trail down again",
-        path="agentkit/state/stores/file.py",
-        before="                except json.JSONDecodeError:",
-        after="                except _NeverJSONError:",
-        tests=STORE_TESTS,
-    ),
-    Mutant(
-        tag="store",
-        why="a silently-ignored ttl stops warning (permanent idempotency entries)",
-        path="agentkit/state/stores/file.py",
-        before="        if ttl is not None and not self._warned_ttl:",
-        after="        if False:",
-        tests=STORE_TESTS,
-    ),
+    # Targets `_exists` itself, not one of its two call sites: mutating
+    # only the pre-lock check leaves the in-lock double-check correct, and
+    # the mutant survives for the wrong reason.
     # ── workflow ─────────────────────────────────────────────────────────────
-    Mutant(
-        tag="workflow",
-        why="an unpersistable gate suspend goes silent again",
-        path="agentkit/agents/workflows/graph.py",
-        before="                        _warn_unpersisted_gate(gate.name, run_id)",
-        after="                        pass",
-        tests=WORKFLOW_TESTS,
-    ),
-    Mutant(
-        tag="workflow",
-        why="Workflow goes back to store-only persistence, ignoring a Checkpointer",
-        path="agentkit/agents/workflows/graph.py",
-        before="                    cp = resolve_checkpointer(ctx)",
-        after="                    cp = None",
-        tests=WORKFLOW_TESTS,
-    ),
     # ── HITL: the containment and the deadline ───────────────────────────────
     Mutant(
         tag="hitl",
-        why="a secret-tainted state is persisted after all",
-        path="agentkit/state/checkpoints/base.py",
-        before="        if _is_tainted(state):",
-        after="        if False:",
-        tests=HITL_TESTS,
-    ),
-    Mutant(
-        tag="hitl",
-        why="SecretValue renders its contents in repr, leaking into every log line",
-        path="agentkit/agents/control/elicitation.py",
-        before='        return "SecretValue(\'***\')"',
-        after="        return f\"SecretValue({self._value!r})\"",
-        tests=HITL_TESTS,
-    ),
-    Mutant(
-        tag="hitl",
         why="an expired elicitation is treated as an approval",
-        path="agentkit/agents/control/elicitation.py",
+        path="agentkit/integrations/mcp/approvals.py",
         before='        return self.kind in ("approve", "modify")',
         after='        return self.kind in ("approve", "modify", "expired")',
         tests=HITL_TESTS,
     ),
-    Mutant(
-        tag="hitl",
-        why="the deadline is dropped, so a wait becomes unbounded",
-        path="agentkit/agents/control/elicitation.py",
-        before="        if request.deadline_s is None:",
-        after="        if True:",
-        tests=HITL_TESTS,
-    ),
-    Mutant(
-        tag="hitl",
-        why="a late resume acts on the decision instead of expiring it",
-        path="agentkit/agents/cognition/react.py",
-        before="        expired = deadline_at is not None and time.time() > deadline_at",
-        after="        expired = False",
-        tests=HITL_TESTS,
-    ),
-    Mutant(
-        tag="hitl",
-        why="the RunPolicy trifecta gate is skipped on the resume path",
-        path="agentkit/agents/execution/agent.py",
-        before="            await self._run_policy_gate(ctx)\n            final = await cognition.resume(",
-        after="            final = await cognition.resume(",
-        tests=HITL_TESTS,
-    ),
-    Mutant(
-        tag="hitl",
-        why="a missing decision defaults to approve instead of deny",
-        path="agentkit/agents/cognition/react.py",
-        before='coerce_decision(decisions.get(tc.id, "reject"))',
-        after='coerce_decision(decisions.get(tc.id, "approve"))',
-        tests=HITL_TESTS,
-    ),
     # ── streaming: the partial contract ──────────────────────────────────────
-    Mutant(
-        tag="stream",
-        why="the in-progress typed object is dropped again",
-        path="agentkit/agents/cognition/single_call.py",
-        before='yield StreamEvent("message_delta", text=d.text, partial_output=d.partial)',
-        after='yield StreamEvent("message_delta", text=d.text)',
-        tests=STREAM_TESTS,
-    ),
-    Mutant(
-        tag="stream",
-        why="a coercion failure escapes past reflect-and-repair again",
-        path="agentkit/agents/cognition/single_call.py",
-        before="                if agent.parse is None:\n                    raise",
-        after="                raise",
-        tests=STREAM_TESTS,
-    ),
     # ── registry: nothing is ever guessed ────────────────────────────────────
     Mutant(
         tag="registry",
@@ -2674,30 +1556,8 @@ MUTANTS: tuple[Mutant, ...] = (
         after="        if False:\n            return",
         tests=REGISTRY_TESTS,
     ),
-    Mutant(
-        tag="compaction",
-        why="the sliding window stops guarding its walk-back, so keep_recent=0 raises IndexError",
-        path="agentkit/state/compaction/impls.py",
-        # Anchored on the comment above it: all THREE compactors in this file run
-        # the identical walk-back, and the other two already guarded it.
-        before=(
-            "        # ``ImportanceFilteringCompactor`` guards its identical loop the same way.\n"
-            '        while keep and start > head and messages[start].role == "tool":'
-        ),
-        after=(
-            "        # ``ImportanceFilteringCompactor`` guards its identical loop the same way.\n"
-            '        while start > head and messages[start].role == "tool":'
-        ),
-        tests=COMPACTION_TESTS,
-    ),
-    Mutant(
-        tag="compaction",
-        why="keep_recent stops being clamped, so a negative count reaches past the end of the list",
-        path="agentkit/state/compaction/impls.py",
-        before="        keep = max(0, self.keep_recent)",
-        after="        keep = self.keep_recent",
-        tests=COMPACTION_TESTS,
-    ),
+    # Anchored on the comment above it: all THREE compactors in this file run
+    # the identical walk-back, and the other two already guarded it.
     Mutant(
         tag="toolschema",
         why="abstract collections fall back to 'string', telling the model to send a JSON string",
@@ -2724,29 +1584,11 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="money",
-        why="an unrepresentable ceiling escapes as decimal.InvalidOperation, past MoneyPrecisionError",
-        path="agentkit/core/runtime/meter.py",
-        before=(
-            '        raise MoneyPrecisionError(\n            f"monetary amount {value!r} is too large to represent at {MONEY_SCALE} decimal places"\n        ) from exc'
-        ),
-        after='        raise',
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="money",
         why="max_concurrency=0 constructs again, and the first fan-out waits on it forever",
-        path="agentkit/core/runtime/meter.py",
+        path="agentkit/tools/execution/policy.py",
         before="        if self.max_concurrency < 1:",
         after="        if False:",
         tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="workflow",
-        why="a typo'd after= stops being caught, so dependent nodes silently never run",
-        path="agentkit/agents/workflows/graph.py",
-        before="        self._validate_dependencies()",
-        after="        pass",
-        tests=WF_TESTS,
     ),
     Mutant(
         tag="toolschema",
@@ -2797,187 +1639,6 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=TOOLCOERCE_TESTS,
     ),
     Mutant(
-        tag="workflow",
-        why="dependency validation only checks the first node, so a later typo still slips through",
-        path="agentkit/agents/workflows/graph.py",
-        before="        for name in self._order:",
-        after="        for name in self._order[:1]:",
-        tests=WF_TESTS,
-    ),
-    Mutant(
-        tag="memdedupe",
-        why=(
-            'Restores `item.id is not None`, so an id of "" is admitted as a real shared identity again and every '
-            'id-less-but-not-None record in the pool collapses into one group. Killed by '
-            'test_an_empty_string_id_is_treated_as_no_id_at_all.'
-        ),
-        path="agentkit/state/memory/composite.py",
-        before="        if mode == \"id\" and item.id:",
-        after="        if mode == \"id\" and item.id is not None:",
-        tests=MEM_DEDUPE_TESTS,
-    ),
-    Mutant(
-        tag="memdedupe",
-        why=(
-            'Removes the blank-content guard so `""`, `"   "` and `"\\n\\t"` share '
-            'one digest again and chain unrelated '
-            'records together across BOTH dedupe modes. Killed by '
-            'test_blank_content_is_not_evidence_that_two_records_are_the_same_fact.'
-        ),
-        path="agentkit/state/memory/composite.py",
-        before="    stripped = content.strip()\n    if not stripped:\n        return None\n    return hashlib.sha256(stripped.encode(\"utf-8\")).hexdigest()",
-        after="    stripped = content.strip()\n    return hashlib.sha256(stripped.encode(\"utf-8\")).hexdigest()",
-        tests=MEM_DEDUPE_TESTS,
-    ),
-    Mutant(
-        tag="memdedupe",
-        why=(
-            "Rebuilds the stamp from each member's own `source`/count of 1 instead of absorbing a prior stamp, "
-            're-breaking nested composites (dedupe_sources drops the inner sources, dedupe_count under-reports). '
-            'Killed by 2 tests: the nested-composite and stamp-absorption tests.'
-        ),
-        path="agentkit/state/memory/composite.py",
-        before="            agreed.extend(_prior_sources(m))\n            collapsed += _prior_count(m)",
-        after="            agreed.append(m.source)\n            collapsed += 1",
-        tests=MEM_DEDUPE_TESTS,
-    ),
-    Mutant(
-        tag="memdedupe",
-        why=(
-            'Drops the type guard on an absorbed count, so a backend that round-tripped a string `dedupe_count` '
-            'through storage propagates a str into an int accumulation and raises inside the query path. Killed by '
-            'test_a_corrupt_stamp_from_a_backend_does_not_crash_the_merge.'
-        ),
-        path="agentkit/state/memory/composite.py",
-        before="    if isinstance(prior, int) and not isinstance(prior, bool) and prior >= 1:\n        return prior",
-        after="    if prior is not None:\n        return prior  # type: ignore[no-any-return]",
-        tests=MEM_DEDUPE_TESTS,
-    ),
-    Mutant(
-        tag="memdedupe",
-        why=(
-            "Trusts a foreign source's id as a key into this store's keyspace again — the destructive regression: a "
-            'broadcast write of a journal item with row key "3" upserts over vector chunk "3". Killed by '
-            'test_a_foreign_sources_id_never_addresses_this_stores_keyspace.'
-        ),
-        path="agentkit/state/memory/vector.py",
-        before="            own_id = item.id if item.source == self.name else None",
-        after="            own_id = item.id",
-        tests=MEM_VECTOR_TESTS,
-    ),
-    Mutant(
-        tag="memdedupe",
-        why=(
-            'Stops stripping the transient dedupe stamp before upsert, so per-query fan-out bookkeeping is persisted '
-            'as durable record metadata and (given the absorb fix) inflates its own count on every round trip. Killed '
-            'by test_the_dedupe_stamp_is_not_persisted_as_record_metadata.'
-        ),
-        path="agentkit/state/memory/vector.py",
-        before="            for transient in (DEDUPE_SOURCES_KEY, DEDUPE_COUNT_KEY):\n                metadata.pop(transient, None)",
-        after="",
-        tests=MEM_VECTOR_TESTS,
-    ),
-    Mutant(
-        tag="workflowmap",
-        why=(
-            'bounded_by stops being an EXTRA bound and becomes a REPLACEMENT for the tree semaphore, so a '
-            "`bounded_by=100` map blows the run's `max_concurrency` entirely. SURVIVED all 29 original tests (the "
-            'shipped bounded_by test uses width 2 under the default max_concurrency=8, where both behave '
-            'identically). Now killed by test_map_bounded_by_does_not_escape_the_level_semaphore.'
-        ),
-        path="agentkit/agents/workflows/graph.py",
-        before="                if width_sem is not None:\n                    async with level_sem:\n                        return await _work(index, item, slot)\n                return await _work(index, item, slot)",
-        after="                return await _work(index, item, slot)",
-        tests=WORKFLOW_MAP_TESTS,
-    ),
-    Mutant(
-        tag="workflowmap",
-        why=(
-            'the identity is truncated WITHOUT the disambiguating digest, so two items sharing a 120-char prefix '
-            'collapse onto one identity and a swapped re-expansion resumes silently against mis-threaded element '
-            'slots instead of raising MapExpansionChanged. SURVIVED all 29 original tests despite the source comment '
-            'claiming this exact risk. Now killed by test_map_long_identities_are_capped_but_stay_distinguishable.'
-        ),
-        path="agentkit/agents/workflows/graph.py",
-        before="    return f\"{s[:_IDENTITY_MAX]}\u2026#{hashlib.sha256(s.encode('utf-8', 'replace')).hexdigest()[:12]}\"",
-        after="    return s[:_IDENTITY_MAX]",
-        tests=WORKFLOW_MAP_TESTS,
-    ),
-    Mutant(
-        tag="workflowmap",
-        why=(
-            "a failing checkpointer's exception replaces the element failure the caller needs to see, so "
-            "`RuntimeError('c is flaky')` is reported to the operator as `OSError('disk full')`. SURVIVED all 29 "
-            'original tests — no test had a store that fails. Now killed by '
-            'test_map_checkpointer_failure_does_not_replace_the_element_failure.'
-        ),
-        path="agentkit/agents/workflows/graph.py",
-        before="            with contextlib.suppress(Exception):",
-        after="            if True:",
-        tests=WORKFLOW_MAP_TESTS,
-    ),
-    Mutant(
-        tag="workflowmap",
-        why=(
-            "the author's `prompt=` is dropped and every runnable element gets the default task instead — a run that "
-            'used a prompt nobody wrote and reported success. SURVIVED all 29 original tests: `prompt` appeared zero '
-            'times in the test file. Now killed by test_map_prompt_builds_the_task_for_a_runnable_element.'
-        ),
-        path="agentkit/agents/workflows/graph.py",
-        before="                    p = (\n                        prompt(item, goal)\n                        if prompt is not None\n                        else _default_prompt({\"item\": item}, goal)\n                    )",
-        after="                    p = _default_prompt({\"item\": item}, goal)",
-        tests=WORKFLOW_MAP_TESTS,
-    ),
-    Mutant(
-        tag="workflowmap",
-        why=(
-            'the identity cap is removed, so a 500-element map over fat payloads writes every payload in full into '
-            'the expansion record and therefore into EVERY checkpoint the run takes. SURVIVED all 29 original tests. '
-            'Now killed by test_map_long_identities_are_capped_but_stay_distinguishable.'
-        ),
-        path="agentkit/agents/workflows/graph.py",
-        before="_IDENTITY_MAX = 120",
-        after="_IDENTITY_MAX = 10**9",
-        tests=WORKFLOW_MAP_TESTS,
-    ),
-    Mutant(
-        tag="workflowmap",
-        why=(
-            'a `prompt=` the framework cannot deliver is silently dropped instead of refused, so a map whose `each` '
-            'returns plain data runs with the prompt never invoked and completes green. This is the mutant that '
-            'reproduces the ORIGINAL shipped behaviour, which I changed. Killed by '
-            'test_map_prompt_with_a_non_runnable_element_is_refused_not_dropped.'
-        ),
-        path="agentkit/agents/workflows/graph.py",
-        before="                if prompt is not None and not callable(runner):",
-        after="                if False:",
-        tests=WORKFLOW_MAP_TESTS,
-    ),
-    Mutant(
-        tag="storeprim",
-        why="`by` stops being validated, so the four backends diverge: memory/file return a float from a method annotated -> int and poison the key, while Redis reports 1 for increment(k, 1.5)",
-        path="agentkit/state/stores/memory.py",
-        before="        check_by(key, by)",
-        after="",
-        tests=STORE_PRIM_TESTS,
-    ),
-    Mutant(
-        tag="storeprim",
-        why="FileStore's increment goes back to a plain setdefault lock table, leaking one asyncio.Lock per key forever \u2014 the exact regression `_keylock` exists to prevent",
-        path="agentkit/state/stores/file.py",
-        before="        check_by(key, by)\n        self._warn_ttl_ignored(ttl)\n        async with key_lock(self._locks, key):",
-        after="        check_by(key, by)\n        self._warn_ttl_ignored(ttl)\n        lock = self._locks.setdefault(key, asyncio.Lock())\n        async with lock:",
-        tests=STORE_PRIM_TESTS,
-    ),
-    Mutant(
-        tag="storeprim",
-        why="the Postgres error path re-acquires a SECOND pooled connection while holding the first, so increment deadlocks outright on a max_size=1 pool \u2014 invisible until the pool is bounded",
-        path="agentkit/state/stores/postgres.py",
-        before="        if total is None:\n            # The guard excluded the row, so something non-integer is there.\n            # Re-read it to name the type in the error \u2014 but OUTSIDE the\n            # ``acquire`` above, because ``self.get`` takes a connection of its\n            # own. Asking the pool for a second connection while still holding\n            # the first deadlocks outright on ``max_size=1`` (measured: the\n            # call hangs forever), and on any pool size it doubles the\n            # connections a concurrent burst of bad increments needs, so N\n            # workers each holding one and waiting for another is a deadlock at\n            # every size. The error path must not be the expensive one.\n            raise not_a_counter(key, await self.get(key))",
-        after="            if total is None:\n                # The guard excluded the row, so something non-integer is there.\n                # Re-read it to name the type in the error \u2014 but OUTSIDE the\n                # ``acquire`` above, because ``self.get`` takes a connection of its\n                # own. Asking the pool for a second connection while still holding\n                # the first deadlocks outright on ``max_size=1`` (measured: the\n                # call hangs forever), and on any pool size it doubles the\n                # connections a concurrent burst of bad increments needs, so N\n                # workers each holding one and waiting for another is a deadlock at\n                # every size. The error path must not be the expensive one.\n                raise not_a_counter(key, await self.get(key))",
-        tests=STORE_PRIM_TESTS,
-    ),
-    Mutant(
         tag="recurrence",
         why="The `is None` success check must be read AFTER the fingerprint is awaited. Moved before, it sees a coroutine \u2014 never None \u2014 so an async fingerprint can never report success: the run loops, repeats, and is declared PERMANENTLY stuck on a SUCCESSFUL outcome, leaving an un-awaited coroutine each turn. THIS MUTANT SURVIVED THE SHIPPED 21-TEST SUITE (their test_an_async_fingerprint_is_awaited only exercises a non-None async signature); the test below is new and kills it.",
         path="agentkit/core/execution/recurrence.py",
@@ -3024,54 +1685,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before="        bucket = seen.setdefault(key, [])",
         after="        seen.clear()\n        bucket = seen.setdefault(key, [])",
         tests=RECURRENCE_TESTS,
-    ),
-    Mutant(
-        tag="grounding",
-        why="the audit trail goes stale: under reground_every_turn the prefix holds turn-N evidence while the record still claims turn 1 \u2014 the trail contradicting the transcript, which is worse than no trail. SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/agents/requests/base.py",
-        before="                    # The record tracks the PREFIX, so it is overwritten rather\n                    # than appended: the prefix now holds this turn's evidence\n                    # only, and a record that accumulated would claim the run\n                    # grounded on blocks that are no longer in the prompt.\n                    self._record(wc, admitted)\n",
-        after="                    # MUTANT: record not refreshed on re-ground\n",
-        tests=GROUNDING_TESTS,
-    ),
-    Mutant(
-        tag="grounding",
-        why="a stale grounding block survives into turn N when this turn's retrieval admits nothing \u2014 the prompt asserts evidence gathered for a different question, precisely when the application's admit just said 'none of this may be used'. SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/agents/requests/base.py",
-        before="                        grounding=grounding_msgs,\n",
-        after="                        grounding=grounding_msgs or wc.prefix.grounding,\n",
-        tests=GROUNDING_TESTS,
-    ),
-    Mutant(
-        tag="grounding",
-        why="the record becomes first-write-wins, so it freezes at turn 1 forever. Same failure as the first mutant by a different route. SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/agents/requests/base.py",
-        before="        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))\n",
-        after="        wc.scratchpad.setdefault(\n            GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted)\n        )\n",
-        tests=GROUNDING_TESTS,
-    ),
-    Mutant(
-        tag="grounding",
-        why="removes the build-time both-seams guard I added, restoring the silent precedence: `builder.grounding = src` on a grounder=-wired builder had its admit predicate dropped and every model-authored item reached the prompt (observed on the shipped code). SURVIVED the shipped suite; killed by the test I added.",
-        path="agentkit/agents/requests/base.py",
-        before="        if self.grounder is not None and self.grounding is not None:\n            raise ValueError(\n                \"RequestBuilder has both grounder= and grounding= set at build time \u2014 \"",
-        after="        if False:\n            raise ValueError(\n                \"RequestBuilder has both grounder= and grounding= set at build time \u2014 \"",
-        tests=GROUNDING_TESTS,
-    ),
-    Mutant(
-        tag="grounding",
-        why="reverts the durable-state encoding, putting live MemoryItem dataclasses back in the scratchpad \u2014 the run then dies with TypeError inside PostgresCheckpointStore.save while passing every in-memory test.",
-        path="agentkit/agents/requests/base.py",
-        before="        wc.note(GROUNDING_RECORD_KEY, tuple(_encode_item(i) for i in admitted))\n",
-        after="        wc.note(GROUNDING_RECORD_KEY, admitted)\n",
-        tests=GROUNDING_TESTS,
-    ),
-    Mutant(
-        tag="grounding",
-        why="the encoder silently drops metadata, so the `tier` key an admit policy reads is absent from the audit trail \u2014 the record would say a run grounded on evidence without recording what made it evidence.",
-        path="agentkit/agents/requests/base.py",
-        before="        \"metadata\": dict(item.metadata),\n",
-        after="        \"metadata\": {},\n",
-        tests=GROUNDING_TESTS,
     ),
     Mutant(
         tag="approvals",
@@ -3138,54 +1751,6 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=APPROVAL_AUTONOMY_TESTS,
     ),
     Mutant(
-        tag="readonly",
-        why="The headline gap. `ToolMemory.accepts_writes = False` was scope the implementing agent chose to take on, and it shipped with ZERO assertions anywhere in the repo \u2014 flipping it back to True left the entire suite green, restoring the exact silent-no-op-reported-as-a-commit lie the change was written to close. Verified: `before` occurs exactly once in tool.py, mutated file ast.parses, SURVIVED the shipped suite and is now KILLED.",
-        path="agentkit/state/memory/tool.py",
-        before="    accepts_writes: ClassVar[bool] = False",
-        after="    accepts_writes: ClassVar[bool] = True",
-        tests=READONLY_TESTS,
-    ),
-    Mutant(
-        tag="readonly",
-        why="`CompactedMemory` was the one decorator whose marker mirroring nothing asserted \u2014 test_accepts_writes_propagates_through_the_other_decorators covers ScopedMemory and CachedMemory but skips it. Hardcoding the property to True means a CompactedMemory(ReadOnlyMemory(...)) member of a fan-out gets filed as accepted. Verified: `before` occurs exactly once, parses, SURVIVED the shipped suite, now KILLED.",
-        path="agentkit/state/memory/decorators.py",
-        before="        \"\"\"Compaction is a read-side concern; ``write`` is a straight\n        pass-through, so the marker is the wrapped source's.\"\"\"\n        return bool(getattr(self.inner, \"accepts_writes\", True))",
-        after="        \"\"\"MUTANT\"\"\"\n        return True",
-        tests=READONLY_TESTS,
-    ),
-    Mutant(
-        tag="readonly",
-        why="Turns the drop COUNTER into a flag. The shipped suite only ever asserted `refused_writes == 1` after a single write, so an assignment was indistinguishable from an increment \u2014 a decorator that reported '1' forever regardless of how many writes it turned away would have looked correct. The counter is explicitly one of the three accountability mechanisms the design leans on, so it has to actually count. Verified: `before` occurs exactly once, parses, SURVIVED the shipped suite, now KILLED.",
-        path="agentkit/state/memory/decorators.py",
-        before="        self.refused_writes += 1",
-        after="        self.refused_writes = 1",
-        tests=READONLY_TESTS,
-    ),
-    Mutant(
-        tag="readonly",
-        why="Guards the fix for the real defect. Hardcoding the fan-out's marker to True reinstates the nesting bug exactly: an all-read-only CompositeMemory nested in an outer composite is reported as `accepted`. Verified: `before` occurs exactly once in composite.py, parses, KILLED.",
-        path="agentkit/state/memory/composite.py",
-        before="        return any(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
-        after="        return True",
-        tests=READONLY_TESTS,
-    ),
-    Mutant(
-        tag="readonly",
-        why="Pins the any-vs-all choice, which is the subtle half of the fix. With `all`, a MIXED composite holding one writable and one read-only member would declare itself non-accepting and an outer fan-out would refuse to credit a commit that genuinely happened \u2014 the inverse lie, equally wrong for an operator deciding what to replay. Verified: `before` occurs exactly once, parses, KILLED.",
-        path="agentkit/state/memory/composite.py",
-        before="        return any(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
-        after="        return all(bool(getattr(s, \"accepts_writes\", True)) for s in self.sources)",
-        tests=READONLY_TESTS,
-    ),
-    Mutant(
-        tag="readonly",
-        why="Pins that SequentialMemory mirrors the source it actually WRITES to. `sources[-1]` is the plausible wrong choice: the chain writes to sources[0] only, so keying the marker off the last source reports a read-only cache tier as writable whenever the fallback tier happens to be writable. Verified: `before` occurs exactly once, parses, KILLED.",
-        path="agentkit/state/memory/composite.py",
-        before="        return bool(getattr(self.sources[0], \"accepts_writes\", True))",
-        after="        return bool(getattr(self.sources[-1], \"accepts_writes\", True))",
-        tests=READONLY_TESTS,
-    ),
-    Mutant(
         tag="tooldesc",
         why="THE BUG. `inspect.getdoc` dedents by the COMMON leading whitespace, so a developer note written one level in keeps its extra indent through the dedent and a column-0 anchor never sees it. Reverting to column-0-only lets `Notes on behaviour:` / `  - TODO: rewrite before Q3` ship to the model verbatim \u2014 the exact failure mode the check exists to prevent, arriving by the route authors actually take. Verified: `before` occurs exactly once, mutated source parses (ast.parse OK).",
         path="agentkit/tools/declarations/schema.py",
@@ -3232,102 +1797,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before="    return \"\\n\".join(line.rstrip() for line in lines).strip(), cut",
         after="    return \"\\n\".join(lines).strip(), cut",
         tests=TOOLDESC_TESTS,
-    ),
-    Mutant(
-        tag="cliagents",
-        why="REVERTS MY FIX 1. Non-bare `disallowed_tools` entries stop being detected, so a skill that wrote `disallowed_tools=('mcp__*',)` \u2014 the spelling ClaudeCliCognition's own __post_init__ error message recommends \u2014 projects a sub-agent still holding every mcp__ tool. A widening past the skill, invisible in the output JSON. This was the SHIPPED behaviour; I observed it projecting tools ['Read','mcp__db__query','mcp__fs__write'].",
-        path="agentkit/models/providers/cli/claude/agents.py",
-        before="        lost = _unsubtractable(tools, cognition.disallowed_tools)",
-        after="        lost = []",
-        tests=CLIAGENT_TESTS,
-    ),
-    Mutant(
-        tag="cliagents",
-        why="REVERTS MY FIX 2. An unrecognised ReActCognition registry is read as 'no tools' again, so a skill carrying real tools projects `tools: []` with no refusal, and the F1-seam MCP refusal below silently stops guarding. Observed on the shipped code with both a plain list and an arbitrary object.",
-        path="agentkit/models/providers/cli/claude/agents.py",
-        before="        if not callable(names_of):",
-        after="        if False and not callable(names_of):",
-        tests=CLIAGENT_TESTS,
-    ),
-    Mutant(
-        tag="cliagents",
-        why="SURVIVED THE SHIPPED SUITE. The sub-agent name check stops being anchored at the right-hand end, so `reviewer_v2`, `reviewer!` and `reviewer ` all become valid CLI sub-agent names. The shipped suite's only invalid-name test used 'Code_Reviewer', which fails at position 0 and so is rejected by match() too \u2014 the anchoring was never pinned.",
-        path="agentkit/models/providers/cli/claude/agents.py",
-        before="if not _CLI_AGENT_NAME.fullmatch(name):",
-        after="if not _CLI_AGENT_NAME.match(name):",
-        tests=CLIAGENT_TESTS,
-    ),
-    Mutant(
-        tag="cliagents",
-        why="SURVIVED THE SHIPPED SUITE. A whitespace-only description projects instead of being refused, producing a sub-agent the CLI can never route delegation to. The shipped suite tested description='' (falsy either way) but not '   ', so the .strip() was unpinned \u2014 note the asymmetry: they DID test the whitespace case for prompt.",
-        path="agentkit/models/providers/cli/claude/agents.py",
-        before="description = skill.description.strip()",
-        after="description = skill.description",
-        tests=CLIAGENT_TESTS,
-    ),
-    Mutant(
-        tag="cliagents",
-        why="Narrows my new guard to wildcards only, so the within-tool specifier `Bash(rm:*)` is silently dropped again and the sub-agent gets unrestricted Bash. Checks that the two halves of _unsubtractable are independently pinned.",
-        path="agentkit/models/providers/cli/claude/agents.py",
-        before="        if \"(\" in entry:",
-        after="        if False:",
-        tests=CLIAGENT_TESTS,
-    ),
-    Mutant(
-        tag="cliagents",
-        why="The wildcard prefix is taken as the whole entry, so `mcp__*` never matches any projected tool and the guard silently passes everything. A guard that is present but never fires.",
-        path="agentkit/models/providers/cli/claude/agents.py",
-        before="            prefix = entry.split(\"*\", 1)[0]",
-        after="            prefix = entry",
-        tests=CLIAGENT_TESTS,
-    ),
-    Mutant(
-        tag="clihooks",
-        why="The fix I landed, inverted. An unreadable payload becoming a PASS is the exact fail-open I found in the as-shipped code: `{}` on stdout is 'no opinion', so the CLI's normal flow decides and under bypassPermissions the tool runs with the chain having inspected nothing. Invisible to every deny test \u2014 only a test that feeds a MALFORMED payload and asserts a deny catches it, and there was none.",
-        path="agentkit/models/providers/cli/claude/hooks.py",
-        before="            body = _deny(reason)",
-        after="            body = _pass()",
-        tests=HOOKS_TESTS,
-    ),
-    Mutant(
-        tag="clihooks",
-        why="The tool name is the only identity the two processes agree on, and `if ctx.request.name == \"Bash\"` is how most real guards are written \u2014 so dropping it on the floor makes every name-keyed guard inert while the hook still answers, still records decisions, and still denies in the one test that uses a name-blind middleware. Every pre-existing shell-out test used `_PathAllowlist`, which never reads the name; this mutant survived the shipped suite untouched.",
-        path="agentkit/models/providers/cli/claude/hooks.py",
-        before="body = await self._decide(tool_name, arguments)",
-        after="body = await self._decide(\"\", arguments)",
-        tests=HOOKS_TESTS,
-    ),
-    Mutant(
-        tag="clihooks",
-        why="The matcher is a regex a DIFFERENT process compiles, and the anchors are the difference between guarding `Write` and guarding everything whose name contains `Write`. The shipped assertion (`\"SomeNewTool\" in matcher`) is a substring check, which is true with or without anchors \u2014 so the one property the anchors exist for was never tested. Unanchored, a `Read` matcher also fires for `ReadWrite` and an `Edit` matcher for `NotebookEdit`: a guard applying where nobody chose, with the deny reason naming a tool the caller never listed.",
-        path="agentkit/models/providers/cli/claude/hooks.py",
-        before="\"matcher\": f\"^({'|'.join(names)})$\",",
-        after="\"matcher\": f\"({'|'.join(names)})\",",
-        tests=HOOKS_TESTS,
-    ),
-    Mutant(
-        tag="clihooks",
-        why="The single most consequential number in the generated file, and the module docstring is explicit about why: a hook the CLI times out is a NON-blocking error, so the CLI prints it and RUNS the tool. Inverting the order means a chain that is merely slow \u2014 not refusing, just slow \u2014 turns into the fail-open the whole layered-deadline design exists to close. It is two integers in two generated files, so nothing in-process can notice; every behavioural test still passes because the tests never let the CLI's deadline be the one that fires.",
-        path="agentkit/models/providers/cli/claude/hooks.py",
-        before="cli_timeout = int(timeout_s + 4.0) + 1",
-        after="cli_timeout = max(1, int(timeout_s))",
-        tests=HOOKS_TESTS,
-    ),
-    Mutant(
-        tag="clihooks",
-        why="`_NATIVE_TOOLS`'s fallback is a policy decision the code comments on ('a middleware keyed on that flag should treat a tool it has never heard of as the dangerous kind') and nothing asserted. It only bites through `allow_unknown_tools=True` \u2014 i.e. the escape hatch for a CLI that grew a tool \u2014 which is precisely when you least want the new tool silently reclassified as read-only and waved past a side-effect guard.",
-        path="agentkit/models/providers/cli/claude/hooks.py",
-        before="_NATIVE_TOOLS.get(tool_name, (True, None))",
-        after="_NATIVE_TOOLS.get(tool_name, (False, None))",
-        tests=HOOKS_TESTS,
-    ),
-    Mutant(
-        tag="clihooks",
-        why="The script is the guard's entire presence on disk and the CLI executes whatever is in it, so its mode is a security control, not housekeeping. The suite asserted the 0700 directory and never the file \u2014 and the directory alone is not the argument the docstring makes (it claims mkdtemp's mode AND an owner-only script). A one-character regression here is invisible to every behavioural test, because a world-writable script still works perfectly.",
-        path="agentkit/models/providers/cli/claude/hooks.py",
-        before="script_path.chmod(0o600)",
-        after="script_path.chmod(0o666)",
-        tests=HOOKS_TESTS,
     ),
     Mutant(
         tag="approvalrec",
@@ -3706,14 +2175,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before='        "metadata": thaw(message.metadata),',
         after='        "metadata": {},',
         tests=("tests/source/conformance/test_persistence.py",),
-    ),
-    Mutant(
-        tag="calls",
-        why="multi-call live evals report only the final call spend",
-        path="tests/evals/engine/reporting.py",
-        before='    return sum(costs.values(), Decimal(0))',
-        after='    return list(costs.values())[-1] if costs else Decimal(0)',
-        tests=("tests/source/evaluation/test_runner.py",),
     ),
 )
 
