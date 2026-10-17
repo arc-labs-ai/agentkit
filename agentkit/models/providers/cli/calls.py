@@ -23,10 +23,18 @@ from uuid import uuid4
 from agentkit.core.contracts.types import Message, MessageRole, Mode, Scope, ToolCall
 from agentkit.core.execution.concurrency import CancellationToken
 from agentkit.models.contracts.constants import EventKind, FailureClass, NativeToolPolicy, Outcome
+from agentkit.models.contracts.execution import (
+    CapabilityStatus,
+    ExecutionAssessment,
+    ExecutionCompatibility,
+    ExecutionRequirement,
+    ExecutionRequirements,
+)
 from agentkit.models.contracts.failures import classify
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, Workspace, resolve_credential
 from agentkit.models.providers._events import _emit
 from agentkit.models.providers.auth import AuthKind, anthropic_credential
+from agentkit.models.providers.cli.execution import CliInvocation, ExecutionBackend, SubprocessExecutionBackend
 
 _MCP_TIMEOUT_MARGIN_S = 5.0
 _CLAUDE_SCHEMA_PROMPT_MAX_BYTES = 256 * 1024
@@ -82,6 +90,7 @@ class CliAdapter:
         self,
         *,
         spawn: Any = None,
+        execution_backend: ExecutionBackend | None = None,
         working_dir: Path | None = None,
         native_tool_policy: NativeToolPolicy = NativeToolPolicy.WARN,
         executable: dict[Mode, str] | None = None,
@@ -92,6 +101,9 @@ class CliAdapter:
         max_replay_bytes: int = 1024 * 1024,
         request_hook: Any = None,
     ) -> None:
+        if spawn is not None and execution_backend is not None:
+            raise ValueError("choose spawn or execution_backend, not both")
+        self.execution_backend = execution_backend or SubprocessExecutionBackend()
         self.spawn = spawn
         self.native_tool_policy = NativeToolPolicy(native_tool_policy)
         self.working_dir = working_dir
@@ -114,10 +126,58 @@ class CliAdapter:
         self.bundle_store = bundle_store
         self.max_replay_bytes = max_replay_bytes
         self.request_hook = request_hook
+        self._binary_versions: dict[Mode, str | None] = {}
         self._homes: Any = None
         self._sessions: dict[str, Path] = {}
         self._auth_fingerprints: dict[str, str] = {}
         self._pending_credentials: dict[str, Any] = {}
+
+    async def evaluate_execution(
+        self,
+        binding: Binding,
+        *,
+        execution: ExecutionRequirements | None = None,
+        native_tool_policy: NativeToolPolicy | None = None,
+    ) -> ExecutionCompatibility:
+        """Credential-free inspection; an unverified requirement refuses dispatch."""
+        from agentkit.models.providers.cli.capabilities import evaluate_cli_execution
+
+        policy = min(
+            (NativeToolPolicy(native_tool_policy or self.native_tool_policy), self.native_tool_policy),
+            key={NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}.__getitem__,
+        )
+        try:
+            report = await self.execution_backend.inspect()
+        except Exception:
+            unmet = ExecutionAssessment(
+                ExecutionRequirement.PROCESSES, CapabilityStatus.UNVERIFIED, "backend_inspection_failed",
+                "Execution backend inspection failed; restore the mechanism before attempting execution.",
+            )
+            return ExecutionCompatibility(str(binding.mode), "unavailable", "unknown", None, (unmet,), (unmet,))
+        version = None
+        if self.spawn is None and type(self.execution_backend) is SubprocessExecutionBackend:
+            from agentkit.models.providers.cli.execution import inspect_binary_version
+
+            if self._binary_versions.get(binding.mode) is None:
+                executable = self.executable.get(
+                    binding.mode, "claude" if binding.mode == Mode.CLAUDE_CODE else "codex",
+                )
+                self._binary_versions[binding.mode] = await inspect_binary_version(executable)
+            version = self._binary_versions[binding.mode]
+        compatibility = replace(
+            evaluate_cli_execution(binding.mode, report, execution or ExecutionRequirements(), policy),
+            binary_version=version,
+        )
+        if (
+            compatibility.compatible and version is None and self.spawn is None
+            and type(self.execution_backend) is SubprocessExecutionBackend
+        ):
+            unmet = ExecutionAssessment(
+                ExecutionRequirement.PROCESSES, CapabilityStatus.UNVERIFIED, "cli_binary_unverified",
+                "The configured CLI could not be identified; install and verify the executable before execution.",
+            )
+            return replace(compatibility, assessments=(*compatibility.assessments, unmet), incompatibilities=(unmet,))
+        return compatibility
 
     async def aclose(self) -> None:
         if self._homes is not None:
@@ -146,6 +206,7 @@ class CliAdapter:
         tool_activity_ended_at: Any = None,
         native_tool_policy: NativeToolPolicy | None = None,
         context_policy: Any = None,
+        execution: ExecutionRequirements | None = None,
     ) -> Turn:
         from types import SimpleNamespace
 
@@ -172,15 +233,17 @@ class CliAdapter:
                 + "\nCurrent task:\n"
                 + prompt.user,
             )
-        if binding.mode == Mode.CODEX and native_tool_policy == NativeToolPolicy.DENY:
-            return Turn(
-                failure=Failure(
-                    FailureClass.INVALID_REQUEST,
-                    mode_detail={
-                        "reason": "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"
-                    },
-                )
-            )
+        compatibility = await self.evaluate_execution(
+            binding, execution=execution, native_tool_policy=native_tool_policy,
+        )
+        if not compatibility.compatible:
+            return Turn(failure=execution_failure(compatibility), usage_complete=False)
+        await _emit(
+            emit, EventKind.TRANSPORT, mode_event="execution_policy",
+            native_tool_policy=native_tool_policy, backend=compatibility.backend,
+            backend_version=compatibility.backend_version, binary_version=compatibility.binary_version,
+            execution_requirements=tuple(sorted((execution or ExecutionRequirements()).required)),
+        )
         if native_agents and binding.mode != Mode.CLAUDE_CODE:
             return Turn(
                 failure=Failure(
@@ -227,7 +290,7 @@ class CliAdapter:
                 EventKind.DEGRADED,
                 setting="native_tools",
                 requested="host-granted tools only",
-                applied="shell, unified exec, apps, plugins, skill MCP installation and web search disabled",
+                applied="requested feature restrictions; Codex native tools remain available",
                 reason="Codex native tools are outside host ToolGrant and tool middleware enforcement",
             )
         canonical_messages: list[Message] = []
@@ -379,9 +442,21 @@ class CliAdapter:
                     mode_detail={"reason": "Claude hooks require a supplied API or home credential"},
                 )
             )
-        spawn = self.spawn
+        async def backend_spawn(*argv: str, **kwargs: Any) -> Any:
+            return await self.execution_backend.start(CliInvocation(tuple(argv), kwargs))
+
+        base_execution_spawn = self.spawn or backend_spawn
+
+        async def isolated_spawn(*argv: str, **kwargs: Any) -> Any:
+            permitted = set(common["env"]) | _CLI_ENV_ALLOWLIST | {
+                "CLAUDE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_ENABLE_STREAM_WATCHDOG", "CLAUDE_TRACE_EXTERNAL_ID",
+            }
+            kwargs["env"] = {key: value for key, value in kwargs.get("env", {}).items() if key in permitted}
+            return await base_execution_spawn(*argv, **kwargs)
+
+        spawn = isolated_spawn
         if self.request_hook is not None:
-            base_spawn = spawn or asyncio.create_subprocess_exec
+            base_spawn = spawn
 
             async def hooked_spawn(*argv: str, **kwargs: Any) -> Any:
                 request = {"mode": binding.mode, "argv": tuple(argv), "cwd": kwargs.get("cwd")}
@@ -415,6 +490,11 @@ class CliAdapter:
                 **self.env,
                 **self.transport,
                 **credentials,
+                "HOME": str(home),
+                "XDG_CONFIG_HOME": str(home / "config"),
+                "XDG_CACHE_HOME": str(home / "cache"),
+                "XDG_DATA_HOME": str(home / "data"),
+                "XDG_STATE_HOME": str(home / "state"),
                 **({"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"} if binding.mode == Mode.CLAUDE_CODE else {}),
                 **(
                     {"MCP_TOOL_TIMEOUT": str(tool_timeout_s + _MCP_TIMEOUT_MARGIN_S)}
@@ -543,6 +623,7 @@ class CliAdapter:
                         and auth.kind == AuthKind.BEARER
                     ),
                     setting_sources=(),
+                    disable_slash_commands=True,
                     agents=dict(native_agents) if native_agents else None,
                     add_dirs=workspace.add_dirs if workspace else (),
                     permission_mode=(
@@ -661,6 +742,8 @@ class CliAdapter:
             }
         if result.evals.get("raw_usage"):
             raw = dict(result.evals["raw_usage"])
+        elif result.partial:
+            raw = {}  # Missing measurement is not a measured zero.
         reason = result.evals.get("stop_reason")
         failure = None
         if result.partial:
@@ -675,22 +758,11 @@ class CliAdapter:
             ):
                 failure = None  # core owns structured correction and limit outcomes
             else:
-                from agentkit.models.providers.cli._common import _redact_secrets
-
                 assert failure is not None
                 detail = {
                     **dict(failure.mode_detail),
                     "stop_reason": reason,
                     "return_code": result.evals.get("cli_return_code"),
-                    "diagnostic": _redact_secrets(
-                        str(
-                            result.evals.get("stderr")
-                            or result.output
-                            or result.evals.get("cli_errors")
-                            or result.evals.get("error")
-                            or ""
-                        )
-                    )[:1000],
                 }
                 if failure.classification == FailureClass.AUTH:
                     self._auth_fingerprints[call_id] = _credential_digest(credential)
@@ -700,6 +772,12 @@ class CliAdapter:
                     failure.retry_after_s,
                     detail,
                 )
+        if result.evals.get("execution_cleanup_failed") and failure is None:
+            failure = Failure(FailureClass.TRANSPORT, False, mode_detail={
+                "reason": "execution_cleanup_failed",
+                "dispatch_state": "started",
+                "explanation": "Execution ended but backend resource cleanup failed; inspect the worker before reuse.",
+            })
         messages = tuple(result.evals.get("messages") or ())
         # Claude's result is authoritative; intermediate assistant messages are
         # retained in order and the result is a distinct final message if needed.
@@ -726,7 +804,7 @@ class CliAdapter:
             result.parsed,
             raw,
             reported_cost=Decimal(str(u.cost_usd))
-            if binding.mode == Mode.CLAUDE_CODE and u.cost_usd is not None
+            if binding.mode == Mode.CLAUDE_CODE and u.cost_usd is not None and (raw or not result.partial)
             else None,
             reported_cost_cumulative=binding.mode == Mode.CLAUDE_CODE,
             usage_cumulative=binding.mode == Mode.CODEX,
@@ -834,6 +912,13 @@ def _classify_cli_failure(
     mode: Mode, reason: Any, evals: Any, haystack: str = ""
 ) -> Failure:
     detail = evals if isinstance(evals, Mapping) else {}
+    if detail.get("execution_uncertain") or reason in (
+        "process_crashed", "malformed_output", "parse_failed", "output_line_too_long",
+    ):
+        return Failure(FailureClass.EXECUTION_UNCERTAIN, False, mode_detail={
+            "reason": "execution_outcome_unknown", "dispatch_state": "unknown",
+            "explanation": "Execution may have reached the provider; reconcile this attempt before submitting another.",
+        })
     error_code = detail.get("cli_error_code")
     status = detail.get("api_error_status")
     errors = detail.get("cli_errors") or ()
@@ -863,9 +948,34 @@ def _classify_cli_failure(
     if _matches(_OVERLOADED_PATTERNS, combined):
         return Failure(FailureClass.OVERLOADED, True, mode_detail={"reason": "cli_overloaded"})
     if stop in ("timeout", "startup_timeout", "idle_timeout", "first_event_timeout"):
-        return Failure(FailureClass.TIMEOUT, stop == "first_event_timeout", mode_detail={"reason": stop})
+        return Failure(FailureClass.TIMEOUT, False, mode_detail={"reason": stop, "dispatch_state": "unknown"})
+    if stop.startswith("cli_exit_"):
+        return Failure(FailureClass.EXECUTION_UNCERTAIN, False, mode_detail={
+            "reason": "execution_outcome_unknown", "dispatch_state": "unknown",
+            "explanation": "The worker exited without a confirmed outcome; reconcile this attempt before retrying.",
+        })
+    if stop in ("spawn_failed", "working_dir_missing"):
+        return Failure(FailureClass.TRANSPORT, False, mode_detail={
+            "reason": stop, "dispatch_state": "not_started",
+            "explanation": "The CLI process could not start; check the configured executable and working directory.",
+        })
     return Failure(
         FailureClass.CANCELLED if reason == Outcome.CANCELLED else FailureClass.UNKNOWN,
         False,
         mode_detail={"mode": mode, "reason": stop or "cli_failure"},
+    )
+
+
+def execution_failure(compatibility: ExecutionCompatibility) -> Failure:
+    """Safe public refusal, without a raw command, prompt, credential or CLI output."""
+    return Failure(
+        FailureClass.EXECUTION_INCOMPATIBLE,
+        mode_detail={
+            "reason": compatibility.incompatibilities[0].explanation,
+            "dispatch_state": "not_started",
+            "backend": compatibility.backend,
+            "backend_version": compatibility.backend_version,
+            "binary_version": compatibility.binary_version,
+            "incompatibilities": tuple(asdict(item) for item in compatibility.incompatibilities),
+        },
     )

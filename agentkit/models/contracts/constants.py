@@ -53,6 +53,9 @@ class Outcome(StrEnum):
 
 
 class FailureClass(StrEnum):
+    EXECUTION_INCOMPATIBLE = "execution_incompatible"
+    EXECUTION_UNCERTAIN = "execution_uncertain"
+    TRANSPORT = "transport"
     RATE_LIMITED = "rate_limited"
     OVERLOADED = "overloaded"
     TRANSIENT_NETWORK = "transient_network"

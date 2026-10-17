@@ -1457,3 +1457,14 @@ passes untouched.
   `Any`-typed public seams, `Optional` mis-annotations, and a handful of
   variance mistakes on Protocol generics. `uv run mypy --strict agentkit`
   is now clean on the full tree.
+
+## Unreleased — execution requirements
+
+- Add explicit execution requirements and credential-free compatibility assessments
+  to the existing runtime, with typed local incompatibilities and uncertain outcomes.
+- Add a replaceable CLI process backend; report ordinary subprocess containment
+  limitations honestly. Protected profiles stay unsupported or unverified.
+- Keep call HOME/XDG state private, disable ambient Claude skills, invoke backend
+  cleanup/termination, and avoid retries after potentially executed CLI timeouts.
+- Remove raw CLI diagnostic strings from public failure details. See
+  `docs/design/execution-isolation.md` for migration, evidence and remaining work.
