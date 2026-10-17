@@ -116,7 +116,15 @@ def _assert_really_billed(answer: Any) -> None:
     assert answer.cost_usd is not None and answer.cost_usd > 0, (
         f"a real call cost nothing: {answer.cost_usd!r} from {answer.cost_source!r}"
     )
-    assert answer.cost_source in (CostSource.PRICE_TABLE, CostSource.MIXED, CostSource.PROVIDER)
+    # REPORTED = the provider priced it; PRICE_TABLE/HOST_PRICING = we did, from
+    # real usage; MIXED = both. UNPRICED is the one that must never appear here —
+    # it is the silent $0.00 ledger this assertion exists to catch.
+    assert answer.cost_source in (
+        CostSource.REPORTED,
+        CostSource.PRICE_TABLE,
+        CostSource.HOST_PRICING,
+        CostSource.MIXED,
+    ), answer.cost_source
 
 
 # ── the API modes ────────────────────────────────────────────────────────────
@@ -191,15 +199,24 @@ async def test_a_real_model_fills_a_schema_we_can_validate() -> None:
 # ── the CLI modes: a real turn, not argv ─────────────────────────────────────
 
 
+# The CLI modes need a credential too, which is easy to get wrong: the adapter
+# runs the binary under an ISOLATED HOME (`IsolatedHome`, a fresh temp dir), so
+# an interactive `claude /login` on the developer's machine is invisible to it
+# BY DESIGN — that isolation is the point, since a service must not silently
+# inherit whoever last logged in on the host. The credential travels on the
+# Binding and the adapter injects it as ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN.
+# Measured without one: `Not logged in · Please run /login` even while the host
+# session was valid.
 @needs_optin
 @needs_claude_cli
+@needs_anthropic
 @pytest.mark.asyncio
 async def test_a_real_claude_cli_turn_answers(tmp_path: Path) -> None:
     async with _runtime(
         adapters={Mode.CLAUDE_CODE: CliAdapter(working_dir=tmp_path)}
     ) as runtime:
         answer = await runtime.ask(
-            Binding(Mode.CLAUDE_CODE, ANTHROPIC_MODEL),
+            Binding(Mode.CLAUDE_CODE, ANTHROPIC_MODEL, _env("ANTHROPIC_API_KEY")),
             "Reply with exactly the word: pong. Do not use any tools.",
             limits=CallLimits(max_turns=1, wall_clock_s=180),
             call_id="live-claude-cli",
@@ -211,11 +228,12 @@ async def test_a_real_claude_cli_turn_answers(tmp_path: Path) -> None:
 
 @needs_optin
 @needs_codex_cli
+@needs_openai
 @pytest.mark.asyncio
 async def test_a_real_codex_cli_turn_answers(tmp_path: Path) -> None:
     async with _runtime(adapters={Mode.CODEX: CliAdapter(working_dir=tmp_path)}) as runtime:
         answer = await runtime.ask(
-            Binding(Mode.CODEX, OPENAI_MODEL),
+            Binding(Mode.CODEX, OPENAI_MODEL, _env("OPENAI_API_KEY")),
             "Reply with exactly the word: pong. Do not use any tools.",
             limits=CallLimits(max_turns=1, wall_clock_s=180),
             call_id="live-codex-cli",
@@ -229,6 +247,7 @@ async def test_a_real_codex_cli_turn_answers(tmp_path: Path) -> None:
 
 @needs_optin
 @needs_claude_cli
+@needs_anthropic
 @pytest.mark.asyncio
 async def test_a_real_cli_permission_prompt_is_refused_and_recorded(tmp_path: Path) -> None:
     """The one path nothing else reaches.
@@ -262,7 +281,7 @@ async def test_a_real_cli_permission_prompt_is_refused_and_recorded(tmp_path: Pa
             adapters={Mode.CLAUDE_CODE: CliAdapter(working_dir=tmp_path)}
         ) as runtime:
             await runtime.ask(
-                Binding(Mode.CLAUDE_CODE, ANTHROPIC_MODEL),
+                Binding(Mode.CLAUDE_CODE, ANTHROPIC_MODEL, _env("ANTHROPIC_API_KEY")),
                 f"Create a file called {target.name} containing the word hello. "
                 "Use your file-writing tool.",
                 limits=CallLimits(max_turns=3, wall_clock_s=240),
