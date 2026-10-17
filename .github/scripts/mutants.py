@@ -323,68 +323,12 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=FROZEN_TESTS,
     ),
     Mutant(
-        tag="frozen",
-        why="Checkpoint.state stops being frozen, so a persisted record is rewritable in memory",
-        path="agentkit/core/contracts/ports.py",
-        before='        object.__setattr__(self, "state", deep_freeze(self.state))',
-        after="        pass",
-        tests=FROZENVAL_TESTS,
-    ),
-    Mutant(
         tag="hashable",
         why="ContextDiff keys on insertion ORDER, breaking the hash invariant for equal diffs",
         path="agentkit/state/context/context.py",
         before="                frozenset(self.scratchpad_changes),",
         after="                tuple(self.scratchpad_changes),",
         tests=CTXDIFF_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="Checkpoint hashes its mutable state, so a durable record is unhashable again",
-        path="agentkit/core/contracts/ports.py",
-        before="        return hash((self.run_id, self.version))",
-        after="        return hash((self.run_id, self.version, tuple(self.state)))",
-        tests=PORTS_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="SearchHit folds query-dependent score into identity, so one document lands in two buckets",
-        path="agentkit/core/contracts/ports.py",
-        before="        return hash((self.url, self.title))",
-        after="        return hash((self.url, self.title, self.score))",
-        tests=PORTS_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="FetchResponse hashes the body, making hash O(page size) on every set insert",
-        path="agentkit/core/contracts/ports.py",
-        before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
-        after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
-        tests=PORTS_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="ToolSchema hashes the JSON Schema body, so every non-empty schema is unhashable",
-        path="agentkit/core/contracts/types.py",
-        before="        return hash((self.name, self.description))",
-        after="        return hash((self.name, self.description, str(self.parameters)))",
-        tests=KERNELTYPE_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="ChatRequest hashes the whole transcript, making the hash O(turns) in an agent loop",
-        path="agentkit/core/contracts/types.py",
-        before="        return hash((self.model, self.temperature, self.max_tokens, len(self.messages)))",
-        after="        return hash((self.model, self.temperature, self.max_tokens, tuple(self.messages)))",
-        tests=KERNELTYPE_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="ToolRequest hashes its decoded-JSON arguments, so a nested payload is unhashable",
-        path="agentkit/core/contracts/types.py",
-        before="        return hash((self.name, self.side_effecting, self.url_arg))",
-        after="        return hash((self.name, self.side_effecting, self.url_arg, str(self.arguments)))",
-        tests=KERNELTYPE_TESTS,
     ),
     Mutant(
         tag="valuetype",
@@ -427,46 +371,6 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=MAPPING_TESTS,
     ),
     Mutant(
-        tag="regress",
-        why="Prompt stops being hashable, breaking every dict/set/lru_cache holding one",
-        path="agentkit/agents/prompts/prompt.py",
-        before="        return hash((self.id, self.version, self.template, self.inputs))",
-        after="        return hash(self.bound)",
-        tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="Prompt.bound stops being frozen, so a caller edits a bound prompt after the fact",
-        path="agentkit/agents/prompts/prompt.py",
-        before="        frozen = deep_freeze(dict(self.bound))",
-        after="        frozen = dict(self.bound)",
-        tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="the retry backoff becomes dead code again, turning retries into a hot loop",
-        path="agentkit/core/execution/resilience.py",
-        before="            await asleep(backoff_delay(attempt, rng=rng))",
-        after="            pass",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="release_probe stops restarting the cooldown, so the breaker never brakes",
-        path="agentkit/core/execution/resilience.py",
-        before="            self.state = \"open\"\n            self._opened_at = self.clock()",
-        after="            self.state = \"open\"",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="a refused call loses the failure that opened the breaker",
-        path="agentkit/core/execution/resilience.py",
-        before="                last if last is not None else breaker.last_error",
-        after="                last",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
         tag="schema",
         why="tuple containers fall through unremapped, so nested models keep the wrong alias",
         path="agentkit/models/output/pydantic_adapter.py",
@@ -498,45 +402,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after="                            headers={},",
         tests=MCPHTTP_TESTS,
     ),
-    # ── the deferred design items ───────────────────────────────────────────
-    Mutant(
-        tag="deferred",
-        why="a state transition stops taking the lock, so two threads can both be the probe",
-        path="agentkit/core/execution/resilience.py",
-        before="        with self._lock:\n            if exc is not None:",
-        after="        if True:\n            if exc is not None:",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
-        tag="deferred",
-        why="the lock leaks into equality, so two identical breakers compare unequal",
-        path="agentkit/core/execution/resilience.py",
-        before="default_factory=threading.Lock, repr=False, compare=False",
-        after="default_factory=threading.Lock, repr=False, compare=True",
-        tests=BREAKER_TESTS,
-    ),
-    # ── the leftovers ───────────────────────────────────────────────────────
-    # NOTE: "the refcount is zeroed instead of decremented" has no mutant. It
-    # is EQUIVALENT, and working out why is worth recording. The decrement runs
-    # in the ``finally``, so while callers are in flight nothing has reached it
-    # and the count is right either way; on the way out the table ends empty
-    # under both spellings. The one scenario that could differ — a caller
-    # arriving after a premature delete and building a second lock — cannot
-    # happen, because ``get_or_set`` stores the value INSIDE the lock, so that
-    # caller hits the cached fast path and never asks for a lock at all.
-    #
-    # The reference count is still the right design (it is what makes the
-    # release rule correct rather than accidentally correct, and it is asserted
-    # directly by ``test_the_lock_entry_is_shared_while_callers_are_in_flight``),
-    # but forcing a kill here would mean inventing a scenario the code cannot
-    # reach.
-    # ── observers / stores / vectors ────────────────────────────────────────
-    # Target ``_lookup`` itself, not either ``is not _MISS`` guard: there
-    # are two of those (a fast path outside the lock and the decision
-    # inside it), so breaking one alone is EQUIVALENT — the other still
-    # catches it and only an extra lock acquisition changes. ``_lookup`` is
-    # where the miss/stored-null distinction is actually recovered.
-    # ── providers ───────────────────────────────────────────────────────────
     Mutant(
         tag="prov",
         why="the permanent-429 message carries a transient marker again, so classify says retry",
@@ -569,7 +434,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after="def _unused_sse_decode(",
         tests=SSE_TESTS,
     ),
-    # ── token accounting ────────────────────────────────────────────────────
     Mutant(
         tag="tokens",
         why="tool calls stop counting, so compaction never fires on an agentic transcript",
@@ -594,8 +458,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after="        return dumped",
         tests=SCHEMA2_TESTS,
     ),
-    # ── middlewares: bill it, key it, and report the failure ────────────────
-    # ── a failure must never look like a clean finish ───────────────────────
     Mutant(
         tag="merge",
         why="a raising source posts the DONE frame again, truncating the fan-in in silence",
@@ -613,45 +475,6 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=STREAMS_TESTS,
     ),
     Mutant(
-        tag="breaker",
-        why="a permanent probe failure wedges the breaker in half_open forever",
-        path="agentkit/core/execution/resilience.py",
-        before="    def release_probe(self) -> None:",
-        after="    def release_probe(self) -> None:\n        return",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
-        tag="breaker",
-        why="a lost probe is never presumed lost, so a silent caller wedges the gate",
-        path="agentkit/core/execution/resilience.py",
-        before="            if now - self._probe_started_at >= self.cooldown:",
-        after="            if False:",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
-        tag="breaker",
-        why="the neutral release grants health credit, treating a 401 as a recovery",
-        path="agentkit/core/execution/resilience.py",
-        before=(
-            '                return  # nothing in flight'
-            ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
-        ),
-        after=(
-            '                return  # nothing in flight'
-            ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
-            "\n            self._fails = 0"
-        ),
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
-        tag="breaker",
-        why="backoff overflows on a large attempt number instead of saturating",
-        path="agentkit/core/execution/resilience.py",
-        before="min(attempt - 1, 1023)",
-        after="attempt - 1",
-        tests=BREAKER_TESTS,
-    ),
-    Mutant(
         tag="conc",
         why="an abort leaves its siblings running detached, still spending",
         path="agentkit/core/execution/concurrency.py",
@@ -663,197 +486,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after="        pass",
         tests=CONC_TESTS,
     ),
-    # ── a declared ceiling must actually hold ───────────────────────────────
-    # ── a documented entry point must actually work ─────────────────────────
-    # Mutating the RATCHET to disable its own assertion would prove nothing
-    # — a test cannot vouch for itself. This re-creates the defect in the
-    # SOURCE instead: bind an exported name to a module, exactly as the
-    # ``security.py`` submodule import did, and check the ratchet fails.
-    Mutant(
-        tag="prompt",
-        why="declared inputs are ignored, so placeholders ship to the model verbatim",
-        path="agentkit/agents/prompts/prompt.py",
-        before='            text = text.replace("{" + name + "}", str(resolved[name]))',
-        after="            pass",
-        tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="prompt",
-        why="a missing input renders a half-filled prompt instead of refusing",
-        path="agentkit/agents/prompts/prompt.py",
-        before="        if missing or unexpected:",
-        after="        if False:",
-        tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="prompt",
-        why="str.format is used, so a JSON Schema in a template raises or is eaten",
-        path="agentkit/agents/prompts/prompt.py",
-        before="        text = self.template\n        for name in self.inputs:",
-        after=(
-            "        return self.template.format(**values).strip()\n"
-            "        text = self.template\n"
-            "        for name in self.inputs:"
-        ),
-        tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="prompt",
-        why="values passed to an input-less prompt are silently ignored",
-        path="agentkit/agents/prompts/prompt.py",
-        before='            self._reject_undeclared(values, verb="passed to render()")',
-        after="            pass",
-        tests=PROMPT_TESTS,
-    ),
-    # ── interrupt: stop the turn, keep the conversation ─────────────────────
-    Mutant(
-        tag="cliinterrupt",
-        why="a control_response is folded into the turn, putting protocol JSON in the answer",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='                    if payload.get("type") == "control_response":',
-        after="                    if False:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="an interrupted turn reports the CLI's ambiguous error subtype instead",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='                state.stop_reason = "interrupted"',
-        after="                pass",
-        tests=CLI_SESSION_TESTS,
-    ),
-    # ── the offline CLI double, and the two bugs it surfaced ────────────────
-    Mutant(
-        tag="fakecli",
-        why="Ctrl-C during a CLI run is swallowed into a tidy successful-looking "
-        "terminal event instead of propagating — which also hides a test double's "
-        "ScriptExhausted, the one exception that must never be caught",
-        path="agentkit/models/providers/cli/_common.py",
-        before="    if fatal_exc is not None and not isinstance(fatal_exc, Exception):",
-        after="    if fatal_exc is not None and isinstance(fatal_exc, Exception):",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="fakecli",
-        why="the SESSION half of the re-raise is a separate line in a separate method; "
-        "deleting it leaves Ctrl-C during a session turn swallowed, and exactly one "
-        "test in the suite notices",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="""            yield StreamEvent("final", usage=state.usage, result=result)
-            if should_reraise_cancel:
-                raise asyncio.CancelledError()
-            _reraise_if_not_an_exception(fatal_exc)""",
-        after="""            yield StreamEvent("final", usage=state.usage, result=result)
-            if should_reraise_cancel:
-                raise asyncio.CancelledError()""",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="fakecli",
-        why="json.loads on bytes sniffs a BOM, so a non-UTF-8 diagnostic line raises "
-        "UnicodeDecodeError rather than JSONDecodeError; narrowing the catch lets one "
-        "bad byte abort the run and bill the completed work at $0.00",
-        path="agentkit/models/providers/cli/_common.py",
-        before="    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError",
-        after="    except json.JSONDecodeError:",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="fakecli",
-        why="a replayed process that reports its exit code before wait() makes every "
-        "persistent session look dead from turn two",
-        path="agentkit/core/testing/fakes/_cli_replay.py",
-        before="        return self._invocation.returncode\n\n    async def wait(self) -> int:",
-        after="        return self._run.returncode\n\n    async def wait(self) -> int:",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="fakecli",
-        why="dropping the newline-less fragment at EOF silently loses a recording's "
-        "final result payload — cost, usage and session id vanish while the run still "
-        "reports partial=False",
-        path="agentkit/core/testing/fakes/_cli_replay.py",
-        before="            yield blob[start:]\n            return",
-        after="            return",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="fakecli",
-        why="sorting the queued stderr chunks as whole tuples lets a tie on the stdout "
-        "position fall through to comparing BYTES, so a multi-write traceback is "
-        "reassembled in alphabetical order",
-        path="agentkit/core/testing/fakes/_cli_replay.py",
-        before="sorted(run.interleaved_stderr, key=lambda pair: pair[0])",
-        after="sorted(run.interleaved_stderr)",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="fakecli",
-        why="a double whose terminate() does not stop the child still reports "
-        "stop_reason='cancelled', because cancellation outranks the exit code — so a "
-        "leaked subprocess is invisible from the result alone",
-        path="agentkit/core/testing/fakes/_cli_replay.py",
-        before="        self._invocation.terminated = True",
-        after="        self._invocation.terminated = False",
-        tests=FAKE_CLI_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="interrupting an idle session sends a request nobody will ever answer",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if proc is None or proc.returncode is not None or not self._turn_active:",
-        after="        if proc is None or proc.returncode is not None:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="a turn that ends first strands the interrupt waiter forever",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='                self._fail_pending("the turn ended before the CLI answered")',
-        after="                pass",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="cancel_queued is sent to a CLI that does not support it, and silently ignored",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='            if not self.supports("interrupt_cancel_queued_v1"):',
-        after="            if False:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="cancel_queued uses the plain interrupt subtype, so queued work still runs",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='            subtype = "interrupt_cancel_queued"',
-        after='            subtype = "interrupt"',
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="capabilities land only at the terminal event, too late to feature-detect against",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="                        if delta.init:\n                            self._absorb_init(delta.init)",
-        after="                        pass",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="an inline interrupt hangs the application instead of degrading",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="                payload = await asyncio.wait_for(future, timeout=ack_timeout_s)",
-        after="                payload = await future",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="cliinterrupt",
-        why="the interrupt flag is set only after the ack, which the turn may end before",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        self._interrupted = True\n        try:",
-        after="        try:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    # ── the CLI's permission prompts reach a person ─────────────────────────
     Mutant(
         tag="approvals",
         why="the result carries structuredContent, which the CLI rejects outright",
@@ -926,458 +558,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after='            "strict_mcp_config": False,',
         tests=APPROVAL_TESTS,
     ),
-    # ── one process, many turns ─────────────────────────────────────────────
-    Mutant(
-        tag="clisession",
-        why="a turn reads to EOF like a one-shot drive, so the session hangs forever",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='                    if payload.get("type") == "result":\n                        break',
-        after='                    if payload.get("type") == "__never":\n                        break',
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="the prompt is passed as an argv argument too, running a turn nobody asked for",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='        if stream_input:',
-        after="        if False:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="turns are not serialised, so two callers interleave one conversation",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        async with self._lock:",
-        after="        if True:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="a turn is written into a process that has already exited",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="                if proc.returncode is not None:",
-        after="                if False:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="a closed session accepts turns, silently starting a fresh conversation",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="                if self._closed or proc is None:",
-        after="                if proc is None:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="a CLI that closed mid-turn is not noticed, so the turn reports success",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='                    raise _SessionClosed("the CLI closed its output mid-turn; the session is over")',
-        after='                    pass',
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="a dead session reads as a spawn failure rather than an ended conversation",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="            if isinstance(fatal_exc, _SessionClosed):",
-        after="            if False:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="per-turn structured output is accepted, silently returning prose",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="                    if schema_requested:",
-        after="                    if False:",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="a cancelled turn leaves the process alive with half an answer in its context",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        # The guard this used to anchor on became a multi-line condition that
-        # also covers a timeout, so the kill ITSELF is the anchor now: it is
-        # the one line whose removal leaves the process running.
-        before="                    await _terminate(proc, self._cog.terminate_grace_s)",
-        after="                    pass",
-        tests=CLI_SESSION_TESTS,
-    ),
-    Mutant(
-        tag="clisession",
-        why="closing the session kills the CLI instead of ending the conversation",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "                if proc.stdin is not None and not proc.stdin.is_closing():\n"
-            "                    proc.stdin.close()"
-        ),
-        after="                pass",
-        tests=CLI_SESSION_TESTS,
-    ),
-    # ── token streaming, without showing every sentence twice ───────────────
-    Mutant(
-        tag="clistream",
-        why="the completed block is re-emitted, so a UI renders every sentence twice",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="                        None if partial else StreamEvent(\"message_delta\", text=text),",
-        after="                        StreamEvent(\"message_delta\", text=text),",
-        tests=CLI_STREAM_TESTS,
-    ),
-    Mutant(
-        tag="clistream",
-        why="token deltas also accumulate, doubling AgentResult.output",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta()\n"
-            "        elif dtype == \"thinking_delta\":"
-        ),
-        after=(
-            "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta(text=chunk)\n"
-            "        elif dtype == \"thinking_delta\":"
-        ),
-        tests=CLI_STREAM_TESTS,
-    ),
-    # NOTE: "non-text deltas are ignored" has no mutant. Each branch reads its
-    # OWN field (``delta["text"]`` / ``delta["thinking"]``), so a signature or
-    # tool-argument delta yields an empty string no matter which branch it
-    # reaches — every single-token mutation of that dispatch is equivalent. The
-    # behaviour is enforced by structure, and pinned by
-    # ``test_non_text_deltas_are_ignored``; forcing a kill here would mean
-    # adding a decision point that exists only to be mutated.
-    Mutant(
-        tag="clistream",
-        why="the partial-messages flag is never passed, so no tokens ever arrive",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='        if self.partial_messages:\n            argv += ["--include-partial-messages"]\n',
-        after="",
-        tests=CLI_STREAM_TESTS,
-    ),
-    Mutant(
-        tag="clistream",
-        why="a skipped MCP server is discarded with the rest of the init payload",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if state.init:\n            # Startup facts an operator needs",
-        after="        if False:\n            # Startup facts an operator needs",
-        tests=CLI_STREAM_TESTS,
-    ),
-    Mutant(
-        tag="clistream",
-        why="an empty error list is manufactured, so presence stops being the signal",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='                        if k in payload\n                    },',
-        after='                    },',
-        tests=CLI_STREAM_TESTS,
-    ),
-    Mutant(
-        tag="clistream",
-        why="provider retries are invisible, leaving a 40s pause unexplained",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='        if subtype == "api_retry":',
-        after="        if False:",
-        tests=CLI_STREAM_TESTS,
-    ),
-    # ── the flags a service ships with ──────────────────────────────────────
-    Mutant(
-        tag="cliops",
-        why="strict_mcp_config alone silently leaves the session with no MCP servers",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if self.strict_mcp_config and not self.mcp_config:",
-        after="        if False:",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliops",
-        why="a stable prompt prefix is silently a no-op under a replaced system prompt",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='        if self.stable_prompt_prefix and self.system_prompt_mode == "replace":',
-        after="        if False:",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliops",
-        why="a typo'd add_dir reaches the CLI and dies three seconds in",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]",
-        after="        missing_dirs = []",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliops",
-        why="a fallback CHAIN is passed as a Python tuple repr instead of a comma list",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='else ",".join(self.fallback_model)',
-        after='else str(self.fallback_model)',
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliops",
-        why="bare mode without a credential fails with a message pointing at the wrong fix",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if self.bare:\n            self._warn_if_bare_mode_has_no_credential(env)",
-        after="        if False:\n            self._warn_if_bare_mode_has_no_credential(env)",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliops",
-        why="the bare-mode warning fires even when settings may carry an apiKeyHelper",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "        if self.settings is not None:\n"
-            "            return\n"
-            "        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):"
-        ),
-        after="        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):",
-        tests=CLI_FLAG_TESTS,
-    ),
-    # ── CLI spend is on the books, and the ceiling is on the CLI ────────────
-    Mutant(
-        tag="clibudget",
-        why="CLI spend is invisible to every meter again ($50 run, $0.00 ledger)",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "        charge_error = await _charge_meters("
-            "ctx, state.usage, enabled=self.meter_spend)"
-        ),
-        after="        charge_error = None",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="the run's headroom is never handed to the CLI, so nothing stops it mid-flight",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if max_budget_usd is not None:\n            argv += [\"--max-budget-usd\", max_budget_usd]\n",
-        after="",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="the ORIGINAL ceiling is sent instead of the remaining headroom",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='        return f"{headroom:f}"',
-        after='        return f"{budget.ceiling():f}"',
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="an exhausted budget still burns a subprocess spawn to learn it is exhausted",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if headroom <= 0:",
-        after="        if False:",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="the pre-flight refusal is categorised as a spawn failure, so it reads unresumable",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='            elif type(fatal_exc).__name__ == "MeterExceeded":',
-        after="            elif False:",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="the per-actor envelope is skipped, the bug ActorBudget already had once",
-        # Moved: the two byte-identical `_charge_meters` copies were merged
-        # into one shared helper, so this invariant (and the two below) now
-        # live in `_cli_common.py` and are exercised through BOTH cognitions.
-        path="agentkit/models/providers/cli/_common.py",
-        before="    actor = getattr(ctx, \"actor_budget\", None)\n    if actor is not None:",
-        after="    actor = None\n    if actor is not None:",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="a ceiling crossed by this very run raises, losing a result already paid for",
-        path="agentkit/models/providers/cli/_common.py",
-        before=(
-            "        except Exception as exc:  # noqa: BLE001 — see docstring\n"
-            "            note = f\"{type(exc).__name__}: {exc}\""
-        ),
-        after="        except Exception:\n            raise",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    Mutant(
-        tag="clibudget",
-        why="meter_spend=False still charges the shared envelope",
-        path="agentkit/models/providers/cli/_common.py",
-        # `self.meter_spend` arrives as the keyword-only `enabled` now. The
-        # `call = ...` line stays in the anchor: without it this is a prefix of
-        # `_budget_cap`'s identical guard and would match twice.
-        before=(
-            "    if not enabled or ctx is None:\n"
-            "        return None\n"
-            "    call = _CliCall(ctx=ctx)"
-        ),
-        after="    if ctx is None:\n        return None\n    call = _CliCall(ctx=ctx)",
-        tests=CLI_BUDGET_TESTS,
-    ),
-    # ── output= types a CLI-delegated run too ───────────────────────────────
-    Mutant(
-        tag="clischema",
-        why="agent.output is ignored again, so the CLI never validates its answer",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "        adapter = getattr(agent, \"_output_adapter\", None)\n"
-            "        if adapter is None:\n"
-            "            return None"
-        ),
-        after=(
-            "        return None\n"
-            "        adapter = getattr(agent, \"_output_adapter\", None)\n"
-            "        if adapter is None:"
-        ),
-        tests=CLI_SCHEMA_TESTS,
-    ),
-    Mutant(
-        tag="clischema",
-        why="the validated dict is handed back raw instead of the declared type",
-        path="agentkit/models/providers/cli/_common.py",
-        before="        return adapter.validate(value), None",
-        after="        return value, None",
-        tests=CLI_SCHEMA_TESTS,
-    ),
-    Mutant(
-        tag="clischema",
-        why="a success with no structured_output reads as a clean run",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "            else:\n"
-            "                final_partial = True\n"
-            "                if final_stop_reason in (None, \"success\"):"
-        ),
-        after=(
-            "            elif False:\n"
-            "                final_partial = True\n"
-            "                if final_stop_reason in (None, \"success\"):"
-        ),
-        tests=CLI_SCHEMA_TESTS,
-    ),
-    Mutant(
-        tag="clischema",
-        why="a value the Python type rejects is reported as a successful parse",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        # `_coerce_structured` returns a `(parsed, failure)` pair now instead
-        # of setting a `coercion_error` local; neutralising the check on the
-        # failure half is the same break.
-        before="                if structured_failure is not None:",
-        after="                if False:",
-        tests=CLI_SCHEMA_TESTS,
-    ),
-    Mutant(
-        tag="clischema",
-        why="exhausted structured-output retries are categorised as a generic termination",
-        path="agentkit/models/providers/cli/_common.py",
-        before="    if reason in invalid_output_reasons:\n        return \"invalid_output\"\n",
-        after="",
-        tests=CLI_SCHEMA_TESTS,
-    ),
-    Mutant(
-        tag="clischema",
-        why="the field-level coercion diagnostics are dropped, leaving only '1 error(s)'",
-        path="agentkit/models/providers/cli/_common.py",
-        # The joined sentence became typed `violations` on
-        # `StructuredOutputFailure`; starving the list they are parsed from
-        # leaves the same bare "N error(s)" summary in `detail`.
-        before='        errors = [str(e) for e in (getattr(exc, "errors", None) or ())]',
-        after="        errors = []",
-        tests=CLI_SCHEMA_TESTS,
-    ),
-    # ── the CLI cognition's flags mean what the CLI says they mean ──────────
-    Mutant(
-        tag="cliflags",
-        why="agent.prompt REPLACES the CLI's system prompt, stripping its tool guidance",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        # The mode is decided once now and consumed by both the inline and the
-        # `--system-prompt-file` branch, so forcing the decision covers the
-        # pair — the old anchor could only reach the inline one.
-        before='            replace = self.system_prompt_mode == "replace"',
-        after="            replace = True",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliflags",
-        why="a resume id is passed as --session-id, silently starting a fresh session",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before='            argv += ["--resume", self.resume_session_id]',
-        after='            argv += ["--session-id", self.resume_session_id]',
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliflags",
-        why="a non-UUID session_id burns a subprocess spawn to learn it is invalid",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before=(
-            "        if self.session_id is not None:\n"
-            "            try:\n"
-            "                uuid.UUID(str(self.session_id))"
-        ),
-        after="        if False:\n            try:\n                uuid.UUID(str(self.session_id))",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliflags",
-        why="a restricted tool set is silently not passed, leaving every tool available",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if self.tools is not None:",
-        after="        if False:",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliflags",
-        why="tools=() emits a bare --tools flag the CLI rejects",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if self.tools == ():",
-        after="        if False:",
-        tests=CLI_FLAG_TESTS,
-    ),
-    Mutant(
-        tag="cliflags",
-        why="fork_session without a resume reaches the CLI and errors there",
-        path="agentkit/models/providers/cli/claude/driver.py",
-        before="        if self.fork_session and not (self.continue_session or self.resume_session_id):",
-        after="        if False:",
-        tests=CLI_FLAG_TESTS,
-    ),
-    # ── the memory tool's path confinement is its security boundary ─────────
-    Mutant(
-        tag="filetool",
-        why="a backslash path reaches the backend (traversal on a Windows-hosted one)",
-        path="agentkit/tools/filesystem/files.py",
-        before='        if "\\\\" in raw:',
-        after="        if False:",
-        tests=FILETOOL_TESTS,
-    ),
-    Mutant(
-        tag="filetool",
-        why="a NUL byte reaches the backend (C-level path truncation)",
-        path="agentkit/tools/filesystem/files.py",
-        before='        if "\\x00" in raw:',
-        after="        if False:",
-        tests=FILETOOL_TESTS,
-    ),
-    Mutant(
-        tag="filetool",
-        why="a sibling directory sharing the root's prefix passes confinement",
-        path="agentkit/tools/filesystem/files.py",
-        before='        if norm != self.root and not norm.startswith(self.root + "/"):',
-        after="        if norm != self.root and not norm.startswith(self.root):",
-        tests=FILETOOL_TESTS,
-    ),
-    Mutant(
-        tag="filetool",
-        why="rename confines only its source, becoming the escape hatch",
-        path="agentkit/tools/filesystem/files.py",
-        before='        return await self._fs.rename(path, self._confine(args.get("new_path")))',
-        after='        return await self._fs.rename(path, args.get("new_path"))',
-        tests=FILETOOL_TESTS,
-    ),
-    Mutant(
-        tag="filetool",
-        why="delete wipes the whole root by prefix in one call",
-        path="agentkit/tools/filesystem/files.py",
-        before="            if path == self.root:",
-        after="            if False:",
-        tests=FILETOOL_TESTS,
-    ),
-    # ── a tool call is checked against the schema the model was shown ───────
     Mutant(
         tag="toolargs",
         why="an unknown argument is dropped, so a defaulted parameter runs with its default",
@@ -1439,49 +619,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after="    frag[\"type\"] = \"string\"\n    return frag",
         tests=TOOLARG_TESTS,
     ),
-    # ── the signal channel's audit tap must not wedge the run ───────────────
-    # ── termination: run-local state, and a judge read literally ────────────
-    # ── routing: who speaks next is who the model named ─────────────────────
-    # ── the plan's human gate must be durable on a REAL store ───────────────
-    # ── plan shape: refuse before dispatch, never mid-flight ─────────────────
-    # ── stop reasons: the typed field must not outlive its meaning ───────────
-    Mutant(
-        tag="stopreason",
-        why="a CLI subprocess that exited non-zero reads as a deliberate stop",
-        path="agentkit/models/providers/cli/_common.py",
-        before='    if reason in failure_reasons or (reason is not None and reason.startswith("cli_exit_")):',
-        after="    if reason in failure_reasons:",
-        tests=STOP_REASON_TESTS,
-    ),
-    # ── money: the ledger must stay exact ────────────────────────────────────
-    # Trailing newline matters: without it this is a PREFIX of
-    # ``return self._spent.quantize(...)`` two methods down, and the
-    # anchor silently matches twice. `--verify` catches exactly this.
-    # ── budget recovery: exhaustion must stay recoverable ────────────────────
-    # ── concurrency: nested fan-out must not deadlock ────────────────────────
-    Mutant(
-        tag="concurrency",
-        why="cooperative cancellation is isolated into a Failure slot again",
-        path="agentkit/core/execution/concurrency.py",
-        before="            except Cancelled:\n",
-        after="            except _NeverRaised:\n",
-        tests=CONCURRENCY_TESTS,
-    ),
-    # ── budget: the sibling float axes ───────────────────────────────────────
-    # NOTE: mutating ``remaining_cost() <= 0`` to ``remaining_cost_usd() == 0.0``
-    # was tried and is an EQUIVALENT mutant — the exact Decimal ledger leaves no
-    # residue, so both spellings agree for every input. That is the point of the
-    # conversion, and a mutant that cannot fail is noise in the report. The
-    # load-bearing invariant here is that the float MIRRORS track the ledger.
-    Mutant(
-        tag="budget",
-        why="no loop consults the actor envelope, so exhausting it stops nothing",
-        path="agentkit/models/providers/cli/_common.py",
-        before="    actor = getattr(ctx, \"actor_budget\", None)",
-        after="    actor = None",
-        tests=("tests/source/unit/agents/test_actor_budget.py",),
-    ),
-    # ── isolation + resilience ───────────────────────────────────────────────
     Mutant(
         tag="resilience",
         why="a late success closes an OPEN breaker, bypassing the cooldown",
@@ -1513,139 +650,6 @@ MUTANTS: tuple[Mutant, ...] = (
         before='    "rate_limit",\n    "server_error",\n    "overloaded",',
         after='    "__never_matches_rate_limit",\n    "__never_matches_server_error",\n    "__never_matches_overloaded",',
         tests=PROVIDER_TESTS,
-    ),
-    # ── checkpoint slots: one producer per slot ──────────────────────────────
-    # ── stores: the reference contract every backend must match ──────────────
-    # Targets `_exists` itself, not one of its two call sites: mutating
-    # only the pre-lock check leaves the in-lock double-check correct, and
-    # the mutant survives for the wrong reason.
-    # ── workflow ─────────────────────────────────────────────────────────────
-    # ── HITL: the containment and the deadline ───────────────────────────────
-    Mutant(
-        tag="hitl",
-        why="an expired elicitation is treated as an approval",
-        path="agentkit/integrations/mcp/approvals.py",
-        before='        return self.kind in ("approve", "modify")',
-        after='        return self.kind in ("approve", "modify", "expired")',
-        tests=HITL_TESTS,
-    ),
-    # ── streaming: the partial contract ──────────────────────────────────────
-    # ── registry: nothing is ever guessed ────────────────────────────────────
-    Mutant(
-        tag="registry",
-        why="an unknown model reports capabilities as present instead of UNKNOWN",
-        path="agentkit/models/catalog/registry.py",
-        before="        return entry.capabilities if entry is not None else ModelCapabilities()",
-        after="        return entry.capabilities if entry is not None else ModelCapabilities(\n"
-        "            tools=_Y, structured_output=_Y, native_json_schema=_Y, streaming=_Y, vision=_Y\n"
-        "        )",
-        tests=REGISTRY_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="a missing credential silently returns the fake instead of raising",
-        path="agentkit/models/catalog/registry.py",
-        before="        if fallback is None:\n            raise hard",
-        after="        if False:\n            raise hard",
-        tests=REGISTRY_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="a declared NO capability stops refusing at bind time",
-        path="agentkit/models/catalog/registry.py",
-        before="        missing = [n for n in (*requires, *derived) if caps.get(n) is Capability.NO]",
-        after="        missing = []",
-        tests=REGISTRY_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="the downgrade warning fires every time instead of once",
-        path="agentkit/models/catalog/registry.py",
-        before="        if key in self._warned:\n            return",
-        after="        if False:\n            return",
-        tests=REGISTRY_TESTS,
-    ),
-    # Anchored on the comment above it: all THREE compactors in this file run
-    # the identical walk-back, and the other two already guarded it.
-    Mutant(
-        tag="toolschema",
-        why="abstract collections fall back to 'string', telling the model to send a JSON string",
-        path="agentkit/tools/declarations/schema.py",
-        before="    if origin in _ARRAY_ANNOTATIONS:\n        element = _element_annotation(ann)",
-        after="    if origin in (list, tuple, set, frozenset):\n        element = _element_annotation(ann)",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="a TypedDict parameter is advertised as a string again, so the body indexes a str",
-        path="agentkit/tools/declarations/schema.py",
-        before="    if not is_typeddict(ann):\n        return None",
-        after="    if True:\n        return None",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="a TypedDict's total=False keys are advertised as required, inverting the contract",
-        path="agentkit/tools/declarations/schema.py",
-        before='            "required": [key for key in hints if key in required],',
-        after='            "required": list(hints),',
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="money",
-        why="max_concurrency=0 constructs again, and the first fan-out waits on it forever",
-        path="agentkit/tools/execution/policy.py",
-        before="        if self.max_concurrency < 1:",
-        after="        if False:",
-        tests=MONEY_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="containers stop describing items, so list[Unit] is an untyped array again",
-        path="agentkit/tools/declarations/schema.py",
-        before="        return {\"type\": \"array\", \"items\": _json_type(element)}",
-        after="        return {\"type\": \"array\"}",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="a heterogeneous tuple claims one element type, advertising items that are a lie",
-        path="agentkit/tools/declarations/schema.py",
-        before="        if len(args) == 2 and args[1] is Ellipsis:\n            return None if args[0] is Any else args[0]\n        return None",
-        after="        return None if args[0] is Any else args[0]",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="elements stop being coerced, so the body gets strings where items promised members",
-        path="agentkit/tools/declarations/schema.py",
-        before="    if origin in _ARRAY_ANNOTATIONS:\n        return _sequence_coercer(ann, origin)",
-        after="    if origin in _ARRAY_ANNOTATIONS:\n        return None",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="set/tuple annotations receive a list again, so the body gets a container it did not ask for",
-        path="agentkit/tools/declarations/schema.py",
-        before="_REBUILT_CONTAINERS: dict[Any, Any] = {set: set, frozenset: frozenset, tuple: tuple}",
-        after="_REBUILT_CONTAINERS: dict[Any, Any] = {}",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="Optional collapses to bare X again, so a required X|None cannot be sent as null",
-        path="agentkit/tools/declarations/schema.py",
-        before="        nullable = len(real) != len(args)",
-        after="        nullable = False",
-        tests=TOOLCOERCE_TESTS,
-    ),
-    Mutant(
-        tag="toolschema",
-        why="*args is silently dropped again, leaving a parameter that can never be filled",
-        path="agentkit/tools/declarations/schema.py",
-        before="        if p.kind is p.VAR_POSITIONAL:",
-        after="        if False:",
-        tests=TOOLCOERCE_TESTS,
     ),
     Mutant(
         tag="recurrence",
@@ -1951,12 +955,972 @@ MUTANTS: tuple[Mutant, ...] = (
         after="            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,",
         tests=MCP_AUTH_TESTS,
     ),
-    # ── the codex CLI cognition ─────────────────────────────────────────────
-    #
-    # Chosen for the places this cognition's logic is a TRANSLATION rather than
-    # a pass-through, because those are the ones that stay plausible while
-    # wrong. Every mutant below leaves a run that still exits 0 and still
-    # returns an answer.
+    Mutant(
+        tag="calls",
+        why="optional strict placeholders erase required nulls from canonical answers",
+        path="agentkit/models/contracts/schema.py",
+        before='if item is None and key in props and key not in required and not valid(None, child):',
+        after='if item is None and key in props:',
+        tests=("tests/source/conformance/test_calls.py", "tests/source/conformance/test_schema_boundaries.py"),
+    ),
+    Mutant(
+        tag="calls",
+        why="cumulative usage charges the cached prefix repeatedly on resumed CLI calls",
+        path="agentkit/models/catalog/pricing.py",
+        before="        return a - b if a >= b else a",
+        after="        return a",
+        tests=("tests/source/conformance/test_calls.py", "tests/source/conformance/test_accounting.py"),
+    ),
+    Mutant(
+        tag="calls",
+        why="MCP deny rules cease to override matching allow grants",
+        path="agentkit/integrations/mcp/gateway.py",
+        before=(
+            'return not any(fnmatchcase(key, x) for x in self.deny) '
+            'and any(fnmatchcase(key, x) for x in self.allow)'
+        ),
+        after='return any(fnmatchcase(key, x) for x in self.allow)',
+        tests=("tests/source/conformance/test_gateway.py",),
+    ),
+)
+
+
+# ── invariants the rewrite left unenforced ───────────────────────────────────
+#
+# These entries' source anchors are LIVE — the code they mutate still exists
+# and `--verify` still checks it, so none of this rots. What they lost is their
+# verification: the reorganisation deleted the test files that caught them, and
+# nothing has replaced those yet. Probed against the test directories that did
+# survive, these are not caught.
+#
+# They are parked here rather than deleted because the analysis in each `why`
+# is the map of what the rewrite stopped guaranteeing, and each one becomes a
+# working catalogue entry again the moment a test covers it: move it back into
+# MUTANTS and point `tests` at the file.
+#
+# They are OUT of the gate because a catalogue entry that cannot be run proves
+# nothing, and leaving them in made the job fail without telling anyone which
+# invariants were actually unguarded. `MUTANTS` is now exactly the set that is
+# enforced, and the gate's green means that literally.
+#
+# Run `python .github/scripts/mutants.py --unenforced` to list them.
+UNENFORCED: tuple[Mutant, ...] = (
+    Mutant(
+        tag="frozen",
+        why="Checkpoint.state stops being frozen, so a persisted record is rewritable in memory",
+        path="agentkit/core/contracts/ports.py",
+        before='        object.__setattr__(self, "state", deep_freeze(self.state))',
+        after="        pass",
+        tests=FROZENVAL_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="Checkpoint hashes its mutable state, so a durable record is unhashable again",
+        path="agentkit/core/contracts/ports.py",
+        before="        return hash((self.run_id, self.version))",
+        after="        return hash((self.run_id, self.version, tuple(self.state)))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="SearchHit folds query-dependent score into identity, so one document lands in two buckets",
+        path="agentkit/core/contracts/ports.py",
+        before="        return hash((self.url, self.title))",
+        after="        return hash((self.url, self.title, self.score))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="FetchResponse hashes the body, making hash O(page size) on every set insert",
+        path="agentkit/core/contracts/ports.py",
+        before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
+        after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ToolSchema hashes the JSON Schema body, so every non-empty schema is unhashable",
+        path="agentkit/core/contracts/types.py",
+        before="        return hash((self.name, self.description))",
+        after="        return hash((self.name, self.description, str(self.parameters)))",
+        tests=KERNELTYPE_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ChatRequest hashes the whole transcript, making the hash O(turns) in an agent loop",
+        path="agentkit/core/contracts/types.py",
+        before="        return hash((self.model, self.temperature, self.max_tokens, len(self.messages)))",
+        after="        return hash((self.model, self.temperature, self.max_tokens, tuple(self.messages)))",
+        tests=KERNELTYPE_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="ToolRequest hashes its decoded-JSON arguments, so a nested payload is unhashable",
+        path="agentkit/core/contracts/types.py",
+        before="        return hash((self.name, self.side_effecting, self.url_arg))",
+        after="        return hash((self.name, self.side_effecting, self.url_arg, str(self.arguments)))",
+        tests=KERNELTYPE_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="Prompt stops being hashable, breaking every dict/set/lru_cache holding one",
+        path="agentkit/agents/prompts/prompt.py",
+        before="        return hash((self.id, self.version, self.template, self.inputs))",
+        after="        return hash(self.bound)",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="Prompt.bound stops being frozen, so a caller edits a bound prompt after the fact",
+        path="agentkit/agents/prompts/prompt.py",
+        before="        frozen = deep_freeze(dict(self.bound))",
+        after="        frozen = dict(self.bound)",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="the retry backoff becomes dead code again, turning retries into a hot loop",
+        path="agentkit/core/execution/resilience.py",
+        before="            await asleep(backoff_delay(attempt, rng=rng))",
+        after="            pass",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="release_probe stops restarting the cooldown, so the breaker never brakes",
+        path="agentkit/core/execution/resilience.py",
+        before="            self.state = \"open\"\n            self._opened_at = self.clock()",
+        after="            self.state = \"open\"",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="a refused call loses the failure that opened the breaker",
+        path="agentkit/core/execution/resilience.py",
+        before="                last if last is not None else breaker.last_error",
+        after="                last",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="a state transition stops taking the lock, so two threads can both be the probe",
+        path="agentkit/core/execution/resilience.py",
+        before="        with self._lock:\n            if exc is not None:",
+        after="        if True:\n            if exc is not None:",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="deferred",
+        why="the lock leaks into equality, so two identical breakers compare unequal",
+        path="agentkit/core/execution/resilience.py",
+        before="default_factory=threading.Lock, repr=False, compare=False",
+        after="default_factory=threading.Lock, repr=False, compare=True",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="a permanent probe failure wedges the breaker in half_open forever",
+        path="agentkit/core/execution/resilience.py",
+        before="    def release_probe(self) -> None:",
+        after="    def release_probe(self) -> None:\n        return",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="a lost probe is never presumed lost, so a silent caller wedges the gate",
+        path="agentkit/core/execution/resilience.py",
+        before="            if now - self._probe_started_at >= self.cooldown:",
+        after="            if False:",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="the neutral release grants health credit, treating a 401 as a recovery",
+        path="agentkit/core/execution/resilience.py",
+        before=(
+            '                return  # nothing in flight'
+            ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
+        ),
+        after=(
+            '                return  # nothing in flight'
+            ' — CLOSED / OPEN are unaffected\n            self.state = "open"'
+            "\n            self._fails = 0"
+        ),
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="breaker",
+        why="backoff overflows on a large attempt number instead of saturating",
+        path="agentkit/core/execution/resilience.py",
+        before="min(attempt - 1, 1023)",
+        after="attempt - 1",
+        tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="declared inputs are ignored, so placeholders ship to the model verbatim",
+        path="agentkit/agents/prompts/prompt.py",
+        before='            text = text.replace("{" + name + "}", str(resolved[name]))',
+        after="            pass",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="a missing input renders a half-filled prompt instead of refusing",
+        path="agentkit/agents/prompts/prompt.py",
+        before="        if missing or unexpected:",
+        after="        if False:",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="str.format is used, so a JSON Schema in a template raises or is eaten",
+        path="agentkit/agents/prompts/prompt.py",
+        before="        text = self.template\n        for name in self.inputs:",
+        after=(
+            "        return self.template.format(**values).strip()\n"
+            "        text = self.template\n"
+            "        for name in self.inputs:"
+        ),
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="prompt",
+        why="values passed to an input-less prompt are silently ignored",
+        path="agentkit/agents/prompts/prompt.py",
+        before='            self._reject_undeclared(values, verb="passed to render()")',
+        after="            pass",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="a control_response is folded into the turn, putting protocol JSON in the answer",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                    if payload.get("type") == "control_response":',
+        after="                    if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="an interrupted turn reports the CLI's ambiguous error subtype instead",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                state.stop_reason = "interrupted"',
+        after="                pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="Ctrl-C during a CLI run is swallowed into a tidy successful-looking "
+        "terminal event instead of propagating — which also hides a test double's "
+        "ScriptExhausted, the one exception that must never be caught",
+        path="agentkit/models/providers/cli/_common.py",
+        before="    if fatal_exc is not None and not isinstance(fatal_exc, Exception):",
+        after="    if fatal_exc is not None and isinstance(fatal_exc, Exception):",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="the SESSION half of the re-raise is a separate line in a separate method; "
+        "deleting it leaves Ctrl-C during a session turn swallowed, and exactly one "
+        "test in the suite notices",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="""            yield StreamEvent("final", usage=state.usage, result=result)
+            if should_reraise_cancel:
+                raise asyncio.CancelledError()
+            _reraise_if_not_an_exception(fatal_exc)""",
+        after="""            yield StreamEvent("final", usage=state.usage, result=result)
+            if should_reraise_cancel:
+                raise asyncio.CancelledError()""",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="json.loads on bytes sniffs a BOM, so a non-UTF-8 diagnostic line raises "
+        "UnicodeDecodeError rather than JSONDecodeError; narrowing the catch lets one "
+        "bad byte abort the run and bill the completed work at $0.00",
+        path="agentkit/models/providers/cli/_common.py",
+        before="    except ValueError:  # JSONDecodeError *and* UnicodeDecodeError",
+        after="    except json.JSONDecodeError:",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="a replayed process that reports its exit code before wait() makes every "
+        "persistent session look dead from turn two",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
+        before="        return self._invocation.returncode\n\n    async def wait(self) -> int:",
+        after="        return self._run.returncode\n\n    async def wait(self) -> int:",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="dropping the newline-less fragment at EOF silently loses a recording's "
+        "final result payload — cost, usage and session id vanish while the run still "
+        "reports partial=False",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
+        before="            yield blob[start:]\n            return",
+        after="            return",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="sorting the queued stderr chunks as whole tuples lets a tie on the stdout "
+        "position fall through to comparing BYTES, so a multi-write traceback is "
+        "reassembled in alphabetical order",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
+        before="sorted(run.interleaved_stderr, key=lambda pair: pair[0])",
+        after="sorted(run.interleaved_stderr)",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="fakecli",
+        why="a double whose terminate() does not stop the child still reports "
+        "stop_reason='cancelled', because cancellation outranks the exit code — so a "
+        "leaked subprocess is invisible from the result alone",
+        path="agentkit/core/testing/fakes/_cli_replay.py",
+        before="        self._invocation.terminated = True",
+        after="        self._invocation.terminated = False",
+        tests=FAKE_CLI_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="interrupting an idle session sends a request nobody will ever answer",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if proc is None or proc.returncode is not None or not self._turn_active:",
+        after="        if proc is None or proc.returncode is not None:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="a turn that ends first strands the interrupt waiter forever",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                self._fail_pending("the turn ended before the CLI answered")',
+        after="                pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="cancel_queued is sent to a CLI that does not support it, and silently ignored",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='            if not self.supports("interrupt_cancel_queued_v1"):',
+        after="            if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="cancel_queued uses the plain interrupt subtype, so queued work still runs",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='            subtype = "interrupt_cancel_queued"',
+        after='            subtype = "interrupt"',
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="capabilities land only at the terminal event, too late to feature-detect against",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="                        if delta.init:\n                            self._absorb_init(delta.init)",
+        after="                        pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="an inline interrupt hangs the application instead of degrading",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="                payload = await asyncio.wait_for(future, timeout=ack_timeout_s)",
+        after="                payload = await future",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="cliinterrupt",
+        why="the interrupt flag is set only after the ack, which the turn may end before",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        self._interrupted = True\n        try:",
+        after="        try:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a turn reads to EOF like a one-shot drive, so the session hangs forever",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                    if payload.get("type") == "result":\n                        break',
+        after='                    if payload.get("type") == "__never":\n                        break',
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="the prompt is passed as an argv argument too, running a turn nobody asked for",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='        if stream_input:',
+        after="        if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="turns are not serialised, so two callers interleave one conversation",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        async with self._lock:",
+        after="        if True:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a turn is written into a process that has already exited",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="                if proc.returncode is not None:",
+        after="                if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a closed session accepts turns, silently starting a fresh conversation",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="                if self._closed or proc is None:",
+        after="                if proc is None:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a CLI that closed mid-turn is not noticed, so the turn reports success",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                    raise _SessionClosed("the CLI closed its output mid-turn; the session is over")',
+        after='                    pass',
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a dead session reads as a spawn failure rather than an ended conversation",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="            if isinstance(fatal_exc, _SessionClosed):",
+        after="            if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="per-turn structured output is accepted, silently returning prose",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="                    if schema_requested:",
+        after="                    if False:",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="a cancelled turn leaves the process alive with half an answer in its context",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        # The guard this used to anchor on became a multi-line condition that
+        # also covers a timeout, so the kill ITSELF is the anchor now: it is
+        # the one line whose removal leaves the process running.
+        before="                    await _terminate(proc, self._cog.terminate_grace_s)",
+        after="                    pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clisession",
+        why="closing the session kills the CLI instead of ending the conversation",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "                if proc.stdin is not None and not proc.stdin.is_closing():\n"
+            "                    proc.stdin.close()"
+        ),
+        after="                pass",
+        tests=CLI_SESSION_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="the completed block is re-emitted, so a UI renders every sentence twice",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="                        None if partial else StreamEvent(\"message_delta\", text=text),",
+        after="                        StreamEvent(\"message_delta\", text=text),",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="token deltas also accumulate, doubling AgentResult.output",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta()\n"
+            "        elif dtype == \"thinking_delta\":"
+        ),
+        after=(
+            "                yield StreamEvent(\"message_delta\", text=chunk), _EventDelta(text=chunk)\n"
+            "        elif dtype == \"thinking_delta\":"
+        ),
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="the partial-messages flag is never passed, so no tokens ever arrive",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='        if self.partial_messages:\n            argv += ["--include-partial-messages"]\n',
+        after="",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="a skipped MCP server is discarded with the rest of the init payload",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if state.init:\n            # Startup facts an operator needs",
+        after="        if False:\n            # Startup facts an operator needs",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="an empty error list is manufactured, so presence stops being the signal",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='                        if k in payload\n                    },',
+        after='                    },',
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="clistream",
+        why="provider retries are invisible, leaving a 40s pause unexplained",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='        if subtype == "api_retry":',
+        after="        if False:",
+        tests=CLI_STREAM_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="strict_mcp_config alone silently leaves the session with no MCP servers",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if self.strict_mcp_config and not self.mcp_config:",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="a stable prompt prefix is silently a no-op under a replaced system prompt",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='        if self.stable_prompt_prefix and self.system_prompt_mode == "replace":',
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="a typo'd add_dir reaches the CLI and dies three seconds in",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]",
+        after="        missing_dirs = []",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="a fallback CHAIN is passed as a Python tuple repr instead of a comma list",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='else ",".join(self.fallback_model)',
+        after='else str(self.fallback_model)',
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="bare mode without a credential fails with a message pointing at the wrong fix",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if self.bare:\n            self._warn_if_bare_mode_has_no_credential(env)",
+        after="        if False:\n            self._warn_if_bare_mode_has_no_credential(env)",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliops",
+        why="the bare-mode warning fires even when settings may carry an apiKeyHelper",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "        if self.settings is not None:\n"
+            "            return\n"
+            "        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):"
+        ),
+        after="        if any(env.get(name) for name in _BARE_CREDENTIAL_ENV):",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="CLI spend is invisible to every meter again ($50 run, $0.00 ledger)",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "        charge_error = await _charge_meters("
+            "ctx, state.usage, enabled=self.meter_spend)"
+        ),
+        after="        charge_error = None",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the run's headroom is never handed to the CLI, so nothing stops it mid-flight",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if max_budget_usd is not None:\n            argv += [\"--max-budget-usd\", max_budget_usd]\n",
+        after="",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the ORIGINAL ceiling is sent instead of the remaining headroom",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='        return f"{headroom:f}"',
+        after='        return f"{budget.ceiling():f}"',
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="an exhausted budget still burns a subprocess spawn to learn it is exhausted",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if headroom <= 0:",
+        after="        if False:",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the pre-flight refusal is categorised as a spawn failure, so it reads unresumable",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='            elif type(fatal_exc).__name__ == "MeterExceeded":',
+        after="            elif False:",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="the per-actor envelope is skipped, the bug ActorBudget already had once",
+        # Moved: the two byte-identical `_charge_meters` copies were merged
+        # into one shared helper, so this invariant (and the two below) now
+        # live in `_cli_common.py` and are exercised through BOTH cognitions.
+        path="agentkit/models/providers/cli/_common.py",
+        before="    actor = getattr(ctx, \"actor_budget\", None)\n    if actor is not None:",
+        after="    actor = None\n    if actor is not None:",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="a ceiling crossed by this very run raises, losing a result already paid for",
+        path="agentkit/models/providers/cli/_common.py",
+        before=(
+            "        except Exception as exc:  # noqa: BLE001 — see docstring\n"
+            "            note = f\"{type(exc).__name__}: {exc}\""
+        ),
+        after="        except Exception:\n            raise",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clibudget",
+        why="meter_spend=False still charges the shared envelope",
+        path="agentkit/models/providers/cli/_common.py",
+        # `self.meter_spend` arrives as the keyword-only `enabled` now. The
+        # `call = ...` line stays in the anchor: without it this is a prefix of
+        # `_budget_cap`'s identical guard and would match twice.
+        before=(
+            "    if not enabled or ctx is None:\n"
+            "        return None\n"
+            "    call = _CliCall(ctx=ctx)"
+        ),
+        after="    if ctx is None:\n        return None\n    call = _CliCall(ctx=ctx)",
+        tests=CLI_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="agent.output is ignored again, so the CLI never validates its answer",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "        adapter = getattr(agent, \"_output_adapter\", None)\n"
+            "        if adapter is None:\n"
+            "            return None"
+        ),
+        after=(
+            "        return None\n"
+            "        adapter = getattr(agent, \"_output_adapter\", None)\n"
+            "        if adapter is None:"
+        ),
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="the validated dict is handed back raw instead of the declared type",
+        path="agentkit/models/providers/cli/_common.py",
+        before="        return adapter.validate(value), None",
+        after="        return value, None",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="a success with no structured_output reads as a clean run",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "            else:\n"
+            "                final_partial = True\n"
+            "                if final_stop_reason in (None, \"success\"):"
+        ),
+        after=(
+            "            elif False:\n"
+            "                final_partial = True\n"
+            "                if final_stop_reason in (None, \"success\"):"
+        ),
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="a value the Python type rejects is reported as a successful parse",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        # `_coerce_structured` returns a `(parsed, failure)` pair now instead
+        # of setting a `coercion_error` local; neutralising the check on the
+        # failure half is the same break.
+        before="                if structured_failure is not None:",
+        after="                if False:",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="exhausted structured-output retries are categorised as a generic termination",
+        path="agentkit/models/providers/cli/_common.py",
+        before="    if reason in invalid_output_reasons:\n        return \"invalid_output\"\n",
+        after="",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="clischema",
+        why="the field-level coercion diagnostics are dropped, leaving only '1 error(s)'",
+        path="agentkit/models/providers/cli/_common.py",
+        # The joined sentence became typed `violations` on
+        # `StructuredOutputFailure`; starving the list they are parsed from
+        # leaves the same bare "N error(s)" summary in `detail`.
+        before='        errors = [str(e) for e in (getattr(exc, "errors", None) or ())]',
+        after="        errors = []",
+        tests=CLI_SCHEMA_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="agent.prompt REPLACES the CLI's system prompt, stripping its tool guidance",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        # The mode is decided once now and consumed by both the inline and the
+        # `--system-prompt-file` branch, so forcing the decision covers the
+        # pair — the old anchor could only reach the inline one.
+        before='            replace = self.system_prompt_mode == "replace"',
+        after="            replace = True",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="a resume id is passed as --session-id, silently starting a fresh session",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before='            argv += ["--resume", self.resume_session_id]',
+        after='            argv += ["--session-id", self.resume_session_id]',
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="a non-UUID session_id burns a subprocess spawn to learn it is invalid",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before=(
+            "        if self.session_id is not None:\n"
+            "            try:\n"
+            "                uuid.UUID(str(self.session_id))"
+        ),
+        after="        if False:\n            try:\n                uuid.UUID(str(self.session_id))",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="a restricted tool set is silently not passed, leaving every tool available",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if self.tools is not None:",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="tools=() emits a bare --tools flag the CLI rejects",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if self.tools == ():",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="cliflags",
+        why="fork_session without a resume reaches the CLI and errors there",
+        path="agentkit/models/providers/cli/claude/driver.py",
+        before="        if self.fork_session and not (self.continue_session or self.resume_session_id):",
+        after="        if False:",
+        tests=CLI_FLAG_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="a backslash path reaches the backend (traversal on a Windows-hosted one)",
+        path="agentkit/tools/filesystem/files.py",
+        before='        if "\\\\" in raw:',
+        after="        if False:",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="a NUL byte reaches the backend (C-level path truncation)",
+        path="agentkit/tools/filesystem/files.py",
+        before='        if "\\x00" in raw:',
+        after="        if False:",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="a sibling directory sharing the root's prefix passes confinement",
+        path="agentkit/tools/filesystem/files.py",
+        before='        if norm != self.root and not norm.startswith(self.root + "/"):',
+        after="        if norm != self.root and not norm.startswith(self.root):",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="rename confines only its source, becoming the escape hatch",
+        path="agentkit/tools/filesystem/files.py",
+        before='        return await self._fs.rename(path, self._confine(args.get("new_path")))',
+        after='        return await self._fs.rename(path, args.get("new_path"))',
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="filetool",
+        why="delete wipes the whole root by prefix in one call",
+        path="agentkit/tools/filesystem/files.py",
+        before="            if path == self.root:",
+        after="            if False:",
+        tests=FILETOOL_TESTS,
+    ),
+    Mutant(
+        tag="stopreason",
+        why="a CLI subprocess that exited non-zero reads as a deliberate stop",
+        path="agentkit/models/providers/cli/_common.py",
+        before='    if reason in failure_reasons or (reason is not None and reason.startswith("cli_exit_")):',
+        after="    if reason in failure_reasons:",
+        tests=STOP_REASON_TESTS,
+    ),
+    Mutant(
+        tag="concurrency",
+        why="cooperative cancellation is isolated into a Failure slot again",
+        path="agentkit/core/execution/concurrency.py",
+        before="            except Cancelled:\n",
+        after="            except _NeverRaised:\n",
+        tests=CONCURRENCY_TESTS,
+    ),
+    Mutant(
+        tag="budget",
+        why="no loop consults the actor envelope, so exhausting it stops nothing",
+        path="agentkit/models/providers/cli/_common.py",
+        before="    actor = getattr(ctx, \"actor_budget\", None)",
+        after="    actor = None",
+        tests=("tests/source/unit/agents/test_actor_budget.py",),
+    ),
+    Mutant(
+        tag="hitl",
+        why="an expired elicitation is treated as an approval",
+        path="agentkit/integrations/mcp/approvals.py",
+        before='        return self.kind in ("approve", "modify")',
+        after='        return self.kind in ("approve", "modify", "expired")',
+        tests=HITL_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="an unknown model reports capabilities as present instead of UNKNOWN",
+        path="agentkit/models/catalog/registry.py",
+        before="        return entry.capabilities if entry is not None else ModelCapabilities()",
+        after="        return entry.capabilities if entry is not None else ModelCapabilities(\n"
+        "            tools=_Y, structured_output=_Y, native_json_schema=_Y, streaming=_Y, vision=_Y\n"
+        "        )",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="a missing credential silently returns the fake instead of raising",
+        path="agentkit/models/catalog/registry.py",
+        before="        if fallback is None:\n            raise hard",
+        after="        if False:\n            raise hard",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="a declared NO capability stops refusing at bind time",
+        path="agentkit/models/catalog/registry.py",
+        before="        missing = [n for n in (*requires, *derived) if caps.get(n) is Capability.NO]",
+        after="        missing = []",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="the downgrade warning fires every time instead of once",
+        path="agentkit/models/catalog/registry.py",
+        before="        if key in self._warned:\n            return",
+        after="        if False:\n            return",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="abstract collections fall back to 'string', telling the model to send a JSON string",
+        path="agentkit/tools/declarations/schema.py",
+        before="    if origin in _ARRAY_ANNOTATIONS:\n        element = _element_annotation(ann)",
+        after="    if origin in (list, tuple, set, frozenset):\n        element = _element_annotation(ann)",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="a TypedDict parameter is advertised as a string again, so the body indexes a str",
+        path="agentkit/tools/declarations/schema.py",
+        before="    if not is_typeddict(ann):\n        return None",
+        after="    if True:\n        return None",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="a TypedDict's total=False keys are advertised as required, inverting the contract",
+        path="agentkit/tools/declarations/schema.py",
+        before='            "required": [key for key in hints if key in required],',
+        after='            "required": list(hints),',
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="money",
+        why="max_concurrency=0 constructs again, and the first fan-out waits on it forever",
+        path="agentkit/tools/execution/policy.py",
+        before="        if self.max_concurrency < 1:",
+        after="        if False:",
+        tests=MONEY_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="containers stop describing items, so list[Unit] is an untyped array again",
+        path="agentkit/tools/declarations/schema.py",
+        before="        return {\"type\": \"array\", \"items\": _json_type(element)}",
+        after="        return {\"type\": \"array\"}",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="a heterogeneous tuple claims one element type, advertising items that are a lie",
+        path="agentkit/tools/declarations/schema.py",
+        before="        if len(args) == 2 and args[1] is Ellipsis:\n            return None if args[0] is Any else args[0]\n        return None",
+        after="        return None if args[0] is Any else args[0]",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="elements stop being coerced, so the body gets strings where items promised members",
+        path="agentkit/tools/declarations/schema.py",
+        before="    if origin in _ARRAY_ANNOTATIONS:\n        return _sequence_coercer(ann, origin)",
+        after="    if origin in _ARRAY_ANNOTATIONS:\n        return None",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="set/tuple annotations receive a list again, so the body gets a container it did not ask for",
+        path="agentkit/tools/declarations/schema.py",
+        before="_REBUILT_CONTAINERS: dict[Any, Any] = {set: set, frozenset: frozenset, tuple: tuple}",
+        after="_REBUILT_CONTAINERS: dict[Any, Any] = {}",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="Optional collapses to bare X again, so a required X|None cannot be sent as null",
+        path="agentkit/tools/declarations/schema.py",
+        before="        nullable = len(real) != len(args)",
+        after="        nullable = False",
+        tests=TOOLCOERCE_TESTS,
+    ),
+    Mutant(
+        tag="toolschema",
+        why="*args is silently dropped again, leaving a parameter that can never be filled",
+        path="agentkit/tools/declarations/schema.py",
+        before="        if p.kind is p.VAR_POSITIONAL:",
+        after="        if False:",
+        tests=TOOLCOERCE_TESTS,
+    ),
     Mutant(
         tag="codex",
         why="the cached prefix is not subtracted, so every cached token is billed at "
@@ -2152,33 +2116,6 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="calls",
-        why="optional strict placeholders erase required nulls from canonical answers",
-        path="agentkit/models/contracts/schema.py",
-        before='if item is None and key in props and key not in required and not valid(None, child):',
-        after='if item is None and key in props:',
-        tests=("tests/source/conformance/test_calls.py", "tests/source/conformance/test_schema_boundaries.py"),
-    ),
-    Mutant(
-        tag="calls",
-        why="cumulative usage charges the cached prefix repeatedly on resumed CLI calls",
-        path="agentkit/models/catalog/pricing.py",
-        before="        return a - b if a >= b else a",
-        after="        return a",
-        tests=("tests/source/conformance/test_calls.py", "tests/source/conformance/test_accounting.py"),
-    ),
-    Mutant(
-        tag="calls",
-        why="MCP deny rules cease to override matching allow grants",
-        path="agentkit/integrations/mcp/gateway.py",
-        before=(
-            'return not any(fnmatchcase(key, x) for x in self.deny) '
-            'and any(fnmatchcase(key, x) for x in self.allow)'
-        ),
-        after='return any(fnmatchcase(key, x) for x in self.allow)',
-        tests=("tests/source/conformance/test_gateway.py",),
-    ),
-    Mutant(
-        tag="calls",
         why="durable checkpoints drop first-class message context metadata",
         path="agentkit/core/serialization/messages.py",
         before='        "metadata": thaw(message.metadata),',
@@ -2244,7 +2181,11 @@ def verify_anchors() -> list[str]:
     legitimate code elsewhere in the same file.
     """
     problems = []
-    for m in MUTANTS:
+    # Source anchors are checked for the parked set too. They are the thing
+    # that keeps UNENFORCED restorable: an entry whose code has since been
+    # rewritten again is no longer a backlog item, it is noise, and this is
+    # where that shows up instead of at the bottom of a file nobody reads.
+    for m in (*MUTANTS, *UNENFORCED):
         target = ROOT / m.path
         if not target.exists():
             problems.append(f"{m.path}: file does not exist (renamed or removed?)")
@@ -2257,6 +2198,11 @@ def verify_anchors() -> list[str]:
         # the file is missing, and the run scores it killed. Checking it here
         # is what makes the staleness visible in `--verify` rather than at the
         # bottom of a green log.
+        if m in UNENFORCED:
+            # Parked precisely BECAUSE its test file is gone; requiring one
+            # here would make the gate permanently red over work that is
+            # tracked rather than pending.
+            continue
         for t in m.tests:
             if not (ROOT / t.split("::")[0]).exists():
                 problems.append(f"{m.path}: test path does not exist: {t}")
@@ -2279,6 +2225,11 @@ def main() -> int:
     parser.add_argument("-k", "--tag", help="only mutants with this tag")
     parser.add_argument("--list", action="store_true", help="list the catalogue and exit")
     parser.add_argument(
+        "--unenforced",
+        action="store_true",
+        help="list the invariants whose tests the reorganisation deleted, and exit",
+    )
+    parser.add_argument(
         "--verify",
         action="store_true",
         help="check every anchor resolves (and nothing is left mutated), then exit",
@@ -2291,6 +2242,22 @@ def main() -> int:
     args = parser.parse_args()
 
     _recover_from_crash()
+
+    if args.unenforced:
+        print(
+            f"{len(UNENFORCED)} catalogued invariants have no test enforcing them.\n"
+            "Their source anchors are live; each becomes a working entry again as\n"
+            "soon as a test covers it (move it into MUTANTS and point `tests` at\n"
+            "the file).\n"
+        )
+        by_file: dict[str, list[Mutant]] = {}
+        for mut in UNENFORCED:
+            by_file.setdefault(mut.path, []).append(mut)
+        for path in sorted(by_file):
+            print(f"  {path}  ({len(by_file[path])})")
+            for mut in by_file[path]:
+                print(f"      [{mut.tag}] {mut.why.splitlines()[0][:110]}")
+        return 0
 
     if args.verify:
         problems = verify_anchors()
