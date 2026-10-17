@@ -15,6 +15,7 @@ import httpx  # type: ignore[import-not-found]  # pyright: ignore[reportMissingI
 
 from agentkit.core.contracts.errors import ProviderAuthError as _KernelProviderAuthError
 from agentkit.core.serialization._json import JSONDecodeError
+from agentkit.core.serialization._json import dumps as _json_dumps
 from agentkit.core.serialization._json import loads as _json_loads
 
 
@@ -50,7 +51,28 @@ def raise_if_error_frame(event: dict[str, Any]) -> None:
     message = err.get("message") or "provider reported an error mid-stream"
     code = err.get("code")
     detail = f" (code {code})" if code is not None else ""
-    raise ProviderError(f"provider stream error [{kind}]{detail}: {message}")
+    # The frame travels as ``body`` as well as in the message. Those are two
+    # different channels with two different readers, and only one of them was
+    # being fed:
+    #
+    #   message -> ``kernel.resilience.classify``, substring-based, decides
+    #              TRANSIENT vs PERMANENT for the retry layer.
+    #   body    -> ``contracts.failures.classify``, which json-decodes it and
+    #              reads the STRUCTURED ``error.type`` / ``error.code`` to pick
+    #              a FailureClass.
+    #
+    # Without the body the second reader got nothing: an in-band frame arrives
+    # inside a 200, so it carries NO status, and a FailureClass mapping that
+    # can only key on status is blind to it. That is exactly the moment it
+    # matters — ``overloaded_error`` and ``timeout_error`` are what providers
+    # report this way, and both are retryable.
+    #
+    # The message is unchanged, so the substring contract ``_permanent_message``
+    # protects is untouched; this is purely additive.
+    raise ProviderError(
+        f"provider stream error [{kind}]{detail}: {message}",
+        body=_json_dumps(event, default=repr),
+    )
 
 
 def _make_client(timeout: float) -> httpx.AsyncClient:
