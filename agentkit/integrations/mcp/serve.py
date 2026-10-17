@@ -610,7 +610,23 @@ class McpServerSpec:
         self.port = self._transport.port
 
     async def check_ready(self, *, timeout_s: float = 5) -> dict[str, Any]:
-        """Probe the protocol endpoint and tool catalogue before a model starts."""
+        """Probe the protocol endpoint and tool catalogue before a model starts.
+
+        Every way the reply can be unusable raises, because the one thing this
+        must never do is report READY for a server whose tools a model will
+        never see. An empty catalogue is indistinguishable from a working
+        server that has no tools, so the caller gets a `KeyError` on
+        ``ready["tools"]`` somewhere else entirely, long after the probe that
+        was supposed to catch it said yes.
+
+        Three ways, and the first two used to pass:
+
+        - ``text/event-stream`` with no ``data:`` frame fell back to the string
+          ``"{}"``, which parses, carries no ``error``, and yields ``{}``.
+        - a 200 with neither ``error`` nor ``result`` yielded ``{}`` the same
+          way, via ``payload.get("result") or {}``.
+        - a JSON-RPC ``error``, which was already refused.
+        """
         if self.url is None:
             raise ValueError("readiness probing requires the HTTP transport")
         import httpx
@@ -622,13 +638,24 @@ class McpServerSpec:
             })
             response.raise_for_status()
             if "text/event-stream" in response.headers.get("content-type", ""):
-                data = next((line[6:] for line in response.text.splitlines() if line.startswith("data: ")), "{}")
+                data = next((line[6:] for line in response.text.splitlines() if line.startswith("data: ")), None)
+                if data is None:
+                    raise RuntimeError(
+                        "MCP readiness protocol error: the reply was declared text/event-stream "
+                        "but carried no `data:` frame"
+                    )
                 payload = json.loads(data)
             else:
                 payload = response.json()
             if payload.get("error"):
                 raise RuntimeError("MCP readiness protocol error")
-            return dict(payload.get("result") or {})
+            result = payload.get("result")
+            if not isinstance(result, dict):
+                raise RuntimeError(
+                    "MCP readiness protocol error: the reply carried neither an `error` nor a "
+                    f"`result` object (got {type(result).__name__})"
+                )
+            return dict(result)
 
     async def stop(self) -> None:
         """Release the port and delete the config file. Idempotent, and safe on

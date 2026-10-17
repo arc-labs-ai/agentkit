@@ -346,7 +346,6 @@ def test_codex_text_accumulation_is_monotone(payloads: list[dict]) -> None:
 
 _CLAUDE_TERMINAL = {"result"}
 _CODEX_TERMINAL = {"turn.completed", "turn.failed", "error"}
-_LEGACY_TERMINAL = {"task_complete", "error"}
 
 
 @given(CLAUDE_PAYLOADS, st.booleans())
@@ -370,11 +369,22 @@ def test_codex_only_a_terminal_payload_ends_a_turn(payload: dict) -> None:
 
 @given(LEGACY_PAYLOADS)
 @_SETTINGS
-def test_legacy_only_a_terminal_payload_ends_a_turn(payload: dict) -> None:
-    for _event, delta in _codex_parse(payload):
-        if delta.saw_terminal:
-            msg = payload.get("msg") or {}
-            assert msg.get("type") in _LEGACY_TERMINAL
+def test_every_legacy_payload_is_refused_as_an_unsupported_binary(payload: dict) -> None:
+    """agentkit reads one codex vocabulary, the current one. The superseded
+    ``{"id", "msg"}`` shape is not translated — but it IS still recognised, and
+    that is the property worth a law rather than one example.
+
+    An unrecognised payload is ignored by design, so a parser that merely stopped
+    knowing this shape would leave an old binary exiting 0 with no events, no
+    answer and no stop reason. The refusal has to be total: EVERY payload of the
+    old shape must end the turn and say why, because the first one we see is the
+    only one we are guaranteed to see.
+    """
+    results = _codex_parse(payload)
+    assert results, "a legacy payload was ignored rather than refused"
+    assert any(delta.saw_terminal for _event, delta in results)
+    assert all(delta.stop_reason == "cli_version_unsupported" for _event, delta in results)
+    assert all("Upgrade the `codex` binary" in (delta.error or "") for _event, delta in results)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

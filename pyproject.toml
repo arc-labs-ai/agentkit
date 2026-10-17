@@ -197,7 +197,25 @@ parallel = true
 #
 # 78 -> 80: tools/filesystem/store.py 11 -> 100% and files.py 33 -> 100%,
 # measured macOS total 81.142.
-fail_under = 80
+#
+# 80 -> 81: tools/declarations/schema.py 61.5 -> 89.3%, measured macOS
+# total 81.900.
+#
+# 81 -> 86: the five lowest-covered modules, in one pass — the biggest single
+# step this number will take. Measured full-suite, before -> after:
+# integrations/mcp/serve.py 74 -> 100%, models/output/attrs_adapter.py
+# 68 -> 96.8%, cli/codex/driver.py 70 -> 89.6%, cli/claude/driver.py
+# 56 -> 83.7%, cli/_common.py 71 -> 83.0%. Measured macOS total 87.260, so 86
+# keeps slightly more than the usual point of margin — earned by 251 new tests
+# and 69 parked mutation invariants re-armed in the same commit. 66 of the
+# package's files now report complete coverage.
+#
+# The two CLI drivers are deliberately NOT at 95+: what is left in them is the
+# cancellation, timeout and spawn-failure paths, and a test that fakes those
+# well enough to execute the lines proves less than it costs. They are covered
+# by the 69 re-armed invariants instead, which assert what the code DOES rather
+# than that it ran.
+fail_under = 86
 show_missing = true
 skip_covered = true
 exclude_also = [

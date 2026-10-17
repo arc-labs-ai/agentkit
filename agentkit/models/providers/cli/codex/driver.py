@@ -160,6 +160,12 @@ _CODEX_FAILURE_REASONS = frozenset(
         # The CLI wrote a top-level ``{"type":"error"}`` — a transport or
         # stream failure it could not attribute to the turn.
         "cli_reported_error",
+        # The binary on PATH emits the superseded ``{"id", "msg"}`` event
+        # stream. ``failed`` and not ``parse_failed``: the JSON was fine and we
+        # understood it perfectly well — we decline to support it. Its own
+        # reason because it is the one failure here with a one-line fix the
+        # caller can act on without reading any code.
+        "cli_version_unsupported",
         # ``{"type":"turn.failed"}`` — the turn itself failed. Kept distinct
         # from ``cli_reported_error`` because the message differs in kind: one
         # is "the model run went wrong", the other is "the pipe broke".
@@ -1891,20 +1897,24 @@ def _decode_structured(text: str) -> tuple[Any, str | None]:
 class _ItemLog:
     """Per-turn bookkeeping the payload parser needs but a payload cannot hold.
 
-    Both vocabularies emit an item's text more than once — ``item.updated``
-    then ``item.completed``, or a run of ``agent_message_delta`` then the whole
-    ``agent_message``. A consumer must see each character exactly once, and the
+    The CLI emits an item's text more than once — ``item.updated`` then
+    ``item.completed``. A consumer must see each character exactly once, and the
     fold must count it exactly once, and neither is derivable from the payload
     in front of you.
 
     ``emitted`` is characters already yielded as ``message_delta`` per item id;
     ``called`` is the item ids a ``tool_call`` has already gone out for, so a
     ``begin``/``end`` pair produces one call and one result rather than two
-    calls.
+    calls. ``refused_vocabulary`` makes the unsupported-binary refusal fire
+    ONCE: it is a property of the process, not of the line that revealed it, and
+    a stream of forty old-shaped payloads should not produce forty identical
+    errors in ``evals["cli_errors"]``.
     """
 
     emitted: dict[str, int] = field(default_factory=dict)
     called: set[str] = field(default_factory=set)
+    refused_vocabulary: bool = False
+    anonymous_calls: int = 0
 
     def suffix(self, key: str, text: str) -> str:
         """The part of ``text`` not yet emitted for ``key``, marking it emitted.
@@ -1925,6 +1935,24 @@ class _ItemLog:
             return False
         self.called.add(key)
         return True
+
+    def anonymous_id(self) -> str:
+        """A positional id for a tool item that arrived without one.
+
+        An id-less item cannot be tracked ACROSS phases — with no id there is
+        nothing to recognise the completion of a started item by — so this
+        deliberately hands out a fresh id each time rather than pretending to
+        remember. Within one ``_paired`` call the id is shared by the
+        ``tool_call`` and its ``tool_result``, which is the pairing that
+        actually has to hold.
+
+        The alternative, and what used to happen, is strictly worse: an empty
+        id made every id-less item collapse onto the single dedupe key
+        ``"call:"``, so the FIRST one emitted a call and every later one was
+        silently dropped — two parallel shell commands reported as one.
+        """
+        self.anonymous_calls += 1
+        return f"call_{self.anonymous_calls - 1}"
 
 
 @dataclass(slots=True)
@@ -2040,7 +2068,36 @@ def _events_from_payload(payload: dict[str, Any], log: _ItemLog) -> list[tuple[S
     caller's loop is a plain ``for``.
     """
     if "msg" in payload and isinstance(payload.get("msg"), dict):
-        return _legacy_events(payload, log)
+        if log.refused_vocabulary:
+            # Already said, once, with a terminal delta. Every later line of the
+            # same stream is the same news.
+            return []
+        log.refused_vocabulary = True
+        # The pre-``thread.*`` vocabulary. There is ONE parser here, for the
+        # shape the current ``codex`` emits, and this branch exists only to
+        # refuse the other one LOUDLY.
+        #
+        # That is the whole reason to keep looking for a shape we do not
+        # support: an unrecognised payload is ignored by design (forward-compat
+        # is "don't crash"), so without this an old binary exits 0, emits no
+        # events and returns an empty answer with no stop reason. Silent,
+        # plausible and wrong is the worst outcome available at a subprocess
+        # boundary — and "upgrade codex" is a fix the message can just state.
+        return [
+            (
+                StreamEvent("step", text="error:unsupported codex event vocabulary"),
+                _EventDelta(
+                    is_error=True,
+                    stop_reason="cli_version_unsupported",
+                    error=(
+                        'this `codex` emits the superseded {"id", "msg"} event stream; '
+                        "agentkit reads the `thread.*` / `turn.*` vocabulary only. "
+                        "Upgrade the `codex` binary on PATH."
+                    ),
+                    saw_terminal=True,
+                ),
+            )
+        ]
     return _thread_events(payload, log)
 
 
@@ -2233,8 +2290,14 @@ def _paired(
     is a completion to render; several of them walk a list.
     """
     out: list[tuple[StreamEvent | None, _EventDelta]] = []
-    call = ToolCall(id=item_id, name=name, arguments={k: v for k, v in arguments.items() if v is not None})
-    if log.first_call(f"call:{item_id}"):
+    # An id-less item gets a positional one, and then must NOT go through the
+    # cross-phase dedupe: its key would be the same ``"call:"`` as every other
+    # id-less item in the turn, which is what silently dropped all but the
+    # first of them.
+    anonymous = not item_id
+    call_id = log.anonymous_id() if anonymous else item_id
+    call = ToolCall(id=call_id, name=name, arguments={k: v for k, v in arguments.items() if v is not None})
+    if anonymous or log.first_call(f"call:{item_id}"):
         out.append((StreamEvent("tool_call", tool_call=call), _EventDelta()))
     if phase == "completed":
         out.append((StreamEvent("tool_result", tool_call=call, tool_result=result()), _EventDelta()))
@@ -2302,176 +2365,6 @@ def _usage_from(raw: Any) -> ProviderUsage:
         output_tokens=_as_int(raw.get("output_tokens")),
         cache_read_tokens=cached,
     )
-
-
-def _legacy_events(payload: dict[str, Any], log: _ItemLog) -> list[tuple[StreamEvent | None, _EventDelta]]:
-    """The older vocabulary: ``{"id": …, "msg": {"type": …}}``.
-
-    Mapped onto the same ``_EventDelta`` as the thread events so everything
-    downstream — the fold, the stop-reason priority, the cost, the terminal
-    event — has exactly one implementation. Only the reading differs.
-    """
-    msg = _as_dict(payload.get("msg"))
-    mtype = str(msg.get("type") or "")
-    # The legacy stream keys tool events on ``call_id``; the outer ``id`` is a
-    # per-event sequence number and would make every begin/end pair look like
-    # two unrelated items.
-    call_id = str(msg.get("call_id") or payload.get("id") or "")
-
-    if mtype == "session_configured":
-        sid = msg.get("session_id")
-        model = msg.get("model")
-        return [
-            (
-                None,
-                _EventDelta(
-                    session_id=str(sid) if sid else None,
-                    model=str(model) if model else None,
-                ),
-            )
-        ]
-
-    if mtype in ("task_started", "turn_aborted"):
-        return []
-
-    if mtype == "agent_message_delta":
-        chunk = str(msg.get("delta") or "")
-        if not chunk:
-            return []
-        # Tracked so the whole ``agent_message`` that follows emits only what
-        # the deltas did not — the same suffix rule the thread vocabulary uses,
-        # reached from the other direction.
-        key = "msg:legacy"
-        log.emitted[key] = log.emitted.get(key, 0) + len(chunk)
-        return [(StreamEvent("message_delta", text=chunk), _EventDelta())]
-
-    if mtype == "agent_message":
-        text = str(msg.get("message") or "")
-        chunk = log.suffix("msg:legacy", text)
-        # Reset: the legacy stream can carry several assistant messages in one
-        # turn, and the next one starts its own delta run from zero.
-        log.emitted.pop("msg:legacy", None)
-        ev = StreamEvent("message_delta", text=chunk) if chunk else None
-        return [(ev, _EventDelta(text=text, message_done=True))]
-
-    if mtype == "agent_reasoning_delta":
-        chunk = str(msg.get("delta") or "")
-        if not chunk:
-            return []
-        key = "reason:legacy"
-        log.emitted[key] = log.emitted.get(key, 0) + len(chunk)
-        return [(StreamEvent("message_delta", text=chunk), _EventDelta())]
-
-    if mtype == "agent_reasoning":
-        text = str(msg.get("text") or "")
-        chunk = log.suffix("reason:legacy", text)
-        log.emitted.pop("reason:legacy", None)
-        ev = StreamEvent("message_delta", text=chunk) if chunk else None
-        return [(ev, _EventDelta(thinking=text))]
-
-    if mtype == "exec_command_begin":
-        command = msg.get("command")
-        return _paired(
-            item_id=call_id,
-            phase="started",
-            log=log,
-            name="shell",
-            arguments={"command": command, "cwd": msg.get("cwd")},
-            result=lambda: "",
-        )
-
-    if mtype == "exec_command_end":
-        return _paired(
-            item_id=call_id,
-            phase="completed",
-            log=log,
-            name="shell",
-            arguments={},
-            result=lambda: _command_result(
-                {
-                    "aggregated_output": (str(msg.get("stdout") or "") + str(msg.get("stderr") or "")),
-                    "exit_code": msg.get("exit_code"),
-                }
-            ),
-        )
-
-    if mtype == "mcp_tool_call_begin":
-        invocation = _as_dict(msg.get("invocation"))
-        server = str(invocation.get("server") or msg.get("server") or "")
-        tool = str(invocation.get("tool") or msg.get("tool") or "")
-        return _paired(
-            item_id=call_id,
-            phase="started",
-            log=log,
-            name=f"mcp__{server}__{tool}" if server or tool else "mcp",
-            arguments=dict(invocation.get("arguments") or _as_dict(msg.get("arguments"))),
-            result=lambda: "",
-        )
-
-    if mtype == "mcp_tool_call_end":
-        return _paired(
-            item_id=call_id,
-            phase="completed",
-            log=log,
-            name="mcp",
-            arguments={},
-            result=lambda: _flatten_content(msg.get("result")),
-        )
-
-    if mtype == "patch_apply_begin":
-        return _paired(
-            item_id=call_id,
-            phase="started",
-            log=log,
-            name="apply_patch",
-            arguments={"changes": sorted(_as_dict(msg.get("changes")))},
-            result=lambda: "",
-        )
-
-    if mtype == "patch_apply_end":
-        return _paired(
-            item_id=call_id,
-            phase="completed",
-            log=log,
-            name="apply_patch",
-            arguments={},
-            result=lambda: str(msg.get("stdout") or ""),
-        )
-
-    if mtype == "token_count":
-        info = _as_dict(msg.get("info"))
-        total = info.get("total_token_usage") if isinstance(info, dict) else None
-        # Cumulative, not per-call: the LAST one is the turn's total, and
-        # ``fold`` replaces rather than adds for exactly this reason.
-        return [(None, _EventDelta(usage=_usage_from(total)))]
-
-    if mtype == "error":
-        message = str(msg.get("message") or "the CLI reported an error")
-        return [
-            (
-                StreamEvent("step", text=f"error:{message}"),
-                _EventDelta(
-                    is_error=True,
-                    stop_reason="cli_reported_error",
-                    error=message,
-                    # A reported error is a stream that ended by SAYING so,
-                    # which is not the same as one that stopped mid-sentence.
-                    saw_terminal=True,
-                ),
-            )
-        ]
-
-    if mtype == "task_complete":
-        # The LEGACY vocabulary's end-of-turn marker — the counterpart of
-        # ``turn.completed`` on the current one. It carries nothing this
-        # cognition needs (the text arrived on ``agent_message``, the usage on
-        # ``token_count``), which is why it used to return an empty list. It
-        # still has to say the stream ENDED: without that, a complete run on an
-        # older ``codex`` reads as ``malformed_output``, and a version-compat
-        # feature would have become a version-compat bug.
-        return [(None, _EventDelta(saw_terminal=True))]
-
-    return []
 
 
 __all__ = [

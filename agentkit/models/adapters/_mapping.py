@@ -24,6 +24,32 @@ def coerce_tool_args(raw: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {"_raw": raw}
 
 
+def tool_call_id(raw: Any, index: int) -> str:
+    """A tool call's id, falling back to its POSITION when the provider omits one.
+
+    Never to the tool NAME. That is the fallback that looks reasonable and is
+    wrong: two parallel calls to the same tool would share an id. Measured, two
+    id-less calls to `search` produced `["search", "search"]`.
+
+    An empty id is the same failure with one fewer step — every id-less call in
+    a turn collides with every other.
+
+    Why a collision is not cosmetic: the id is what pairs a RESULT back to its
+    call, and every transport keys on it — `tool_call_id` on an OpenAI `tool`
+    message, `tool_use_id` on an Anthropic `tool_result` block, the per-item
+    dedupe in the codex driver. One id for two calls means one tool's answer
+    silently overwrites the other's and the model is handed a result it never
+    asked for, attributed to a call it did not make. Nothing raises.
+
+    Shared by every provider's tool-call parsing, like `coerce_tool_args`
+    beside it, so the fallback is identical everywhere. It was not: this
+    function exists because four of the six construction sites each invented
+    their own rule, and three of them collided.
+    """
+    text = str(raw or "").strip()
+    return text or f"call_{index}"
+
+
 def result_to_delta(res: LLMResult) -> Delta:
     """Wrap a complete `LLMResult` as a single terminal `Delta` — the one-item stream a non-incremental
     adapter yields so it satisfies the streaming primitive; `collect` reproduces the result.
@@ -68,12 +94,12 @@ def _extract_tool_calls(raw: Any) -> tuple[ToolCall, ...]:
     """Parse the OpenAI/OpenRouter tool-call shape into `ToolCall`s (duck-typed, best-effort)."""
     tcs = _get(raw, "tool_calls")
     out: list[ToolCall] = []
-    for tc in tcs or ():
+    for index, tc in enumerate(tcs or ()):
         fn = _get(tc, "function") or tc
         name = _get(fn, "name") or ""
         out.append(
             ToolCall(
-                id=str(_get(tc, "id") or name),
+                id=tool_call_id(_get(tc, "id"), index),
                 name=name,
                 arguments=coerce_tool_args(_get(fn, "arguments")),
             )

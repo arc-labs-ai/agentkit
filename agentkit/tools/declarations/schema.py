@@ -14,8 +14,18 @@ import enum
 import inspect
 import re
 import types as _types
-from collections.abc import Callable
-from typing import Any, Literal, Union, get_args, get_origin, get_type_hints, is_typeddict
+from collections.abc import Callable, Mapping
+from typing import (
+    Any,
+    Literal,
+    NotRequired,
+    Required,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 from agentkit.core.contracts.types import ToolSchema
 from agentkit.models.output import OutputCoercionError, SchemaAdapter, adapt
@@ -143,9 +153,35 @@ def _is_ctx_param(p: inspect.Parameter) -> bool:
     ann = p.annotation
     if ann is inspect.Parameter.empty:
         return True
+    return _names_a_context(ann)
+
+
+def _names_a_context(ann: Any) -> bool:
+    """Whether an annotation names a context type, including inside a union.
+
+    ``Ctx | None`` used to fail. The check compared the WHOLE annotation
+    against ``"Ctx"``, and ``str(Ctx | None)`` ends in ``"None"``, so an
+    optional context was demoted to an ordinary parameter — advertised to the
+    model, and with no default also listed in ``required``, failing every call
+    with a missing-argument error. That is the same symptom the bare ``Ctx``
+    case was fixed for, and ``ctx: Ctx | None = None`` is the more natural
+    spelling of the two: it is what agentkit's own tools use in their ``run``
+    signatures.
+
+    Both union forms are handled because both occur: the real ``UnionType``
+    when annotations are evaluated, and the SOURCE TEXT under
+    ``from __future__ import annotations``, where ``p.annotation`` is the
+    string ``"Ctx | None"`` and there is no object to inspect.
+    """
+    origin = get_origin(ann)
+    if origin is Union or origin is getattr(_types, "UnionType", None):
+        return any(_names_a_context(a) for a in get_args(ann) if a is not type(None))
     text = str(ann)
     name = getattr(ann, "__name__", "")
-    return name in ("RunContext", "Ctx") or "RunContext" in text or text.endswith("Ctx")
+    if name in ("RunContext", "Ctx") or "RunContext" in text:
+        return True
+    # Each arm of a textual union, so the PEP 563 string form matches too.
+    return any(part.strip().endswith("Ctx") for part in text.split("|"))
 
 
 def _enum_fragment(ann: type[enum.Enum]) -> dict[str, Any]:
@@ -251,6 +287,44 @@ def _mapping_value_annotation(ann: Any) -> Any | None:
     return args[1]
 
 
+def _typeddict_required_keys(ann: Any, hints: Mapping[str, Any]) -> frozenset[str]:
+    """Which keys of a ``TypedDict`` are genuinely mandatory.
+
+    ``__required_keys__`` is the obvious answer and it is the baseline here, because
+    it is the only one that gets INHERITANCE right: a key pulled in from a
+    ``total=False`` base is optional even though the subclass says ``total=True``,
+    and ``__total__`` alone cannot see that.
+
+    It is not sufficient, though. The metaclass computes it while the class body is
+    executing, so under PEP 563 (``from __future__ import annotations``, which this
+    repo and most modern code enable file-wide) it is reading the STRING
+    ``"NotRequired[int]"`` and cannot tell that it names a marker — the key lands in
+    ``__required_keys__`` and the tool advertises a mandatory field the body treats
+    as optional. The model then has to invent a value for it.
+
+    ``get_type_hints(..., include_extras=True)`` resolves those strings for real, so
+    an explicit ``Required``/``NotRequired`` marker found there OVERRIDES the
+    baseline. Markers are only ever an override: a key with no marker keeps whatever
+    ``__required_keys__`` said, which is what preserves the inheritance case.
+    """
+    baseline = getattr(ann, "__required_keys__", None)
+    declared = frozenset(hints) if baseline is None else frozenset(baseline)
+    with contextlib.suppress(Exception):
+        extras = get_type_hints(ann, include_extras=True)
+        marked = {
+            key: origin
+            for key in hints
+            if (origin := get_origin(extras.get(key))) in (Required, NotRequired)
+        }
+        if marked:
+            return frozenset(
+                key
+                for key in hints
+                if marked.get(key, Required if key in declared else NotRequired) is Required
+            )
+    return declared
+
+
 def _typeddict_fragment(ann: Any) -> dict[str, Any] | None:
     """A ``TypedDict`` → its real object schema, in the same shape
     ``_struct_fragment`` produces for a dataclass / Pydantic model / attrs class.
@@ -263,16 +337,21 @@ def _typeddict_fragment(ann: Any) -> dict[str, Any] | None:
     the whole reason it can be handled here rather than through
     ``_struct_adapter``: a ``TypedDict`` *is* a ``dict`` at runtime, so the value
     ``json.loads`` produced is already the annotated type and there is nothing to
-    reconstitute. ``__required_keys__`` carries ``total=`` and per-key
-    ``Required``/``NotRequired``, so the ``required`` list stays honest in both
+    reconstitute. ``_typeddict_required_keys`` works out ``total=`` and per-key
+    ``Required``/``NotRequired`` so the ``required`` list stays honest in both
     directions — claiming a key is mandatory when the tool treats it as optional
     would be a worse lie than the one being fixed.
+
+    The property schemas come from the plain ``get_type_hints``, NOT the
+    ``include_extras=True`` one the requiredness check uses: extras would leave
+    ``Annotated[...]`` and ``NotRequired[...]`` wrappers in place and ``_json_type``
+    would advertise those as ``{"type": "string"}``.
     """
     if not is_typeddict(ann):
         return None
     with contextlib.suppress(Exception):
         hints = get_type_hints(ann)
-        required = getattr(ann, "__required_keys__", frozenset(hints))
+        required = _typeddict_required_keys(ann, hints)
         return {
             "type": "object",
             "properties": {key: _json_type(hint) for key, hint in hints.items()},
@@ -474,13 +553,45 @@ def _resolved_description(func: Callable[..., Any], description: str | None) -> 
     return desc
 
 
+def _resolved_hints(func: Callable[..., Any]) -> tuple[dict[str, Any], dict[str, Exception]]:
+    """``func``'s annotations resolved to real types, plus the failure for each one
+    that could not be resolved.
+
+    ``get_type_hints`` is ALL-OR-NOTHING: a single annotation it cannot evaluate
+    raises for the whole function and leaves every other parameter unresolved. That
+    is not a hypothetical — a ``ctx: Ctx`` whose ``Ctx`` was imported inside the
+    enclosing function is unreachable from module globals under PEP 563, and it used
+    to take ``n: int`` down with it, silently: ``n`` was advertised as a string and
+    got no coercer, so the body received ``"3"``.
+
+    So the fast path is still the one call (it covers every tool whose annotations
+    resolve, which is nearly all of them), and the fallback resolves each annotation
+    on its own. ``eval`` on the annotation text is what ``typing`` itself does — the
+    string being evaluated is the author's own source, read off ``__annotations__``,
+    and this path is only reached once the wholesale attempt has already failed.
+    """
+    try:
+        return get_type_hints(func), {}
+    except Exception:  # noqa: BLE001 — fall through to per-annotation resolution
+        pass
+    hints: dict[str, Any] = {}
+    errors: dict[str, Exception] = {}
+    globalns = getattr(func, "__globals__", {})
+    for pname, raw in getattr(func, "__annotations__", {}).items():
+        if not isinstance(raw, str):
+            hints[pname] = raw
+            continue
+        try:
+            hints[pname] = eval(raw, globalns)  # noqa: S307 — see docstring
+        except Exception as exc:  # noqa: BLE001 — reported per parameter, not raised here
+            errors[pname] = exc
+    return hints, errors
+
+
 def _build_schema(func: Callable[..., Any], name: str, description: str) -> ToolSchema:
     """Inspect a function's signature + type hints into a `ToolSchema` (LLM-advertised JSON schema).
     `description` is pre-validated by `_resolved_description`."""
-    try:
-        hints = get_type_hints(func)
-    except Exception:  # noqa: BLE001 — forward refs etc.; degrade to str
-        hints = {}
+    hints, hint_errors = _resolved_hints(func)
     props: dict[str, dict[str, Any]] = {}
     required: list[str] = []
     for pname, p in inspect.signature(func).parameters.items():
@@ -504,6 +615,28 @@ def _build_schema(func: Callable[..., Any], name: str, description: str) -> Tool
             )
         if p.kind is p.VAR_KEYWORD:
             continue
+        if pname in hint_errors:
+            # The author DID annotate this parameter and the annotation could not be
+            # resolved — almost always a forward ref naming something that is not
+            # importable at module scope, or a `TYPE_CHECKING`-only import. The old
+            # behaviour was to fall back to ``str`` in silence, which is the worst of
+            # the three options available: the tool keeps working, the model is told
+            # the parameter is a string, and the body gets a string where it expected
+            # the annotated type. ``list[int]`` becomes "[1, 2]" and the first
+            # arithmetic on it is a TypeError at run time, in production, with nothing
+            # pointing back here.
+            #
+            # An UNANNOTATED parameter still means "free-form string" and is untouched:
+            # that one is a deliberate choice the author can read off the signature.
+            exc = hint_errors[pname]
+            raise ToolDefinitionError(
+                f"tool {name!r} annotates parameter {pname!r} as {p.annotation!r}, which "
+                f"cannot be resolved to a type ({type(exc).__name__}: {exc}); the schema "
+                "sent to the model would silently claim it is a plain string, and the body "
+                "would be handed one. Import the name at module scope (not only under "
+                "TYPE_CHECKING or inside an enclosing function), or drop the annotation to "
+                "accept a string deliberately."
+            ) from exc
         props[pname] = _json_type(hints.get(pname, str))
         if p.default is inspect.Parameter.empty:
             required.append(pname)
@@ -777,13 +910,13 @@ def _build_coercers(func: Callable[..., Any]) -> dict[str, _Coercer]:
       default the author never wrote would be exactly the overreach the rest of
       this module refuses.
 
-    ``get_type_hints`` failing (forward refs, circular imports) degrades to no
-    coercion at all, mirroring ``_build_schema``'s degrade-to-``str``. A tool
-    whose hints will not resolve keeps today's behaviour rather than half of it."""
-    try:
-        hints = get_type_hints(func)
-    except Exception:  # noqa: BLE001 — forward refs etc.; degrade to no coercion
-        hints = {}
+    An annotation that will not resolve degrades to no coercion for THAT parameter.
+    It cannot reach here on an advertised one — ``_build_schema`` refuses the tool
+    outright rather than advertise a type it could not read — so in practice this is
+    the ctx parameter, which is skipped above anyway. ``_resolved_hints`` is what
+    keeps one such annotation from silently disabling coercion for every parameter
+    beside it."""
+    hints, _ = _resolved_hints(func)
     coercers: dict[str, _Coercer] = {}
     for pname, p in inspect.signature(func).parameters.items():
         if pname in ("self", "cls") or _is_ctx_param(p):

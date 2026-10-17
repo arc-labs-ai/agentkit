@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from agentkit.core.contracts.types import Delta, LLMResult, Message, ProviderUsage, ToolCall
-from agentkit.models.adapters._mapping import coerce_tool_args
+from agentkit.models.adapters._mapping import coerce_tool_args, tool_call_id
 from agentkit.models.providers.auth import ANTHROPIC_API_VERSION, anthropic_credential
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
 from agentkit.models.providers.frontiers.base import HttpLLM, raise_if_error_frame
@@ -219,9 +219,12 @@ class AnthropicLLM(HttpLLM):
 
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         tool_calls = tuple(
-            ToolCall(id=b.get("id", ""), name=b.get("name", ""), arguments=b.get("input") or {})
-            for b in data.get("content", [])
-            if b.get("type") == "tool_use"
+            ToolCall(
+                id=tool_call_id(b.get("id"), index),
+                name=b.get("name", ""),
+                arguments=b.get("input") or {},
+            )
+            for index, b in enumerate(b for b in data.get("content", []) if b.get("type") == "tool_use")
         )
         u = data.get("usage", {}) or {}
         usage = ProviderUsage(
@@ -315,8 +318,10 @@ class AnthropicLLM(HttpLLM):
                 raw_usage.update(ev.get("usage") or {})
                 out_tok = int((ev.get("usage") or {}).get("output_tokens", out_tok) or out_tok)
         tool_calls = tuple(
-            ToolCall(id=b["id"], name=b["name"], arguments=coerce_tool_args(b["json"]))
-            for b in blocks.values()
+            # ``blocks`` is keyed by the stream's own content index, so the key
+            # is the position — unique per call even when every id is missing.
+            ToolCall(id=tool_call_id(b["id"], index), name=b["name"], arguments=coerce_tool_args(b["json"]))
+            for index, b in sorted(blocks.items())
             if b.get("type") == "tool_use"
         )
         usage = ProviderUsage(
