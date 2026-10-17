@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import signal
 import sys
 from pathlib import Path
 
@@ -127,6 +126,27 @@ async def test_test_path_allowlist_is_checked_before_process_creation(workspace,
         await workspace.run_tests([])
     with pytest.raises(ValueError):
         await workspace.run_tests(["tests/test_visible.py"] * 33)
+
+
+async def _heartbeat_stopped(path: Path, *, settle_s: float = 0.75) -> bool:
+    """Has whatever was writing ``path`` stopped?
+
+    Liveness is observed through a file the sandboxed process writes, never
+    through its pid. ``--unshare-all`` includes ``--unshare-pid``, so a pid
+    captured INSIDE the sandbox is namespace-local — typically a single digit —
+    and ``os.kill`` on that number from the host addresses a completely
+    different, usually root-owned, process. That reads as
+    ``PermissionError: [Errno 1] Operation not permitted`` rather than as the
+    wrong question it is. macOS has no pid namespace, which is why pid-based
+    probes passed there and only ever failed on Linux.
+
+    The scratch directory is a writable bind mount shared with the host, so the
+    heartbeat crosses the boundary that pids cannot.
+    """
+    before = await asyncio.to_thread(path.read_text)
+    await asyncio.sleep(settle_s)
+    after = await asyncio.to_thread(path.read_text)
+    return after == before
 
 
 def install_test(sandbox: WorkspaceSandbox, source: str) -> None:
@@ -248,23 +268,17 @@ def test_large_failed_output():
     assert result["duration_s"] < os_workspace.test_timeout_s
 
 
-@pytest.mark.skipif(
-    not WorkspaceSandbox.signals_deliverable(),
-    reason=(
-        "this host will not let the parent signal its own sandbox: a setuid-root "
-        "bwrap (how it is packaged where unprivileged user namespaces are "
-        "restricted) starts the child as root, so killpg returns EPERM. Deadline "
-        "and cancellation enforcement are genuinely unavailable here, not merely "
-        "untested"
-    ),
-)
 @pytest.mark.asyncio
 async def test_actual_process_timeout_kills_descendant_process_group(os_workspace):
     os_workspace.test_timeout_s = 1.5
-    pid_file = os_workspace.root / ".process" / "descendant.json"
+    beat = os_workspace.root / ".process" / "descendant.beat"
     child = (
-        "import os,time; from pathlib import Path; "
-        f"Path({str(pid_file)!r}).write_text(str(os.getpid())); time.sleep(60)"
+        "import time\n"
+        "from pathlib import Path\n"
+        f"p = Path({str(beat)!r})\n"
+        "while True:\n"
+        "    p.write_text(str(time.monotonic()))\n"
+        "    time.sleep(0.05)\n"
     )
     install_test(
         os_workspace,
@@ -280,20 +294,8 @@ def test_hanging_descendant():
     )
     with pytest.raises(TimeoutError):
         await os_workspace.run_tests(["tests/test_visible.py"])
-    assert pid_file.exists(), "timeout occurred before the descendant probe could start"
-    pid = int(pid_file.read_text())
-    gone = False
-    for _ in range(30):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            gone = True
-            break
-        await asyncio.sleep(0.05)
-    if not gone:
-        # Test hygiene if a regression leaves a descendant alive.
-        os.kill(pid, signal.SIGKILL)
-    assert gone, "sandbox timeout left a descendant running"
+    assert beat.exists(), "timeout occurred before the descendant probe could start"
+    assert await _heartbeat_stopped(beat), "sandbox timeout left a descendant running"
     assert os_workspace.test_runs == []
 
 
@@ -356,45 +358,34 @@ def test_parent_only_source_writes():
     assert await os_workspace.write_file("source.py", "VALUE = 2\n") == "Updated source.py"
 
 
-@pytest.mark.skipif(
-    not WorkspaceSandbox.signals_deliverable(),
-    reason=(
-        "this host will not let the parent signal its own sandbox: a setuid-root "
-        "bwrap (how it is packaged where unprivileged user namespaces are "
-        "restricted) starts the child as root, so killpg returns EPERM. Deadline "
-        "and cancellation enforcement are genuinely unavailable here, not merely "
-        "untested"
-    ),
-)
 @pytest.mark.asyncio
 async def test_cancelling_actual_test_process_kills_it_before_its_long_deadline(os_workspace):
     os_workspace.test_timeout_s = 30
-    pid_file = os_workspace.root / ".process" / "running-test.pid"
+    beat = os_workspace.root / ".process" / "running-test.beat"
     install_test(
         os_workspace,
         f"""
-import os
 import time
 from pathlib import Path
 
 def test_wait_until_cancelled():
-    Path({str(pid_file)!r}).write_text(str(os.getpid()))
-    time.sleep(60)
+    p = Path({str(beat)!r})
+    while True:
+        p.write_text(str(time.monotonic()))
+        time.sleep(0.05)
 """,
     )
     task = asyncio.create_task(os_workspace.run_tests(["tests/test_visible.py"]))
     for _ in range(100):
-        if pid_file.exists():
+        if beat.exists():
             break
         await asyncio.sleep(0.02)
     try:
-        assert pid_file.exists(), "isolated test process did not reach the cancellation probe"
-        pid = int(pid_file.read_text())
+        assert beat.exists(), "isolated test process did not reach the cancellation probe"
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        with pytest.raises(ProcessLookupError):
-            os.kill(pid, 0)
+        assert await _heartbeat_stopped(beat), "cancellation left the test process running"
         assert os_workspace.test_runs == []
     finally:
         if not task.done():
