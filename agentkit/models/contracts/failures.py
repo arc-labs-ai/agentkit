@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -25,6 +26,44 @@ def retry_after(value: str | None) -> float | None:
             return max(0.0, (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds())
         except (ValueError, TypeError):
             return None
+
+
+# ── conditions a provider reports ONLY in prose ─────────────────────────────
+#
+# Some account-level conditions arrive with no machine-readable `code` at all,
+# stated only in the human-readable `message`. Measured against Anthropic, a
+# reached spend cap returns:
+#
+#   status 400, type "invalid_request_error", code None, message
+#   "You have reached your specified API usage limits. You will regain access
+#    on 2026-11-01 at 00:00 UTC."
+#
+# Without reading that message the 400 fell through to INVALID_REQUEST — a
+# client bug — so an operator went looking for a malformed request when the
+# fix was billing. The information was never missing; it was in a field the
+# classifier did not inspect.
+#
+# These are PATTERNS against a lowercased message, not exact substrings,
+# because the wording belongs to the provider and changes without notice. They
+# are matched only AFTER the structured `code` checks, so a provider that does
+# send a code always wins, and they are deliberately specific: a bare "quota"
+# or "billing" would misfile a genuine invalid request whose message happens
+# to mention either.
+_QUOTA_MESSAGE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"usage\s+limits?",
+        r"spend\s+limits?",
+        r"insufficient\s+quota",
+        # Up to two intervening words, so "quota was exceeded" and "quota has
+        # now been reached" match while "the `quota` parameter is invalid"
+        # still does not.
+        r"quota\s+(?:\w+\s+){0,2}(?:exceeded|exhausted|reached)",
+        r"(?:exceeded|exhausted)\s+(?:your\s+)?(?:current\s+)?quota",
+        r"credit\s+balance\s+is\s+too\s+low",
+        r"billing\s+(?:not\s+active|hard\s+limit)",
+    )
+)
 
 
 def classify(exc_or_event: Any) -> Failure | None:
@@ -62,6 +101,8 @@ def classify(exc_or_event: Any) -> Failure | None:
     code = code if isinstance(code, str) else None
     kind = kind if isinstance(kind, str) else None
     status = status if isinstance(status, int) else None
+    raw_message = error.get("message")
+    message = raw_message.lower() if isinstance(raw_message, str) else ""
     category: FailureClass = FailureClass.UNKNOWN
     if code in {
         "insufficient_quota",
@@ -69,7 +110,10 @@ def classify(exc_or_event: Any) -> Failure | None:
         "enforced_spend_limit_reached",
         "usage_limit_reached",
         "spend_limit_reached",
-    }:
+    } or any(pattern.search(message) for pattern in _QUOTA_MESSAGE_PATTERNS):
+        # Ordered ahead of the 400 branch deliberately: a reached spend cap is
+        # an account condition, not a malformed request, and filing it as the
+        # latter sends the reader to debug a request that was perfectly valid.
         category = FailureClass.QUOTA_EXHAUSTED
     elif code == "context_length_exceeded":
         category = FailureClass.CONTEXT_EXCEEDED
