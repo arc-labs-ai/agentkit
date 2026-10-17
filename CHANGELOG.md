@@ -1458,7 +1458,9 @@ passes untouched.
   variance mistakes on Protocol generics. `uv run mypy --strict agentkit`
   is now clean on the full tree.
 
-## Unreleased — execution requirements
+## Unreleased
+
+### Execution requirements
 
 - Add explicit execution requirements and credential-free compatibility assessments
   to the existing runtime, with typed local incompatibilities and uncertain outcomes.
@@ -1468,3 +1470,11 @@ passes untouched.
   cleanup/termination, and avoid retries after potentially executed CLI timeouts.
 - Remove raw CLI diagnostic strings from public failure details. See
   `docs/design/execution-isolation.md` for migration, evidence and remaining work.
+
+### Anthropic schema reference budgets
+
+- Remove redundant definitions after Anthropic reference expansion and count the
+  emitted schema, preserving the 24 optional / 16 union parameter limits.
+- Return safe local schema-compilation failures through the public call lifecycle
+  with zero provider attempts, rather than leaking SchemaError.
+- Preserve canonical response validation and separate CLI/API schema dialects.

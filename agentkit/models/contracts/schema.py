@@ -9,7 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,6 +18,47 @@ from agentkit.core.contracts.types import Mode
 
 class SchemaError(ValueError):
     """A schema cannot be safely represented on the requested mode."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "unsupported_schema",
+        details: Mapping[str, int] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = dict(details or {})
+
+
+def _schema_nodes(schema: Any) -> Iterator[dict[str, Any]]:
+    """Walk schema locations, never annotations or literal default/enum values."""
+    if not isinstance(schema, dict):
+        return
+    yield schema
+    for keyword in ("properties", "patternProperties", "dependentSchemas", "$defs", "definitions"):
+        for child in schema.get(keyword, {}).values():
+            yield from _schema_nodes(child)
+    for keyword in (
+        "items",
+        "additionalProperties",
+        "unevaluatedProperties",
+        "additionalItems",
+        "unevaluatedItems",
+        "contains",
+        "propertyNames",
+        "not",
+        "if",
+        "then",
+        "else",
+        "contentSchema",
+    ):
+        child = schema.get(keyword)
+        for item in child if isinstance(child, list) else (child,):
+            yield from _schema_nodes(item)
+    for keyword in ("anyOf", "oneOf", "allOf", "prefixItems"):
+        for child in schema.get(keyword, ()):
+            yield from _schema_nodes(child)
 
 
 @dataclass(frozen=True)
@@ -109,21 +150,17 @@ def tolerant_json_object(text: str) -> Any:
 def _validator(schema: Any) -> Any:
     try:
         from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+        from jsonschema.exceptions import SchemaError as InvalidSchema  # type: ignore[import-untyped]
     except ImportError as exc:
         raise ImportError('Structured calls require pip install "arc-agentkit[calls]"') from exc
-    Draft202012Validator.check_schema(schema)
+    try:
+        Draft202012Validator.check_schema(schema)
+    except InvalidSchema as exc:
+        raise SchemaError("invalid canonical JSON Schema", code="invalid_schema") from exc
 
-    def check_refs(node: Any) -> None:
-        if isinstance(node, dict):
-            if "$ref" in node:
-                _resolve(node["$ref"], schema)
-            for value in node.values():
-                check_refs(value)
-        elif isinstance(node, list):
-            for value in node:
-                check_refs(value)
-
-    check_refs(schema)
+    for node in _schema_nodes(schema):
+        if "$ref" in node:
+            _resolve(node["$ref"], schema)
     return Draft202012Validator(schema)
 
 
@@ -134,13 +171,13 @@ def validate_schema(schema: dict[str, Any]) -> None:
 
 def _resolve(ref: str, root: dict[str, Any]) -> Any:
     if not ref.startswith("#/"):
-        raise SchemaError("only local JSON Schema references are supported")
+        raise SchemaError("only local JSON Schema references are supported", code="unresolved_reference")
     node: Any = root
     try:
         for part in ref[2:].split("/"):
             node = node[part.replace("~1", "/").replace("~0", "~")]
     except (KeyError, TypeError) as exc:
-        raise SchemaError(f"unresolved reference: {ref}") from exc
+        raise SchemaError(f"unresolved reference: {ref}", code="unresolved_reference") from exc
     return node
 
 
@@ -150,7 +187,10 @@ def compile_schema(schema: dict[str, Any], mode: Mode, model: str = "") -> dict[
     Model-specific schema extensions are deliberately conservative until a
     live probe establishes support. ``model`` is retained for future profiles.
     """
-    schema = json.loads(json.dumps(schema))
+    try:
+        schema = json.loads(json.dumps(schema))
+    except (TypeError, ValueError) as exc:
+        raise SchemaError("schema must be JSON serializable", code="invalid_schema") from exc
     _validator(schema)
     strict = mode in (Mode.CODEX, Mode.OPENAI_API)
     if strict and (schema.get("type") != "object" or "anyOf" in schema or "oneOf" in schema):
@@ -195,7 +235,15 @@ def compile_schema(schema: dict[str, Any], mode: Mode, model: str = "") -> dict[
             target = _resolve(ref, schema)
             if mode == Mode.ANTHROPIC_API:
                 if ref in refs:
-                    raise SchemaError("Anthropic structured output cannot express recursion")
+                    raise SchemaError("Anthropic structured output cannot express recursion", code="recursive_schema")
+                if not isinstance(target, dict):
+                    raise SchemaError("reference target must be a schema object")
+                annotations = {"title", "description", "default", "examples", "$comment", "$defs", "definitions"}
+                if any(k in target and target[k] != v for k, v in node.items() if k not in annotations | {"$ref"}):
+                    raise SchemaError(
+                        "conflicting reference siblings require explicit constraint intersection",
+                        code="unsupported_ref_siblings",
+                    )
                 return visit({**target, **{k: v for k, v in node.items() if k != "$ref"}}, depth, (*refs, ref))
         out = copy.deepcopy(node)
         notes: list[str] = []
@@ -244,7 +292,12 @@ def compile_schema(schema: dict[str, Any], mode: Mode, model: str = "") -> dict[
             union_count += 1
         if "items" in node:
             out["items"] = visit(node["items"], depth, refs)
-        if "$defs" in node:
+        if mode == Mode.ANTHROPIC_API:
+            # Every supported reference was expanded at its response location.
+            # Retaining definitions would send and count redundant schema trees.
+            out.pop("$defs", None)
+            out.pop("definitions", None)
+        elif "$defs" in node:
             out["$defs"] = {k: visit(v, depth, refs) for k, v in node["$defs"].items()}
         if "enum" in node:
             enum_count += len(node["enum"])
@@ -254,8 +307,31 @@ def compile_schema(schema: dict[str, Any], mode: Mode, model: str = "") -> dict[
     result: dict[str, Any] = visit(schema)
     if strict and (property_count > 5000 or enum_count > 1000 or name_chars > 120000):
         raise SchemaError("strict output exceeds schema size budgets")
-    if mode == Mode.ANTHROPIC_API and (optional_count > 24 or union_count > 16):
-        raise SchemaError("Anthropic structured output exceeds optional/union budgets")
+    if mode == Mode.ANTHROPIC_API:
+        # Evaluate the actual wire tree, not canonical definitions or visit history.
+        optional_count = union_count = property_count = 0
+        for node in _schema_nodes(result):
+            if {"$ref", "$defs", "definitions"}.intersection(node):
+                raise SchemaError(
+                    "reference or definition in an unsupported schema location cannot be expanded safely",
+                    code="unsupported_reference_location",
+                )
+            properties = node.get("properties", {})
+            property_count += len(properties)
+            optional_count += len(set(properties) - set(node.get("required", ())))
+            union_count += int("anyOf" in node or isinstance(node.get("type"), list))
+        if optional_count > 24 or union_count > 16:
+            raise SchemaError(
+                "Anthropic structured output exceeds optional/union budgets",
+                code="schema_budget_exceeded",
+                details={
+                    "optional_count": optional_count,
+                    "optional_limit": 24,
+                    "union_count": union_count,
+                    "union_limit": 16,
+                    "property_count": property_count,
+                },
+            )
     if mode == Mode.CLAUDE_CODE:
         # Reject 2020-12 constructs with no equivalent rather than mislabelling
         # them draft-07. Definitions and local references have a direct mapping.
