@@ -2201,9 +2201,25 @@ MUTANTS: tuple[Mutant, ...] = (
 _PER_MUTANT_TIMEOUT_S = 120
 
 
-def _run_tests(tests: tuple[str, ...]) -> bool | None:
+# pytest signals "I could not even collect that" with a NON-ZERO exit: 4 for a
+# usage error (a path that does not exist) and 5 for nothing collected. Reading
+# any non-zero exit as "the suite caught the mutant" is how an entry whose test
+# file was renamed away scores a silent kill — not one assertion ran, and the
+# invariant is completely unguarded while the gate reports green. The
+# reorganisation renamed 34 test files out from under this catalogue and the
+# whole job still passed, which is exactly the failure this distinguishes.
+_PYTEST_USAGE_ERROR = 4
+_PYTEST_NOTHING_COLLECTED = 5
+
+UNRUNNABLE = "unrunnable"
+
+
+def _run_tests(tests: tuple[str, ...]) -> bool | None | str:
     """``False`` = tests failed (mutant killed), ``True`` = tests passed
-    (survived), ``None`` = the run timed out."""
+    (survived), ``None`` = the run timed out, ``UNRUNNABLE`` = pytest could not
+    run the named tests at all, so the result proves nothing either way."""
+    if [t for t in tests if not (ROOT / t.split("::")[0]).exists()]:
+        return UNRUNNABLE
     try:
         proc = subprocess.run(
             [
@@ -2217,6 +2233,8 @@ def _run_tests(tests: tuple[str, ...]) -> bool | None:
         )
     except subprocess.TimeoutExpired:
         return None
+    if proc.returncode in (_PYTEST_USAGE_ERROR, _PYTEST_NOTHING_COLLECTED):
+        return UNRUNNABLE
     return proc.returncode == 0
 
 
@@ -2238,6 +2256,14 @@ def verify_anchors() -> list[str]:
         count = target.read_text().count(m.before)
         if count != 1:
             problems.append(f"{m.path}: anchor for {m.why!r} appears {count}x, expected 1")
+        # A live source anchor with a dead test path is the worse of the two
+        # failures: the mutant applies cleanly, pytest exits non-zero because
+        # the file is missing, and the run scores it killed. Checking it here
+        # is what makes the staleness visible in `--verify` rather than at the
+        # bottom of a green log.
+        for t in m.tests:
+            if not (ROOT / t.split("::")[0]).exists():
+                problems.append(f"{m.path}: test path does not exist: {t}")
     return problems
 
 
@@ -2343,7 +2369,11 @@ def main() -> int:
                 survived = _run_tests(m.tests)
             finally:
                 target.write_text(original)
-            mark = {True: "SURVIVED", False: "killed  ", None: "TIMEOUT "}[survived]
+            mark = (
+                "UNRUNNABLE"
+                if survived == UNRUNNABLE
+                else {True: "SURVIVED", False: "killed  ", None: "TIMEOUT "}[survived]
+            )
             print(f"  {i:>2}. [{m.tag}] {mark}  {m.why}", flush=True)
             if survived is not False:
                 survivors.append(m)
