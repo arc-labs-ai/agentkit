@@ -202,3 +202,75 @@ def test_quota_prose_matching_survives_rewording() -> None:
     ):
         facts = {"status": 400, "error": {"type": "invalid_request_error", "message": message}}
         assert classify(facts).classification == FailureClass.INVALID_REQUEST, message
+
+
+# The provider taxonomy, pinned. Introspected from the official SDKs
+# (anthropic 1.15.0, openai 3.33.0) rather than transcribed from prose, because
+# agentkit speaks HTTP directly and has no SDK dependency — nothing else keeps
+# this mapping in step with the providers.
+#
+# Each TYPE case deliberately carries NO status. An in-band SSE error frame
+# arrives that way, so a condition recognised only by status is unclassifiable
+# mid-stream, which is where the gaps were.
+@pytest.mark.parametrize(
+    ("facts", "expected"),
+    [
+        # ── types, with no status ──
+        ({"error": {"type": "billing_error"}}, FailureClass.QUOTA_EXHAUSTED),
+        ({"error": {"type": "timeout_error"}}, FailureClass.TIMEOUT),
+        ({"error": {"type": "permission_error"}}, FailureClass.AUTH),
+        ({"error": {"type": "not_found_error"}}, FailureClass.INVALID_REQUEST),
+        ({"error": {"type": "authentication_error"}}, FailureClass.AUTH),
+        ({"error": {"type": "rate_limit_error"}}, FailureClass.RATE_LIMITED),
+        ({"error": {"type": "overloaded_error"}}, FailureClass.OVERLOADED),
+        ({"error": {"type": "invalid_request_error"}}, FailureClass.INVALID_REQUEST),
+        ({"error": {"type": "api_error"}}, FailureClass.TRANSIENT_NETWORK),
+        # ── statuses ──
+        ({"status": 401}, FailureClass.AUTH),
+        ({"status": 402}, FailureClass.QUOTA_EXHAUSTED),
+        ({"status": 403}, FailureClass.AUTH),
+        ({"status": 404}, FailureClass.INVALID_REQUEST),
+        ({"status": 408}, FailureClass.TIMEOUT),
+        ({"status": 409}, FailureClass.INVALID_REQUEST),
+        ({"status": 413}, FailureClass.INVALID_REQUEST),
+        ({"status": 422}, FailureClass.INVALID_REQUEST),
+        ({"status": 429}, FailureClass.RATE_LIMITED),
+        ({"status": 500}, FailureClass.TRANSIENT_NETWORK),
+        ({"status": 502}, FailureClass.TRANSIENT_NETWORK),
+        ({"status": 503}, FailureClass.OVERLOADED),
+        ({"status": 504}, FailureClass.TIMEOUT),
+        ({"status": 529}, FailureClass.OVERLOADED),
+        # ── codes ──
+        ({"error": {"code": "insufficient_quota"}}, FailureClass.QUOTA_EXHAUSTED),
+        ({"error": {"code": "context_length_exceeded"}}, FailureClass.CONTEXT_EXCEEDED),
+        ({"error": {"code": "invalid_api_key"}}, FailureClass.AUTH),
+        # ── precedence: a structured client status outranks a generic type ──
+        ({"status": 400, "error": {"type": "api_error"}}, FailureClass.INVALID_REQUEST),
+    ],
+)
+def test_the_provider_error_taxonomy_is_mapped_completely(
+    facts: dict[str, object], expected: FailureClass
+) -> None:
+    assert classify(facts).classification == expected
+
+
+def test_the_five_conditions_that_used_to_land_as_unknown_or_the_wrong_class() -> None:
+    """The gaps, called out individually so a regression names what it broke.
+
+    `billing_error` and `timeout_error` are canonical Anthropic types that the
+    `kind` checks did not know. `permission_error` and `not_found_error` were
+    reachable only through their statuses, so an in-band frame carrying the
+    type alone fell to UNKNOWN. 409 is defined by BOTH SDKs (`ConflictError`)
+    and was mapped nowhere. And 402 Payment Required sat in the
+    INVALID_REQUEST set, which told an operator to debug a request that was
+    perfectly well formed when the fix was billing.
+    """
+    assert classify({"error": {"type": "billing_error"}}).classification is not FailureClass.UNKNOWN
+    assert classify({"error": {"type": "timeout_error"}}).classification is FailureClass.TIMEOUT
+    assert classify({"error": {"type": "permission_error"}}).classification is FailureClass.AUTH
+    assert (
+        classify({"error": {"type": "not_found_error"}}).classification
+        is FailureClass.INVALID_REQUEST
+    )
+    assert classify({"status": 409}).classification is not FailureClass.UNKNOWN
+    assert classify({"status": 402}).classification is FailureClass.QUOTA_EXHAUSTED

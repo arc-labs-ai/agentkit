@@ -66,7 +66,11 @@ REGRESSIONS = {
     "coding_structured_error_repair": CodingRegression(
         "errors",
         "agentkit/models/contracts/failures.py",
-        (("    if code in {\n", "    if False and code in {\n"),),
+        # Re-pointed when the quota branch was extracted into named constant
+        # sets. The regression is unchanged in effect — the whole quota branch
+        # is short-circuited, so a billing failure carrying HTTP 429 falls
+        # through to the rate-limit branch and is reported retryable.
+        (("    if (\n        code in _QUOTA_CODES\n", "    if False and (\n        code in _QUOTA_CODES\n"),),
         "A billing quota failure reported with HTTP 429 is incorrectly considered retryable, risking repeated "
         "paid requests. Restore structured billing-error precedence without disabling legitimate rate-limit retries.",
     ),
