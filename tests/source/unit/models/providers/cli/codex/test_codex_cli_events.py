@@ -138,41 +138,6 @@ async def test_an_items_text_is_folded_into_the_answer_once_however_many_phases_
     assert result.evals["messages"] == ("Hello world",)
 
 
-@pytest.mark.asyncio
-async def test_the_legacy_event_vocabulary_still_yields_an_answer_and_an_end_of_turn() -> None:
-    """``codex`` is a binary users install themselves, so a service does not get
-    to pick their version, and the older ``{"id": …, "msg": {…}}`` stream is
-    still in the wild. The unknown-payload rule is "ignore it", which means a
-    parser that stops recognising that shape does not crash: it exits 0, emits
-    nothing, and returns an empty answer with no stop reason. Silent, plausible
-    and wrong is the worst outcome available at a subprocess boundary."""
-    legacy = (
-        {"id": "0", "msg": {"type": "session_configured", "session_id": "legacy-1", "model": "gpt-5-codex"}},
-        {"id": "1", "msg": {"type": "task_started"}},
-        {"id": "2", "msg": {"type": "agent_message_delta", "delta": "legacy "}},
-        {"id": "3", "msg": {"type": "agent_message", "message": "legacy answer"}},
-        {
-            "id": "4",
-            "msg": {
-                "type": "token_count",
-                "info": {"total_token_usage": {"input_tokens": 10, "cached_input_tokens": 4, "output_tokens": 5}},
-            },
-        },
-        {"id": "5", "msg": {"type": "task_complete"}},
-    )
-    cli = FakeCodexCli.script(legacy)
-    events = await _drive(CodexCliCognition(spawn=cli))
-    result = _final(events)
-
-    assert result.output == "legacy answer"
-    assert result.partial is False
-    assert result.stop_reason == "complete"
-    assert result.evals["session_id"] == "legacy-1"
-    assert result.evals["cli_model"] == "gpt-5-codex"
-    # Same split as the current vocabulary, through the same ``_EventDelta``.
-    assert (result.usage.input_tokens, result.usage.cache_read_tokens) == (6, 4)
-    # The delta run and the whole message that follows it must not double up.
-    assert _deltas(events) == ["legacy ", "answer"]
 
 
 @pytest.mark.asyncio
@@ -259,3 +224,41 @@ async def test_a_stream_that_stops_before_the_clis_end_of_turn_payload_is_not_a_
     assert result.evals["stop_reason"] == "malformed_output"
     assert result.stop_reason == "failed"
     assert result.output == "half an ans"
+
+
+
+
+@pytest.mark.asyncio
+async def test_an_old_codex_is_refused_loudly_rather_than_answering_with_nothing() -> None:
+    """`codex` is a binary the user installs, so a service does not get to pick
+    their version — and agentkit reads one vocabulary, the current `thread.*` one.
+    Declining the superseded `{"id", "msg"}` stream is a decision; declining it
+    SILENTLY would be a bug.
+
+    An unrecognised payload is ignored by design, because forward-compat here is
+    "don't crash". So without an explicit refusal an old binary exits 0, emits no
+    events, and hands back an empty answer with `stop_reason=None` — a run that
+    looks like it worked. The failure has to name the cause and the fix, because
+    "upgrade codex" is not something the caller can infer from an empty string.
+    """
+    legacy = (
+        {"id": "0", "msg": {"type": "session_configured", "session_id": "old-1", "model": "gpt-5-codex"}},
+        {"id": "1", "msg": {"type": "agent_message", "message": "an answer nobody should receive"}},
+        {"id": "2", "msg": {"type": "task_complete"}},
+    )
+    result = _final(await _drive(CodexCliCognition(spawn=FakeCodexCli.script(legacy))))
+
+    # `stop_reason` is the CLOSED taxonomy; the specific reason is in `evals`,
+    # which is where a caller looks to tell "upgrade your binary" apart from
+    # every other way a codex run can fail.
+    assert result.stop_reason == "failed", result.stop_reason
+    assert result.evals["stop_reason"] == "cli_version_unsupported", result.evals
+    assert result.output == "", "the superseded stream was translated after all"
+    assert list(result.evals["cli_errors"]) == [
+        'this `codex` emits the superseded {"id", "msg"} event stream; agentkit reads the '
+        "`thread.*` / `turn.*` vocabulary only. Upgrade the `codex` binary on PATH."
+    ], (
+        "the message must name both the shape it saw and the fix, exactly ONCE — the "
+        "refusal is a property of the process, and three old-shaped lines used to "
+        "produce three identical errors"
+    )

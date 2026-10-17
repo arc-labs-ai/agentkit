@@ -10,6 +10,12 @@ nothing noticed until a run died in production with a usage message.
     codex task_complete             legacy end-of-turn vocabulary the current
                                     parser stopped recognising
 
+(That third one is now a deliberate refusal rather than a translation: agentkit
+reads the `thread.*` / `turn.*` vocabulary only, and a binary emitting the
+superseded `{"id", "msg"}` stream fails with `cli_version_unsupported` naming
+the upgrade. The bug it records was never the missing translation — it was
+exiting 0 with an empty answer, which is still what this file exists to catch.)
+
 Each was found by accident — one because an unrelated real-CLI test happened to
 set the field, one while auditing argv for secrets, one because a parity test
 existed. None of them was found by the thing that should find them.

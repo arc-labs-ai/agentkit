@@ -1769,9 +1769,12 @@ MUTANTS: tuple[Mutant, ...] = (
     ),
     Mutant(
         tag="codex",
-        why="the legacy vocabulary stops being parsed, so an older `codex` produces a "
-        "run that exits 0, emits no events and returns an empty answer with no stop "
-        "reason — silent, plausible and wrong, because forward-compat is 'don't crash'",
+        why="the superseded `{\"id\", \"msg\"}` vocabulary stops being RECOGNISED, so an "
+        "older `codex` produces a run that exits 0, emits no events and returns an empty "
+        "answer with no stop reason — silent, plausible and wrong. agentkit no longer "
+        "translates that stream, and this is the branch that refuses it instead; an "
+        "unrecognised payload is ignored by design (forward-compat is 'don't crash'), so "
+        "removing the check does not restore support, it hides the incompatibility.",
         path="agentkit/models/providers/cli/codex/driver.py",
         before='    if "msg" in payload and isinstance(payload.get("msg"), dict):',
         after="    if False:",
