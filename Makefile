@@ -64,21 +64,21 @@ cov: ## Run the suite under branch coverage and enforce the threshold
 # Coverage proves a line RAN; this proves a test would NOTICE if it were wrong.
 # Not part of `check` — it rewrites source in place, so it wants a clean tree.
 
-mutants: ## Run the curated mutant catalogue (see scripts/mutants.py)
-	uv run python scripts/mutants.py
+mutants: ## Run the curated mutant catalogue (see .github/scripts/mutants.py)
+	uv run python .github/scripts/mutants.py
 
 mutants-verify: ## Fast: check every mutant anchor still resolves
-	uv run python scripts/mutants.py --verify
+	uv run python .github/scripts/mutants.py --verify
 
 # ── Docs examples ───────────────────────────────────────────────────────────
 # `mkdocs build --strict` proves the links resolve and the meta tests prove the
 # symbols are mentioned; neither runs a line of the code a reader copies.
 
 docs-check: ## Fast: every documented `from agentkit… import X` resolves
-	uv run python scripts/docs_examples.py --imports-only
+	uv run python .github/scripts/docs_examples.py --imports-only
 
 docs-examples: ## Slow: execute every ```python block in docs/
-	uv run python scripts/docs_examples.py
+	uv run python .github/scripts/docs_examples.py
 
 # ── The gate ────────────────────────────────────────────────────────────────
 

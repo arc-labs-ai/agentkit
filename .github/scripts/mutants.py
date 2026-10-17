@@ -40,7 +40,20 @@ import shutil
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+# The repo root, found by walking up to the directory holding pyproject.toml
+# rather than counting parents. This file lives under `.github/scripts/`, and
+# a hardcoded parent count silently resolves to `.github/` if it ever moves
+# again — which would make every anchor "not found" and the catalogue look
+# entirely stale rather than mislocated.
+def _repo_root() -> pathlib.Path:
+    here = pathlib.Path(__file__).resolve()
+    for candidate in here.parents:
+        if (candidate / "pyproject.toml").is_file():
+            return candidate
+    raise RuntimeError(f"no pyproject.toml above {here}")
+
+
+ROOT = _repo_root()
 
 # Crash recovery. This script edits source in place and restores in a
 # ``finally``, but a hard kill (SIGKILL, OOM, a double Ctrl-C) skips that —
