@@ -238,14 +238,18 @@ def normalize_model_name(model: str) -> tuple[str, ...]:
     ``("anthropic/claude-sonnet-4-6-20250101", "claude-sonnet-4-6-20250101",
        "anthropic/claude-sonnet-4-6", "claude-sonnet-4-6")``
 
-    Deliberately mirrors the candidate ORDER in
-    ``adapters/llm/providers/pricing.py::_lookup`` — exact, then strip an
-    OpenRouter-style ``provider/`` prefix, then strip the trailing date, then
-    both. It is a separate function rather than a shared import because the
-    pricing table is owned elsewhere and stays untouched; the cost of the
-    duplication is one drift risk, which
-    ``tests/source/unit/models/adapters/test_model_registry.py::test_normalisation_agrees_with_pricing_lookup``
-    pins by asserting both resolve the same names.
+    Exact, then strip an OpenRouter-style ``provider/`` prefix, then strip the
+    trailing date, then both.
+
+    This used to say it mirrored the candidate order in
+    ``adapters/llm/providers/pricing.py::_lookup``, and named a test as the pin
+    against drift. Neither survives: pricing now resolves through
+    ``PriceTable.row``, which keys on ``f"{mode}/{model}"`` and falls back to an
+    explicit alias table rather than deriving candidates at all, and the named
+    test was deleted. There is no longer a shared order to keep in step — the
+    two modules answer different questions — so the drift risk the comment
+    warned about does not exist in that form. Left recorded because a reader
+    who went looking for that function would not find it.
 
     Returned as a de-duplicated tuple so callers can just iterate.
     """

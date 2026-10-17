@@ -263,10 +263,10 @@ STORE_TESTS = (
     "tests/source/unit/state/adapters/test_stores.py",
 )
 WORKFLOW_TESTS = ("tests/source/unit/agents/test_workflow.py",)
-REGISTRY_TESTS = (
-    "tests/source/unit/models/adapters/test_model_registry.py",
-    "tests/source/unit/agents/test_agent_capability_binding.py",
-)
+# Pruned to the surviving file. test_agent_capability_binding.py was deleted by
+# the reorganisation; naming it kept these entries unrunnable even though the
+# registry tests next to it do enforce the invariants.
+REGISTRY_TESTS = ("tests/source/unit/models/adapters/test_model_registry.py",)
 
 MEMOIZE_TESTS = (
     "tests/source/unit/core/policies/test_memoize_side_effects.py",
@@ -1065,6 +1065,41 @@ MUTANTS: tuple[Mutant, ...] = (
         before="            if mode == Mode.CODEX:\n",
         after="            if False:\n",
         tests=EXECUTION_TESTS,
+    ),
+    # ── re-armed: registry invariants whose test file was rewritten ─────────
+    Mutant(
+        tag="registry",
+        why="an unknown model reports capabilities as present instead of UNKNOWN",
+        path="agentkit/models/catalog/registry.py",
+        before="        return entry.capabilities if entry is not None else ModelCapabilities()",
+        after="        return entry.capabilities if entry is not None else ModelCapabilities(\n"
+        "            tools=_Y, structured_output=_Y, native_json_schema=_Y, streaming=_Y, vision=_Y\n"
+        "        )",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="a missing credential silently returns the fake instead of raising",
+        path="agentkit/models/catalog/registry.py",
+        before="        if fallback is None:\n            raise hard",
+        after="        if False:\n            raise hard",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="a declared NO capability stops refusing at bind time",
+        path="agentkit/models/catalog/registry.py",
+        before="        missing = [n for n in (*requires, *derived) if caps.get(n) is Capability.NO]",
+        after="        missing = []",
+        tests=REGISTRY_TESTS,
+    ),
+    Mutant(
+        tag="registry",
+        why="the downgrade warning fires every time instead of once",
+        path="agentkit/models/catalog/registry.py",
+        before="        if key in self._warned:\n            return",
+        after="        if False:\n            return",
+        tests=REGISTRY_TESTS,
     ),
 )
 
@@ -1890,40 +1925,6 @@ UNENFORCED: tuple[Mutant, ...] = (
         before='        return self.kind in ("approve", "modify")',
         after='        return self.kind in ("approve", "modify", "expired")',
         tests=HITL_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="an unknown model reports capabilities as present instead of UNKNOWN",
-        path="agentkit/models/catalog/registry.py",
-        before="        return entry.capabilities if entry is not None else ModelCapabilities()",
-        after="        return entry.capabilities if entry is not None else ModelCapabilities(\n"
-        "            tools=_Y, structured_output=_Y, native_json_schema=_Y, streaming=_Y, vision=_Y\n"
-        "        )",
-        tests=REGISTRY_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="a missing credential silently returns the fake instead of raising",
-        path="agentkit/models/catalog/registry.py",
-        before="        if fallback is None:\n            raise hard",
-        after="        if False:\n            raise hard",
-        tests=REGISTRY_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="a declared NO capability stops refusing at bind time",
-        path="agentkit/models/catalog/registry.py",
-        before="        missing = [n for n in (*requires, *derived) if caps.get(n) is Capability.NO]",
-        after="        missing = []",
-        tests=REGISTRY_TESTS,
-    ),
-    Mutant(
-        tag="registry",
-        why="the downgrade warning fires every time instead of once",
-        path="agentkit/models/catalog/registry.py",
-        before="        if key in self._warned:\n            return",
-        after="        if False:\n            return",
-        tests=REGISTRY_TESTS,
     ),
     Mutant(
         tag="toolschema",
