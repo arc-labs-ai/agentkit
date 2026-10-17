@@ -1636,6 +1636,11 @@ class ClaudeCliSession:
         # conversation runs under and the value a later turn's agent has to
         # match — see ``_turn``.
         self._system_prompt = ""
+        # The JSON Schema this session's PROCESS was spawned with, or ``None``.
+        # ``--json-schema`` is fixed at spawn exactly like ``--system-prompt``,
+        # so it gets the same treatment: resolved once in ``start``, and the
+        # value a later turn's agent has to match — see ``_turn``.
+        self._json_schema: dict[str, Any] | None = None
         # Where this session's materialised secrets live, if it had any. Owned
         # by the SESSION rather than by a turn: the CLI may re-read an
         # ``--mcp-config`` file at any point while it is alive, so the
@@ -1735,6 +1740,12 @@ class ClaudeCliSession:
                     str(cog.settings) if cog.settings is not None else None,
                 )
             )
+            # Same lifetime as the system prompt, so it is resolved in the
+            # same place. Without this the flag was never built at all: a
+            # cognition carrying ``json_schema=`` spawned a session that
+            # could not honour it, and then every turn was refused with a
+            # message advising the caller to do the thing they had done.
+            self._json_schema = cog._resolve_json_schema(self._agent)
             argv = cog._build_argv(
                 "",
                 system_prompt=self._system_prompt,
@@ -1742,6 +1753,7 @@ class ClaudeCliSession:
                 mcp_config=mcp_config,
                 settings=settings,
                 system_prompt_path=system_prompt_path,
+                json_schema=self._json_schema,
             )
             self._proc = await (cog.spawn or asyncio.create_subprocess_exec)(
                 *argv,
@@ -2068,7 +2080,13 @@ class ClaudeCliSession:
         fatal_exc: BaseException | None = None
         should_reraise_cancel = False
         stderr_bytes = b""
-        schema_requested = False
+        # A property of the PROCESS, not of this turn: ``--json-schema`` was
+        # fixed at spawn, so every turn of a typed session is typed. Deriving it
+        # from the turn's own agent (the drive-path spelling) is what left
+        # ``parsed=None`` on a session that had just been handed a perfectly
+        # good ``structured_output`` — the flag was on the argv and the
+        # validation never ran.
+        schema_requested = self._json_schema is not None
         # Did this turn reach the CLI, and did we read it to its ``result``?
         # Together they say whether the stdout stream is parked at a turn
         # boundary — which is what decides whether the SESSION survives a
@@ -2115,20 +2133,26 @@ class ClaudeCliSession:
                             "(cognition.session(agent=...)) so its prompt is set at spawn, "
                             "or use ClaudeCliCognition.drive() for a per-run prompt."
                         )
-                    schema_requested = self._cog._resolve_json_schema(agent) is not None
-                    if schema_requested:
+                    requested_schema = self._cog._resolve_json_schema(agent)
+                    if requested_schema is not None and requested_schema != self._json_schema:
                         # ``--json-schema`` is a process-level flag, fixed at
-                        # spawn. Saying so beats silently returning prose for an
-                        # ``output=`` the caller believes is wired.
+                        # spawn, so a turn may not introduce or CHANGE one —
+                        # saying so beats silently returning prose for an
+                        # ``output=`` the caller believes is wired. A turn whose
+                        # schema MATCHES the one this process was spawned with is
+                        # not a change and runs normally, which is what makes
+                        # ``session(agent=...)`` with an ``output=`` work at all.
                         #
                         # ``_TurnRefused``, not ``_SessionClosed``: nothing was
                         # written and the process never noticed, so THIS TURN is
                         # refused and the conversation carries on.
                         raise _TurnRefused(
-                            "structured output is a process-level flag on the CLI, so it "
-                            "cannot be turned on per turn. Use ClaudeCliCognition.drive() "
-                            "for a typed run, or pass json_schema= on the cognition before "
-                            "opening the session."
+                            "structured output is a process-level flag on the CLI, so a turn "
+                            "cannot introduce or change one. This session was spawned "
+                            + ("with no schema" if self._json_schema is None else "with a different schema")
+                            + ". Pass the agent when you OPEN the session "
+                            "(cognition.session(agent=...)), or use "
+                            "ClaudeCliCognition.drive() for a one-off typed run."
                         )
                 assert proc.stdin is not None  # PIPE
                 self._interrupted = False
@@ -2285,7 +2309,10 @@ class ClaudeCliSession:
                 state.stop_reason = "interrupted"
 
             result = await self._cog._finalise(
-                agent=agent,
+                # The SESSION's agent is the conversation's agent: a turn that
+                # passes none is not a turn that opted out of its own output
+                # type, and `_coerce_structured` reads the adapter off this.
+                agent=agent if agent is not None else self._agent,
                 ctx=ctx,
                 state=state,
                 cancelled=cancelled,

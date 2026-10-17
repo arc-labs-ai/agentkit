@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import collections.abc as abc
 import enum
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, Required, TypedDict
 
 import pytest
 
@@ -169,22 +169,32 @@ class _Partial(TypedDict, total=False):
     b: int
 
 
-# Functional syntax, deliberately. This module uses
-# `from __future__ import annotations`, which makes every class-body annotation
-# a STRING — and CPython computes `__required_keys__` at class creation, so it
-# cannot see a `NotRequired` it has not evaluated. A class-syntax TypedDict here
-# would report `optional_key` as REQUIRED, and a test asserting that would be
-# pinning a Python interaction rather than anything agentkit does. The
-# functional form passes real objects, so requiredness is computed correctly.
-# ruff's UP013 wants class syntax here, and class syntax is precisely what
-# breaks under this module's `from __future__ import annotations`: CPython
-# computes `__required_keys__` at class creation and cannot see a `NotRequired`
-# it has not evaluated, so `optional_key` would be reported REQUIRED. A test
-# asserting that would pin a Python interaction rather than anything agentkit
-# does — the functional form passes real objects and is correct.
-_Mixed = TypedDict(  # noqa: UP013
-    "_Mixed", {"required_key": str, "optional_key": NotRequired[int]}
-)
+# Class syntax, deliberately, and this is the whole point of the block below.
+# This module uses `from __future__ import annotations`, so every class-body
+# annotation is a STRING, and CPython computes `__required_keys__` at class
+# creation — before anything has evaluated those strings. It therefore cannot
+# see this `NotRequired` and reports `optional_key` as REQUIRED.
+#
+# That is the shape nearly all modern code has (PEP 563 is file-wide and common),
+# so it is squarely agentkit's job to get right rather than a Python quirk to
+# write around. These tests used to use the functional `TypedDict(...)` form
+# specifically to dodge it; the dodge is gone.
+class _Mixed(TypedDict):
+    required_key: str
+    optional_key: NotRequired[int]
+
+
+class _Strict(TypedDict, total=False):
+    loose: str
+    pinned: Required[int]
+
+
+class _OptionalBase(TypedDict, total=False):
+    inherited: str
+
+
+class _Child(_OptionalBase):
+    own: str
 
 
 def test_a_typeddict_is_an_object_not_a_string() -> None:
@@ -205,10 +215,11 @@ def test_a_typeddict_is_an_object_not_a_string() -> None:
 
 
 def test_typeddict_requiredness_follows_the_declaration_both_ways() -> None:
-    """`__required_keys__` carries `total=` and per-key Required/NotRequired.
-    Advertising every key as required would be a worse lie than the string one
-    this replaced — the model would be forced to invent values for keys the
-    tool treats as optional."""
+    """Requiredness carries `total=` and per-key Required/NotRequired. Advertising
+    every key as required would be a worse lie than the string one this replaced —
+    the model would be forced to invent values for keys the tool treats as
+    optional, and there is no value it can invent that means "I am not sending
+    this"."""
     @tool(side_effecting=False)
     def t(full: _Query, partial: _Partial, mixed: _Mixed) -> str:
         """A tool with enough description that the inference layer is satisfied."""
@@ -217,6 +228,60 @@ def test_typeddict_requiredness_follows_the_declaration_both_ways() -> None:
     assert _prop(t, "full")["required"] == ["field", "limit"]
     assert _prop(t, "partial")["required"] == []
     assert _prop(t, "mixed")["required"] == ["required_key"]
+
+
+def test_a_notrequired_key_is_optional_even_under_postponed_annotations() -> None:
+    """`__required_keys__` is computed at class creation, so under PEP 563 — which
+    this module and most modern code enable file-wide — it is reading the string
+    "NotRequired[int]" and cannot tell it names a marker. It reports BOTH keys as
+    required. Trusting it advertised a mandatory `optional_key` that the body
+    treats as optional, and the model had to invent a number for it on every call.
+
+    The marker has to be read from resolved hints instead, which is the one place
+    it is visible for what it is."""
+    assert "optional_key" in _Mixed.__required_keys__, (
+        "if CPython ever resolves these at class creation this test is moot — but "
+        "until then the wrong answer is what the schema layer has to correct"
+    )
+
+    @tool(side_effecting=False)
+    def t(q: _Mixed) -> str:
+        """A tool with enough description that the inference layer is satisfied."""
+        return "ok"
+
+    assert _prop(t, "q")["required"] == ["required_key"]
+    assert _prop(t, "q")["properties"]["optional_key"] == {"type": "integer"}, (
+        "requiredness is read from the extras-bearing hints, but the property "
+        "schema must still come from the plain ones — otherwise the `NotRequired` "
+        "wrapper survives into `_json_type` and the key is advertised as a string"
+    )
+
+
+def test_an_explicit_required_key_in_a_total_false_typeddict_stays_required() -> None:
+    """The mirror of the case above, and the reason the marker is an OVERRIDE rather
+    than a recomputation: under PEP 563 `__required_keys__` cannot see this
+    `Required` either, so it reports the key as optional. A tool that needs the key
+    would then be called without it."""
+    @tool(side_effecting=False)
+    def t(q: _Strict) -> str:
+        """A tool with enough description that the inference layer is satisfied."""
+        return "ok"
+
+    assert _prop(t, "q")["required"] == ["pinned"]
+
+
+def test_a_key_inherited_from_a_total_false_base_stays_optional() -> None:
+    """Why `__required_keys__` is still the baseline rather than being replaced by
+    `__total__` plus markers: `total=` is per-class, so a key inherited from a
+    `total=False` base is optional even though the subclass is `total=True`. Only
+    `__required_keys__` sees that, and it gets this case right — so markers override
+    it key by key and leave everything they do not name alone."""
+    @tool(side_effecting=False)
+    def t(q: _Child) -> str:
+        """A tool with enough description that the inference layer is satisfied."""
+        return "ok"
+
+    assert _prop(t, "q")["required"] == ["own"]
 
 
 # ── Literal, enum, unions ────────────────────────────────────────────────────
@@ -437,3 +502,78 @@ async def test_an_enum_value_the_schema_never_offered_is_refused() -> None:
 
     with pytest.raises(Exception):  # noqa: B017 — the type is the module's own
         await t.run({"unit": "furlongs"}, None)
+
+
+# ── annotations that will not resolve ────────────────────────────────────────
+#
+# `get_type_hints` is all-or-nothing, and that is the trap these three hold shut.
+# One annotation it cannot evaluate raises for the WHOLE function, and the old
+# code caught that and fell back to `str` for every parameter — the tool kept
+# working, the model was told each parameter was a string, and the body got a
+# string where it expected its annotated type.
+
+
+def test_a_parameter_whose_annotation_cannot_be_resolved_is_refused() -> None:
+    """Advertising it as a string is the worst of the three available outcomes: the
+    tool ships, the model is told something false, and the failure surfaces later as
+    a `TypeError` inside the body with nothing pointing back at the annotation.
+    Refusing at decoration time costs the author one import and is the same call the
+    module already makes for `*args`."""
+    from agentkit.tools.declarations.errors import ToolDefinitionError
+
+    with pytest.raises(ToolDefinitionError) as excinfo:
+
+        @tool(side_effecting=False)
+        def t(a: NoSuchTypeAnywhere) -> str:  # noqa: F821
+            """A tool with enough description that the inference layer is satisfied."""
+            return "ok"
+
+    message = str(excinfo.value)
+    assert "'a'" in message, "the message has to name the parameter to be actionable"
+    assert "NoSuchTypeAnywhere" in message
+    assert "NameError" in message, "and the underlying reason, or it is a guessing game"
+
+
+def test_an_unannotated_parameter_is_still_a_string_and_not_a_refusal() -> None:
+    """The refusal above is narrow on purpose. An unannotated parameter means
+    "free-form string" and always has — it is a choice the author can read straight
+    off the signature, unlike an annotation that was written and then silently
+    discarded."""
+    @tool(side_effecting=False)
+    def t(a) -> str:  # noqa: ANN001
+        """A tool with enough description that the inference layer is satisfied."""
+        return "ok"
+
+    assert _prop(t, "a") == {"type": "string"}
+
+
+@pytest.mark.asyncio
+async def test_one_unresolvable_annotation_does_not_disable_its_neighbours() -> None:
+    """The silent half of the same defect, and the one that shipped. A ctx parameter
+    annotated with a name that is only reachable inside an enclosing function cannot
+    be resolved from module globals under PEP 563 — and it used to take every
+    parameter beside it down, because the single `get_type_hints` call raised.
+
+    So `unit: _Unit` was advertised as a bare string AND got no coercer: the enum
+    values were never offered to the model, and the body received whatever string
+    arrived. The ctx parameter is skipped either way, so nothing about it was ever
+    visible — only the neighbours broke."""
+    seen: list[Any] = []
+
+    def declare() -> Any:
+        from agentkit.core.contracts.protocols import Ctx  # deliberately function-local
+
+        @tool(side_effecting=False)
+        def t(unit: _Unit, ctx: Ctx = None) -> str:
+            """A tool with enough description that the inference layer is satisfied."""
+            seen.append(unit)
+            return "ok"
+
+        return t
+
+    t = declare()
+    assert "ctx" not in _params(t)["properties"]
+    assert _prop(t, "unit") == {"enum": ["metric", "imperial"], "type": "string"}
+
+    await t.run({"unit": "metric"}, None)
+    assert seen == [_Unit.METRIC], "the body must receive the enum, not the raw string"
