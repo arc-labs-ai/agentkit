@@ -194,7 +194,10 @@ parallel = true
 #
 # 77 -> 78: models/catalog/registry.py 31 -> 85.1%, measured macOS total
 # 79.570.
-fail_under = 78
+#
+# 78 -> 80: tools/filesystem/store.py 11 -> 100% and files.py 33 -> 100%,
+# measured macOS total 81.142.
+fail_under = 80
 show_missing = true
 skip_covered = true
 exclude_also = [
