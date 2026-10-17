@@ -148,3 +148,44 @@ and widened limits; those regressions must be killed by these tests.
 
 Provider-network and paid-call probes are intentionally excluded. No credentials
 or authorization for such probes were supplied.
+
+## Verified artifact and final checks
+
+The implementation is commit `274f56c` on `fix/anthropic-schema-budgets`.
+Package metadata remains **0.1.0**; this is not a new PyPI release. Consume the
+pinned Git revision or the exact built wheel rather than assuming an arbitrary
+0.1.0 installation includes this fix.
+
+Built artifact: `/tmp/agentkit-schema-fix-dist/arc_agentkit-0.1.0-py3-none-any.whl`
+
+SHA-256: `51697e962c8af83302fb923e8507fb0b891c847bdf564ba021ec411e92255a16`
+
+The wheel's compiler and runtime files were compared byte-for-byte with the
+verified source. On a host with access to the artifact:
+
+```bash
+uv pip install --reinstall /tmp/agentkit-schema-fix-dist/arc_agentkit-0.1.0-py3-none-any.whl
+```
+
+Final checks, run sequentially after restoring mutations:
+
+| Check | Result |
+| --- | --- |
+| New schema regression suite | 41 passed, 0 failed |
+| `AGENTKIT_SKIP_REAL_CLI=1 make check` | Passed |
+| Coverage test run | 1,469 passed, 31 skipped, 0 failed |
+| Python 3.12.13 matrix | 1,469 passed, 31 skipped, 0 failed |
+| Python 3.13.14 matrix | 1,469 passed, 31 skipped, 0 failed |
+| Reported branch coverage | 77%, threshold unchanged |
+| Ruff lint and schema/test formatting | Passed |
+| Strict mypy | Passed, 143 source files |
+| Mutation anchor verification | Passed; no source left mutated |
+| Targeted `schemabudget` mutations | 3/3 killed |
+| Documented imports | Passed, zero unresolved |
+| Wheel build and source comparison | Passed |
+
+The 31 skips are 24 real CLI argument-parser tests, six opt-in live/provider
+tests and one optional msgspec test. They were not represented as live provider
+successes. No provider-network or paid model probe was authorized or performed.
+The full unrelated mutation catalogue was not rerun; the three new schema
+mutations and the repository's required anchor gate passed.
