@@ -400,6 +400,10 @@ async def _terminate(
     process supervisor accepts for the same reason: the alternative is leaking
     the tree on every cancel.
     """
+    terminate_tree = getattr(proc, "terminate_tree", None)
+    if process_group and terminate_tree is not None:
+        await asyncio.wait_for(terminate_tree(grace_s), timeout=grace_s + _STDERR_DRAIN_S)
+        return
     pgid = _child_pgid(proc) if process_group else None
     _signal_tree(proc, pgid, signal.SIGTERM)
     try:
@@ -1361,6 +1365,8 @@ class _CliRunOutcome:
     """
 
     cancelled: bool = False
+    cleanup_failed: bool = False
+    uncertain: bool = False
     timed_out: CliTimedOut | None = None
     fatal_exc: BaseException | None = None
     should_reraise_cancel: bool = False
@@ -1474,7 +1480,21 @@ async def _run_cli_process(
         # re-raises it afterwards via ``_reraise_if_not_an_exception``; that
         # second half was missing once, and Ctrl-C came back as a tidy
         # ``AgentResult`` while the interpreter kept running.
+        from agentkit.models.providers.cli.execution import ExecutionOutcomeUnknown
+
         outcome.fatal_exc = exc
+        outcome.uncertain = isinstance(exc, ExecutionOutcomeUnknown) or outcome.spawned
+    finally:
+        if proc is not None:
+            try:
+                close = getattr(proc, "aclose", None)
+                if close is not None:
+                    await asyncio.wait_for(close(), timeout=_STDERR_DRAIN_S)
+                elif proc.returncode is None:
+                    await _terminate(proc, terminate_grace_s)
+            except Exception:
+                # Cleanup is observable, but cannot replace cancellation or usage.
+                outcome.cleanup_failed = True
     outcome.return_code = proc.returncode if proc is not None else -1
 
 

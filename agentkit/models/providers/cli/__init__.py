@@ -20,8 +20,18 @@ from agentkit.models.providers.cli.codex.driver import (
     ReasoningEffort,
     SandboxMode,
 )
+from agentkit.models.providers.cli.execution import (
+    BackendReport,
+    CliInvocation,
+    ExecutionBackend,
+    ExecutionOutcomeUnknown,
+    ExecutionProcess,
+    SubprocessExecutionBackend,
+)
 
 __all__ = [
+    "BackendReport", "CliInvocation", "ExecutionBackend", "ExecutionOutcomeUnknown",
+    "ExecutionProcess", "SubprocessExecutionBackend",
     "ApprovalMode",
     "CODEX_NATIVE_TOOLS",
     "CODEX_SANDBOX_CAPS",

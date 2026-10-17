@@ -370,13 +370,14 @@ class ClaudeCliCognition:
     settings: str | Path | None = None
     # ``--setting-sources`` controls which ambient settings files the CLI may
     # load. ``None`` preserves Claude's defaults; ``()`` emits an empty source
-    # list and is the service-safe spelling for ignoring user/project/local
-    # permission grants without using ``--bare`` (which would also disable
+    # list. This alone is not proof that all user/project discovery is disabled.
+    # It requests ignoring user/project/local
+    # settings without using ``--bare`` (which would also disable
     # subscription OAuth). Explicit ``settings=`` still applies.
     setting_sources: tuple[SettingSource, ...] | None = None
     # ``--agents``: subagent definitions as JSON, serialised for you.
     agents: dict[str, Any] | None = None
-    # ``--bare``: skip auto-discovery of hooks, skills, commands, subagents,
+    # ``--bare``: skip auto-discovery of hooks, commands, subagents,
     # plugins, MCP servers, auto memory and CLAUDE.md. The CLI docs call this
     # "the recommended mode for scripted and SDK calls" and say it will become
     # the default for ``-p``. It is what makes a run reproducible across
@@ -388,6 +389,8 @@ class ClaudeCliCognition:
     # In bare mode the CLI never reads OAuth credentials or the keychain — set
     # ``ANTHROPIC_API_KEY`` (or an ``apiKeyHelper`` in ``settings``).
     bare: bool = False
+    # Bare mode still resolves /skill-name on 2.1.300. Disable skills separately.
+    disable_slash_commands: bool = False
     # ``--exclude-dynamic-system-prompt-sections``: move per-machine sections
     # (cwd, environment info, memory paths) out of the system prompt and into
     # the first user message, so the cache-stable prefix is identical across
@@ -796,6 +799,9 @@ class ClaudeCliCognition:
             schema_requested=schema_requested,
             timed_out=outcome.timed_out,
         )
+        result.evals["execution_uncertain"] = outcome.uncertain
+        result.evals["execution_cleanup_failed"] = outcome.cleanup_failed
+        result.evals["execution_started"] = outcome.spawned
         yield StreamEvent("final", usage=state.usage, result=result)
         if outcome.should_reraise_cancel:
             # Terminal event delivered; now propagate the cancel so
@@ -1379,6 +1385,8 @@ class ClaudeCliCognition:
             argv += ["--include-partial-messages"]
         if self.bare:
             argv += ["--bare"]
+        if self.disable_slash_commands:
+            argv += ["--disable-slash-commands"]
         if self.stable_prompt_prefix:
             argv += ["--exclude-dynamic-system-prompt-sections"]
         if self.fallback_model is not None:

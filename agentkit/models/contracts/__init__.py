@@ -15,6 +15,14 @@ from agentkit.models.contracts.constants import (
     UnpricedPolicy,
     Verbosity,
 )
+from agentkit.models.contracts.execution import (
+    CapabilityStatus,
+    ExecutionAssessment,
+    ExecutionCompatibility,
+    ExecutionRequirement,
+    ExecutionRequirements,
+    NativeExecution,
+)
 from agentkit.models.contracts.schema import OutputSpec, compile_schema, validate_output, validate_schema
 from agentkit.models.contracts.types import (
     Allow,
@@ -31,6 +39,8 @@ from agentkit.models.contracts.types import (
 )
 
 __all__ = [
+    "CapabilityStatus", "ExecutionAssessment", "ExecutionCompatibility",
+    "ExecutionRequirement", "ExecutionRequirements", "NativeExecution",
     "Allow", "Answer", "Binding", "CacheTtl", "CallLimits", "ClaudePermissionMode",
     "CodexSandboxMode", "Credential", "CredentialRef", "Deny", "Effort", "MindKind",
     "Mode", "ModelSelection", "ModelSettings", "NativeToolPolicy", "Outcome", "OutputSpec",

@@ -74,3 +74,8 @@ Provider-backed checks are opt-in and documented in `tests/evals/README.md`. The
 | `tests/source` | Offline source and conformance tests |
 | `tests/evals` | Opt-in real-provider evaluations |
 | `tests/examples` | Runnable usage examples |
+
+Execution requirements, backend guarantees, provider-specific verification and
+unsupported profiles are documented in the
+[execution isolation design](design/execution-isolation.md). Authentication
+success does not imply execution compatibility.
