@@ -45,6 +45,38 @@ def _minimal_roots(paths: object) -> list[Path]:
     return roots
 
 
+def _executable_chain() -> list[Path]:
+    """``sys.executable`` and every path its symlink chain names, hop by hop.
+
+    Resolving in one step is not enough. A venv's ``bin/python`` is a symlink
+    whose target is an ABSOLUTE path written at creation time, and that path
+    may itself run through a symlinked directory — which is how a CI runner
+    lays out its temp tree. Measured on such a layout::
+
+        bin/python -> /…/work/_temp/uv-python-dir/…/bin/python3.12   (declared)
+        readlink -f   /…/real_temp/uv-python-dir/…/bin/python3.12     (resolved)
+
+    ``sys.base_prefix`` reports only the RESOLVED form, so binding that leaves
+    the declared target absent inside the sandbox and the symlink dangles. The
+    kernel follows the declared path, so that is the one ``execvp`` complains
+    about — naming the symlink, never the target it could not reach.
+
+    Bounded iteration rather than ``while``: a symlink cycle is somebody else's
+    bug and must not become an infinite loop here.
+    """
+    chain: list[Path] = []
+    current = Path(sys.executable)
+    seen: set[Path] = set()
+    for _ in range(16):
+        chain.append(current)
+        if current in seen or not current.is_symlink():
+            break
+        seen.add(current)
+        target = Path(os.readlink(current))
+        current = target if target.is_absolute() else (current.parent / target)
+    return chain
+
+
 def _interpreter_roots() -> list[Path]:
     """Every directory tree the sandboxed interpreter needs to exist.
 
@@ -67,11 +99,27 @@ def _interpreter_roots() -> list[Path]:
     contained by another returned path is skipped so the same tree is not
     bound twice.
     """
+    # Both the resolved AND the unresolved form of each, because they can be
+    # different directories and the sandbox needs whichever one the interpreter
+    # is actually INVOKED by. A CI runner reaches its temp tree through a
+    # symlink (`/home/runner/work/_temp` -> elsewhere), so resolving gives the
+    # real path while `sys.executable` keeps the symlinked one — bwrap then
+    # binds a directory nothing executes and `execvp` reports the path it was
+    # given as missing. Measured: binding only the resolved form reproduces
+    # `bwrap: execvp .../\_temp/.../bin/python: No such file or directory`
+    # exactly, while a non-symlinked layout passes, which is why this only ever
+    # failed on the runner.
     candidates = {
+        Path(sys.prefix),
         Path(sys.prefix).resolve(),
+        Path(sys.base_prefix),
         Path(sys.base_prefix).resolve(),
-        Path(sys.executable).resolve().parent.parent,
     }
+    # Every hop of the executable's symlink chain, in BOTH forms. This is what
+    # covers the declared-target case above, which neither prefix reports.
+    for hop in _executable_chain():
+        candidates.add(hop.parent.parent)
+        candidates.add(hop.resolve().parent.parent)
     return _minimal_roots(candidates)
 
 
