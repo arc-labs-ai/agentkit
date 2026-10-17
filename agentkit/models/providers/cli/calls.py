@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import re
 from collections.abc import Mapping
 from contextlib import AsyncExitStack
 from dataclasses import asdict, dataclass, replace
@@ -663,7 +664,9 @@ class CliAdapter:
         reason = result.evals.get("stop_reason")
         failure = None
         if result.partial:
-            failure = _classify_cli_failure(binding.mode, reason, result.evals)
+            failure = _classify_cli_failure(
+                binding.mode, reason, result.evals, _cli_failure_haystack(result)
+            )
             if reason in (
                 "structured_output_missing",
                 "structured_output_mismatch",
@@ -760,7 +763,76 @@ def _credential_digest(credential: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _classify_cli_failure(mode: Mode, reason: Any, evals: Any) -> Failure:
+# ── what the CLIs say when they fail ────────────────────────────────────────
+#
+# These are the binaries' own words, which are NOT an API we control: the
+# wording changes between releases, the two CLIs phrase the same condition
+# differently, and the text carries punctuation nothing here can predict
+# (measured from a real run: ``Not logged in · Please run /login``). They live
+# in one place so a new phrasing is a one-line edit rather than a hunt through
+# the classifier, and they are PATTERNS rather than exact substrings so a
+# reworded message still lands in the right class.
+#
+# Matched against a lowercased haystack, because capitalisation upstream is a
+# style choice and `"not logged in" in "Not logged in"` is False.
+_AUTH_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"unauthorized",
+        r"authenticat(?:e|ed|ion|ing)",
+        r"invalid[\s_-]*api[\s_-]*key",
+        r"not\s+logged\s+in",
+        r"logged\s+out",
+        r"login\s+required",
+        r"please\s+(?:run\s+)?/?login",
+        r"/login\b",
+        r"re-?authenticat",
+        r"session\s+(?:has\s+)?expired",
+    )
+)
+_RATE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (r"\b429\b", r"rate[\s_-]*limit", r"too\s+many\s+requests")
+)
+_OVERLOADED_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern) for pattern in (r"\b529\b", r"overload")
+)
+
+
+def _matches(patterns: tuple[re.Pattern[str], ...], haystack: str) -> bool:
+    return any(pattern.search(haystack) for pattern in patterns)
+
+
+def _cli_failure_haystack(result: Any) -> str:
+    """EVERY channel the CLI could have explained itself on, lowercased.
+
+    Deliberately a union rather than the first non-empty source. The
+    human-facing ``diagnostic`` picks one channel so the message stays
+    readable; classification has no such constraint and must not depend on
+    WHICH channel a particular binary happened to use.
+
+    That dependence was a real asymmetry: only the codex driver populates
+    ``cli_errors``, which was the single source the classifier read, so the
+    claude CLI's auth failures could never match an auth pattern. Measured
+    against the real binary, ``Not logged in · Please run /login`` was returned
+    as UNKNOWN and non-retryable, while codex's equivalent was correctly AUTH
+    and retryable — and the very next lines proved the text was available all
+    along, because they put it in ``diagnostic`` for the caller to read.
+    """
+    evals = result.evals if isinstance(result.evals, Mapping) else {}
+    errors = evals.get("cli_errors") or ()
+    parts: list[str] = [
+        str(evals.get("stderr") or ""),
+        str(result.output or ""),
+        " ".join(str(x) for x in errors if isinstance(x, str)),
+        str(evals.get("error") or ""),
+    ]
+    return " ".join(part for part in parts if part).lower()
+
+
+def _classify_cli_failure(
+    mode: Mode, reason: Any, evals: Any, haystack: str = ""
+) -> Failure:
     detail = evals if isinstance(evals, Mapping) else {}
     error_code = detail.get("cli_error_code")
     status = detail.get("api_error_status")
@@ -783,14 +855,12 @@ def _classify_cli_failure(mode: Mode, reason: Any, evals: Any) -> Failure:
         if classified.classification == FailureClass.AUTH:
             return Failure(FailureClass.AUTH, True, mode_detail={"reason": "cli_authentication"})
         return classified
-    combined = f"{stop} {code} {diagnostic}"
-    auth_markers = ("unauthorized", "authentication", "invalid_api_key", "not logged in", "login required")
-    if any(marker in combined for marker in auth_markers):
+    combined = f"{stop} {code} {diagnostic} {haystack}".lower()
+    if _matches(_AUTH_PATTERNS, combined):
         return Failure(FailureClass.AUTH, True, mode_detail={"reason": "cli_authentication"})
-    rate_markers = ("429", "rate_limit", "rate limit", "too many requests")
-    if any(marker in combined for marker in rate_markers):
+    if _matches(_RATE_PATTERNS, combined):
         return Failure(FailureClass.RATE_LIMITED, True, mode_detail={"reason": "cli_rate_limit"})
-    if any(marker in combined for marker in ("529", "overloaded", "overload")):
+    if _matches(_OVERLOADED_PATTERNS, combined):
         return Failure(FailureClass.OVERLOADED, True, mode_detail={"reason": "cli_overloaded"})
     if stop in ("timeout", "startup_timeout", "idle_timeout", "first_event_timeout"):
         return Failure(FailureClass.TIMEOUT, stop == "first_event_timeout", mode_detail={"reason": stop})

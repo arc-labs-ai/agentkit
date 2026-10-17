@@ -3108,3 +3108,80 @@ async def test_fast_cooperative_transport_abort_is_cancelled_and_unpriced():
         answer = await runtime.run(Binding("openai_api", "test"), "Query", cancel=token, call_id="transport-abort")
     assert answer.outcome == "cancelled" and answer.failure.classification == "cancelled"
     assert answer.cost_usd is None and answer.cost_source == "unpriced"
+
+
+def test_a_cli_auth_failure_is_classified_from_whatever_channel_said_so() -> None:
+    """The asymmetry a real run exposed, pinned from both sides.
+
+    Classification used to read ONE source — ``cli_errors`` — and only the
+    codex driver populates it. The claude CLI reports the same condition on
+    stdout, so measured against the real binary ``Not logged in · Please run
+    /login`` came back UNKNOWN and non-retryable while codex's equivalent was
+    correctly AUTH and retryable. The caller could not tell "re-authenticate"
+    from "something broke", and ``retryable=False`` meant no retry after they
+    had logged back in.
+
+    What makes it a wiring bug rather than a matcher bug is that the text was
+    never missing: the lines right after classification put it in
+    ``diagnostic`` for the caller to read.
+
+    Both halves are asserted, because only the pair identifies the defect: the
+    same text must stay UNCLASSIFIED when no channel is offered, and classify
+    as AUTH when one is.
+    """
+    real_wording = "Not logged in · Please run /login"
+
+    without = _classify_cli_failure(Mode.CLAUDE_CODE, "cli_reported_error", {})
+    assert without.classification == FailureClass.UNKNOWN
+
+    with_channel = _classify_cli_failure(
+        Mode.CLAUDE_CODE, "cli_reported_error", {}, real_wording.lower()
+    )
+    assert with_channel.classification == FailureClass.AUTH
+    assert with_channel.retryable is True, (
+        "a caller who re-authenticates must be allowed to retry"
+    )
+    assert with_channel.mode_detail["reason"] == "cli_authentication"
+
+
+def test_cli_diagnostic_patterns_survive_rewording_and_capitalisation() -> None:
+    """The CLIs' wording is not an API. It changes between releases, differs
+    between the two binaries, and arrives with punctuation nothing here can
+    predict — so these are patterns against a lowercased haystack, not exact
+    substrings. `"not logged in" in "Not logged in"` is False, and that single
+    capital letter is what a substring match turns into an unclassified
+    production failure."""
+    auth = [
+        "Not logged in · Please run /login",
+        "NOT LOGGED IN",
+        "You have been logged out",
+        "Login required",
+        "Unauthorized",
+        "invalid-api-key",
+        "Invalid API Key",
+        "Please re-authenticate",
+        "your session has expired",
+    ]
+    for text in auth:
+        failure = _classify_cli_failure(Mode.CLAUDE_CODE, "cli_reported_error", {}, text.lower())
+        assert failure.classification == FailureClass.AUTH, text
+
+    assert (
+        _classify_cli_failure(
+            Mode.CLAUDE_CODE, "cli_reported_error", {}, "429 Too Many Requests".lower()
+        ).classification
+        == FailureClass.RATE_LIMITED
+    )
+    assert (
+        _classify_cli_failure(
+            Mode.CLAUDE_CODE, "cli_reported_error", {}, "Overloaded, try later".lower()
+        ).classification
+        == FailureClass.OVERLOADED
+    )
+    # And a plain failure must NOT be dragged into one of these classes.
+    assert (
+        _classify_cli_failure(
+            Mode.CLAUDE_CODE, "cli_reported_error", {}, "could not read the file".lower()
+        ).classification
+        == FailureClass.UNKNOWN
+    )
