@@ -191,7 +191,10 @@ parallel = true
 # total to 78.6. Linux runs ~0.2-0.3 lower, so 77 keeps the usual point of
 # margin. CI is the arbiter: if a Linux run measures below this, the number
 # was wrong and comes back down with the measurement attached.
-fail_under = 77
+#
+# 77 -> 78: models/catalog/registry.py 31 -> 85.1%, measured macOS total
+# 79.570.
+fail_under = 78
 show_missing = true
 skip_covered = true
 exclude_also = [
