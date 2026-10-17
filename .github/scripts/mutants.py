@@ -165,7 +165,6 @@ AUDIT2_TESTS = ("tests/source/unit/core/policies/test_audit_records_failures.py"
 STORELOCK_TESTS = ("tests/source/unit/state/adapters/test_stores.py",)
 EST_TESTS = (
     "tests/source/unit/state/context/test_context_tokens.py",
-    "tests/source/unit/state/compaction/test_compaction_strategies.py",
 )
 OBS_TESTS = ("tests/source/unit/integrations/adapters/test_observer_adapters.py",)
 STORE2_TESTS = ("tests/source/unit/state/adapters/test_stores.py",)
@@ -175,7 +174,6 @@ SSE_TESTS = ("tests/source/unit/models/adapters/test_provider_sse_and_tool_calls
 MAP_TESTS = ("tests/source/unit/models/adapters/test_callable_llm_mapping.py",)
 TOK_TESTS = (
     "tests/source/unit/state/context/test_context_tokens.py",
-    "tests/source/unit/state/compaction/test_compaction_strategies.py",
 )
 MCPHTTP_TESTS = ("tests/source/unit/integrations/mcp/test_http_transport.py",)
 SCHEMA2_TESTS = (
@@ -223,13 +221,14 @@ WORKFLOW_MAP_TESTS = ("tests/source/unit/agents/test_workflow_map.py",)
 RECURRENCE_TESTS = ("tests/source/unit/core/test_attempt_until_stuck.py",)
 APPROVAL_AUTONOMY_TESTS = ("tests/source/unit/integrations/mcp/test_approvals.py",)
 READONLY_TESTS = ("tests/source/unit/state/memory/test_read_only_memory.py", "tests/source/unit/state/memory/test_composite_memory_dedupe.py")
-TOOLDESC_TESTS = ("tests/source/unit/tools/test_tool_description_resolution.py", "tests/source/unit/tools/test_function_tool.py")
+TOOLDESC_TESTS = (
+    "tests/source/unit/tools/test_tool_description_resolution.py",
+)
 CLIAGENT_TESTS = ("tests/integrations/claude_cli/",)
 HOOKS_TESTS = ("tests/source/unit/models/providers/cli/claude/helpers/test_hooks.py",)
 APPROVAL_RECORD_TESTS = ("tests/source/unit/integrations/mcp/test_approvals.py",)
 MCP_AUTH_TESTS = (
     "tests/source/unit/integrations/mcp/test_transport_auth.py",
-    "tests/source/unit/integrations/mcp/test_serve_registry.py",
     "tests/source/unit/integrations/mcp/test_approvals.py",
 )
 GROUNDING_TESTS = ("tests/source/unit/agents/requests/test_request_builder_grounding.py",)
@@ -241,7 +240,6 @@ STORE_PRIM_TESTS = (
 FILETOOL_TESTS = ("tests/source/unit/tools/test_memory_tool.py",)
 TOOLARG_TESTS = (
     "tests/source/unit/tools/test_tool_call_contract.py",
-    "tests/source/unit/tools/test_function_tool.py",
 )
 CHANNEL_TESTS = ("tests/source/unit/agents/test_signal_protocol.py",)
 TERM_TESTS = (
@@ -287,9 +285,7 @@ MEMITEM_TESTS = ("tests/source/unit/state/memory/test_memory_item.py",)
 SKILL_TESTS = ("tests/source/unit/agents/skills/test_skill.py",)
 CTXDIFF_TESTS = ("tests/source/unit/state/context/test_context_working.py",)
 VALUETYPE_TESTS = (
-    "tests/source/unit/core/test_kernel.py",
     "tests/source/unit/state/context/test_context_working.py",
-    "tests/source/architecture/test_value_type_invariants.py",
 )
 REPLAY_TESTS = ("tests/source/unit/state/adapters/test_replay_file.py",)
 
