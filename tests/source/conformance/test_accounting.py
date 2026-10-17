@@ -274,3 +274,107 @@ def test_the_five_conditions_that_used_to_land_as_unknown_or_the_wrong_class() -
     )
     assert classify({"status": 409}).classification is not FailureClass.UNKNOWN
     assert classify({"status": 402}).classification is FailureClass.QUOTA_EXHAUSTED
+
+
+@pytest.mark.parametrize(
+    ("frame", "expected", "retryable"),
+    [
+        (
+            {"type": "error", "error": {"type": "overloaded_error", "message": "overloaded"}},
+            FailureClass.OVERLOADED,
+            True,
+        ),
+        (
+            {"type": "error", "error": {"type": "timeout_error", "message": "upstream timeout"}},
+            FailureClass.TIMEOUT,
+            True,
+        ),
+        (
+            {"error": {"type": "server_error", "message": "boom"}},
+            FailureClass.TRANSIENT_NETWORK,
+            True,
+        ),
+        (
+            {"error": {"type": "billing_error", "message": "cap reached"}},
+            FailureClass.QUOTA_EXHAUSTED,
+            False,
+        ),
+    ],
+)
+def test_an_in_band_error_frame_is_classified_from_its_structured_type(
+    frame: dict[str, object], expected: FailureClass, retryable: bool
+) -> None:
+    """An in-band failure arrives INSIDE a 200, so it carries no status at all —
+    and a FailureClass mapping that can only key on status is blind to exactly
+    the conditions providers report this way: ``overloaded_error`` and
+    ``timeout_error``, both retryable.
+
+    `raise_if_error_frame` used to raise with the message only. That left two
+    classifiers reading two different channels and reaching different answers:
+
+      message -> kernel.resilience.classify, substring, saw "overloaded",
+                 returned TRANSIENT, and the call WAS retried
+      body    -> contracts.failures.classify, had nothing to read, returned
+                 UNKNOWN and retryable=False
+
+    So the caller was told UNKNOWN and non-retryable about a failure the
+    runtime was busy retrying. The frame now travels as ``body`` too, which is
+    the channel the structured reader uses. The message is unchanged, so the
+    substring contract `_permanent_message` protects is untouched.
+    """
+    from agentkit.models.providers.frontiers.base import ProviderError, raise_if_error_frame
+
+    with pytest.raises(ProviderError) as caught:
+        raise_if_error_frame(frame)
+
+    failure = classify(caught.value)
+    assert failure.classification == expected
+    assert failure.retryable is retryable
+
+
+def test_a_frame_without_its_body_is_unclassifiable_which_is_why_it_travels() -> None:
+    """The defect probe for the test above. Pinning the broken shape is what
+    keeps the fix from being quietly undone: drop ``body=`` and the structured
+    reader is blind again, and the only visible symptom is a FailureClass that
+    says UNKNOWN while the retry layer disagrees."""
+    from agentkit.models.providers.frontiers.base import ProviderError
+
+    bodyless = ProviderError("provider stream error [overloaded_error]: overloaded")
+    failure = classify(bodyless)
+
+    assert failure.classification is FailureClass.UNKNOWN
+    assert failure.retryable is False
+
+
+def test_only_the_four_transient_classes_are_retryable() -> None:
+    """Retryability is derived from the CLASS, in one place, rather than decided
+    per branch — so a new mapping cannot accidentally invent a retry.
+
+    409 is the case worth naming. It maps to INVALID_REQUEST and is therefore
+    not retryable, which is the deliberate choice: a conflict that clears on an
+    immediate retry is the exception, and guessing retryable on a write is the
+    dangerous direction. If 409 is ever reclassified, this test is where that
+    decision has to be made explicitly.
+    """
+    retryable = {
+        FailureClass.RATE_LIMITED,
+        FailureClass.OVERLOADED,
+        FailureClass.TIMEOUT,
+        FailureClass.TRANSIENT_NETWORK,
+    }
+    probes = {
+        FailureClass.RATE_LIMITED: {"status": 429},
+        FailureClass.OVERLOADED: {"status": 503},
+        FailureClass.TIMEOUT: {"status": 504},
+        FailureClass.TRANSIENT_NETWORK: {"status": 500},
+        FailureClass.AUTH: {"status": 401},
+        FailureClass.INVALID_REQUEST: {"status": 409},
+        FailureClass.QUOTA_EXHAUSTED: {"status": 402},
+        FailureClass.CONTEXT_EXCEEDED: {"error": {"code": "context_length_exceeded"}},
+    }
+    for expected, facts in probes.items():
+        failure = classify(facts)
+        assert failure.classification is expected, facts
+        assert failure.retryable is (expected in retryable), (
+            f"{expected.value} retryable={failure.retryable}"
+        )
