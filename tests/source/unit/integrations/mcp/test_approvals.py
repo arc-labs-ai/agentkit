@@ -585,3 +585,129 @@ def test_a_failed_bind_closes_the_socket_it_opened() -> None:
         holder.close()
 
     assert closed, "the socket opened for the failed bind was never closed"
+
+
+# ── the broadcast ────────────────────────────────────────────────────────────
+#
+# ``decisions`` is the trail the caller holds; ``gate.check`` is the trail that
+# LEAVES the process, to logs and UIs the caller may not own. A field dropped
+# on the way out is invisible from inside, which is why each of these asserts
+# on the emitted payload rather than on the record.
+
+
+class _Ctx:
+    """A ``ctx`` with an ``emit``, recording what the observer stream saw."""
+
+    def __init__(self, on_emit: Any = None) -> None:
+        self.events: list[dict[str, Any]] = []
+        self._on_emit = on_emit
+
+    async def emit(
+        self,
+        kind: str,
+        message: str,
+        *,
+        payload: dict[str, Any] | None = None,
+        agent: str = "",
+    ) -> None:
+        self.events.append(
+            {"kind": kind, "message": message, "payload": payload or {}, "agent": agent}
+        )
+        if self._on_emit is not None:
+            await self._on_emit()
+
+
+@pytest.mark.asyncio
+async def test_the_broadcast_names_the_agent_the_prompt_was_gated_for() -> None:
+    """A run with a supervisor and three workers puts every ``gate.check`` on
+    one stream. Without the agent they are indistinguishable, and nothing says
+    whose call was refused."""
+    ctx = _Ctx()
+    server = ApprovalServer(
+        asker=_Asker(Decision(kind="approve")), autonomy="manual", ctx=ctx, agent="worker-2"
+    )
+
+    await server._decide("Read", {"file_path": "/tmp/x"})
+
+    assert [e["kind"] for e in ctx.events] == ["gate.check"]
+    assert ctx.events[0]["agent"] == "worker-2"
+
+
+@pytest.mark.asyncio
+async def test_the_record_is_appended_before_the_broadcast_goes_out() -> None:
+    """``_record``'s stated append-first contract. A UI that renders the trail
+    when it hears ``gate.check`` otherwise paints a pane one row short of the
+    run — the row it was just told about."""
+    seen: list[int] = []
+    server: ApprovalServer | None = None
+
+    async def on_emit() -> None:
+        assert server is not None
+        seen.append(len(server.decisions))
+
+    ctx = _Ctx(on_emit=on_emit)
+    server = ApprovalServer(asker=_Asker(Decision(kind="approve")), autonomy="manual", ctx=ctx)
+
+    await server._decide("Read", {"file_path": "/tmp/x"})
+
+    assert seen == [1], (
+        "the emit fired before the append, so a consumer reacting to gate.check "
+        "reads a trail that does not yet contain the decision it names"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_broadcast_says_whether_a_person_was_actually_interrupted() -> None:
+    """``asked`` is the only field distinguishing a reviewer who was woken up
+    from a tier that decided on its own. A consumer reading only the stream
+    cannot recover it from the verdict."""
+    ctx_auto = _Ctx()
+    auto = ApprovalServer(autonomy="auto", ctx=ctx_auto)
+    await auto._decide("Read", {"file_path": "/tmp/x"})
+
+    ctx_human = _Ctx()
+    human = ApprovalServer(
+        asker=_Asker(Decision(kind="approve")), autonomy="manual", ctx=ctx_human
+    )
+    await human._decide("Read", {"file_path": "/tmp/x"})
+
+    assert ctx_auto.events[0]["payload"]["asked"] is False, "nobody was in that loop"
+    assert ctx_human.events[0]["payload"]["asked"] is True, "a person was interrupted"
+
+
+@pytest.mark.asyncio
+async def test_the_broadcast_carries_the_run_clock_timestamp() -> None:
+    """``at`` is the one field that lets an approval be lined up against the
+    checkpoint beside it. Dropping it on the way out means it never leaves the
+    process, which is the whole reason the clock is injectable."""
+    ctx = _Ctx()
+    server = ApprovalServer(asker=_Asker(Decision(kind="approve")), autonomy="manual", ctx=ctx)
+
+    await server._decide("Read", {"file_path": "/tmp/x"})
+
+    assert ctx.events[0]["payload"]["at"], "the timestamp never left the process"
+    assert ctx.events[0]["payload"]["at"] == server.decisions[0].at
+
+
+@pytest.mark.asyncio
+async def test_a_hung_observer_does_not_park_the_cli_waiting_for_a_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``suppress`` covers an observer that RAISES and covers nothing at all
+    about one that HANGS — and this runs before ``_decide`` can answer the CLI.
+    A hung log shipper would otherwise wedge the run: ``dontAsk`` by a slower
+    route. The emit has to be bounded, not merely shielded."""
+    from agentkit.integrations.mcp import approvals as approvals_mod
+
+    monkeypatch.setattr(approvals_mod, "_EMIT_TIMEOUT_S", 0.05)
+
+    async def never_returns() -> None:
+        await asyncio.sleep(3600)
+
+    ctx = _Ctx(on_emit=never_returns)
+    server = ApprovalServer(asker=_Asker(Decision(kind="approve")), autonomy="manual", ctx=ctx)
+
+    answer = _read(await asyncio.wait_for(server._decide("Read", {"file_path": "/tmp/x"}), 5))
+
+    assert answer["behavior"] == "allow", "the verdict survived the hung observer"
+    assert len(server.decisions) == 1, "and so did the record, which was appended first"
