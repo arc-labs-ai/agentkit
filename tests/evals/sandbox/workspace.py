@@ -9,9 +9,11 @@ process execution.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -248,6 +250,46 @@ class WorkspaceSandbox:
             return False
         return probe.returncode == 0
 
+    @staticmethod
+    def signals_deliverable() -> bool:
+        """Can this host signal a sandboxed process it started?
+
+        Separate from :meth:`process_available`, because the two fail
+        independently: the sandbox can work perfectly while the parent is
+        unable to kill it. A `bwrap` shipped setuid-root — the packaging used
+        where unprivileged user namespaces are restricted — starts its child as
+        root, and an unprivileged parent then gets EPERM from `killpg`.
+
+        That makes deadline and cancellation enforcement unavailable rather
+        than merely untested, which is a fact worth stating out loud instead of
+        discovering as a confusing EPERM inside a timeout handler.
+        """
+        if sys.platform == "darwin":
+            return True
+        executable = shutil.which("bwrap")
+        if executable is None:
+            return False
+        try:
+            probe = subprocess.Popen(  # noqa: S603 — fixed argv, no shell
+                [executable, "--unshare-all", "--ro-bind", "/", "/", "--dev", "/dev",
+                 "--proc", "/proc", "/bin/sleep", "5"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            return False
+        try:
+            os.killpg(probe.pid, signal.SIGKILL)
+        except PermissionError:
+            return False
+        except ProcessLookupError:
+            return True
+        finally:
+            with contextlib.suppress(Exception):
+                probe.wait(timeout=5)
+        return True
+
     def _profile(self) -> str:
         allowed_reads = {
             self.root,
@@ -350,11 +392,20 @@ class WorkspaceSandbox:
                 await process.wait()
                 await reader
         except BaseException:
-            import signal
-
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
+                pass
+            except PermissionError:
+                # The host will not let us signal our own sandbox. Distributions
+                # ship `bwrap` setuid-root where unprivileged user namespaces
+                # are restricted, and the child then starts as root, so the
+                # unprivileged parent gets EPERM. Swallowed rather than raised
+                # because the caller is already unwinding a timeout or a
+                # cancellation, and replacing that with an EPERM would report
+                # the symptom instead of the deadline that fired. Enforcement
+                # genuinely is weaker on such a host; `signals_deliverable()`
+                # is how a caller finds that out up front.
                 pass
             await process.wait()
             await reader

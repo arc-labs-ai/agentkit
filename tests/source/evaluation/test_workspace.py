@@ -248,6 +248,16 @@ def test_large_failed_output():
     assert result["duration_s"] < os_workspace.test_timeout_s
 
 
+@pytest.mark.skipif(
+    not WorkspaceSandbox.signals_deliverable(),
+    reason=(
+        "this host will not let the parent signal its own sandbox: a setuid-root "
+        "bwrap (how it is packaged where unprivileged user namespaces are "
+        "restricted) starts the child as root, so killpg returns EPERM. Deadline "
+        "and cancellation enforcement are genuinely unavailable here, not merely "
+        "untested"
+    ),
+)
 @pytest.mark.asyncio
 async def test_actual_process_timeout_kills_descendant_process_group(os_workspace):
     os_workspace.test_timeout_s = 1.5
@@ -346,6 +356,16 @@ def test_parent_only_source_writes():
     assert await os_workspace.write_file("source.py", "VALUE = 2\n") == "Updated source.py"
 
 
+@pytest.mark.skipif(
+    not WorkspaceSandbox.signals_deliverable(),
+    reason=(
+        "this host will not let the parent signal its own sandbox: a setuid-root "
+        "bwrap (how it is packaged where unprivileged user namespaces are "
+        "restricted) starts the child as root, so killpg returns EPERM. Deadline "
+        "and cancellation enforcement are genuinely unavailable here, not merely "
+        "untested"
+    ),
+)
 @pytest.mark.asyncio
 async def test_cancelling_actual_test_process_kills_it_before_its_long_deadline(os_workspace):
     os_workspace.test_timeout_s = 30
