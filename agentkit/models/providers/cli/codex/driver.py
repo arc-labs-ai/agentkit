@@ -1914,6 +1914,7 @@ class _ItemLog:
     emitted: dict[str, int] = field(default_factory=dict)
     called: set[str] = field(default_factory=set)
     refused_vocabulary: bool = False
+    anonymous_calls: int = 0
 
     def suffix(self, key: str, text: str) -> str:
         """The part of ``text`` not yet emitted for ``key``, marking it emitted.
@@ -1934,6 +1935,24 @@ class _ItemLog:
             return False
         self.called.add(key)
         return True
+
+    def anonymous_id(self) -> str:
+        """A positional id for a tool item that arrived without one.
+
+        An id-less item cannot be tracked ACROSS phases — with no id there is
+        nothing to recognise the completion of a started item by — so this
+        deliberately hands out a fresh id each time rather than pretending to
+        remember. Within one ``_paired`` call the id is shared by the
+        ``tool_call`` and its ``tool_result``, which is the pairing that
+        actually has to hold.
+
+        The alternative, and what used to happen, is strictly worse: an empty
+        id made every id-less item collapse onto the single dedupe key
+        ``"call:"``, so the FIRST one emitted a call and every later one was
+        silently dropped — two parallel shell commands reported as one.
+        """
+        self.anonymous_calls += 1
+        return f"call_{self.anonymous_calls - 1}"
 
 
 @dataclass(slots=True)
@@ -2271,8 +2290,14 @@ def _paired(
     is a completion to render; several of them walk a list.
     """
     out: list[tuple[StreamEvent | None, _EventDelta]] = []
-    call = ToolCall(id=item_id, name=name, arguments={k: v for k, v in arguments.items() if v is not None})
-    if log.first_call(f"call:{item_id}"):
+    # An id-less item gets a positional one, and then must NOT go through the
+    # cross-phase dedupe: its key would be the same ``"call:"`` as every other
+    # id-less item in the turn, which is what silently dropped all but the
+    # first of them.
+    anonymous = not item_id
+    call_id = log.anonymous_id() if anonymous else item_id
+    call = ToolCall(id=call_id, name=name, arguments={k: v for k, v in arguments.items() if v is not None})
+    if anonymous or log.first_call(f"call:{item_id}"):
         out.append((StreamEvent("tool_call", tool_call=call), _EventDelta()))
     if phase == "completed":
         out.append((StreamEvent("tool_result", tool_call=call, tool_result=result()), _EventDelta()))

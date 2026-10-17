@@ -248,6 +248,9 @@ TOOLARG_TESTS = (
 TOOLSCHEMA_TESTS = (
     "tests/source/unit/tools/test_tool_argument_coercion.py",
 )
+TOOLCALLID_TESTS = (
+    "tests/source/unit/models/test_tool_call_identity.py",
+)
 CHANNEL_TESTS = ("tests/source/unit/agents/test_signal_protocol.py",)
 TERM_TESTS = (
     "tests/source/unit/agents/test_termination_isolation.py",
@@ -1783,9 +1786,13 @@ MUTANTS: tuple[Mutant, ...] = (
     Mutant(
         tag="codex",
         why="a paired tool item emits its call event twice, so an observer counting "
-        "tool calls doubles every shell command",
+        "tool calls doubles every shell command. (The guard grew an `anonymous or` "
+        "arm when the id-less case stopped going through the dedupe at all \u2014 its "
+        "key would be the same `\"call:\"` for every id-less item. Mutating the whole "
+        "condition still breaks only the double-emit invariant, which is what this "
+        "entry is for; the id-less case has its own entry under `toolcallid`.)",
         path="agentkit/models/providers/cli/codex/driver.py",
-        before='    if log.first_call(f"call:{item_id}"):',
+        before='    if anonymous or log.first_call(f"call:{item_id}"):',
         after="    if True:",
         tests=CODEX_TESTS,
     ),
@@ -1912,6 +1919,54 @@ MUTANTS: tuple[Mutant, ...] = (
         before='            state.cost_source = CostSource.HOST_PRICING if self.pricing is not None else CostSource.PRICE_TABLE',
         after='            state.cost_source = CostSource.REPORTED',
         tests=CODEX_BUDGET_TESTS,
+    ),
+    Mutant(
+        tag="toolcallid",
+        why="the one shared id rule loses its positional fallback, so every id-less call in a turn collides. A tool call's id is what pairs a RESULT back to its call, and every transport keys on it (`tool_call_id` on an OpenAI `tool` message, `tool_use_id` on an Anthropic `tool_result` block, the per-item dedupe in the codex driver). Two calls sharing an id means one tool's answer silently overwrites the other's and the model is handed a result it never asked for. Nothing raises.",
+        path='agentkit/models/adapters/_mapping.py',
+        before='    text = str(raw or "").strip()\n    return text or f"call_{index}"',
+        after='    text = str(raw or "").strip()\n    return text',
+        tests=TOOLCALLID_TESTS,
+    ),
+    Mutant(
+        tag="toolcallid",
+        why="the duck-typed OpenAI-shape adapter falls back to the tool NAME again — the fallback that reads as sensible and is the one choice guaranteed to collide exactly when it matters. Measured: two id-less calls to `search` came back as ['search', 'search']. A tool call's id is what pairs a RESULT back to its call, and every transport keys on it (`tool_call_id` on an OpenAI `tool` message, `tool_use_id` on an Anthropic `tool_result` block, the per-item dedupe in the codex driver). Two calls sharing an id means one tool's answer silently overwrites the other's and the model is handed a result it never asked for. Nothing raises.",
+        path='agentkit/models/adapters/_mapping.py',
+        before='id=tool_call_id(_get(tc, "id"), index),',
+        after='id=str(_get(tc, "id") or name),',
+        tests=TOOLCALLID_TESTS,
+    ),
+    Mutant(
+        tag="toolcallid",
+        why="Anthropic's non-streamed path falls back to an EMPTY id, which is one id shared by every id-less block rather than a missing one. A tool call's id is what pairs a RESULT back to its call, and every transport keys on it (`tool_call_id` on an OpenAI `tool` message, `tool_use_id` on an Anthropic `tool_result` block, the per-item dedupe in the codex driver). Two calls sharing an id means one tool's answer silently overwrites the other's and the model is handed a result it never asked for. Nothing raises.",
+        path='agentkit/models/providers/frontiers/anthropic.py',
+        before='id=tool_call_id(b.get("id"), index),',
+        after='id=b.get("id", ""),',
+        tests=TOOLCALLID_TESTS,
+    ),
+    Mutant(
+        tag="toolcallid",
+        why="Anthropic's streamed path falls back to an EMPTY id, even though `blocks` is keyed by the stream's own content index and the position was already in hand. A tool call's id is what pairs a RESULT back to its call, and every transport keys on it (`tool_call_id` on an OpenAI `tool` message, `tool_use_id` on an Anthropic `tool_result` block, the per-item dedupe in the codex driver). Two calls sharing an id means one tool's answer silently overwrites the other's and the model is handed a result it never asked for. Nothing raises.",
+        path='agentkit/models/providers/frontiers/anthropic.py',
+        before='ToolCall(id=tool_call_id(b["id"], index), name=b["name"], arguments=coerce_tool_args(b["json"]))',
+        after='ToolCall(id=b["id"], name=b["name"], arguments=coerce_tool_args(b["json"]))',
+        tests=TOOLCALLID_TESTS,
+    ),
+    Mutant(
+        tag="toolcallid",
+        why="the Claude CLI driver falls back to an EMPTY id for a `tool_use` block. A tool call's id is what pairs a RESULT back to its call, and every transport keys on it (`tool_call_id` on an OpenAI `tool` message, `tool_use_id` on an Anthropic `tool_result` block, the per-item dedupe in the codex driver). Two calls sharing an id means one tool's answer silently overwrites the other's and the model is handed a result it never asked for. Nothing raises.",
+        path='agentkit/models/providers/cli/claude/driver.py',
+        before='id=tool_call_id(block.get("id"), tool_index),',
+        after='id=str(block.get("id") or ""),',
+        tests=TOOLCALLID_TESTS,
+    ),
+    Mutant(
+        tag="toolcallid",
+        why='THE WORST OF THE SIX, because the collision then goes through a dedupe: every id-less codex item hashes to the same key `"call:"`, so the FIRST emits a `tool_call` and every later one is silently DISCARDED. Two parallel shell commands are reported to the caller as one, with one result. Losing a call outright beats mislabelling it for sheer damage — an observer undercounts, and a consumer pairing results holds a result with no call to attach it to.',
+        path='agentkit/models/providers/cli/codex/driver.py',
+        before='if anonymous or log.first_call(f"call:{item_id}"):',
+        after='if log.first_call(f"call:{item_id}"):',
+        tests=TOOLCALLID_TESTS,
     ),
 )
 

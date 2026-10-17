@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from agentkit.core.contracts.types import Delta, LLMResult, Message, ProviderUsage, ToolCall
-from agentkit.models.adapters._mapping import coerce_tool_args
+from agentkit.models.adapters._mapping import coerce_tool_args, tool_call_id
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
 from agentkit.models.providers.frontiers.base import HttpLLM, raise_if_error_frame
 
@@ -86,18 +86,15 @@ def _to_tool(schema: Any) -> dict[str, Any]:
 def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
     """Parse the non-streamed `tool_calls` array.
 
-    When the provider omits an id, the fallback is the POSITION, never the tool name — the exact
-    rule `_frag_to_toolcall` states for the streamed path, which this function contradicted.
-    Measured: two parallel calls to the same tool with no provider id produced ids
-    `['search', 'search']`. One id for two calls means the `tool` result messages keyed by
-    `tool_call_id` collide, so one tool's answer silently overwrites the other's and the model is
-    told a result it never asked for."""
+    The id fallback is `tool_call_id`'s, shared with every other provider —
+    the POSITION, never the tool name. This function used to spell its own and
+    contradict the streamed path next to it."""
     out: list[ToolCall] = []
     for i, tc in enumerate(message.get("tool_calls") or ()):
         fn = tc.get("function", {})
         out.append(
             ToolCall(
-                id=str(tc.get("id") or f"call_{i}"),
+                id=tool_call_id(tc.get("id"), i),
                 name=fn.get("name", ""),
                 arguments=coerce_tool_args(fn.get("arguments")),
             )
@@ -106,11 +103,10 @@ def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
 
 
 def _frag_to_toolcall(index: int, frag: dict[str, Any]) -> ToolCall:
-    """Assemble a streamed tool call from its accumulated id/name/arguments fragments. When the provider
-    omits an id, fall back to the stream index (unique per call) — not the name, which would collide for
-    two parallel calls to the same tool."""
+    """Assemble a streamed tool call from its accumulated id/name/arguments fragments. The id fallback
+    is `tool_call_id`'s, shared with every other provider: the stream index, which is unique per call."""
     return ToolCall(
-        id=str(frag["id"] or f"call_{index}"),
+        id=tool_call_id(frag["id"], index),
         name=frag["name"],
         arguments=coerce_tool_args(frag["args"]),
     )

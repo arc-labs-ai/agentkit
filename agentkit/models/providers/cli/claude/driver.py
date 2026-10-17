@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from agentkit.agents.prompts.prompt import Prompt
 from agentkit.core.contracts.protocols import Ctx
 from agentkit.core.contracts.types import ProviderUsage, StreamEvent, ToolCall
+from agentkit.models.adapters._mapping import tool_call_id
 from agentkit.models.providers.cli._common import (
     _CANCEL_POLL_S,
     _STDOUT_LINE_LIMIT,
@@ -2670,6 +2671,7 @@ async def _events_from_payload(
 
     if ptype == "assistant":
         msg = _as_dict(payload.get("message"))
+        tool_index = 0
         for block in _as_list(msg.get("content")):
             if not isinstance(block, dict):
                 continue
@@ -2700,10 +2702,11 @@ async def _events_from_payload(
                     )
             elif btype == "tool_use":
                 tc = ToolCall(
-                    id=str(block.get("id") or ""),
+                    id=tool_call_id(block.get("id"), tool_index),
                     name=str(block.get("name") or ""),
                     arguments=dict(_as_dict(block.get("input"))),
                 )
+                tool_index += 1
                 yield StreamEvent("tool_call", tool_call=tc), _EventDelta()
         texts = [
             str(b.get("text") or "")
