@@ -127,13 +127,35 @@ class _OtelSpanAdapter:
         self._span.add_event(name, attributes={k: _coerce_attr(v) for k, v in fields.items()})
 
 
+_ATTR_SCALARS = (str, bool, int, float)
+
+
 def _coerce_attr(v: Any) -> Any:
-    """OTel SDK accepts only str, bool, int, float, or sequences of
-    those for attribute values. Coerce everything else to string."""
-    if isinstance(v, (str, bool, int, float)):
+    """OTel SDK accepts only str, bool, int, float, or HOMOGENEOUS sequences of
+    those for attribute values. Coerce everything else to string.
+
+    Homogeneous is the part that bites. Checking each element against the
+    allowed scalars individually lets a MIXED sequence through, and the SDK
+    then drops the whole attribute with nothing but a log line. Measured:
+
+        span.set("mixed", [1, "two"])
+        -> the attribute is ABSENT from the exported span
+        -> WARNING opentelemetry.attributes: Attribute 'mixed' mixes types
+           int and str in attribute value sequence
+
+    Silent loss is the worst outcome for a debugging aid: the caller set the
+    value, nothing raised, and it is simply not in the trace. Comparing
+    ``type(x)`` rather than ``isinstance`` is deliberate — ``bool`` is a
+    subclass of ``int``, so ``[True, 1]`` is a mix the SDK rejects as well.
+
+    An empty sequence has no types to mix and passes through.
+    """
+    if isinstance(v, _ATTR_SCALARS):
         return v
-    if isinstance(v, (list, tuple)) and all(isinstance(x, (str, bool, int, float)) for x in v):
-        return list(v)
+    if isinstance(v, (list, tuple)):
+        kinds = {type(x) for x in v}
+        if len(kinds) <= 1 and all(isinstance(x, _ATTR_SCALARS) for x in v):
+            return list(v)
     return str(v)
 
 
