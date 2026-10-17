@@ -64,6 +64,48 @@ async def test_codex_deny_is_distinct_from_a_cost_limit():
     assert result.incompatibilities[0].requirement == "native_tools_unavailable"
 
 
+@pytest.mark.asyncio
+async def test_codex_cannot_be_verified_later_by_accident() -> None:
+    """UNVERIFIED and UNSUPPORTED are not interchangeable, and conflating them is
+    how Codex would be promoted by accident.
+
+    UNVERIFIED means "no verifier exists yet" — Claude's empty `--tools` may well
+    deny native tools, and nobody has proved it for this binary. UNSUPPORTED
+    means "cannot be done": Codex keeps file, patch and plan capabilities that
+    an empty tool list does not remove, which is a property of the binary rather
+    than a gap in our evidence.
+
+    Both are refused today, because `unmet` requires SUPPORTED, so the
+    difference is invisible from the compatible/incompatible verdict alone —
+    which is exactly why it needs asserting. The day somebody writes a verifier
+    for the UNVERIFIED case, anything mislabelled UNVERIFIED gets promoted with
+    it. Codex must not be in that set.
+    """
+    claude = await CliAdapter(native_tool_policy=NativeToolPolicy.DENY).evaluate_execution(
+        Binding(Mode.CLAUDE_CODE, "test")
+    )
+    codex = await CliAdapter(native_tool_policy=NativeToolPolicy.DENY).evaluate_execution(
+        Binding(Mode.CODEX, "test")
+    )
+
+    def native_tools(result: object) -> object:
+        return next(
+            fact
+            for fact in result.assessments  # type: ignore[attr-defined]
+            if fact.requirement == "native_tools_unavailable"
+        )
+
+    assert native_tools(codex).status == "unsupported", (
+        "Codex cannot prove native-tool isolation; calling that merely "
+        "'unverified' invites a future verifier to promote it"
+    )
+    assert native_tools(claude).status == "unverified", (
+        "Claude's denial is unproven for this binary, not impossible"
+    )
+    assert native_tools(codex).status != native_tools(claude).status
+    assert "cannot prove" in native_tools(codex).explanation
+
+
 def test_no_caller_boolean_can_attest_isolation():
     with pytest.raises(TypeError):
         ExecutionRequirements(isolated=True)
