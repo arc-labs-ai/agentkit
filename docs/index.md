@@ -75,5 +75,10 @@ Provider-backed checks are opt-in and documented in `tests/evals/README.md`. The
 | `tests/evals` | Opt-in real-provider evaluations |
 | `tests/examples` | Runnable usage examples |
 
+Execution requirements, backend guarantees, provider-specific verification and
+unsupported profiles are documented in the
+[execution isolation design](design/execution-isolation.md). Authentication
+success does not imply execution compatibility.
+
 For Anthropic output-schema compilation, reference expansion, limits and local
 failure handling, see the [schema-budget fix](design/anthropic-schema-budgets.md).

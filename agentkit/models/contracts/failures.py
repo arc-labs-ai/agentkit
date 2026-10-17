@@ -66,6 +66,59 @@ _QUOTA_MESSAGE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 
+# ── the providers' own error vocabularies ───────────────────────────────────
+#
+# Introspected from the official SDKs (anthropic 1.15.0, openai 3.33.0) rather
+# than transcribed from prose, because that is the only list that is actually
+# authoritative. agentkit speaks HTTP directly and has no SDK dependency, so
+# nothing keeps this mapping in step with the providers except this table —
+# which is why it lives in one place with the source named.
+#
+# Anthropic's canonical `type` values: api_error, authentication_error,
+# billing_error, invalid_request_error, not_found_error, overloaded_error,
+# permission_error, rate_limit_error, timeout_error.
+#
+# The TYPES matter independently of the statuses, and not only for tidiness: an
+# in-band SSE error frame carries a `type` with NO status at all, so a
+# condition recognised only by status is unclassifiable mid-stream.
+_QUOTA_CODES = frozenset({
+    "insufficient_quota",
+    "billing_not_active",
+    "enforced_spend_limit_reached",
+    "usage_limit_reached",
+    "spend_limit_reached",
+})
+_QUOTA_TYPES = frozenset({"billing_error"})
+# 402 Payment Required is a billing condition, not a malformed request. It used
+# to sit in the INVALID_REQUEST set, which told an operator to go and debug a
+# request that was perfectly well formed.
+_QUOTA_STATUSES = frozenset({402})
+
+_AUTH_TYPES = frozenset({"authentication_error", "permission_error"})
+_AUTH_STATUSES = frozenset({401, 403})
+
+_RATE_LIMIT_TYPES = frozenset({"rate_limit_error"})
+_RATE_LIMIT_STATUSES = frozenset({429})
+
+_OVERLOADED_TYPES = frozenset({"overloaded_error"})
+_OVERLOADED_STATUSES = frozenset({503, 529})
+
+_TIMEOUT_TYPES = frozenset({"timeout_error"})
+_TIMEOUT_STATUSES = frozenset({408, 504})
+
+_INVALID_REQUEST_TYPES = frozenset({"invalid_request_error", "not_found_error"})
+# 409 is defined by BOTH SDKs (`ConflictError`) and was mapped nowhere, so a
+# conflict arrived as UNKNOWN — indistinguishable from a failure agentkit has
+# never seen. It is a 4xx about the caller's own request, so it belongs here
+# and stays non-retryable: a conflict that resolves itself on an immediate
+# retry is the exception, and guessing retryable on a write is the dangerous
+# direction.
+_INVALID_REQUEST_STATUSES = frozenset({400, 404, 409, 413, 422})
+
+_TRANSIENT_TYPES = frozenset({"api_error", "server_error"})
+_TRANSIENT_STATUSES = frozenset({500, 502})
+
+
 def classify(exc_or_event: Any) -> Failure | None:
     if isinstance(exc_or_event, Failure):
         return exc_or_event
@@ -104,33 +157,36 @@ def classify(exc_or_event: Any) -> Failure | None:
     raw_message = error.get("message")
     message = raw_message.lower() if isinstance(raw_message, str) else ""
     category: FailureClass = FailureClass.UNKNOWN
-    if code in {
-        "insufficient_quota",
-        "billing_not_active",
-        "enforced_spend_limit_reached",
-        "usage_limit_reached",
-        "spend_limit_reached",
-    } or any(pattern.search(message) for pattern in _QUOTA_MESSAGE_PATTERNS):
+    if (
+        code in _QUOTA_CODES
+        or kind in _QUOTA_TYPES
+        or status in _QUOTA_STATUSES
+        or any(pattern.search(message) for pattern in _QUOTA_MESSAGE_PATTERNS)
+    ):
         # Ordered ahead of the 400 branch deliberately: a reached spend cap is
         # an account condition, not a malformed request, and filing it as the
         # latter sends the reader to debug a request that was perfectly valid.
         category = FailureClass.QUOTA_EXHAUSTED
     elif code == "context_length_exceeded":
         category = FailureClass.CONTEXT_EXCEEDED
-    elif status in (401, 403) or kind == "authentication_error" or code == "invalid_api_key":
+    elif status in _AUTH_STATUSES or kind in _AUTH_TYPES or code == "invalid_api_key":
         category = FailureClass.AUTH
-    elif status == 429 or kind == "rate_limit_error" or code == "slow_down":
+    elif status in _RATE_LIMIT_STATUSES or kind in _RATE_LIMIT_TYPES or code == "slow_down":
         category = FailureClass.RATE_LIMITED
-    elif status in (503, 529) or kind == "overloaded_error" or code == "server_is_overloaded":
+    elif (
+        status in _OVERLOADED_STATUSES
+        or kind in _OVERLOADED_TYPES
+        or code == "server_is_overloaded"
+    ):
         category = FailureClass.OVERLOADED
-    elif status in (408, 504):
+    elif status in _TIMEOUT_STATUSES or kind in _TIMEOUT_TYPES:
         category = FailureClass.TIMEOUT
-    elif status in (400, 402, 404, 413, 422) or kind == "invalid_request_error":
+    elif status in _INVALID_REQUEST_STATUSES or kind in _INVALID_REQUEST_TYPES:
         # A structured client status outranks a generic provider type such as
         # ``api_error``. In particular, HTTP 400 must never become a retryable
         # transient merely because the CLI omitted a more specific subtype.
         category = FailureClass.INVALID_REQUEST
-    elif status in (500, 502) or kind in ("api_error", "server_error"):
+    elif status in _TRANSIENT_STATUSES or kind in _TRANSIENT_TYPES:
         category = FailureClass.TRANSIENT_NETWORK
     elif kind == "refusal":
         category = FailureClass.REFUSED

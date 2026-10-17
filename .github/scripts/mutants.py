@@ -227,6 +227,10 @@ TOOLDESC_TESTS = (
 CLIAGENT_TESTS = ("tests/integrations/claude_cli/",)
 HOOKS_TESTS = ("tests/source/unit/models/providers/cli/claude/helpers/test_hooks.py",)
 APPROVAL_RECORD_TESTS = ("tests/source/unit/integrations/mcp/test_approvals.py",)
+EXECUTION_TESTS = (
+    "tests/source/conformance/test_execution_capabilities.py",
+    "tests/source/conformance/test_execution_regressions.py",
+)
 MCP_AUTH_TESTS = (
     "tests/source/unit/integrations/mcp/test_transport_auth.py",
     "tests/source/unit/integrations/mcp/test_approvals.py",
@@ -1005,6 +1009,62 @@ MUTANTS: tuple[Mutant, ...] = (
         ),
         after='return any(fnmatchcase(key, x) for x in self.allow)',
         tests=("tests/source/conformance/test_gateway.py",),
+    ),
+    # ── fail-closed execution contracts ─────────────────────────────────────
+    #
+    # `evaluate_cli_execution` decides, before any credential is resolved and
+    # before the CLI is spawned, whether a containment request can be honoured.
+    # Its entire value is that it answers NO unless there is evidence. Every
+    # mutant below turns one of those refusals into a grant, which is the only
+    # direction that matters: a false UNSUPPORTED costs a caller a refusal they
+    # can read, and a false SUPPORTED hands them a boundary that does not exist.
+    Mutant(
+        tag="execfailclosed",
+        why="every requirement starts SUPPORTED instead of UNSUPPORTED, so a caller asking for filesystem, network, process or credential boundaries is told all of them hold while nothing enforces any of them — the single most dangerous line in the module",
+        path="agentkit/models/providers/cli/capabilities.py",
+        before="        status = CapabilityStatus.UNSUPPORTED\n",
+        after="        status = CapabilityStatus.SUPPORTED\n",
+        tests=EXECUTION_TESTS,
+    ),
+    Mutant(
+        tag="execfailclosed",
+        why="a backend declaring a guarantee is promoted straight to SUPPORTED rather than clamped to UNVERIFIED, so containment becomes self-attesting: whoever writes the BackendReport decides whether the boundary exists, which is exactly the authority the design refuses to delegate",
+        path="agentkit/models/providers/cli/capabilities.py",
+        before="        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:\n            status = CapabilityStatus.UNVERIFIED\n",
+        after="        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:\n            status = CapabilityStatus.SUPPORTED\n",
+        tests=EXECUTION_TESTS,
+    ),
+    Mutant(
+        tag="execfailclosed",
+        why="only UNSUPPORTED counts as unmet, so UNVERIFIED silently satisfies a required boundary — the module's docstring says 'Unverified is a refusal when the capability is required' and this is the line that makes it true. Claude's native-tool denial is UNVERIFIED, so this is the mutation that would let it pass as proven",
+        path="agentkit/models/providers/cli/capabilities.py",
+        before="    unmet = [fact for fact in facts if fact.requirement in required and fact.status != CapabilityStatus.SUPPORTED]\n",
+        after="    unmet = [fact for fact in facts if fact.requirement in required and fact.status == CapabilityStatus.UNSUPPORTED]\n",
+        tests=EXECUTION_TESTS,
+    ),
+    Mutant(
+        tag="execfailclosed",
+        why="NativeToolPolicy.DENY stops adding NATIVE_TOOLS_UNAVAILABLE to the required set, so the strictest policy is evaluated as though it had asked for nothing — DENY becomes a label rather than a constraint",
+        path="agentkit/models/providers/cli/capabilities.py",
+        before="    if policy == NativeToolPolicy.DENY:\n        required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)\n",
+        after="    if policy == NativeToolPolicy.DENY:\n        pass\n",
+        tests=EXECUTION_TESTS,
+    ),
+    Mutant(
+        tag="execfailclosed",
+        why="the contradiction between CONTAINED native execution and strict native-tool denial stops being reported, so a request that asks both to run native tools in a sandbox AND to have no native tools is answered as satisfiable",
+        path="agentkit/models/providers/cli/capabilities.py",
+        before="    if execution.native_execution == NativeExecution.CONTAINED and policy == NativeToolPolicy.DENY:\n",
+        after="    if False:\n",
+        tests=EXECUTION_TESTS,
+    ),
+    Mutant(
+        tag="execfailclosed",
+        why="Codex stops being treated as unable to prove native-tool isolation and is downgraded to the same UNVERIFIED as Claude, erasing the one documented difference between the two backends — Codex keeps file/patch/plan capabilities that an empty tool list does not remove",
+        path="agentkit/models/providers/cli/capabilities.py",
+        before="            if mode == Mode.CODEX:\n",
+        after="            if False:\n",
+        tests=EXECUTION_TESTS,
     ),
 )
 

@@ -717,7 +717,7 @@ async def test_cli_request_hook_cannot_replace_the_executable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_retries_a_cli_first_event_timeout() -> None:
+async def test_runtime_does_not_retry_a_potentially_executed_cli_first_event_timeout() -> None:
     cli = FakeClaudeCli.script(
         [
             {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "recovered"}]}},
@@ -751,11 +751,13 @@ async def test_runtime_retries_a_cli_first_event_timeout() -> None:
             events=events.append,
             call_id="first-event-timeout-retry",
         )
-    assert answer.outcome == "answered" and answer.attempts == 2, (answer.outcome, answer.attempts, answer.failure)
-    assert any(
-        event.kind == EventKind.RETRY and event.fields.get("failure_class") == FailureClass.TIMEOUT for event in events
-    )
-    assert spawns == 2
+    assert answer.outcome == "limit_reached" and answer.attempts == 1
+    assert answer.failure.classification == FailureClass.TIMEOUT
+    assert answer.failure.retryable is False
+    assert answer.failure.mode_detail["dispatch_state"] == "unknown"
+    assert not answer.usage_complete and answer.cost_usd is None
+    assert not any(event.kind == EventKind.RETRY for event in events)
+    assert spawns == 1
 
 
 @pytest.mark.asyncio
@@ -941,8 +943,11 @@ async def test_adapter_native_deny_cannot_be_widened_by_runtime_warn():
             Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})), "run bash",
             workspace=Workspace(native_tools=("Bash",)), call_id="adapter-deny-ceiling",
         )
-    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.INVALID_REQUEST
+    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.EXECUTION_INCOMPATIBLE
     assert not cli.invocations
+
+    assert answer.failure.mode_detail["dispatch_state"] == "not_started"
+    assert answer.attempts == 0
 
 
 @pytest.mark.asyncio
@@ -2765,8 +2770,11 @@ async def test_codex_native_deny_refuses_before_dispatch():
     answer = await CallRuntime(
         adapters={"codex": adapter}, pricing=PRICES, native_tool_policy=NativeToolPolicy.DENY
     ).ask(Binding("codex", "test"), "q", call_id="native-deny")
-    assert answer.outcome == "failed" and answer.failure.classification == "invalid_request"
+    assert answer.outcome == "failed" and answer.failure.classification == "execution_incompatible"
     assert not adapter.requests
+
+    assert answer.failure.mode_detail["dispatch_state"] == "not_started"
+    assert answer.attempts == 0
 
 
 @pytest.mark.asyncio
@@ -2843,8 +2851,11 @@ async def test_claude_per_call_deny_refuses_explicit_native_tools_before_spawn()
         native_tool_policy=NativeToolPolicy.DENY,
         call_id="claude-native-deny",
     )
-    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.INVALID_REQUEST
+    assert answer.outcome == "failed" and answer.failure.classification == FailureClass.EXECUTION_INCOMPATIBLE
     assert not cli.invocations
+
+    assert answer.failure.mode_detail["dispatch_state"] == "not_started"
+    assert answer.attempts == 0
 
 
 @pytest.mark.asyncio

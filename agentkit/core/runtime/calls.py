@@ -31,6 +31,12 @@ from agentkit.models.contracts.constants import (
     Outcome,
     UnpricedPolicy,
 )
+from agentkit.models.contracts.execution import (
+    CapabilityStatus,
+    ExecutionAssessment,
+    ExecutionCompatibility,
+    ExecutionRequirements,
+)
 from agentkit.models.contracts.failures import classify
 from agentkit.models.contracts.schema import (
     OutputSpec,
@@ -167,6 +173,37 @@ class CallRuntime:
         """A one-shot call, with one shared bounded correction turn."""
         return await self.run(binding, prompt, output=output, **kwargs)
 
+    async def evaluate_execution(
+        self,
+        binding: Binding,
+        *,
+        execution: ExecutionRequirements | None = None,
+        native_tool_policy: NativeToolPolicy | None = None,
+    ) -> ExecutionCompatibility:
+        """Assess execution without credentials, prompts or provider dispatch."""
+        requested = NativeToolPolicy(native_tool_policy or self.native_tool_policy)
+        rank = {NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}
+        if rank[requested] > rank[self.native_tool_policy]:
+            raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
+        adapter = self._adapter(binding)
+        evaluate = getattr(adapter, "evaluate_execution", None)
+        if evaluate is not None and not binding.mode.is_api:
+            return cast(ExecutionCompatibility, await evaluate(
+                binding, execution=execution, native_tool_policy=requested,
+            ))
+        if not binding.mode.is_api and binding.mode == Mode.CODEX and requested == NativeToolPolicy.DENY:
+            from agentkit.models.providers.cli.capabilities import evaluate_cli_execution
+            from agentkit.models.providers.cli.execution import BackendReport
+
+            return evaluate_cli_execution(binding.mode, BackendReport("unspecified", "unknown"),
+                                          execution or ExecutionRequirements(), requested)
+        required = (execution or ExecutionRequirements()).required
+        facts = tuple(ExecutionAssessment(
+            requirement, CapabilityStatus.UNSUPPORTED, "execution_mode_unsupported",
+            "This adapter does not implement enforcement for the requested execution requirement.",
+        ) for requirement in sorted(required))
+        return ExecutionCompatibility(str(binding.mode), "unspecified", "unknown", None, facts, facts)
+
     async def run(
         self,
         binding: Binding,
@@ -192,6 +229,7 @@ class CallRuntime:
         scope: Scope | None = None,
         context_policy: Any = None,
         native_tool_policy: NativeToolPolicy | None = None,
+        execution: ExecutionRequirements | None = None,
     ) -> Answer[Any]:
         if not call_id:
             raise ValueError("call_id is required")
@@ -506,8 +544,11 @@ class CallRuntime:
                             result = Turn()
                         result.failure = Failure(
                             FailureClass.CANCELLED if cancelled else FailureClass.TIMEOUT,
-                            bool(first and not binding.mode.is_api),
-                            mode_detail={"limit": "wall" if wall else "idle" if idle else "first_event"},
+                            False,
+                            mode_detail={
+                                "limit": "wall" if wall else "idle" if idle else "first_event",
+                                "dispatch_state": "unknown",
+                            },
                         )
                         return result
                     await asyncio.wait({task}, timeout=0.05)
@@ -526,8 +567,28 @@ class CallRuntime:
                         pass
 
         try:
+            # Two local refusals, both with zero provider attempts, so the
+            # order is about cost rather than safety. `schema_failure` is
+            # already computed and certain; evaluating execution compatibility
+            # inspects the backend, which can spawn the binary to read its
+            # version. A request whose schema cannot compile will never run, so
+            # answering that first avoids asking a question that no longer
+            # matters — and the compatibility evaluation is skipped entirely
+            # rather than performed and discarded.
+            compatibility = None
+            if schema_failure is None and (
+                execution is not None or hasattr(adapter, "evaluate_execution")
+            ):
+                compatibility = await self.evaluate_execution(
+                    binding, execution=execution, native_tool_policy=effective_native_policy,
+                )
             if schema_failure is not None:
                 failure = schema_failure
+                total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
+            elif compatibility is not None and not compatibility.compatible:
+                from agentkit.models.providers.cli.calls import execution_failure
+
+                failure = execution_failure(compatibility)
                 total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
             elif prompt.images and binding.mode == Mode.CLAUDE_CODE:
                 degradation = Degradation(
@@ -557,12 +618,11 @@ class CallRuntime:
                     },
                 )
             elif binding.mode == Mode.CODEX and effective_native_policy == NativeToolPolicy.DENY:
-                failure = Failure(
-                    FailureClass.INVALID_REQUEST,
-                    mode_detail={
-                        "reason": "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"
-                    },
-                )
+                from agentkit.models.providers.cli.calls import execution_failure
+
+                compatibility = await self.evaluate_execution(binding, native_tool_policy=effective_native_policy)
+                failure = execution_failure(compatibility)
+                total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
             elif (
                 binding.mode == Mode.CLAUDE_CODE
                 and effective_native_policy == NativeToolPolicy.DENY
@@ -689,6 +749,7 @@ class CallRuntime:
                                         **(
                                             {
                                                 "native_tool_policy": effective_native_policy,
+                                                **({"execution": execution} if execution is not None else {}),
                                                 "tool_activity": tool_activity,
                                                 "tool_activity_ended_at": tool_activity_ended_at,
                                                 **(
@@ -724,6 +785,7 @@ class CallRuntime:
                                         **(
                                             {
                                                 "native_tool_policy": effective_native_policy,
+                                                **({"execution": execution} if execution is not None else {}),
                                                 "tool_activity": tool_activity,
                                                 "tool_activity_ended_at": tool_activity_ended_at,
                                                 **(

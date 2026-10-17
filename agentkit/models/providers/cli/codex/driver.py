@@ -953,6 +953,9 @@ class CodexCliCognition:
             elapsed_ms=int((time.monotonic() - started_at) * 1000),
             timed_out=outcome.timed_out,
         )
+        result.evals["execution_uncertain"] = outcome.uncertain
+        result.evals["execution_cleanup_failed"] = outcome.cleanup_failed
+        result.evals["execution_started"] = outcome.spawned
         yield StreamEvent("final", usage=result.usage, result=result)
         if outcome.should_reraise_cancel:
             raise asyncio.CancelledError()
