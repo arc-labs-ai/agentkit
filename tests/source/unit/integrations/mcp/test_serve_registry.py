@@ -1053,3 +1053,79 @@ def test_the_stdio_child_is_spawned_with_this_interpreter_not_whatever_python_me
 
     assert stdio_command("pkg.server") == (sys.executable, "-m", "pkg.server")
     assert stdio_command("pkg.server")[0] != "python"
+
+
+@pytest.mark.asyncio
+async def test_a_readiness_reply_with_no_data_frame_is_not_reported_as_ready() -> None:
+    """The counterpart of the protocol-error test, and the one that used to pass.
+    A reply declared `text/event-stream` with no `data:` frame fell back to the
+    literal string `"{}"` — which parses, carries no `error`, and yields an empty
+    catalogue. So a malformed reply reported READY, and the caller found out via
+    a `KeyError` on `ready["tools"]` somewhere else entirely, long after the probe
+    that existed to catch it had said yes."""
+    import httpx
+
+    spec = _spec()
+
+    class _Response:
+        headers = {"content-type": "text/event-stream"}
+        text = "event: message\n\n"  # a frame, but no `data:` line
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def post(self, *_: Any, **__: Any) -> _Response:
+            return _Response()
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(httpx, "AsyncClient", _Client)
+        with pytest.raises(RuntimeError, match="no `data:` frame"):
+            await spec.check_ready()
+
+
+@pytest.mark.asyncio
+async def test_a_readiness_reply_with_neither_error_nor_result_is_not_reported_as_ready() -> None:
+    """`payload.get("result") or {}` turned a reply that answered nothing into an
+    empty catalogue, which is indistinguishable from a healthy server that has no
+    tools. A readiness probe that cannot tell those apart is not a readiness
+    probe."""
+    import httpx
+
+    spec = _spec()
+
+    class _Response:
+        headers = {"content-type": "application/json"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Any:
+            return {"jsonrpc": "2.0", "id": 1}
+
+    class _Client:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def post(self, *_: Any, **__: Any) -> _Response:
+            return _Response()
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(httpx, "AsyncClient", _Client)
+        with pytest.raises(RuntimeError, match="neither an `error` nor a `result`"):
+            await spec.check_ready()

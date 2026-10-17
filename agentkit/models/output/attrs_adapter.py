@@ -65,12 +65,20 @@ def _type_to_schema(tp: Any) -> dict[str, Any]:
             inner = _type_to_schema(non_none[0])
             existing = inner.get("type")
             if isinstance(existing, str):
+                # Widen in place rather than wrapping: `["string", "null"]`
+                # keeps a nested object's `properties` where an `anyOf` would
+                # bury them a level down.
                 inner["type"] = [existing, "null"]
-            elif isinstance(existing, list) and "null" not in existing:
-                inner["type"] = [*existing, "null"]
-            else:
-                return {"anyOf": [inner, {"type": "null"}]}
-            return inner
+                return inner
+            # Anything without a plain string `type` — an `anyOf` from a
+            # typeless Literal, say — cannot be widened in place.
+            #
+            # There is deliberately no arm for an already-list `type`: the only
+            # two things that produce one are this line and the schema for an
+            # Optional, both of which already contain "null", and `typing`
+            # flattens `Optional[Optional[X]]`. An arm for it would be a branch
+            # no annotation can reach.
+            return {"anyOf": [inner, {"type": "null"}]}
         raise TypeError(f"unsupported union {tp!r}; only Optional[X] is supported")
 
     if origin is Literal:
@@ -245,8 +253,18 @@ def _coerce_attrs(cls: type, payload: dict[str, Any], *, path: str) -> Any:
         try:
             object.__setattr__(inst, fname, fvalue)
         except AttributeError as e:
-            # Slotted class without that slot — nothing we can do; still an
-            # OutputCoercionError rather than a raw AttributeError.
+            # Defensive, and not for the reason this comment used to give:
+            # attrs creates a slot for every declared field, so "slotted class
+            # without that slot" cannot happen. The only shape that makes
+            # `object.__setattr__` fail on a declared field is an inherited
+            # read-only `property` shadowing the name — and attrs' own
+            # `__init__` assigns every defaulted `init=False` field, so such a
+            # class raises inside `cls(**kwargs)` above and is wrapped there
+            # long before this runs.
+            #
+            # It stays because converting a raw `AttributeError` into this
+            # module's own error type costs nothing, and the next attrs release
+            # does not owe us the reasoning above.
             raise ValueError(f"{path + '.' if path else ''}{fname}: cannot set ({e})") from e
     return inst
 

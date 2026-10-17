@@ -1819,8 +1819,14 @@ class ClaudeCliSession:
         followed by a normal one in the same process, which then exits 0.
 
         The interrupted turn still yields exactly one terminal ``final`` event,
-        with ``stop_reason="interrupted"`` (``terminated`` in the closed
-        taxonomy — somebody stopped this deliberately; nothing failed).
+        with ``stop_reason="interrupted"`` on BOTH ``CliResult.stop_reason`` and
+        ``evals["stop_reason"]``.
+
+        It passes through rather than mapping to a failure, and that is the
+        point: ``interrupted`` is in neither ``_CLI_FAILURE_REASONS`` nor
+        ``_CLI_INVALID_OUTPUT_REASONS``, so ``_cli_terminal_stop_reason`` leaves
+        it alone. Somebody stopped this deliberately and nothing failed, which
+        is exactly the case the pass-through exists for.
 
         ``cancel_queued`` also drops messages the CLI has queued but not yet
         dispatched. Requires the ``interrupt_cancel_queued_v1`` capability,
