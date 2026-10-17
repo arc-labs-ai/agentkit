@@ -2,14 +2,18 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/</loc>
-         <lastmod>2026-10-16</lastmod>
+         <lastmod>2026-10-17</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/PUBLISHING/</loc>
-         <lastmod>2026-10-16</lastmod>
+         <lastmod>2026-10-17</lastmod>
     </url>
     <url>
          <loc>https://arc-labs-ai.github.io/agentkit/contributing/</loc>
-         <lastmod>2026-10-16</lastmod>
+         <lastmod>2026-10-17</lastmod>
+    </url>
+    <url>
+         <loc>https://arc-labs-ai.github.io/agentkit/design/execution-isolation/</loc>
+         <lastmod>2026-10-17</lastmod>
     </url>
 </urlset>
