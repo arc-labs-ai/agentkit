@@ -28,6 +28,53 @@ class SandboxUnavailable(RuntimeError):
     """A workload requiring process isolation cannot run on this host."""
 
 
+def _minimal_roots(paths: object) -> list[Path]:
+    """The shortest set of trees covering ``paths``, as bwrap mounts.
+
+    Drops anything under /usr (already bound) and anything contained by a tree
+    already in the result, so the same directory is never bound twice.
+    """
+    unique = {Path(p) for p in paths}  # type: ignore[union-attr]
+    roots: list[Path] = []
+    for path in sorted(unique, key=lambda p: len(p.parts)):
+        if path == Path("/") or path.is_relative_to(Path("/usr")):
+            continue
+        if any(path.is_relative_to(root) for root in roots):
+            continue
+        roots.append(path)
+    return roots
+
+
+def _interpreter_roots() -> list[Path]:
+    """Every directory tree the sandboxed interpreter needs to exist.
+
+    Three paths, because under modern tooling they are three different places
+    and binding only one leaves a dangling symlink:
+
+    - ``sys.prefix`` — the venv the process is running in. Under
+      ``uv run --with X`` this is an EPHEMERAL overlay venv, and its
+      ``bin/python`` is a symlink rather than a binary.
+    - ``sys.base_prefix`` — where the stdlib and the real interpreter live,
+      and what that symlink points AT. With a uv-managed Python (CI sets
+      ``UV_PYTHON_INSTALL_DIR``) this is outside /usr, so leaving it unbound
+      makes the symlink dangle — which ``execvp`` reports as
+      "No such file or directory", naming the symlink and not the missing
+      target.
+    - the resolved executable's own root, for layouts where neither of the
+      above covers it.
+
+    Paths under /usr are skipped because /usr is already bound, and a path
+    contained by another returned path is skipped so the same tree is not
+    bound twice.
+    """
+    candidates = {
+        Path(sys.prefix).resolve(),
+        Path(sys.base_prefix).resolve(),
+        Path(sys.executable).resolve().parent.parent,
+    }
+    return _minimal_roots(candidates)
+
+
 class WorkspaceSandbox:
     MAX_FILE_BYTES = 256 * 1024
     MAX_OUTPUT_BYTES = 64 * 1024
@@ -294,14 +341,25 @@ class WorkspaceSandbox:
                 args.extend(("--symlink", os.readlink(path), str(path)))
             elif path.exists():
                 args.extend(("--dir", str(path), "--ro-bind", str(path), str(path)))
-        prefix = Path(sys.prefix).resolve()
-        if not prefix.is_relative_to(Path("/usr")):
-            for parent in reversed(prefix.parents):
-                if parent == Path("/"):
-                    break
-                args.extend(("--dir", str(parent)))
-            args.extend(("--ro-bind", str(prefix), str(prefix)))
         args.extend(("--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"))
+        # The interpreter mounts go in AFTER ``--tmpfs /tmp``, and that ordering
+        # is the fix rather than a tidy-up. bwrap applies operations in
+        # sequence, so a prefix bound BEFORE the tmpfs is shadowed by it the
+        # moment the prefix lives under /tmp — which is exactly where
+        # ``uv run --with ...`` puts the ephemeral overlay venv it builds
+        # (measured: sys.prefix = /tmp/.cache/uv/builds-v0/.tmpXXXXXX). The
+        # bind silently vanished and bwrap reported
+        # ``execvp .../bin/python: No such file or directory``.
+        # The site-packages directories go in with them. The bootstrap puts
+        # them on ``sys.path``, which does nothing if the directory is not in
+        # the sandbox's filesystem at all — the interpreter then starts
+        # correctly and dies on ``import pytest``. macOS's profile has always
+        # listed them in ``allowed_reads``; the bubblewrap path never bound
+        # them, and nothing noticed because the only Linux hosts that reach
+        # here are CI runners, where the earlier interpreter failure happened
+        # first and masked it.
+        for path in _minimal_roots([*_interpreter_roots(), *self._runtime_sites]):
+            args.extend(("--ro-bind", str(path), str(path)))
         for parent in reversed(self.root.parents):
             if parent in (Path("/"), Path("/tmp")):
                 continue

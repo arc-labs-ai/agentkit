@@ -1332,12 +1332,25 @@ async def test_claude_mcp_wiring_passes_strict_config_only_once() -> None:
 
 @pytest.mark.asyncio
 async def test_claude_large_schema_uses_prompt_file_and_local_validation(tmp_path: Path) -> None:
+    # Sized from the HOST's own threshold, not a fixed repeat count. The
+    # threshold is derived from ``SC_ARG_MAX``, which differs by platform:
+    # 1,048,576 on darwin gives 32,768, and 2,097,152 on a Linux CI runner
+    # gives 65,536. A hardcoded 3000 repetitions is 45,136 bytes, which
+    # straddles the two — over on a Mac, under on the runner, so the schema
+    # stayed inline there, no prompt-file flag was emitted, and this test
+    # failed only in CI.
+    from agentkit.models.providers.cli._common import _ARGV_TEXT_LIMIT
+
+    filler = "Allowed value. " * (_ARGV_TEXT_LIMIT // len("Allowed value. ") + 64)
     schema = {
         "type": "object",
-        "properties": {"value": {"type": "string", "description": "Allowed value. " * 3000}},
+        "properties": {"value": {"type": "string", "description": filler}},
         "required": ["value"],
         "additionalProperties": False,
     }
+    assert len(json.dumps(schema).encode()) > _ARGV_TEXT_LIMIT, (
+        "the fixture has to be over the threshold or the test asserts nothing"
+    )
     cli = FakeClaudeCli.script(
         [
             {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": '{"value":"ok"}'}]}},
@@ -1352,7 +1365,19 @@ async def test_claude_large_schema_uses_prompt_file_and_local_validation(tmp_pat
     schema_prompt: list[str] = []
 
     async def capture_spawn(*argv, **kwargs):
-        prompt_flag = next(flag for flag in ("--append-system-prompt-file", "--system-prompt-file") if flag in argv)
+        # ``next`` WITH a default. Bare, it raises StopIteration when neither
+        # flag is present, and a StopIteration escaping an ``async def``
+        # surfaces as "RuntimeError: coroutine raised StopIteration" — which
+        # sends the reader after a coroutine bug instead of the missing flag
+        # that actually happened.
+        prompt_flag = next(
+            (flag for flag in ("--append-system-prompt-file", "--system-prompt-file") if flag in argv),
+            None,
+        )
+        assert prompt_flag is not None, (
+            f"the schema was not routed to a prompt file; argv flags: "
+            f"{[a for a in argv if isinstance(a, str) and a.startswith('--')]}"
+        )
         schema_prompt.append(await asyncio.to_thread(Path(argv[argv.index(prompt_flag) + 1]).read_text))
         return await cli(*argv, **kwargs)
 

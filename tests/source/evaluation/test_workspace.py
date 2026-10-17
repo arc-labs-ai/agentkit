@@ -136,7 +136,10 @@ def install_test(sandbox: WorkspaceSandbox, source: str) -> None:
 @pytest.mark.asyncio
 async def test_actual_sandbox_runs_approved_tests_and_records_reviewable_result(os_workspace):
     result = await os_workspace.run_tests(["tests/test_visible.py"])
-    assert result["return_code"] == 0 and "1 passed" in result["output"]
+    # The output is the message, because the sandbox's failures are reported BY
+    # the sandbox: a bare `assert 1 == 0` here says nothing, while the output
+    # carries the actual `bwrap: execvp ...` or inner pytest traceback.
+    assert result["return_code"] == 0 and "1 passed" in result["output"], result["output"]
     assert result["paths"] == ["tests/test_visible.py"]
     assert result["duration_s"] >= 0 and not result["truncated"]
     assert os_workspace.test_runs == [result]
