@@ -1013,3 +1013,38 @@ def test_manual_async_with_lock_blocks_concurrent_writers():
     enter_b = order.index("b-enter")
     assert order[enter_a + 1] == "a-exit"
     assert order[enter_b + 1] == "b-exit"
+
+
+def test_a_tool_calls_arguments_are_frozen_all_the_way_down() -> None:
+    """``ToolCall.arguments`` is deep-frozen in ``__post_init__``, and the
+    freeze has to be DEEP rather than a frozen top level.
+
+    ``ToolCall`` hashes on identity — ``(id, name)`` — never on ``arguments``,
+    which is what lets the same call survive a union merge. That is only sound
+    while the payload cannot change underneath the hash: a nested dict left
+    mutable means two calls that compare and hash equal can carry different
+    arguments, and the one that reaches the tool is whichever the merge
+    happened to keep.
+
+    Freezing also breaks aliasing with the caller's own dict, so a caller who
+    keeps a reference and edits it cannot retroactively rewrite a call that was
+    already recorded, approved or checkpointed.
+    """
+    from agentkit.core.serialization._immutable import FrozenList
+
+    source = {"path": "/tmp/out", "opts": {"mode": "w"}, "items": [1, 2]}
+    call = ToolCall(id="c1", name="Write", arguments=source)
+
+    assert isinstance(call.arguments, FrozenDict)
+    assert isinstance(call.arguments["opts"], FrozenDict), "the freeze stopped at the top level"
+    assert isinstance(call.arguments["items"], FrozenList)
+
+    with pytest.raises(TypeError):
+        call.arguments["path"] = "/etc/passwd"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        call.arguments["opts"]["mode"] = "a"  # type: ignore[index]
+
+    source["path"] = "/etc/passwd"
+    source["opts"]["mode"] = "a"  # type: ignore[index]
+    assert call.arguments["path"] == "/tmp/out", "the call aliased the caller's dict"
+    assert call.arguments["opts"]["mode"] == "w"

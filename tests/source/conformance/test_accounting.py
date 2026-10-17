@@ -131,3 +131,74 @@ def test_partial_prices_preserve_known_amount_and_toml_host_tables(tmp_path):
 def test_invalid_price_modifiers_are_refused(value):
     with pytest.raises(ValueError):
         PriceTable("test", "2026-10-13", {}, {"batch": value})
+
+
+def test_a_spend_cap_stated_only_in_prose_is_quota_and_not_a_bad_request() -> None:
+    """Found by running against a real account that had hit its cap.
+
+    Anthropic reports a reached spend limit with NO machine-readable code:
+
+        status 400, type "invalid_request_error", code None, message
+        "You have reached your specified API usage limits. You will regain
+         access on 2026-11-01 at 00:00 UTC."
+
+    The quota branch keyed only on `code`, so this fell through to the 400
+    branch and was filed INVALID_REQUEST — a client bug. An operator then went
+    looking for a malformed request when the fix was billing. The information
+    was never missing; it sat in a field the classifier did not read.
+
+    Three directions are asserted, because the fix is only correct if it does
+    not overreach: the prose case must classify, a provider that DOES send a
+    code must keep working, and a genuine bad request whose message happens to
+    be about limits must stay INVALID_REQUEST.
+    """
+    anthropic_spend_cap = {
+        "status": 400,
+        "error": {
+            "type": "invalid_request_error",
+            "message": (
+                "You have reached your specified API usage limits. "
+                "You will regain access on 2026-11-01 at 00:00 UTC."
+            ),
+        },
+    }
+    assert classify(anthropic_spend_cap).classification == FailureClass.QUOTA_EXHAUSTED
+
+    # The structured path still wins and still works.
+    openai_quota = {
+        "status": 429,
+        "error": {"code": "insufficient_quota", "message": "You exceeded your current quota."},
+    }
+    assert classify(openai_quota).classification == FailureClass.QUOTA_EXHAUSTED
+
+    # And a real invalid request is not dragged into the quota class.
+    genuine_bad_request = {
+        "status": 400,
+        "error": {"type": "invalid_request_error", "message": "max_tokens: must be greater than 0"},
+    }
+    assert classify(genuine_bad_request).classification == FailureClass.INVALID_REQUEST
+
+
+def test_quota_prose_matching_survives_rewording() -> None:
+    """The wording belongs to the provider and changes without notice, so these
+    are patterns rather than exact substrings — and deliberately specific ones:
+    a bare "quota" or "billing" would misfile a genuine invalid request whose
+    message merely mentions either."""
+    for message in (
+        "You have reached your specified API usage limits.",
+        "Monthly spend limit reached for this organization",
+        "insufficient quota for this request",
+        "Your quota was exceeded",
+        "You exceeded your current quota, please check your plan",
+        "Your credit balance is too low to access the API",
+        "billing not active for this account",
+    ):
+        facts = {"status": 400, "error": {"type": "invalid_request_error", "message": message}}
+        assert classify(facts).classification == FailureClass.QUOTA_EXHAUSTED, message
+
+    for message in (
+        "the `quota` parameter is not a valid field",
+        "billing_address must be a string",
+    ):
+        facts = {"status": 400, "error": {"type": "invalid_request_error", "message": message}}
+        assert classify(facts).classification == FailureClass.INVALID_REQUEST, message

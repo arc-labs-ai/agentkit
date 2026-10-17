@@ -428,6 +428,40 @@ def test_a_caller_supplied_config_path_still_has_its_credential_removed(
     assert tmp_path.is_dir(), "the caller's directory is not ours to remove"
 
 
+def test_a_symlink_at_the_config_path_is_refused_not_written_through(
+    tmp_path: Path,
+) -> None:
+    """``O_CREAT`` FOLLOWS a symlink. Without ``O_NOFOLLOW`` a link already
+    sitting at ``config_path`` when the open runs redirects the bearer token to
+    whatever it points at, at whatever mode that file already had — so the
+    credential lands somewhere the caller never named, and the ``fchmod``
+    tightens a descriptor that was never the risk.
+
+    Setting the mode on the descriptor defends against a symlink swapped in
+    AFTER the open; it cannot defend against one that was already there. The
+    window is real wherever the path is attacker-influenced: a predictable name
+    under a shared ``/tmp``, or a caller-supplied ``config_path`` in a
+    directory something else can write.
+
+    Refusing is the only safe answer. It costs a caller who deliberately
+    symlinked their config path an ``OSError``, which is the right trade —
+    there is no way to tell that caller apart from an attacker who got there
+    first.
+    """
+    target = tmp_path / "attacker-owned.json"
+    target.write_text("{}")
+    link = tmp_path / "engine.mcp.json"
+    link.symlink_to(target)
+
+    with pytest.raises(OSError):
+        _spec(config_path=link)
+
+    assert target.read_text() == "{}", (
+        "the bearer token was written THROUGH the symlink, into a file the "
+        "caller never named"
+    )
+
+
 # ── 6. the approval server gets the same fence ─────────────────────────────
 
 

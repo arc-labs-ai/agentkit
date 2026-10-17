@@ -1332,12 +1332,25 @@ async def test_claude_mcp_wiring_passes_strict_config_only_once() -> None:
 
 @pytest.mark.asyncio
 async def test_claude_large_schema_uses_prompt_file_and_local_validation(tmp_path: Path) -> None:
+    # Sized from the HOST's own threshold, not a fixed repeat count. The
+    # threshold is derived from ``SC_ARG_MAX``, which differs by platform:
+    # 1,048,576 on darwin gives 32,768, and 2,097,152 on a Linux CI runner
+    # gives 65,536. A hardcoded 3000 repetitions is 45,136 bytes, which
+    # straddles the two — over on a Mac, under on the runner, so the schema
+    # stayed inline there, no prompt-file flag was emitted, and this test
+    # failed only in CI.
+    from agentkit.models.providers.cli._common import _ARGV_TEXT_LIMIT
+
+    filler = "Allowed value. " * (_ARGV_TEXT_LIMIT // len("Allowed value. ") + 64)
     schema = {
         "type": "object",
-        "properties": {"value": {"type": "string", "description": "Allowed value. " * 3000}},
+        "properties": {"value": {"type": "string", "description": filler}},
         "required": ["value"],
         "additionalProperties": False,
     }
+    assert len(json.dumps(schema).encode()) > _ARGV_TEXT_LIMIT, (
+        "the fixture has to be over the threshold or the test asserts nothing"
+    )
     cli = FakeClaudeCli.script(
         [
             {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": '{"value":"ok"}'}]}},
@@ -1352,7 +1365,19 @@ async def test_claude_large_schema_uses_prompt_file_and_local_validation(tmp_pat
     schema_prompt: list[str] = []
 
     async def capture_spawn(*argv, **kwargs):
-        prompt_flag = next(flag for flag in ("--append-system-prompt-file", "--system-prompt-file") if flag in argv)
+        # ``next`` WITH a default. Bare, it raises StopIteration when neither
+        # flag is present, and a StopIteration escaping an ``async def``
+        # surfaces as "RuntimeError: coroutine raised StopIteration" — which
+        # sends the reader after a coroutine bug instead of the missing flag
+        # that actually happened.
+        prompt_flag = next(
+            (flag for flag in ("--append-system-prompt-file", "--system-prompt-file") if flag in argv),
+            None,
+        )
+        assert prompt_flag is not None, (
+            f"the schema was not routed to a prompt file; argv flags: "
+            f"{[a for a in argv if isinstance(a, str) and a.startswith('--')]}"
+        )
         schema_prompt.append(await asyncio.to_thread(Path(argv[argv.index(prompt_flag) + 1]).read_text))
         return await cli(*argv, **kwargs)
 
@@ -3083,3 +3108,80 @@ async def test_fast_cooperative_transport_abort_is_cancelled_and_unpriced():
         answer = await runtime.run(Binding("openai_api", "test"), "Query", cancel=token, call_id="transport-abort")
     assert answer.outcome == "cancelled" and answer.failure.classification == "cancelled"
     assert answer.cost_usd is None and answer.cost_source == "unpriced"
+
+
+def test_a_cli_auth_failure_is_classified_from_whatever_channel_said_so() -> None:
+    """The asymmetry a real run exposed, pinned from both sides.
+
+    Classification used to read ONE source — ``cli_errors`` — and only the
+    codex driver populates it. The claude CLI reports the same condition on
+    stdout, so measured against the real binary ``Not logged in · Please run
+    /login`` came back UNKNOWN and non-retryable while codex's equivalent was
+    correctly AUTH and retryable. The caller could not tell "re-authenticate"
+    from "something broke", and ``retryable=False`` meant no retry after they
+    had logged back in.
+
+    What makes it a wiring bug rather than a matcher bug is that the text was
+    never missing: the lines right after classification put it in
+    ``diagnostic`` for the caller to read.
+
+    Both halves are asserted, because only the pair identifies the defect: the
+    same text must stay UNCLASSIFIED when no channel is offered, and classify
+    as AUTH when one is.
+    """
+    real_wording = "Not logged in · Please run /login"
+
+    without = _classify_cli_failure(Mode.CLAUDE_CODE, "cli_reported_error", {})
+    assert without.classification == FailureClass.UNKNOWN
+
+    with_channel = _classify_cli_failure(
+        Mode.CLAUDE_CODE, "cli_reported_error", {}, real_wording.lower()
+    )
+    assert with_channel.classification == FailureClass.AUTH
+    assert with_channel.retryable is True, (
+        "a caller who re-authenticates must be allowed to retry"
+    )
+    assert with_channel.mode_detail["reason"] == "cli_authentication"
+
+
+def test_cli_diagnostic_patterns_survive_rewording_and_capitalisation() -> None:
+    """The CLIs' wording is not an API. It changes between releases, differs
+    between the two binaries, and arrives with punctuation nothing here can
+    predict — so these are patterns against a lowercased haystack, not exact
+    substrings. `"not logged in" in "Not logged in"` is False, and that single
+    capital letter is what a substring match turns into an unclassified
+    production failure."""
+    auth = [
+        "Not logged in · Please run /login",
+        "NOT LOGGED IN",
+        "You have been logged out",
+        "Login required",
+        "Unauthorized",
+        "invalid-api-key",
+        "Invalid API Key",
+        "Please re-authenticate",
+        "your session has expired",
+    ]
+    for text in auth:
+        failure = _classify_cli_failure(Mode.CLAUDE_CODE, "cli_reported_error", {}, text.lower())
+        assert failure.classification == FailureClass.AUTH, text
+
+    assert (
+        _classify_cli_failure(
+            Mode.CLAUDE_CODE, "cli_reported_error", {}, "429 Too Many Requests".lower()
+        ).classification
+        == FailureClass.RATE_LIMITED
+    )
+    assert (
+        _classify_cli_failure(
+            Mode.CLAUDE_CODE, "cli_reported_error", {}, "Overloaded, try later".lower()
+        ).classification
+        == FailureClass.OVERLOADED
+    )
+    # And a plain failure must NOT be dragged into one of these classes.
+    assert (
+        _classify_cli_failure(
+            Mode.CLAUDE_CODE, "cli_reported_error", {}, "could not read the file".lower()
+        ).classification
+        == FailureClass.UNKNOWN
+    )

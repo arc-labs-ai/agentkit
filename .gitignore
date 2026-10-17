@@ -1,6 +1,6 @@
 # What belongs in this repo: everything needed to build, test, document, and
 # release the package from a fresh clone — sources, tests, docs, tests.examples,
-# `scripts/`, `uv.lock`, and `agentkit/py.typed`. Nothing below should ever
+# `.github/scripts/`, `uv.lock`, and `agentkit/py.typed`. Nothing below should ever
 # match one of those; `make check` and a clean `git status` after a full run
 # are the two things that prove it.
 
@@ -49,7 +49,7 @@ coverage.json
 htmlcov/
 
 # ── Mutation testing ────────────────────────────────────────────────────────
-# `scripts/mutants.py` snapshots the files it rewrites here so a hard-killed
+# `.github/scripts/mutants.py` snapshots the files it rewrites here so a hard-killed
 # run is recoverable (the next invocation restores from it automatically). It
 # only exists mid-run, or after a crash — never something to commit.
 .mutants-backup/

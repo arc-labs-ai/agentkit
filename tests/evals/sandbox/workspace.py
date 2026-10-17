@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -26,6 +27,101 @@ from agentkit.tools.execution.policy import ToolSet
 
 class SandboxUnavailable(RuntimeError):
     """A workload requiring process isolation cannot run on this host."""
+
+
+def _minimal_roots(paths: object) -> list[Path]:
+    """The shortest set of trees covering ``paths``, as bwrap mounts.
+
+    Drops anything under /usr (already bound) and anything contained by a tree
+    already in the result, so the same directory is never bound twice.
+    """
+    unique = {Path(p) for p in paths}  # type: ignore[union-attr]
+    roots: list[Path] = []
+    for path in sorted(unique, key=lambda p: len(p.parts)):
+        if path == Path("/") or path.is_relative_to(Path("/usr")):
+            continue
+        if any(path.is_relative_to(root) for root in roots):
+            continue
+        roots.append(path)
+    return roots
+
+
+def _executable_chain() -> list[Path]:
+    """``sys.executable`` and every path its symlink chain names, hop by hop.
+
+    Resolving in one step is not enough. A venv's ``bin/python`` is a symlink
+    whose target is an ABSOLUTE path written at creation time, and that path
+    may itself run through a symlinked directory — which is how a CI runner
+    lays out its temp tree. Measured on such a layout::
+
+        bin/python -> /…/work/_temp/uv-python-dir/…/bin/python3.12   (declared)
+        readlink -f   /…/real_temp/uv-python-dir/…/bin/python3.12     (resolved)
+
+    ``sys.base_prefix`` reports only the RESOLVED form, so binding that leaves
+    the declared target absent inside the sandbox and the symlink dangles. The
+    kernel follows the declared path, so that is the one ``execvp`` complains
+    about — naming the symlink, never the target it could not reach.
+
+    Bounded iteration rather than ``while``: a symlink cycle is somebody else's
+    bug and must not become an infinite loop here.
+    """
+    chain: list[Path] = []
+    current = Path(sys.executable)
+    seen: set[Path] = set()
+    for _ in range(16):
+        chain.append(current)
+        if current in seen or not current.is_symlink():
+            break
+        seen.add(current)
+        target = Path(os.readlink(current))
+        current = target if target.is_absolute() else (current.parent / target)
+    return chain
+
+
+def _interpreter_roots() -> list[Path]:
+    """Every directory tree the sandboxed interpreter needs to exist.
+
+    Three paths, because under modern tooling they are three different places
+    and binding only one leaves a dangling symlink:
+
+    - ``sys.prefix`` — the venv the process is running in. Under
+      ``uv run --with X`` this is an EPHEMERAL overlay venv, and its
+      ``bin/python`` is a symlink rather than a binary.
+    - ``sys.base_prefix`` — where the stdlib and the real interpreter live,
+      and what that symlink points AT. With a uv-managed Python (CI sets
+      ``UV_PYTHON_INSTALL_DIR``) this is outside /usr, so leaving it unbound
+      makes the symlink dangle — which ``execvp`` reports as
+      "No such file or directory", naming the symlink and not the missing
+      target.
+    - the resolved executable's own root, for layouts where neither of the
+      above covers it.
+
+    Paths under /usr are skipped because /usr is already bound, and a path
+    contained by another returned path is skipped so the same tree is not
+    bound twice.
+    """
+    # Both the resolved AND the unresolved form of each, because they can be
+    # different directories and the sandbox needs whichever one the interpreter
+    # is actually INVOKED by. A CI runner reaches its temp tree through a
+    # symlink (`/home/runner/work/_temp` -> elsewhere), so resolving gives the
+    # real path while `sys.executable` keeps the symlinked one — bwrap then
+    # binds a directory nothing executes and `execvp` reports the path it was
+    # given as missing. Measured: binding only the resolved form reproduces
+    # `bwrap: execvp .../\_temp/.../bin/python: No such file or directory`
+    # exactly, while a non-symlinked layout passes, which is why this only ever
+    # failed on the runner.
+    candidates = {
+        Path(sys.prefix),
+        Path(sys.prefix).resolve(),
+        Path(sys.base_prefix),
+        Path(sys.base_prefix).resolve(),
+    }
+    # Every hop of the executable's symlink chain, in BOTH forms. This is what
+    # covers the declared-target case above, which neither prefix reports.
+    for hop in _executable_chain():
+        candidates.add(hop.parent.parent)
+        candidates.add(hop.resolve().parent.parent)
+    return _minimal_roots(candidates)
 
 
 class WorkspaceSandbox:
@@ -255,8 +351,6 @@ class WorkspaceSandbox:
                 await process.wait()
                 await reader
         except BaseException:
-            import signal
-
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
@@ -294,14 +388,25 @@ class WorkspaceSandbox:
                 args.extend(("--symlink", os.readlink(path), str(path)))
             elif path.exists():
                 args.extend(("--dir", str(path), "--ro-bind", str(path), str(path)))
-        prefix = Path(sys.prefix).resolve()
-        if not prefix.is_relative_to(Path("/usr")):
-            for parent in reversed(prefix.parents):
-                if parent == Path("/"):
-                    break
-                args.extend(("--dir", str(parent)))
-            args.extend(("--ro-bind", str(prefix), str(prefix)))
         args.extend(("--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"))
+        # The interpreter mounts go in AFTER ``--tmpfs /tmp``, and that ordering
+        # is the fix rather than a tidy-up. bwrap applies operations in
+        # sequence, so a prefix bound BEFORE the tmpfs is shadowed by it the
+        # moment the prefix lives under /tmp — which is exactly where
+        # ``uv run --with ...`` puts the ephemeral overlay venv it builds
+        # (measured: sys.prefix = /tmp/.cache/uv/builds-v0/.tmpXXXXXX). The
+        # bind silently vanished and bwrap reported
+        # ``execvp .../bin/python: No such file or directory``.
+        # The site-packages directories go in with them. The bootstrap puts
+        # them on ``sys.path``, which does nothing if the directory is not in
+        # the sandbox's filesystem at all — the interpreter then starts
+        # correctly and dies on ``import pytest``. macOS's profile has always
+        # listed them in ``allowed_reads``; the bubblewrap path never bound
+        # them, and nothing noticed because the only Linux hosts that reach
+        # here are CI runners, where the earlier interpreter failure happened
+        # first and masked it.
+        for path in _minimal_roots([*_interpreter_roots(), *self._runtime_sites]):
+            args.extend(("--ro-bind", str(path), str(path)))
         for parent in reversed(self.root.parents):
             if parent in (Path("/"), Path("/tmp")):
                 continue

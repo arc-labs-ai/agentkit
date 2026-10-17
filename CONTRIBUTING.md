@@ -161,13 +161,13 @@ line were wrong, and that gap is where the dangerous bugs live. It is
 measurable here: replacing `Budget.spent()`'s body with `float(self._spent)`
 once left all 78 protocol-conformance tests green.
 
-`scripts/mutants.py` holds a curated catalogue — each entry a real break of a
+`.github/scripts/mutants.py` holds a curated catalogue — each entry a real break of a
 real invariant, paired with the tests that should notice:
 
 ```bash
 make mutants                       # the whole catalogue
-uv run python scripts/mutants.py -k money    # one tag
-uv run python scripts/mutants.py --list
+uv run python .github/scripts/mutants.py -k money    # one tag
+uv run python .github/scripts/mutants.py --list
 ```
 
 A **surviving mutant is a finding**, not a nit: either the tests need
