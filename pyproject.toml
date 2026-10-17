@@ -197,7 +197,10 @@ parallel = true
 #
 # 78 -> 80: tools/filesystem/store.py 11 -> 100% and files.py 33 -> 100%,
 # measured macOS total 81.142.
-fail_under = 80
+#
+# 80 -> 81: tools/declarations/schema.py 61.5 -> 89.3%, measured macOS
+# total 81.900.
+fail_under = 81
 show_missing = true
 skip_covered = true
 exclude_also = [

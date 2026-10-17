@@ -143,9 +143,35 @@ def _is_ctx_param(p: inspect.Parameter) -> bool:
     ann = p.annotation
     if ann is inspect.Parameter.empty:
         return True
+    return _names_a_context(ann)
+
+
+def _names_a_context(ann: Any) -> bool:
+    """Whether an annotation names a context type, including inside a union.
+
+    ``Ctx | None`` used to fail. The check compared the WHOLE annotation
+    against ``"Ctx"``, and ``str(Ctx | None)`` ends in ``"None"``, so an
+    optional context was demoted to an ordinary parameter — advertised to the
+    model, and with no default also listed in ``required``, failing every call
+    with a missing-argument error. That is the same symptom the bare ``Ctx``
+    case was fixed for, and ``ctx: Ctx | None = None`` is the more natural
+    spelling of the two: it is what agentkit's own tools use in their ``run``
+    signatures.
+
+    Both union forms are handled because both occur: the real ``UnionType``
+    when annotations are evaluated, and the SOURCE TEXT under
+    ``from __future__ import annotations``, where ``p.annotation`` is the
+    string ``"Ctx | None"`` and there is no object to inspect.
+    """
+    origin = get_origin(ann)
+    if origin is Union or origin is getattr(_types, "UnionType", None):
+        return any(_names_a_context(a) for a in get_args(ann) if a is not type(None))
     text = str(ann)
     name = getattr(ann, "__name__", "")
-    return name in ("RunContext", "Ctx") or "RunContext" in text or text.endswith("Ctx")
+    if name in ("RunContext", "Ctx") or "RunContext" in text:
+        return True
+    # Each arm of a textual union, so the PEP 563 string form matches too.
+    return any(part.strip().endswith("Ctx") for part in text.split("|"))
 
 
 def _enum_fragment(ann: type[enum.Enum]) -> dict[str, Any]:
