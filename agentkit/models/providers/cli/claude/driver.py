@@ -1109,14 +1109,19 @@ class ClaudeCliCognition:
         return prompt
 
     def native_tools(self) -> tuple[str, ...]:
-        """The CLI's OWN built-in tools this session actually holds, sorted.
+        """Legacy native-tool hints derived from requested flags, sorted.
+
+        This historical table is not a complete inventory of a running binary
+        or evidence of native-tool absence. Filesystem, memory, configuration
+        and newly introduced features require independent behavioral checks.
+        Use CallRuntime.evaluate_execution for the protected execution contract.
 
         Three flags interact and only two of them restrict:
 
         * ``tools=None`` (the default) passes no ``--tools`` at all, leaving the
           CLI's whole default set in place — every name in
           :data:`CLI_TOOL_CAPS`, ``Bash`` included.
-        * ``tools=("",)`` is the CLI's spelling of "disable every tool"; a
+        * ``tools=("",)`` requests the CLI's empty native tool list; a
           restriction naming only MCP tools (``mcp__server__name``) leaves no
           native tool behind either, and neither does one naming a tool this
           table has never heard of.

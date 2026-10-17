@@ -19,7 +19,8 @@ from tests.source.conformance.test_calls import PRICES, ScriptedAdapter
 
 
 @pytest.mark.asyncio
-async def test_agent_runner_forwards_workspace_price_table_and_turn_slice(tmp_path):
+@pytest.mark.parametrize("native_policy", ["warn", "deny"])
+async def test_agent_runner_forwards_workspace_price_table_and_turn_slice(tmp_path, native_policy):
     scope = Scope(org_id=2, domain_id=9)
     native_agents = {"reviewer": {"description": "Review code"}}
     adapter = ScriptedAdapter(Turn(("done",), raw_usage={"input_tokens": 10, "output_tokens": 2}))
@@ -46,18 +47,23 @@ async def test_agent_runner_forwards_workspace_price_table_and_turn_slice(tmp_pa
             call_id="authority", workspace=workspace, pricing=prices, turns_per_slice=1,
             resume=SessionHandle(Mode.CLAUDE_CODE, "authority", cli_session_id="existing-session"),
             stable_prefix=True, fork=True, native_agents=native_agents, scope=scope,
-            capture_text=True, native_tool_policy="deny",
+            capture_text=True, native_tool_policy=native_policy,
         )
-    assert answer.outcome == "answered"
-    assert answer.cost_usd == Decimal("0.000028")
-    _, _, kwargs = adapter.requests[0]
-    assert kwargs["workspace"] == workspace
-    assert kwargs["limits"].max_turns == 1
+    assert runtime_kwargs["workspace"] == workspace
     assert runtime_kwargs["pricing"] == prices and runtime_kwargs["turns_per_slice"] == 1
     assert runtime_kwargs["stable_prefix"] is True and runtime_kwargs["fork"] is True
     assert runtime_kwargs["native_agents"] == native_agents and runtime_kwargs["scope"] == scope
     assert runtime_kwargs["capture_text"] is True
-    assert runtime_kwargs["native_tool_policy"] == "deny"
+    assert runtime_kwargs["native_tool_policy"] == native_policy
+    if native_policy == "deny":
+        assert answer.failure.classification == "execution_incompatible"
+        assert answer.attempts == 0 and not adapter.requests and answer.cost_usd is None
+    else:
+        assert answer.outcome == "answered"
+        assert answer.cost_usd == Decimal("0.000028")
+        _, _, kwargs = adapter.requests[0]
+        assert kwargs["workspace"] == workspace
+        assert kwargs["limits"].max_turns == 1
 
 
 @pytest.mark.asyncio

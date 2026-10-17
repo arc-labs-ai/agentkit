@@ -111,12 +111,25 @@ async def test_real_claude_empty_tool_list_refuses_planted_bash_and_read(tmp_pat
                 }
             ]
             for i, block in enumerate(blocks):
-                events.extend(
-                    [
-                        {"type": "content_block_start", "index": i, "content_block": block},
-                        {"type": "content_block_stop", "index": i},
-                    ]
+                events.append(
+                    {
+                        "type": "content_block_start",
+                        "index": i,
+                        "content_block": ({**block, "input": {}} if block["type"] == "tool_use" else block),
+                    }
                 )
+                if block["type"] == "tool_use":
+                    events.append(
+                        {
+                            "type": "content_block_delta",
+                            "index": i,
+                            "delta": {
+                                "type": "input_json_delta",
+                                "partial_json": json.dumps(block["input"]),
+                            },
+                        }
+                    )
+                events.append({"type": "content_block_stop", "index": i})
             events.extend(
                 [
                     {

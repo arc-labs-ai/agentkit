@@ -776,9 +776,14 @@ class CodexCliCognition:
     # ---- capability reporting --------------------------------------------------------------
 
     def native_tools(self) -> tuple[str, ...]:
-        """The CLI's OWN tools this session holds, sorted.
+        """Historical lower-bound native-tool hints, sorted.
 
-        Codex has no tool allow-list, so this is a fixed set plus ``web_search``
+        This is not a complete inventory or an enforced denylist. Tested newer
+        binaries expose MCP resources, agents, image and goal tools as well;
+        availability depends on binary, model and session configuration. Use
+        CallRuntime.evaluate_execution for the protected execution contract.
+
+        Codex has no complete tool allow-list, so this is a legacy set plus ``web_search``
         when ``--search`` is on. It exists for the middleware-bypass warning,
         which has to name what the chain is not applying to.
 

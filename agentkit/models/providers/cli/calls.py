@@ -207,6 +207,7 @@ class CliAdapter:
         native_tool_policy: NativeToolPolicy | None = None,
         context_policy: Any = None,
         execution: ExecutionRequirements | None = None,
+        attempt: int = 0,
     ) -> Turn:
         from types import SimpleNamespace
 
@@ -296,17 +297,27 @@ class CliAdapter:
         canonical_messages: list[Message] = []
 
         def observe_execution(name: str, arguments: Any, result: Any) -> None:
-            invocation = f"host-tool-{uuid4().hex}"
+            from agentkit.tools.execution.context import current_tool_invocation
+
+            identity = current_tool_invocation()
+            invocation = (identity.provider_tool_call_id or identity.host_invocation_id
+                          if identity is not None else f"host-tool-{uuid4().hex}")
+            association = {
+                "host_invocation_id": identity.host_invocation_id if identity else invocation,
+                "provider_tool_call_id": identity.provider_tool_call_id if identity else None,
+                "transport_request_id": identity.transport_request_id if identity else None,
+            }
             canonical_messages.extend(
                 (
-                    Message(MessageRole.ASSISTANT, tool_calls=(ToolCall(invocation, name, arguments),)),
+                    Message(MessageRole.ASSISTANT, tool_calls=(ToolCall(invocation, name, arguments),),
+                            metadata=association),
                     Message(
                         MessageRole.TOOL,
                         result.text,
                         name=name,
                         tool_call_id=invocation,
                         content_blocks=tuple(dict(block) for block in result.content),
-                        metadata={"is_error": result.is_error, "overflowed": result.overflowed},
+                        metadata={"is_error": result.is_error, "overflowed": result.overflowed, **association},
                     ),
                 )
             )
@@ -403,7 +414,7 @@ class CliAdapter:
         )
         ctx = _CliExecutionContext(
             scope=scope,
-            correlation_id=session.run_id if session else call_id,
+            correlation_id=call_id,
             cancel=cancel or CancellationToken(),
             budget=_CliBudgetView(compact_ceiling),
         )
@@ -443,7 +454,10 @@ class CliAdapter:
                 )
             )
         async def backend_spawn(*argv: str, **kwargs: Any) -> Any:
-            return await self.execution_backend.start(CliInvocation(tuple(argv), kwargs))
+            return await self.execution_backend.start(CliInvocation(
+                tuple(argv), kwargs, mode=binding.mode, call_id=call_id, attempt=attempt,
+                execution=execution or ExecutionRequirements(), native_tool_policy=native_tool_policy,
+            ))
 
         base_execution_spawn = self.spawn or backend_spawn
 
@@ -726,24 +740,9 @@ class CliAdapter:
         if sid:
             self._sessions[sid] = home
         u = result.usage
-        if binding.mode == Mode.CLAUDE_CODE:
-            raw = {
-                "input_tokens": u.input_tokens,
-                "output_tokens": u.output_tokens,
-                "cache_read_input_tokens": u.cache_read_tokens,
-                "cache_creation_input_tokens": u.cache_write_tokens,
-            }
-        else:
-            raw = {
-                "input_tokens": u.input_tokens + u.cache_read_tokens + u.cache_write_tokens,
-                "cached_input_tokens": u.cache_read_tokens,
-                "cache_write_input_tokens": u.cache_write_tokens,
-                "output_tokens": u.output_tokens,
-            }
-        if result.evals.get("raw_usage"):
-            raw = dict(result.evals["raw_usage"])
-        elif result.partial:
-            raw = {}  # Missing measurement is not a measured zero.
+        # ProviderUsage defaults missing counters to zero. Only the captured
+        # wire measurements can distinguish missing usage from measured zero.
+        raw = dict(result.evals.get("raw_usage") or {})
         reason = result.evals.get("stop_reason")
         failure = None
         if result.partial:
@@ -808,7 +807,10 @@ class CliAdapter:
             else None,
             reported_cost_cumulative=binding.mode == Mode.CLAUDE_CODE,
             usage_cumulative=binding.mode == Mode.CODEX,
-            usage_complete=not result.partial or reason in ("error_max_turns", "error_max_budget_usd"),
+            usage_complete=(
+                (not result.partial or reason in ("error_max_turns", "error_max_budget_usd"))
+                and {"input_tokens", "output_tokens"}.issubset(raw)
+            ),
             failure=failure,
             truncated=reason in ("error_max_turns", "error_max_budget_usd"),
             limit_reached=reason in ("error_max_turns", "error_max_budget_usd"),
@@ -973,6 +975,7 @@ def execution_failure(compatibility: ExecutionCompatibility) -> Failure:
         mode_detail={
             "reason": compatibility.incompatibilities[0].explanation,
             "dispatch_state": "not_started",
+            "adapter": compatibility.adapter,
             "backend": compatibility.backend,
             "backend_version": compatibility.backend_version,
             "binary_version": compatibility.binary_version,

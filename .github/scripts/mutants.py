@@ -295,6 +295,71 @@ REPLAY_TESTS = ("tests/source/unit/state/adapters/test_replay_file.py",)
 
 MUTANTS: tuple[Mutant, ...] = (
     Mutant(
+        tag="execution",
+        why="an unknown adapter skips assessment when strict DENY was implicit",
+        path="agentkit/core/runtime/calls.py",
+        before="                or effective_native_policy == NativeToolPolicy.DENY",
+        after="                or False",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="API execution assessment ignores its implemented transport evaluator",
+        path="agentkit/core/runtime/calls.py",
+        before="        if evaluate is not None:\n            return cast(ExecutionCompatibility, await evaluate(",
+        after="        if evaluate is not None and not binding.mode.is_api:\n"
+              "            return cast(ExecutionCompatibility, await evaluate(",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="resuming a session silently drops its execution requirements",
+        path="agentkit/core/runtime/calls.py",
+        before="            if resume.execution is not None:",
+        after="            if False:",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="a custom tool can perform effects with schema-invalid arguments",
+        path="agentkit/tools/execution/policy.py",
+        before="                if not validator.is_valid(arguments):",
+        after="                if False:",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="missing CLI usage is invented as a measured zero",
+        path="agentkit/models/providers/cli/calls.py",
+        before='        raw = dict(result.evals.get("raw_usage") or {})',
+        after='        raw = dict(result.evals.get("raw_usage") or {"input_tokens": 0, "output_tokens": 0})',
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="the ordinary subprocess port silently launches protected invocations",
+        path="agentkit/models/providers/cli/execution.py",
+        before="        if not compatibility.compatible:",
+        after="        if False:",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="an API disconnect after partial output becomes automatically retryable",
+        path="agentkit/models/providers/frontiers/calls.py",
+        before="        return _uncertain()\n    return failure",
+        after="        return Failure(FailureClass.TRANSIENT_NETWORK, True)\n    return failure",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
+        tag="execution",
+        why="MCP loses the provider tool-use identifier even when the client supplies it",
+        path="agentkit/integrations/mcp/serve.py",
+        before="            provider_id = next(iter(identities)) if len(identities) == 1 else None",
+        after="            provider_id = None",
+        tests=("tests/source/conformance/test_execution_consistency.py",),
+    ),
+    Mutant(
         tag="approvals",
         why="auto_allow_when can BROADEN instead of only narrowing, becoming a second way in",
         path="agentkit/integrations/mcp/approvals.py",
@@ -1030,8 +1095,12 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="execfailclosed",
         why="a backend declaring a guarantee is promoted straight to SUPPORTED rather than clamped to UNVERIFIED, so containment becomes self-attesting: whoever writes the BackendReport decides whether the boundary exists, which is exactly the authority the design refuses to delegate",
         path="agentkit/models/providers/cli/capabilities.py",
-        before="        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:\n            status = CapabilityStatus.UNVERIFIED\n",
-        after="        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:\n            status = CapabilityStatus.SUPPORTED\n",
+        before="        if (requirement in report.guarantees and status != CapabilityStatus.SUPPORTED\n"
+               "                and requirement != ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE):\n"
+               "            status = CapabilityStatus.UNVERIFIED\n",
+        after="        if (requirement in report.guarantees and status != CapabilityStatus.SUPPORTED\n"
+              "                and requirement != ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE):\n"
+              "            status = CapabilityStatus.SUPPORTED\n",
         tests=EXECUTION_TESTS,
     ),
     Mutant(

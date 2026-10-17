@@ -35,6 +35,7 @@ from agentkit.models.contracts.execution import (
     CapabilityStatus,
     ExecutionAssessment,
     ExecutionCompatibility,
+    ExecutionRequirement,
     ExecutionRequirements,
 )
 from agentkit.models.contracts.failures import classify
@@ -187,7 +188,7 @@ class CallRuntime:
             raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
         adapter = self._adapter(binding)
         evaluate = getattr(adapter, "evaluate_execution", None)
-        if evaluate is not None and not binding.mode.is_api:
+        if evaluate is not None:
             return cast(ExecutionCompatibility, await evaluate(
                 binding, execution=execution, native_tool_policy=requested,
             ))
@@ -197,12 +198,18 @@ class CallRuntime:
 
             return evaluate_cli_execution(binding.mode, BackendReport("unspecified", "unknown"),
                                           execution or ExecutionRequirements(), requested)
-        required = (execution or ExecutionRequirements()).required
+        required = set((execution or ExecutionRequirements()).required)
+        if requested == NativeToolPolicy.DENY:
+            required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
         facts = tuple(ExecutionAssessment(
             requirement, CapabilityStatus.UNSUPPORTED, "execution_mode_unsupported",
             "This adapter does not implement enforcement for the requested execution requirement.",
-        ) for requirement in sorted(required))
-        return ExecutionCompatibility(str(binding.mode), "unspecified", "unknown", None, facts, facts)
+        ) for requirement in ExecutionRequirement)
+        return ExecutionCompatibility(
+            str(binding.mode), "unspecified", "unknown", None, facts,
+            tuple(fact for fact in facts if fact.requirement in required),
+            adapter=f"{type(adapter).__module__}.{type(adapter).__qualname__}",
+        )
 
     async def run(
         self,
@@ -247,6 +254,13 @@ class CallRuntime:
             (self.native_tool_policy, requested_native_policy, NativeToolPolicy(adapter_policy)),
             key=policy_rank.__getitem__,
         )
+        if resume is not None:
+            if resume.execution is not None:
+                execution = (execution or ExecutionRequirements()).constrain(resume.execution)
+            if resume.native_tool_policy is not None:
+                effective_native_policy = min(
+                    (effective_native_policy, resume.native_tool_policy), key=policy_rank.__getitem__,
+                )
         scope = scope or Scope()
         if turns_per_slice is not None and turns_per_slice < 1:
             raise ValueError("turns_per_slice must be positive")
@@ -513,6 +527,8 @@ class CallRuntime:
                 model=binding.model,
                 prefix=working.prefix,
                 home_bundle_ref=resume.home_bundle_ref if keep_native_cli_session and resume is not None else None,
+                execution=execution,
+                native_tool_policy=effective_native_policy,
             )
         elif resume and resume.history:
             current_session = replace(resume, history=(*resume.history, {"role": "user", "content": prompt.user}))
@@ -578,9 +594,18 @@ class CallRuntime:
             compatibility = None
             if schema_failure is None and (
                 execution is not None or hasattr(adapter, "evaluate_execution")
+                or effective_native_policy == NativeToolPolicy.DENY
             ):
                 compatibility = await self.evaluate_execution(
                     binding, execution=execution, native_tool_policy=effective_native_policy,
+                )
+                await emit(
+                    EventKind.TRANSPORT, mode_event="execution_policy", mode=binding.mode,
+                    adapter=compatibility.adapter, backend=compatibility.backend,
+                    backend_version=compatibility.backend_version, binary_version=compatibility.binary_version,
+                    native_tool_policy=effective_native_policy,
+                    execution_requirements=tuple(sorted((execution or ExecutionRequirements()).required)),
+                    compatible=compatibility.compatible,
                 )
             if schema_failure is not None:
                 failure = schema_failure
@@ -613,10 +638,14 @@ class CallRuntime:
                     mode_detail={
                         "reason": (
                             "Codex CLI cannot enforce a hard mid-call cost cap; "
-                            "remove max_cost_usd or use another mode"
-                        )
+                            "the requested spending contract is unavailable"
+                        ),
+                        "code": "hard_spending_cap_unavailable",
+                        "origin": "local",
+                        "dispatch_state": "not_started",
                     },
                 )
+                total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
             elif binding.mode == Mode.CODEX and effective_native_policy == NativeToolPolicy.DENY:
                 from agentkit.models.providers.cli.calls import execution_failure
 
@@ -698,6 +727,7 @@ class CallRuntime:
                         slice_arg: int | None = turns_per_slice,
                         stable_prefix_arg: bool = stable_prefix,
                         fork_arg: bool = fork,
+                        attempt_arg: int = attempts,
                     ) -> Turn:
                         if slice_arg is not None and binding.mode == Mode.CLAUDE_CODE:
                             limits_arg = replace(
@@ -749,6 +779,7 @@ class CallRuntime:
                                         **(
                                             {
                                                 "native_tool_policy": effective_native_policy,
+                                                "attempt": attempt_arg,
                                                 **({"execution": execution} if execution is not None else {}),
                                                 "tool_activity": tool_activity,
                                                 "tool_activity_ended_at": tool_activity_ended_at,
@@ -785,6 +816,7 @@ class CallRuntime:
                                         **(
                                             {
                                                 "native_tool_policy": effective_native_policy,
+                                                "attempt": attempt_arg,
                                                 **({"execution": execution} if execution is not None else {}),
                                                 "tool_activity": tool_activity,
                                                 "tool_activity_ended_at": tool_activity_ended_at,
@@ -937,6 +969,8 @@ class CallRuntime:
                             if current_session
                             else None
                         ),
+                        execution=execution,
+                        native_tool_policy=effective_native_policy,
                     )
                     if turn.failure:
                         retry_streak += 1
@@ -1091,9 +1125,13 @@ class CallRuntime:
                                         mode_detail={"reason": "tool was not started before cancellation"},
                                     ))
                                 started_tools.add(call["id"])
-                                return await monitored(
-                                    _tool_turn(tools, call["name"], call["arguments"], run_ctx), transport=False
-                                )
+                                from agentkit.tools.execution.context import bind_tool_invocation
+
+                                with bind_tool_invocation(run_ctx, provider_id=call["id"]) as invocation_ctx:
+                                    return await monitored(
+                                        _tool_turn(tools, call["name"], call["arguments"], invocation_ctx),
+                                        transport=False,
+                                    )
 
                         if all(is_side_effect_free(call) for call in dispatchable):
                             tool_turns = await asyncio.gather(*(execute_tool(call) for call in dispatchable))

@@ -2824,9 +2824,16 @@ async def test_native_tool_policy_is_per_call_beneath_runtime_ceiling():
         pricing=PRICES,
         native_tool_policy=NativeToolPolicy.WARN,
     )
-    await runtime.ask(Binding(Mode.CLAUDE_CODE, "test"), "q", call_id="claude-denied", native_tool_policy="deny")
+    events = []
+    denied = await runtime.ask(
+        Binding(Mode.CLAUDE_CODE, "test"), "q", call_id="claude-denied", native_tool_policy="deny", events=events.append,
+    )
     await runtime.ask(Binding(Mode.CODEX, "test"), "q", call_id="codex-warned")
-    assert claude.requests[0][2]["native_tool_policy"] == NativeToolPolicy.DENY
+    assert denied.failure.classification == "execution_incompatible" and denied.attempts == 0
+    assert not claude.requests  # An unknown adapter cannot establish strict denial.
+    assert next(event for event in events if event.fields.get("mode_event") == "execution_policy").fields[
+        "native_tool_policy"
+    ] == NativeToolPolicy.DENY
     assert codex.requests[0][2]["native_tool_policy"] == NativeToolPolicy.WARN
     with pytest.raises(ValueError, match="policy ceiling"):
         await runtime.ask(

@@ -208,6 +208,18 @@ class ToolSet:
             tool = self.registry.get(name)
             if tool.requires_approval:
                 raise PermissionError("tool requires host approval before execution")
+            if tool.schema is not None:
+                from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+
+                from agentkit.core.serialization._immutable import deep_freeze
+
+                # Validate a JSON snapshot, including constraints on custom
+                # Tool implementations. Signature coercion is not validation.
+                arguments = json.loads(json.dumps(dict(args), allow_nan=False))
+                validator = Draft202012Validator(tool.schema.parameters)
+                if not validator.is_valid(arguments):
+                    raise ValueError("tool arguments do not match the granted input schema")
+                args = deep_freeze(arguments)
             timeout = getattr(tool, "timeout_s", None)
             if timeout is None:
                 timeout = self.timeout_s

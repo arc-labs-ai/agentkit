@@ -1,5 +1,9 @@
 # Execution isolation: design and verification record
 
+For the subsequent four-mode runtime, host-tool identity and accounting changes,
+see [Execution consistency](execution-consistency.md). The verification record
+below describes the earlier foundation revision, not the newer test tallies.
+
 ## Baseline inspection (2026-10-18)
 
 `CallRuntime` owns policy ceilings, attempts, events, pricing and retries.

@@ -469,7 +469,14 @@ class McpServerSpec:
         @server.call_tool(validate_input=False)  # type: ignore[misc, no-untyped-call, untyped-decorator]
         async def _call(name: str, arguments: dict[str, Any]) -> Any:
             before = tuple(tool.name for tool in self.tools_provider()) if self.tools_provider else ()
-            result = await self._dispatch(name, arguments)
+            request = server.request_context
+            meta = request.meta.model_dump() if request.meta is not None else {}
+            # These keys were observed on the actual Claude 2.1.300 and
+            # Codex 0.162.1 transports. They are association, never authority.
+            identities = {value for key in ("claudecode/toolUseId", "callId")
+                          if isinstance(value := meta.get(key), str) and value}
+            provider_id = next(iter(identities)) if len(identities) == 1 else None
+            result = await self._dispatch(name, arguments, provider_id=provider_id, request_id=request.request_id)
             after = tuple(tool.name for tool in self.tools_provider()) if self.tools_provider else ()
             if before != after:
                 await server.request_context.session.send_tool_list_changed()
@@ -477,10 +484,19 @@ class McpServerSpec:
 
         return server
 
-    async def _dispatch(self, name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:
+    async def _dispatch(
+        self, name: str, arguments: dict[str, Any], *,
+        provider_id: str | None = None, request_id: str | int | None = None,
+    ) -> mcp_types.CallToolResult:
         if self._stopping:
             return _text_result("MCP server is stopping; tool was not run", is_error=True)
-        invocation = asyncio.create_task(self._invoke(name, arguments))
+        async def invoke() -> mcp_types.CallToolResult:
+            from agentkit.tools.execution.context import bind_tool_invocation
+
+            with bind_tool_invocation(self._ctx, provider_id=provider_id, transport_id=request_id) as ctx:
+                return await self._invoke(name, arguments, ctx=ctx)
+
+        invocation = asyncio.create_task(invoke())
         self._invocations.add(invocation)
         try:
             return await invocation
@@ -491,7 +507,7 @@ class McpServerSpec:
         finally:
             self._invocations.discard(invocation)
 
-    async def _invoke(self, name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:
+    async def _invoke(self, name: str, arguments: dict[str, Any], *, ctx: Any = None) -> mcp_types.CallToolResult:
         """One MCP tool call → one ``Tool.run`` → one text block.
 
         Never raises. Everything below returns an ``isError`` RESULT instead,
@@ -507,6 +523,7 @@ class McpServerSpec:
         arguments to another's handler.
         """
         self._calls += 1
+        ctx = self._ctx if ctx is None else ctx
         tool = self._tools.get(name)
         if tool is None:
             return _text_result(
@@ -519,7 +536,7 @@ class McpServerSpec:
         # the tool body runs — a side-effecting tool that fires after someone
         # pressed stop is the failure this check exists to prevent.
         try:
-            self._ctx.check_cancelled()
+            ctx.check_cancelled()
         except Cancelled as exc:
             return _text_result(f"the run was cancelled; {name!r} was not run ({exc})", is_error=True)
 
@@ -536,10 +553,10 @@ class McpServerSpec:
         deadline: asyncio.Timeout | None = None
         try:
             if self.timeout_s is None:
-                result = await run_cancellable(tool.run(arguments, self._ctx), self._ctx)
+                result = await run_cancellable(tool.run(arguments, ctx), ctx)
             else:
                 async with asyncio.timeout(self.timeout_s) as deadline:
-                    result = await run_cancellable(tool.run(arguments, self._ctx), self._ctx)
+                    result = await run_cancellable(tool.run(arguments, ctx), ctx)
         except ToolArgumentError as exc:
             # THE case this module exists to get right. A bad call is reflected
             # to the model verbatim: the message already names the tool, the

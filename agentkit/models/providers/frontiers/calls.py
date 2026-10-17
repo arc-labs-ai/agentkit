@@ -13,7 +13,8 @@ from typing import Any
 
 from agentkit.core.contracts.types import Mode
 from agentkit.models.adapters.messages import anthropic_history
-from agentkit.models.contracts.constants import EventKind, FailureClass
+from agentkit.models.contracts.constants import EventKind, FailureClass, NativeToolPolicy
+from agentkit.models.contracts.execution import ExecutionCompatibility, ExecutionRequirements
 from agentkit.models.contracts.failures import classify
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, resolve_credential
 from agentkit.models.providers._events import _emit
@@ -28,6 +29,18 @@ class ApiAdapter:
         self.client = client
         self.request_hook = request_hook
         self.base_url = base_url
+
+    async def evaluate_execution(
+        self, binding: Binding, *, execution: ExecutionRequirements | None = None,
+        native_tool_policy: NativeToolPolicy | None = None,
+    ) -> ExecutionCompatibility:
+        """Describe API protocol scope; never attest arbitrary host callback isolation."""
+        from agentkit.models.providers.frontiers.capabilities import evaluate_api_execution
+
+        return evaluate_api_execution(
+            binding.mode, execution or ExecutionRequirements(), native_tool_policy or NativeToolPolicy.WARN,
+            request_hook=self.request_hook,
+        )
 
     async def turn(
         self,
@@ -212,10 +225,11 @@ class ApiAdapter:
             )
         except Exception as exc:
             return Turn(
-                raw_usage=(final or {}).get("usage") or {}, usage_complete=final is not None, failure=classify(exc)
+                raw_usage=(final or {}).get("usage") or {}, usage_complete=final is not None,
+                failure=_stream_failure(exc),
             )
         if final is None:
-            return Turn(failure=Failure(FailureClass.TRANSIENT_NETWORK))
+            return Turn(usage_complete=False, failure=_uncertain())
         messages = []
         calls = []
         refused = False
@@ -236,6 +250,7 @@ class ApiAdapter:
         return Turn(
             tuple(messages),
             raw_usage=final.get(EventKind.USAGE) or {},
+            usage_complete={"input_tokens", "output_tokens"}.issubset(final.get(EventKind.USAGE) or {}),
             refused=refused,
             truncated=final.get("status") == "incomplete",
             tool_calls=tuple(calls),
@@ -283,9 +298,9 @@ class ApiAdapter:
         except asyncio.CancelledError:
             return Turn(raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.CANCELLED))
         except Exception as exc:
-            return Turn(raw_usage=usage, usage_complete=terminal, failure=classify(exc))
+            return Turn(raw_usage=usage, usage_complete=terminal, failure=_stream_failure(exc))
         if not terminal:
-            return Turn(raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK))
+            return Turn(raw_usage=usage, usage_complete=False, failure=_uncertain())
         content = [blocks[i] for i in sorted(blocks)]
         text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
         calls = tuple(
@@ -300,8 +315,28 @@ class ApiAdapter:
         return Turn(
             (text,),
             raw_usage=usage,
+            usage_complete={"input_tokens", "output_tokens"}.issubset(usage),
             refused=stop == "refusal",
             truncated=stop == "max_tokens",
             tool_calls=calls,
             history=({"role": "assistant", "content": content},),
         )
+
+
+def _uncertain() -> Failure:
+    return Failure(FailureClass.EXECUTION_UNCERTAIN, False, mode_detail={
+        "reason": "execution_outcome_unknown", "dispatch_state": "unknown",
+        "explanation": "The API stream ended without confirmed completion; reconcile before retrying.",
+    })
+
+
+def _stream_failure(exc: Exception) -> Failure:
+    failure = classify(exc)
+    status = getattr(exc, "status_code", None)
+    if failure is not None and isinstance(status, int) and 400 <= status <= 599:
+        return failure  # A received HTTP rejection is distinct from a lost stream.
+    if failure is None or failure.classification in (
+        FailureClass.UNKNOWN, FailureClass.TRANSIENT_NETWORK, FailureClass.TIMEOUT,
+    ):
+        return _uncertain()
+    return failure

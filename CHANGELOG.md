@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Pre-release development record
 
+### Execution consistency and truthful capability scope
+
+- Assess API execution requirements through the adapter's typed matrix; refuse
+  unverified request hooks before credentials under protected requirements.
+- Carry execution ceilings through runner, delegation and resumed sessions, and
+  include requirements and runtime attempt identity at the CLI backend port.
+- Validate custom ToolSet arguments against JSON Schema before effects, preserve
+  actual Claude/Codex MCP provider identities separately from host/RPC identities,
+  and record effective execution policy before provider attempts.
+- Preserve missing usage as incomplete/unpriced and classify incomplete API
+  streams as uncertain and non-retryable. CLI strict DENY/contained profiles
+  remain unverified or unsupported; no sandbox/spending enforcement is relaxed.
+
 Everything in this section predates the first published version. It is kept
 because it explains why the shape is what it is. The released versions' own
 entries are written above this section by release-please, generated from the

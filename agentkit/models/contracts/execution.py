@@ -90,6 +90,50 @@ class ExecutionRequirements:
             )
         object.__setattr__(self, "required", frozenset(required))
 
+    def constrain(self, ceiling: ExecutionRequirements) -> ExecutionRequirements:
+        """Retain a session's requirements and intersect explicit authorities.
+
+        This pure operation narrows requests; it is not filesystem enforcement.
+        Symlinks still require a verified backend, which no shipped profile has.
+        """
+
+        def roots(
+            left: tuple[Path | str, ...] | None, right: tuple[Path | str, ...] | None
+        ) -> tuple[Path | str, ...] | None:
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return tuple(
+                sorted(
+                    {
+                        Path(a) if Path(a).is_relative_to(b) else Path(b)
+                        for a in left
+                        for b in right
+                        if Path(a).is_relative_to(b) or Path(b).is_relative_to(a)
+                    }
+                )
+            )
+
+        destinations = self.network_destinations
+        if ceiling.network_destinations is not None:
+            destinations = (
+                ceiling.network_destinations
+                if destinations is None
+                else tuple(x for x in destinations if x in ceiling.network_destinations)
+            )
+        return ExecutionRequirements(
+            native_execution=(
+                NativeExecution.CONTAINED
+                if NativeExecution.CONTAINED in (self.native_execution, ceiling.native_execution)
+                else NativeExecution.UNCONSTRAINED
+            ),
+            required=self.required | ceiling.required,
+            read_roots=roots(self.read_roots, ceiling.read_roots),
+            write_roots=roots(self.write_roots, ceiling.write_roots),
+            network_destinations=destinations,
+        )
+
 
 @dataclass(frozen=True)
 class ExecutionAssessment:
@@ -111,6 +155,7 @@ class ExecutionCompatibility:
     binary_version: str | None
     assessments: tuple[ExecutionAssessment, ...]
     incompatibilities: tuple[ExecutionAssessment, ...]
+    adapter: str = ""
 
     @property
     def compatible(self) -> bool:
