@@ -1457,3 +1457,11 @@ passes untouched.
   `Any`-typed public seams, `Optional` mis-annotations, and a handful of
   variance mistakes on Protocol generics. `uv run mypy --strict agentkit`
   is now clean on the full tree.
+
+## Unreleased — Anthropic schema reference budgets
+
+- Remove redundant definitions after Anthropic reference expansion and count the
+  emitted schema, preserving the 24 optional / 16 union parameter limits.
+- Return safe local schema-compilation failures through the public call lifecycle
+  with zero provider attempts, rather than leaking SchemaError.
+- Preserve canonical response validation and separate CLI/API schema dialects.

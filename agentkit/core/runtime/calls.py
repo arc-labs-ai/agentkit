@@ -32,7 +32,13 @@ from agentkit.models.contracts.constants import (
     UnpricedPolicy,
 )
 from agentkit.models.contracts.failures import classify
-from agentkit.models.contracts.schema import OutputSpec, compile_schema, tolerant_json_object, validate_output
+from agentkit.models.contracts.schema import (
+    OutputSpec,
+    SchemaError,
+    compile_schema,
+    tolerant_json_object,
+    validate_output,
+)
 from agentkit.models.contracts.settings import DEFAULT_CAPABILITIES, CapabilityTable
 from agentkit.models.contracts.types import (
     Answer,
@@ -250,7 +256,27 @@ class CallRuntime:
 
             schema_adapter = adapt(output)
             output = OutputSpec(schema_adapter.json_schema(), schema_adapter.name)
-        schema = compile_schema(output.schema, binding.mode, binding.model) if output else None
+        schema_failure = None
+        try:
+            schema = compile_schema(output.schema, binding.mode, binding.model) if output else None
+        except SchemaError as exc:
+            schema = None
+            explanations = {
+                "schema_budget_exceeded": "Reduce optional fields or union parameters in the compiled output schema.",
+                "invalid_schema": "Validate the canonical JSON Schema locally before retrying.",
+                "recursive_schema": "This transport requires an acyclic output schema; use a finite structure.",
+                "unresolved_reference": "Use resolvable local references in the output schema.",
+                "unsupported_ref_siblings": "Inline and combine reference sibling constraints explicitly.",
+                "unsupported_reference_location": "Move references into schema locations this compiler supports.",
+            }
+            schema_failure = Failure(
+                FailureClass.INVALID_REQUEST, False,
+                mode_detail={
+                    "reason": "schema_compilation_failed", "origin": "local", "dispatch_state": "not_started",
+                    "code": exc.code, **exc.details,
+                    "explanation": explanations.get(exc.code, "Use an output schema supported by this mode's dialect."),
+                },
+            )
         table = pricing or self.pricing
         adapter = self._adapter(binding)
         started = time.monotonic()
@@ -356,7 +382,7 @@ class CallRuntime:
             settings=asdict(effective.settings),
             inputs_digest=prompt.manifest.inputs_digest,
             prompt_manifest_digest=prompt.manifest.digest,
-            attempt=1,
+            attempt=0 if schema_failure is not None else 1,
         )
         if model_changed:
             assert resume is not None
@@ -500,7 +526,10 @@ class CallRuntime:
                         pass
 
         try:
-            if prompt.images and binding.mode == Mode.CLAUDE_CODE:
+            if schema_failure is not None:
+                failure = schema_failure
+                total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
+            elif prompt.images and binding.mode == Mode.CLAUDE_CODE:
                 degradation = Degradation(
                     "images", "image prompt parts", "refused", "Claude Code CLI transport has no image input contract"
                 )

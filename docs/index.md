@@ -74,3 +74,6 @@ Provider-backed checks are opt-in and documented in `tests/evals/README.md`. The
 | `tests/source` | Offline source and conformance tests |
 | `tests/evals` | Opt-in real-provider evaluations |
 | `tests/examples` | Runnable usage examples |
+
+For Anthropic output-schema compilation, reference expansion, limits and local
+failure handling, see the [schema-budget fix](design/anthropic-schema-budgets.md).
