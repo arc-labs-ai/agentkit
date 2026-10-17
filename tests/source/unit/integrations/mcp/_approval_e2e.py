@@ -20,9 +20,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from agentkit.agents import Agent
 from agentkit.agents.control.elicitation import Decision, Elicitation
 from agentkit.core.testing.fakes.ctx import FakeCtx
+
+from agentkit.agents import Agent
 from agentkit.integrations.mcp import ApprovalServer
 from agentkit.models.providers.cli.claude.driver import ClaudeCliCognition
 from agentkit.state.context import WorkingContext

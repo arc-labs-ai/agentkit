@@ -5,7 +5,14 @@ All notable changes to `arc-agentkit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## Pre-release development record
+
+Everything in this section predates the first published version. It is kept
+because it explains why the shape is what it is. The released versions' own
+entries are written above this section by release-please, generated from the
+conventional commits in each release.
+
+### The final cycle — one call contract, minds, and evaluations
 
 - Added `agentkit.calls` with a common call contract for OpenAI Responses,
   Anthropic Messages, Codex, and Claude Code, canonical structured output,
@@ -19,13 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed CLI final-answer selection and preserved message content blocks and
   metadata through durable checkpoints.
 
-## [0.1.0] — 2026-10-08
+### Earlier cycles, through 2026-10-08
 
-Initial public release. Distributed on PyPI as `arc-agentkit`; imported as
-`agentkit`.
-
-The sections below are the development record that led to it, newest first.
-The final cycle was four batches: five gaps reported from production use, a
+Newest first. Four batches: five gaps reported from production use, a
 follow-up sweep for other major issues, a thirteen-item programme closing the
 seams a CLI-driven application needs, and a second CLI-delegating cognition for
 OpenAI's `codex` — which also surfaced a bug in the first one. Everything from

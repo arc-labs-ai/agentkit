@@ -28,8 +28,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from agentkit.agents import Agent
 from agentkit.core.testing.fakes.ctx import FakeCtx
+
+from agentkit.agents import Agent
 from agentkit.integrations.mcp import serve_registry
 from agentkit.models.providers.cli.claude.driver import ClaudeCliCognition
 from agentkit.state.context import WorkingContext
