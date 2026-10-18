@@ -399,9 +399,11 @@ the claims above.
 
 ## Standalone integration and migration
 
-See [the example](../../tests/examples/plugin_execution/README.md) and
-[the examples index](../../tests/examples/README.md) for exact setup/run commands,
-the independent plugin contributions and test classifications. Only the binding
+See `tests/examples/plugin_execution/README.md` and `tests/examples/README.md`
+in the repository for exact setup/run commands, the independent plugin
+contributions and test classifications. Cited as repository paths rather than
+links because those files live outside the documentation tree, and `mkdocs
+--strict` fails a link it cannot resolve to a documentation page. Only the binding
 changes across modes; no application-specific dispatcher or MCP service exists.
 
 Consumers should:
