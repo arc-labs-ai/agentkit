@@ -74,8 +74,17 @@ mutants-verify: ## Fast: check every mutant anchor still resolves
 # `mkdocs build --strict` proves the links resolve and the meta tests prove the
 # symbols are mentioned; neither runs a line of the code a reader copies.
 
-docs-check: ## Fast: every documented `from agentkit… import X` resolves
+docs-check: ## Fast: documented imports resolve AND the site builds under --strict
 	uv run python .github/scripts/docs_examples.py --imports-only
+# The strict build is the half this target used to be missing, and the gap was
+# measured: a link added in docs/design/ pointing at a file OUTSIDE the docs
+# tree passes the import check, passes the full test suite, passes the mutation
+# catalogue, and then fails `mkdocs build --strict` on main — after the merge,
+# where it is a red default branch rather than a red PR. `--strict` promotes
+# mkdocs' unresolved-link WARNING to an error, so repository files are cited as
+# paths in backticks rather than linked. Same command and same dependency group
+# the docs workflow runs, so a pass here means a pass there.
+	uv run --group docs mkdocs build --strict
 
 docs-examples: ## Slow: execute every ```python block in docs/
 	uv run python .github/scripts/docs_examples.py
