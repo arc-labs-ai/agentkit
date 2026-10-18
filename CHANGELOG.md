@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.1.0 (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* drain every parked invariant, and fix the eleven defects that found ([#18](https://github.com/arc-labs-ai/agentkit/issues/18))
+* **models:** make a transport failure's retryability match its classification ([#17](https://github.com/arc-labs-ai/agentkit/issues/17))
+
+### Fixes
+
+* close runtime reliability gaps ([5ebe4c0](https://github.com/arc-labs-ai/agentkit/commit/5ebe4c0787ada75d3ba5db3c148c2f85916632a8))
+* **docs:** unbreak main's docs build, and make the local gate able to catch it ([#22](https://github.com/arc-labs-ai/agentkit/issues/22)) ([ea24fdf](https://github.com/arc-labs-ai/agentkit/commit/ea24fdfc1f564634cc9ce8f675e43c898ce4f415))
+* **failures:** map the providers' error taxonomy completely ([#9](https://github.com/arc-labs-ai/agentkit/issues/9)) ([995b2bb](https://github.com/arc-labs-ai/agentkit/commit/995b2bb26b87c558d1d5dac62d5182dafc21307e))
+* harden cli retries and event safety ([6238e7e](https://github.com/arc-labs-ai/agentkit/commit/6238e7e1cf6b7963643bce26d692250ad528a57f))
+* install all extras in local test matrix ([7c8f6f9](https://github.com/arc-labs-ai/agentkit/commit/7c8f6f94826f54c15721fb2e64cdd6a5d4fea7bf))
+* make coverage gate reproducible ([13ff01e](https://github.com/arc-labs-ai/agentkit/commit/13ff01eed6ee1bef6844619a5533c96f19873f3d))
+* **models:** make a transport failure's retryability match its classification ([#17](https://github.com/arc-labs-ai/agentkit/issues/17)) ([fadd619](https://github.com/arc-labs-ai/agentkit/commit/fadd6192589a687a78642344a98aac2eaba3ded9))
+* **tools:** unify image results across SDK and MCP transports ([#23](https://github.com/arc-labs-ai/agentkit/issues/23)) ([92113be](https://github.com/arc-labs-ai/agentkit/commit/92113be94a0f7230ce2c80bdf190e7d7b0bb73ff))
+
+
+### Features
+
+* **cli:** mint a job-scoped credential so the real login never enters the job ([#21](https://github.com/arc-labs-ai/agentkit/issues/21)) ([4d4353f](https://github.com/arc-labs-ai/agentkit/commit/4d4353fa4ab076661b2b28b8a2ca6571c77beec5))
+* complete agentkit runtime and provider verification ([abd5c44](https://github.com/arc-labs-ai/agentkit/commit/abd5c44967c644b3dedb5d410f17b89c365a8d0f))
+* **execution:** add explicit runtime execution profiles ([#24](https://github.com/arc-labs-ai/agentkit/issues/24)) ([7893676](https://github.com/arc-labs-ai/agentkit/commit/7893676fbcfc1c35da4b4a84419ba2f2623064bb))
+* **execution:** earn the Claude Code profile, and settle what Codex can and cannot promise ([#20](https://github.com/arc-labs-ai/agentkit/issues/20)) ([fef1733](https://github.com/arc-labs-ai/agentkit/commit/fef17334e43be5691d4bd45fd13288843c9f3a18))
+* initial rearchitecture ([#19](https://github.com/arc-labs-ai/agentkit/issues/19)) ([0a10dc4](https://github.com/arc-labs-ai/agentkit/commit/0a10dc4a0cc431524cfedc71bf5bb15af958fb17))
+
+
+### Refactoring
+
+* consolidate runtime and close production gaps ([b1ae92f](https://github.com/arc-labs-ai/agentkit/commit/b1ae92fcb487bda03b7886345d84051e2310ac2f))
+* reorganize AgentKit and add real-world evals ([f8d20c1](https://github.com/arc-labs-ai/agentkit/commit/f8d20c1b8710baf298cbf7cf0a6dda50f9abe2c7))
+
+
+### Tests and verification
+
+* catalogue the fail-closed execution invariants from [#10](https://github.com/arc-labs-ai/agentkit/issues/10) ([#11](https://github.com/arc-labs-ai/agentkit/issues/11)) ([25b2e2e](https://github.com/arc-labs-ai/agentkit/commit/25b2e2e0e04193177bc234f3ecc0e2e206ab1513))
+* cover both filesystem tools and re-arm the memory-tool confinement ([#15](https://github.com/arc-labs-ai/agentkit/issues/15)) ([11a0564](https://github.com/arc-labs-ai/agentkit/commit/11a0564ed26ea2dd502fa651282fc380b069577d))
+* cover the model registry and re-arm its four parked invariants ([#14](https://github.com/arc-labs-ai/agentkit/issues/14)) ([e75d768](https://github.com/arc-labs-ai/agentkit/commit/e75d7688802ba7acd7887d2ffaa2438d6f5c6cf2))
+* cover the thinnest modules, and fix the nine defects that found ([#16](https://github.com/arc-labs-ai/agentkit/issues/16)) ([f65c923](https://github.com/arc-labs-ai/agentkit/commit/f65c923825fbacab202ead79137d4eac82421af9))
+* cover the two modules that had none, and fix an attribute that vanished ([#13](https://github.com/arc-labs-ai/agentkit/issues/13)) ([5162207](https://github.com/arc-labs-ai/agentkit/commit/5162207c6b983c9f01ede92876b31b13b5434ef6))
+* drain every parked invariant, and fix the eleven defects that found ([#18](https://github.com/arc-labs-ai/agentkit/issues/18)) ([a700dbf](https://github.com/arc-labs-ai/agentkit/commit/a700dbfb1a90f39ca49e9f5ab26f9067ccf476ec))
+
+
+### Build and tooling
+
+* bring release automation up to the standard the SDKs use ([#4](https://github.com/arc-labs-ai/agentkit/issues/4)) ([e1e6337](https://github.com/arc-labs-ai/agentkit/commit/e1e633767034e757cf098db3508aa3bbc2c0077f))
+* make agentkit's CI green and its gates honest after the reorganisation ([#8](https://github.com/arc-labs-ai/agentkit/issues/8)) ([9d5ce5a](https://github.com/arc-labs-ai/agentkit/commit/9d5ce5ab7497be1ba72df9f5fcc901af4ee34e0e))
+
+
+### Documentation
+
+* fix strict eval report references ([e90428b](https://github.com/arc-labs-ai/agentkit/commit/e90428bdf98e4b05f6d04d42458a4b5c376da293))
+
+
+### Chores
+
+* pin the first published release to 0.1.0 ([#6](https://github.com/arc-labs-ai/agentkit/issues/6)) ([1819f02](https://github.com/arc-labs-ai/agentkit/commit/1819f0246259f1d026f819cc5c84ccefe33cfd96))
+
+## Changelog
+
 All notable changes to `arc-agentkit` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
