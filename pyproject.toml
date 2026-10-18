@@ -201,6 +201,16 @@ parallel = true
 # 80 -> 81: tools/declarations/schema.py 61.5 -> 89.3%, measured macOS
 # total 81.900.
 #
+# 86 -> 89: the mutation catalogue reached ZERO parked invariants (237 enforced,
+# up from 114), which is what moved this number — every test written to re-arm a
+# parked entry covers real lines on the way. The thinnest remaining modules were
+# closed in the same pass: frontiers/base.py and frontiers/calls.py 92/81 ->
+# 100%, native_hooks.py 71 -> 100%, codex/mcp_config.py 68 -> 100%,
+# cli/_common.py 81 -> 98%, claude/driver.py 84 -> 93%, codex/driver.py
+# 89 -> 95%, prompts/prompt.py 88 -> 100%, contracts/ports.py 89 -> 99%.
+# Measured macOS total 90.690, so 89 keeps the usual margin and a little more:
+# 72 of the package's files now report complete coverage.
+#
 # 81 -> 86: the five lowest-covered modules, in one pass — the biggest single
 # step this number will take. Measured full-suite, before -> after:
 # integrations/mcp/serve.py 74 -> 100%, models/output/attrs_adapter.py
@@ -215,7 +225,7 @@ parallel = true
 # well enough to execute the lines proves less than it costs. They are covered
 # by the 69 re-armed invariants instead, which assert what the code DOES rather
 # than that it ran.
-fail_under = 86
+fail_under = 89
 show_missing = true
 skip_covered = true
 exclude_also = [

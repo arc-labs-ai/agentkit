@@ -13,11 +13,12 @@ from typing import Any
 
 from agentkit.core.contracts.types import Mode
 from agentkit.models.adapters.messages import anthropic_history
-from agentkit.models.contracts.constants import EventKind, FailureClass
+from agentkit.models.contracts.constants import EventKind, FailureClass, NativeToolPolicy
+from agentkit.models.contracts.execution import ExecutionCompatibility, ExecutionRequirements
 from agentkit.models.contracts.failures import classify
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, resolve_credential
 from agentkit.models.providers._events import _emit
-from agentkit.models.providers.auth import anthropic_credential
+from agentkit.models.providers.auth import ANTHROPIC_API_VERSION, anthropic_credential
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
 
 
@@ -28,6 +29,29 @@ class ApiAdapter:
         self.client = client
         self.request_hook = request_hook
         self.base_url = base_url
+
+    async def evaluate_execution(
+        self,
+        binding: Binding,
+        *,
+        execution: ExecutionRequirements | None = None,
+        native_tool_policy: NativeToolPolicy | None = None,
+    ) -> ExecutionCompatibility:
+        """Credential-free assessment; an unverified requirement refuses dispatch.
+
+        Resolves no credential and contacts no provider, so a host can call it to
+        CHOOSE a binding. A ``request_hook`` replaces the request body after this
+        adapter builds it, which is reported rather than ignored.
+        """
+        from agentkit.models.providers.frontiers.capabilities import api_transport_report, evaluate_api_execution
+
+        return evaluate_api_execution(
+            binding.mode,
+            api_transport_report(),
+            execution or ExecutionRequirements(),
+            NativeToolPolicy(native_tool_policy or NativeToolPolicy.WARN),
+            payload_rewriting=self.request_hook is not None,
+        )
 
     async def turn(
         self,
@@ -44,7 +68,28 @@ class ApiAdapter:
         call_id: str = "",
         native_agents: Any = None,
         workspace: Any = None,
+        execution: ExecutionRequirements | None = None,
+        native_tool_policy: NativeToolPolicy | None = None,
     ) -> Turn:
+        # Stated requirements bind the whole invocation, not just the runtime's
+        # door: this method is reachable directly, and the runtime calls it once
+        # per continuation, retry and correction turn. Evaluated first and with
+        # the same matrix `evaluate_execution` reports, so a refusal costs no
+        # credential resolution and no round trip.
+        if execution is not None:
+            compatibility = await self.evaluate_execution(
+                binding, execution=execution, native_tool_policy=native_tool_policy,
+            )
+            if not compatibility.compatible:
+                from agentkit.models.providers.cli.calls import execution_failure
+
+                return Turn(failure=execution_failure(compatibility), usage_complete=False)
+            await _emit(
+                emit, EventKind.TRANSPORT, mode_event="execution_policy",
+                backend=compatibility.backend, backend_version=compatibility.backend_version,
+                binary_version=compatibility.binary_version,
+                execution_requirements=tuple(sorted(execution.required)),
+            )
         if native_agents or workspace:
             return Turn(
                 failure=Failure(
@@ -69,7 +114,7 @@ class ApiAdapter:
                 if anthropic:
                     return {
                         **(auth.headers() if auth else {}),
-                        "anthropic-version": "2023-06-01",
+                        "anthropic-version": ANTHROPIC_API_VERSION,
                         "content-type": "application/json",
                     }
                 return {"Authorization": f"Bearer {key}", "content-type": "application/json"}

@@ -238,7 +238,26 @@ class CircuitBreaker:
             if exc is not None:
                 self._last_error = exc
             self._fails += 1
+            if self.state == "open":
+                # Already OPEN, so this call was admitted BEFORE the trip and is
+                # the exact mirror of the straggler ``record_success`` refuses to
+                # act on: evidence about the past, not about whether the
+                # dependency has recovered. Resetting ``_opened_at`` for it
+                # pushed the cooldown out from the moment the LAST in-flight
+                # call happened to finish — measured with ``cooldown=15`` and ten
+                # calls draining over 20s, a probe was refused at +34s and first
+                # admitted at +36s, and a slowly draining pool can extend that
+                # without bound. The breaker then never probes, so a dependency
+                # that recovered during the cooldown stays shut out by the
+                # backlog of its own outage.
+                #
+                # The failure is still COUNTED and still remembered above: it is
+                # only the cooldown clock that must not move.
+                return
             if self.state == "half_open" or self._fails >= self.fail_threshold:
+                # A HALF_OPEN failure is the opposite case and must restart the
+                # clock: the probe was admitted under the CURRENT state, so it is
+                # the one call whose verdict is actually about now.
                 self.state = "open"
                 self._opened_at = self.clock()
 
@@ -466,17 +485,45 @@ async def run_with_resilience(
         try:
             result = await fn()
         except CircuitOpen:
+            # A refusal raised by ``fn`` comes from a NESTED gate (breakers
+            # compose: one per dependency, and ``recurrence.py`` wraps this
+            # function), so the call never reached THIS dependency. That makes
+            # it the same "says nothing about health" outcome ``release_probe``
+            # exists for — and it consumed the half-open slot exactly like any
+            # other admitted call. Counting it with ``record_failure`` would be
+            # worse than useless: it folds another dependency's outage into
+            # this one's failure count. Doing NEITHER, which is what happened,
+            # left the breaker wedged in ``half_open`` holding a slot nothing
+            # would ever release (measured: ``outer.state == "half_open"``
+            # after an inner refusal, so a fully recovered dependency was
+            # refused for another whole cooldown until the lost-probe guard
+            # presumed the probe dead — that guard is a backstop, not the
+            # contract).
+            if breaker is not None:
+                breaker.release_probe()
             raise
         except Exception as exc:  # noqa: BLE001 — classify decides
             last = exc
             cls = classify_fn(exc)
+            # Compared with ``==``, never ``is``. ``ErrorClass`` is a
+            # ``StrEnum``, so its members ARE their string values, and
+            # ``classify_fn`` is the documented escape hatch for callers who
+            # want something better than substring matching — the docstring
+            # above sends them there. A hand-written classifier that returns
+            # ``"permanent"`` (the obvious thing to write in untyped code, and
+            # what survives any JSON / config round trip) is not IDENTICAL to
+            # ``ErrorClass.PERMANENT``, so identity read the caller's own
+            # permanent verdict as not-permanent and retried: measured, three
+            # attempts on a 401 the caller had explicitly classified as
+            # permanent. Equality accepts both spellings and is identical for
+            # every real member, so nothing that worked before changes.
             # Only TRANSIENT / UNKNOWN errors count toward the breaker's
             # fail threshold. A 401 / 403 / content-filter rejection is a
             # contract failure — not an upstream health signal — so folding
             # it into the counter would open the breaker for reasons
             # unrelated to dependency health.
             if breaker is not None:
-                if cls is not ErrorClass.PERMANENT:
+                if cls != ErrorClass.PERMANENT:
                     breaker.record_failure(exc)
                 else:
                     # ...but the call still CONSUMED the half-open probe slot,
@@ -487,7 +534,7 @@ async def run_with_resilience(
                     # the slot without touching ``_fails``, so the rule above
                     # is preserved exactly.
                     breaker.release_probe()
-            if cls is ErrorClass.PERMANENT or attempt == max_attempts:
+            if cls == ErrorClass.PERMANENT or attempt == max_attempts:
                 raise
             # Back off before the next attempt. This belongs HERE, on the
             # retrying path, not after the loop body: refactoring this function

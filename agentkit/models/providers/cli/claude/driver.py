@@ -58,6 +58,7 @@ from agentkit.agents.prompts.prompt import Prompt
 from agentkit.core.contracts.protocols import Ctx
 from agentkit.core.contracts.types import ProviderUsage, StreamEvent, ToolCall
 from agentkit.models.adapters._mapping import tool_call_id
+from agentkit.models.contracts.constants import StopReason
 from agentkit.models.providers.cli._common import (
     _CANCEL_POLL_S,
     _STDOUT_LINE_LIMIT,
@@ -126,50 +127,56 @@ SettingSource = Literal["user", "project", "local"]
 # module knows how it spells its own failures.
 _CLI_FAILURE_REASONS = frozenset(
     {
-        "spawn_failed",
-        "parse_failed",
+        StopReason.SPAWN_FAILED,
+        StopReason.PARSE_FAILED,
         # A single NDJSON payload outgrew the reader's buffer. ``failed``, and
         # deliberately NOT ``parse_failed``: the line was valid JSON, just too
         # big to assemble, so the fix is a size rather than a corruption hunt.
-        "output_line_too_long",
-        "working_dir_missing",
-        "cli_reported_error",
+        StopReason.OUTPUT_LINE_TOO_LONG,
+        StopReason.WORKING_DIR_MISSING,
+        # The CLI's own ``is_error`` subtypes. Without these three they reach
+        # the mapper unrecognised and pass through verbatim, so the run reports
+        # ``error_max_turns`` where a caller is branching on ``failed``.
+        StopReason.ERROR_MAX_TURNS,
+        StopReason.ERROR_DURING_EXECUTION,
+        StopReason.API_ERROR,
+        StopReason.CLI_REPORTED_ERROR,
         # A turn sent into a dead session produced no answer. ``failed`` rather
         # than ``terminated``: nobody chose to stop this, the process was
         # already gone.
-        "session_closed",
+        StopReason.SESSION_CLOSED,
         # THIS TURN could not run — per-turn structured output, which is a
         # process-level CLI flag — while the session itself is untouched. Kept
         # distinct from ``session_closed`` because the fix differs: re-send the
         # turn without the schema versus open a new session. Measured: the
         # refusal used to report ``session_closed`` on a process that was still
         # alive and still answering.
-        "turn_refused",
+        StopReason.TURN_REFUSED,
         # ── liveness (see CliTimeouts) ──────────────────────────────────────
         # ``failed`` and not ``expired``: in this framework ``expired`` means a
         # human-gate deadline passed and the run DEGRADED AND CONTINUED, which
         # is the opposite of what happens here — the process is killed and
         # there is no answer. And not ``terminated`` either: nobody chose to
         # stop this, a bound did.
-        "startup_timeout",
-        "first_event_timeout",
-        "idle_timeout",
-        "total_timeout",
+        StopReason.STARTUP_TIMEOUT,
+        StopReason.FIRST_EVENT_TIMEOUT,
+        StopReason.IDLE_TIMEOUT,
+        StopReason.TOTAL_TIMEOUT,
         # A ``startup_timeout`` whose stderr says the CLI could not
         # authenticate. Same event, more specific name — see
         # ``_classify_timeout``.
-        "authentication_failed",
+        StopReason.AUTHENTICATION_FAILED,
         # ── stream integrity ────────────────────────────────────────────────
         # The stream ended without the CLI's own end-of-turn payload: a process
         # killed from outside, a full disk, a broken pipe, a truncated final
         # line. Measured before this reason existed — the run reported
-        # ``stop_reason="complete"``, ``partial=False``, and handed back half an
+        # ``stop_reason=StopReason.COMPLETE``, ``partial=False``, and handed back half an
         # answer as a finished one, which is the worst shape a failure can take.
-        "malformed_output",
+        StopReason.MALFORMED_OUTPUT,
         # A death by signal rather than a chosen exit, and a schema the CLI
         # refused at startup. Both are refinements of ``cli_exit_<n>``.
-        "process_crashed",
-        "schema_rejected",
+        StopReason.PROCESS_CRASHED,
+        StopReason.SCHEMA_REJECTED,
     }
 )
 
@@ -185,9 +192,9 @@ _RESYNC_TIMEOUT_S = 5.0
 # are NOT ``failed``: the run itself worked, the shape did not.
 _CLI_INVALID_OUTPUT_REASONS = frozenset(
     {
-        "error_max_structured_output_retries",
-        "structured_output_missing",
-        "structured_output_mismatch",
+        StopReason.ERROR_MAX_STRUCTURED_OUTPUT_RETRIES,
+        StopReason.STRUCTURED_OUTPUT_MISSING,
+        StopReason.STRUCTURED_OUTPUT_MISMATCH,
     }
 )
 

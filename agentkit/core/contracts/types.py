@@ -14,7 +14,16 @@ from agentkit.core.serialization._immutable import deep_freeze
 
 # Wire-level discriminator tag — a closed set typed as ``Literal``
 # so consumers can exhaust the branch table with mypy.
-StreamEventType = Literal["message_delta", "tool_call", "tool_result", "step", "interrupt", "final"]
+#
+# ``"interrupt"`` was a member here and was emitted by NOTHING. A value in a
+# closed set that nothing produces is worse than a missing one: it reads as
+# documentation, so a consumer writes the branch and the branch never fires.
+# (The ``"interrupt"`` string that does exist in the Claude driver is a CLI
+# control-request subtype — a different vocabulary that happens to share a
+# word.) ``tests/source/architecture/test_stop_reason_vocabulary.py`` now
+# checks this set in both directions, so a member added without a producer, or
+# a producer added without a member, fails there.
+StreamEventType = Literal["message_delta", "tool_call", "tool_result", "step", "final"]
 
 
 class CostSource(StrEnum):
@@ -79,7 +88,22 @@ class ProviderUsage:
 
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float | None = 0.0  # APPROXIMATE. ``__add__`` re-rounds to 6dp on every
+    # ``None``, not ``0.0``. ``__post_init__`` resolves a missing ``cost_source``
+    # from this field, so a default of ``0.0`` made every un-populated usage
+    # claim ``CostSource.REPORTED`` — a positive assertion that the provider
+    # billed nothing. That is the one thing this type must never say by
+    # accident, and it was the default.
+    #
+    # Measured in the Claude CLI driver: a run that never reaches the CLI's
+    # ``result`` payload (truncated stream, cancel, timeout, crash, spawn
+    # failure) left ``ProviderUsage()`` untouched and reported ``cost_usd=0.0``
+    # with ``cost_source=REPORTED``, then charged ``0.0`` to every meter. So a
+    # ten-minute Opus run that failed looked free, and a budget kept headroom it
+    # had already spent. ``CodexCliCognition._priced`` guards the same case by
+    # hand; nothing guarded it here.
+    #
+    # ``None`` means "unknown", which is what an unset field actually knows.
+    cost_usd: float | None = None  # APPROXIMATE. ``__add__`` re-rounds to 6dp on every
     # addition, so this field is neither associative nor
     # identity-preserving: ``ProviderUsage(cost_usd=1.4296875) + ProviderUsage()``
     # yields 1.429688. It also rounds HALF_EVEN (Python's

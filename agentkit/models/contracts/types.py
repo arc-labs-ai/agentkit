@@ -142,6 +142,29 @@ class CallLimits:
     first_event_s: float | None = None
 
     def __post_init__(self) -> None:
+        # Money is ``Decimal`` and the annotation was the only thing saying so.
+        # ``math.isfinite`` accepts a float, so ``max_cost_usd=0.1`` constructed
+        # happily and the mistake surfaced far away and much later: the
+        # delegation path computes ``total_cap * definition.delegation.
+        # budget_share`` against a ``Decimal`` share, so the run worked until the
+        # first delegation and then raised ``TypeError: unsupported operand
+        # type(s) for *: 'float' and 'decimal.Decimal'`` with no mention of the
+        # caller's cap.
+        #
+        # Refused rather than coerced, and the distinction is the point. A float
+        # spend cap is how a limit silently drifts — ``0.1 + 0.2`` is already
+        # ``0.30000000000000004`` before it gets here, and quietly accepting it
+        # would preserve the drift while hiding it. ``int`` and ``str`` convert
+        # exactly, so they are allowed; a float has to be spelled by the caller,
+        # which is also where they can see what they meant.
+        if isinstance(self.max_cost_usd, float):
+            raise TypeError(
+                "max_cost_usd must be a Decimal, not a float: float arithmetic drifts, and a "
+                "spend cap is the last place that should happen. Pass Decimal(\"0.10\") — or an "
+                "int or str, which convert exactly."
+            )
+        if isinstance(self.max_cost_usd, (int, str)) and not isinstance(self.max_cost_usd, bool):
+            object.__setattr__(self, "max_cost_usd", Decimal(self.max_cost_usd))
         for key in self.__dataclass_fields__:
             value = getattr(self, key)
             if value is not None:
