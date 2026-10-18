@@ -477,7 +477,7 @@ def test_the_round_trip_rehydrates_into_a_fully_writable_context():
     docstring's round trip goes through ``dict(f.scratchpad)``, which rebuilds
     a plain writable top level — so ``note`` / ``update_scratchpad`` / a whole
     new value for an existing key all still work. (This is precisely where the
-    checkpointer's ``rehydrate`` differs: it passes a frozen dict straight
+    a checkpoint store's ``rehydrate`` differs: it passes a frozen dict straight
     through as the live scratchpad.)"""
     f = _make().append(_user("hello")).note("plan", {"steps": ["a"]}).freeze()
     ctx = WorkingContext(prefix=f.prefix, messages=list(f.messages), scratchpad=dict(f.scratchpad))

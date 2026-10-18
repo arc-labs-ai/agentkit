@@ -235,7 +235,7 @@ def test_asdict_survives_a_toolcall_reached_INDIRECTLY() -> None:
 def test_toolcall_arguments_are_json_serialisable_without_an_unwrap() -> None:
     """Four call sites carry a defensive `dict(tc.arguments)` because
     `json.dumps` refused a mappingproxy outright (`context/tokens.py`,
-    `checkpointer/persistence.py`, and both provider adapters). Those unwraps
+    a checkpoint store, and both provider adapters). Those unwraps
     are now belt-and-braces rather than load-bearing; this is the line that
     used to raise."""
     tc = ToolCall("c1", "search", dict(DEEP))
@@ -356,7 +356,7 @@ def test_the_supported_rewrite_route_still_works() -> None:
 
 @pytest.mark.parametrize("value", _values(), ids=lambda v: type(v).__name__)
 def test_every_value_deepcopies_and_pickles_and_stays_frozen(value: Any) -> None:
-    """REGRESSION GUARD. `Checkpointer.snapshot` deep-copies state containing
+    """REGRESSION GUARD. A checkpoint store's snapshot deep-copies state containing
     ToolCalls and the replay recorder pickles it, so a payload that could not
     survive either would surface as a broken save, not a broken copy. The copy
     must also come back FROZEN, or the guarantee leaks through any round
@@ -467,7 +467,7 @@ def test_a_toolcall_arrives_frozen_however_it_is_reconstructed() -> None:
     rebuilt = [
         ToolCall("c1", "search", dict(DEEP)),  # constructor, from a plain dict
         pickle.loads(pickle.dumps(tc)),  # across a process boundary
-        copy.deepcopy(tc),  # the checkpointer's route
+        copy.deepcopy(tc),  # a checkpoint store's route
     ]
     for got in rebuilt:
         assert isinstance(got.arguments, FrozenDict)

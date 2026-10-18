@@ -1086,8 +1086,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="execfailclosed",
         why="Codex stops being treated as unable to prove native-tool isolation and is downgraded to the same UNVERIFIED as Claude, erasing the one documented difference between the two backends — Codex keeps file/patch/plan capabilities that an empty tool list does not remove",
         path="agentkit/models/providers/cli/capabilities.py",
-        before="            if mode == Mode.CODEX:\n",
-        after="            if False:\n",
+        before='            if mode == Mode.CODEX:\n                explanation = "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"\n',
+        after='            if False:\n                explanation = "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"\n',
         tests=EXECUTION_TESTS,
     ),
     # ── re-armed: registry invariants whose test file was rewritten ─────────

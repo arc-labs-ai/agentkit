@@ -160,11 +160,37 @@ def as_codex_mcp(spec: Any, *, tool_timeout_s: float | None = None) -> dict[str,
         )
 
     # Registry approval is an explicit host decision, independent of MCP's
-    # read-only hint. With Codex's noninteractive approval policy, an omitted
-    # override would refuse side-effecting tools before the host could run its
-    # own scoped validation. Only names explicitly marked auto-approve may run.
-    # Codex "auto" still evaluates write annotations; "approve" records the
-    # host grant and suppresses an additional CLI approval prompt.
+    # read-only hint. Only names explicitly marked auto-approve may run.
+    #
+    # WHAT THIS TABLE IS FOR, MEASURED AGAINST codex-cli 0.162.1
+    # ---------------------------------------------------------
+    # It was suspected of disabling Codex's host-tool dispatch outright, so all
+    # four combinations were run against the binary with the config captured
+    # off the wire (a stdio MCP server, ``approval_policy="never"``, one
+    # read-only tool and one write-annotated one):
+    #
+    # * The tools the model is offered are IDENTICAL with and without this
+    #   table — byte-for-byte the same ``mcp__<server>`` namespace tool in the
+    #   request Codex builds. Nothing here hides a tool from the model.
+    # * With NO table at all, Codex defaults to ``auto``: it runs a read-only
+    #   tool and REFUSES a write-annotated one on its own, with
+    #   ``"MCP tool call requires approval, but approval policy is never"`` —
+    #   before the call reaches this process, so agentkit's gate never sees it.
+    # * ``approval_mode="approve"`` is what lifts that refusal: a
+    #   write-annotated tool with ``approve`` executed. ``serve_registry``
+    #   advertises every side-effecting tool as ``readOnlyHint: false``, so
+    #   WITHOUT this table every granted side-effecting host tool would be
+    #   silently refused by the CLI — the ``auto_approve`` half of this map is
+    #   load-bearing, not belt-and-braces.
+    # * ``approval_mode="prompt"`` on a ``requires_approval`` tool lands in the
+    #   same place Codex's own default would, which is the point: the host's
+    #   decision is restated in the CLI's own vocabulary rather than left to
+    #   depend on an annotation another layer happens to send.
+    #
+    # Deleting either half therefore changes behaviour: the ``approve`` entries
+    # turn every side-effecting granted tool into a CLI-side refusal, and the
+    # ``prompt`` default lets a tool that appears AFTER this config was built
+    # (``listChanged``) run on Codex's judgement instead of the host's.
     names = getattr(spec, "mcp_names", None)
     if names is not None:
         automatic = set(getattr(spec, "auto_approve", ()))

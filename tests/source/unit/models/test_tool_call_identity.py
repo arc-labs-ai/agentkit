@@ -238,22 +238,20 @@ async def test_the_codex_driver_does_not_drop_a_second_id_less_tool_item() -> No
     assert [c.arguments["command"] for c in calls] == ["ls a", "ls b"]
 
 
-# ── the result side, across the CLI/MCP bridge ───────────────────────────────
-
-
-# ── still owed: the result side, offline ─────────────────────────────────────
+# ── the result side ──────────────────────────────────────────────────────────
 #
-# `tool_call_id` is now attached to TOOL_RESULT as well as TOOL_CALL
-# (`cli/calls.py`), which fixes a Claude tool result arriving identified by
+# `tool_call_id` is attached to TOOL_RESULT as well as TOOL_CALL in
+# `cli/calls.py`, which fixes a Claude tool result arriving identified by
 # nothing — observed live as `[('', None), ('', None), ('', None)]` against
 # claude 2.1.302, because the payload carries only `tool_use_id` and the driver
 # correctly leaves `name` blank.
 #
-# That fix is asserted by `tests/source/live/test_live_execution_contract.py`
-# and NOT yet offline. The reason is recorded so the next attempt starts ahead
-# of where this one stopped: CLI tool events reach a caller only on the
-# tools-SERVING path (a granted `ToolSet` bridged over MCP), so a bare
-# `runtime.ask()` against a replayed stream emits no TOOL_CALL/TOOL_RESULT at
-# all — the fake replays, the answer is right, and the tool events simply are
-# not part of that path. An offline regression needs the MCP-bridge harness, so
-# it belongs beside the other bridge tests rather than here.
+# That lives in `tests/source/conformance/test_calls.py`
+# (`test_claude_cli_tool_result_events_name_the_call_they_answer`), not here:
+# the field is set by the ADAPTER, so the regression has to run a `CallRuntime`
+# over a replayed stream, which is conformance's harness and not this file's.
+# An earlier note here claimed a bare `runtime.ask()` emits no TOOL_CALL /
+# TOOL_RESULT and that an offline test would need a granted `ToolSet` bridged
+# over MCP. Measured: it does emit both, with the ids. The kind a bare run
+# never sees is TRANSPORT, which the runtime's own `mode_event` drops before
+# the sink because it feeds the idle watchdog rather than an observer.

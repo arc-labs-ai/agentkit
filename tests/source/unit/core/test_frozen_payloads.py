@@ -4,7 +4,7 @@ frozen dataclass's payload actually frozen.
 The design constraint is not "refuse mutation" — that part is easy. It is
 "refuse mutation WITHOUT breaking the four things these payloads have to do":
 `json.dumps` (Checkpoint.state goes into a JSONB column), `dataclasses.asdict`
-(AgentResult round-trips through it), `deepcopy` (the checkpointer snapshots
+(AgentResult round-trips through it), `deepcopy` (a checkpoint store snapshots
 state on every save) and `pickle`. `MappingProxyType` — the obvious mechanism —
 fails all four, which is why this module exists at all.
 """
@@ -114,7 +114,7 @@ def test_a_frozen_payload_deepcopies_and_pickles() -> None:
     """REGRESSION GUARD for the `__reduce__` hooks. copy and pickle rebuild a
     dict subclass by creating an empty one and repopulating it through
     `__setitem__` — the method being blocked — so without `__reduce__` both
-    raise. The checkpointer deep-copies state on every snapshot, so that would
+    raise. A checkpoint store deep-copies state on every snapshot, so that would
     have surfaced as a broken save, not a broken copy."""
     payload = deep_freeze({"a": [1, {"b": 2}]})
     assert copy.deepcopy(payload) == payload

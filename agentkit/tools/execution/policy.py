@@ -80,8 +80,21 @@ def _invalid_json_constant(value: str) -> Any:
     raise ValueError("arguments_json contains an invalid JSON numeric constant")
 
 
-@dataclass
+@dataclass(frozen=True)
 class ToolSet:
+    """Execution policy handed across the tool seam, as a value.
+
+    Frozen because `max_concurrency` is the one field here that is not advice:
+    the fan-out site turns it into an `asyncio.Semaphore`, and a bound below one
+    is a pool that admits nobody. `__post_init__` refuses such a bound, and
+    while this was a mutable dataclass that refusal was advisory —
+    `tools.max_concurrency = 0` after construction never reached it, so the
+    value a run fanned out on was not the value anything had checked. Vary a
+    policy with `dataclasses.replace` (`with_registry` already does, per
+    invocation); the deferred-discovery set is still mutated in place, since
+    freezing forbids rebinding a field and not mutating what one holds.
+    """
+
     registry: ToolRegistry
     overflow: OverflowPolicy = field(default_factory=OverflowPolicy)
     images: bool = True

@@ -56,6 +56,37 @@ def evaluate_cli_execution(
         elif requirement == ExecutionRequirement.MCP_ALLOWLIST:
             status = CapabilityStatus.UNVERIFIED
             explanation = "Explicit MCP configuration is supplied; discovery exclusion is not independently verified."
+        elif requirement == ExecutionRequirement.OBSERVED_SPENDING_THRESHOLD:
+            if mode == Mode.CODEX:
+                # Codex is UNSUPPORTED here for a reason that is NOT about the
+                # mechanism: the runtime refuses a Codex call carrying
+                # max_cost_usd outright (core/runtime/calls.py), so the
+                # capability is unreachable whatever this module says. The one
+                # rule this assessment exists to keep is that it must agree with
+                # what dispatch actually does — a reachable-looking verdict
+                # followed by a refusal is the precise failure the matrix is for.
+                #
+                # The refusal is itself defensible rather than an oversight.
+                # Enforcement is between runs, and for Codex one run is a whole
+                # autonomous session that can spend without bound before the
+                # threshold is ever consulted, so a cost limit there reads far
+                # stronger than it is. If that guard is ever narrowed, this row
+                # and its test move together.
+                code = "observed_spending_threshold_refused_for_mode"
+                explanation = (
+                    "The runtime refuses max_cost_usd on Codex: enforcement is between runs, and one Codex run is "
+                    "a whole autonomous session that can spend without bound before the threshold is consulted."
+                )
+            else:
+                status = CapabilityStatus.SUPPORTED
+                code = "observed_spending_threshold_supported"
+                explanation = (
+                    "The runtime accumulates what each CLI run reports, or prices the usage it observed, and ends "
+                    "the invocation once the caller's max_cost_usd is reached, failing closed when the spend "
+                    "cannot be known. Enforcement is between runs and a whole autonomous run is one unit, so the "
+                    "run that crosses the threshold completes and is billed: this is not a hard cap, and no "
+                    "argument the binary accepts makes it one."
+                )
         elif requirement == ExecutionRequirement.HARD_SPENDING_CAP:
             code = "hard_spending_cap_unavailable"
             explanation = "Usage metering and cancellation do not establish an exact hard dollar cap."

@@ -15,7 +15,7 @@ from agentkit.core.contracts.types import Mode
 from agentkit.models.adapters.messages import anthropic_history
 from agentkit.models.contracts.constants import EventKind, FailureClass, NativeToolPolicy
 from agentkit.models.contracts.execution import ExecutionCompatibility, ExecutionRequirements
-from agentkit.models.contracts.failures import classify
+from agentkit.models.contracts.failures import classify, execution_failure
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, resolve_credential
 from agentkit.models.providers._events import _emit
 from agentkit.models.providers.auth import ANTHROPIC_API_VERSION, anthropic_credential
@@ -81,8 +81,6 @@ class ApiAdapter:
                 binding, execution=execution, native_tool_policy=native_tool_policy,
             )
             if not compatibility.compatible:
-                from agentkit.models.providers.cli.calls import execution_failure
-
                 return Turn(failure=execution_failure(compatibility), usage_complete=False)
             await _emit(
                 emit, EventKind.TRANSPORT, mode_event="execution_policy",

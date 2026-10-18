@@ -38,7 +38,7 @@ from agentkit.models.contracts.execution import (
     ExecutionRequirement,
     ExecutionRequirements,
 )
-from agentkit.models.contracts.failures import classify
+from agentkit.models.contracts.failures import classify, execution_failure
 from agentkit.models.contracts.schema import (
     OutputSpec,
     SchemaError,
@@ -592,8 +592,6 @@ class CallRuntime:
                 failure = schema_failure
                 total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
             elif compatibility is not None and not compatibility.compatible:
-                from agentkit.models.providers.cli.calls import execution_failure
-
                 failure = execution_failure(compatibility)
                 total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
             elif prompt.images and binding.mode == Mode.CLAUDE_CODE:
@@ -624,8 +622,6 @@ class CallRuntime:
                     },
                 )
             elif binding.mode == Mode.CODEX and effective_native_policy == NativeToolPolicy.DENY:
-                from agentkit.models.providers.cli.calls import execution_failure
-
                 compatibility = await self.evaluate_execution(binding, native_tool_policy=effective_native_policy)
                 failure = execution_failure(compatibility)
                 total_cost, cost_source, usage_complete = None, CostSource.UNPRICED, False
@@ -1073,6 +1069,23 @@ class CallRuntime:
                         if tools is None:
                             failure = Failure(FailureClass.TOOL_ERROR, mode_detail={"reason": "tools are unavailable"})
                             break
+                        # The fan-out bound is read off a duck-typed policy
+                        # object, so no constructor can speak for it: a host or
+                        # an adapter may hand this loop anything with
+                        # `schemas()`/`execute()`. It is therefore refused HERE,
+                        # and refused rather than normalised. A clamp
+                        # (`max(1, ...)`) replaces the caller's bound with one
+                        # they never chose and answers as if nothing happened;
+                        # the raw value builds a `Semaphore(0)`, which is locked
+                        # from birth and released by nobody, so the batch waits
+                        # forever with no stack naming the policy that did it.
+                        permits = getattr(tools, "max_concurrency", 4)
+                        if not isinstance(permits, int) or permits < 1:
+                            failure = Failure(
+                                FailureClass.TOOL_ERROR,
+                                mode_detail={"reason": f"tool concurrency must be a positive integer, not {permits!r}"},
+                            )
+                            break
                         tool_ctx = _ToolContext(scope=scope, correlation_id=call_id, cancel=cancel)
                         history = list(current_session.history)
                         anthropic_results = []
@@ -1086,7 +1099,7 @@ class CallRuntime:
                                 arguments=self.argument_masker(call["name"], call["arguments"]),
                             )
 
-                        semaphore = asyncio.Semaphore(max(1, int(getattr(tools, "max_concurrency", 4))))
+                        semaphore = asyncio.Semaphore(permits)
 
                         registry = getattr(tools, "registry", None)
                         def is_side_effect_free(

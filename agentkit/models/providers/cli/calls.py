@@ -30,7 +30,13 @@ from agentkit.models.contracts.execution import (
     ExecutionRequirement,
     ExecutionRequirements,
 )
+
+# ``execution_failure`` is re-exported (the ``as`` is what makes that explicit under
+# ``mypy --strict``) ONLY because ``agentkit.core.runtime.calls`` still imports the refusal
+# builder from this module. Delete the alias the moment that import points at
+# ``agentkit.models.contracts.failures``, which is where the builder now lives.
 from agentkit.models.contracts.failures import classify
+from agentkit.models.contracts.failures import execution_failure as execution_failure
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, Workspace, resolve_credential
 from agentkit.models.providers._events import _emit
 from agentkit.models.providers.auth import AuthKind, anthropic_credential
@@ -683,6 +689,20 @@ class CliAdapter:
                     ignore_rules=True,
                     sandbox=workspace.sandbox.value if workspace and workspace.sandbox else "read-only",
                     ask_for_approval="never",
+                    # The caller's turn cap, which this branch never passed on —
+                    # so `limits.max_turns` bounded nothing on Codex. The claude
+                    # branch has always forwarded it. Measured without it: a
+                    # `max_turns=8` run executed ~200 tool calls inside ONE
+                    # adapter turn, because the runtime counts adapter turns and
+                    # Codex's in-turn tool loop is invisible to it; the only real
+                    # bound was the wall clock.
+                    #
+                    # One tool call is one model turn here, because Codex sends
+                    # `parallel_tool_calls: false`. The runtime also counts
+                    # adapter turns against the same number, so the worst case is
+                    # the product of the two — in practice CLI modes take one
+                    # adapter turn, so the cap means what a caller expects.
+                    max_turns=limits.max_turns,
                     skip_git_repo_check=True,
                     native_tool_policy="allow",
                     config_overrides=overrides,
@@ -720,14 +740,50 @@ class CliAdapter:
                         if event.type == EventKind.TOOL_CALL and call is not None:
                             fields["arguments"] = getattr(call, "arguments", None)
                         if event.type == EventKind.TOOL_RESULT and event.tool_result is not None:
-                            result = event.tool_result
-                            result_text = str(getattr(result, "text", ""))
+                            # ``tool_payload``, NOT ``result``. The outer
+                            # ``result`` is the driver's terminal run result and
+                            # is what the code after this loop reads
+                            # (``result.evals``, ``result.usage``); binding the
+                            # tool payload to the same name clobbered it with a
+                            # plain ``str``. The cancellation handler below then
+                            # saw a non-``None`` ``result`` and STOPPED
+                            # re-raising, so a stream cancelled after a tool
+                            # result but before its ``final`` event fell through
+                            # to ``result.evals`` on a string — an
+                            # ``AttributeError`` in place of the cancellation the
+                            # caller asked for.
+                            tool_payload = event.tool_result
+                            # Both shapes, because the two producers disagree.
+                            # The SDK path hands over a ``ToolResult`` with
+                            # ``.text``; both CLI drivers hand over a PLAIN
+                            # ``str``, which has no ``.text``, so the ``getattr``
+                            # default won every time and every CLI tool result
+                            # reported ``result_size=0`` and the SHA-256 of the
+                            # EMPTY string, whatever the tool returned.
+                            #
+                            # The telemetry cost is that two different results
+                            # look identical and unchanged. The worse cost is
+                            # that a host ``result_masker`` was handed ``""``, so
+                            # it could never inspect or redact CLI tool output —
+                            # and that masker is precisely how a host keeps
+                            # secrets out of its own event stream.
+                            #
+                            # Measured before this: a tool returning "a body"
+                            # (6 bytes) reported size 0 and digest
+                            # e3b0c442...b855, which is sha256(b""). Only the SDK
+                            # path was ever covered, by an ``openai_api``
+                            # scripted adapter, which is why nothing caught it.
+                            result_text = (
+                                tool_payload
+                                if isinstance(tool_payload, str)
+                                else str(getattr(tool_payload, "text", ""))
+                            )
                             fields.update(
                                 result_size=len(result_text.encode("utf-8")),
                                 result_digest=hashlib.sha256(result_text.encode("utf-8")).hexdigest(),
                                 result_preview=result_text,
-                                overflowed=bool(getattr(result, "overflowed", False)),
-                                is_error=bool(getattr(result, "is_error", False)),
+                                overflowed=bool(getattr(tool_payload, "overflowed", False)),
+                                is_error=bool(getattr(tool_payload, "is_error", False)),
                             )
                         await _emit(emit, event.type, **fields)
                     elif event.type == "final":
@@ -982,17 +1038,3 @@ def _classify_cli_failure(
         mode_detail={"mode": mode, "reason": stop or "cli_failure"},
     )
 
-
-def execution_failure(compatibility: ExecutionCompatibility) -> Failure:
-    """Safe public refusal, without a raw command, prompt, credential or CLI output."""
-    return Failure(
-        FailureClass.EXECUTION_INCOMPATIBLE,
-        mode_detail={
-            "reason": compatibility.incompatibilities[0].explanation,
-            "dispatch_state": "not_started",
-            "backend": compatibility.backend,
-            "backend_version": compatibility.backend_version,
-            "binary_version": compatibility.binary_version,
-            "incompatibilities": tuple(asdict(item) for item in compatibility.incompatibilities),
-        },
-    )

@@ -215,7 +215,7 @@ class ToolCall:
     because a ``FrozenDict`` deep-copies through its own ``__reduce__``/
     ``__deepcopy__`` rather than the C fast path (6.6 us vs 3.7 us for the same
     payload as a plain dict) — that is ``_frozen``'s price, and the
-    checkpointer was already paying the 8 us.
+    checkpoint store was already paying the 8 us.
 
     ``arguments`` being an unhashable container is also what would have cost
     every ``ToolCall`` — and every ``Message`` / ``PrefixContext`` /

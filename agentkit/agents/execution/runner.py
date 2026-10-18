@@ -261,6 +261,17 @@ class AgentRunner:
         if definition.delegation.allowed:
             if self.agents is None:
                 raise ValueError("delegation requires an agent store")
+            # `DelegationPolicy` refuses a bound below one where it is a value a
+            # caller typed, and it is frozen — but a frozen field is still
+            # writable through `object.__setattr__`, which is how dataclasses
+            # write their own (`AgentDefinition.__post_init__` does) and so how
+            # anything rehydrating a stored definition can too. Refused again
+            # here, like the tool fan-out in `core/runtime/calls.py`, and for
+            # the same reason: `Semaphore(0)` is locked from birth and released
+            # by nobody, so the first delegation would park forever instead of
+            # reporting the bound that stopped it.
+            if definition.delegation.max_concurrency < 1:
+                raise ValueError("delegation concurrency must be positive")
             semaphore = asyncio.Semaphore(definition.delegation.max_concurrency)
             reservation_lock = asyncio.Lock()
             reserved = Decimal(0)

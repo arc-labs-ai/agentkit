@@ -64,6 +64,25 @@ treat the field as authoritative. There is also no ``--max-budget-usd``: the
 budget is charged *after* the run and refused *before* it, but nothing hands
 the CLI a ceiling it can stop itself against mid-flight.
 
+**Served host tools reach the model as a NAMESPACE, and a model that cannot
+drive one loops.** Captured off the wire from codex-cli 0.162.1: an MCP
+server's tools are not sent as individual functions but grouped into one
+``{"type": "namespace", "name": "mcp__<server>", "tools": [...]}`` entry,
+alongside the CLI's own flat ``list_mcp_resources`` /
+``list_mcp_resource_templates`` / ``read_mcp_resource`` functions. A model that
+does not handle the namespace shape reaches for those flat shims instead — and
+they take the SERVER name while the only name the model has been shown is the
+namespace's, so every attempt fails with ``unknown MCP server
+'mcp__<server>'`` and the model tries again. Measured with ``gpt-4o-mini``,
+which this CLI reports as having no model metadata at all ("Defaulting to
+fallback metadata; this can degrade performance"): 126 identical failing shim
+calls inside ONE turn, zero host tools dispatched. The same wiring on a model
+the CLI knows dispatched the host tool first try. Nothing in agentkit can make
+a model understand the surface, which is why the answer here is a bound —
+:attr:`~CodexCliCognition.max_turns` and
+:attr:`~CodexCliCognition.max_repeated_failed_tool_calls` — plus an
+``is_error`` on the tool result that makes the loop visible while it happens.
+
 **A session is a resumed thread, not a held process.** ``codex exec`` is
 one-shot; its continuation seam is ``codex exec resume <thread-id>``. So
 :class:`CodexCliSession` spawns per turn and threads the conversation through
@@ -76,6 +95,7 @@ spawn and every turn is its own spawn.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -106,6 +126,7 @@ from agentkit.models.providers.cli._common import (
     _cli_terminal_stop_reason,
     _CliLaunch,
     _CliRunOutcome,
+    _CliToolText,
     _coerce_structured,
     _get_semaphore,
     _is_working_dir_missing,
@@ -194,6 +215,13 @@ _CODEX_FAILURE_REASONS = frozenset(
         # refused at startup. Both are refinements of ``cli_exit_<n>``.
         StopReason.PROCESS_CRASHED,
         StopReason.SCHEMA_REJECTED,
+        # ── the tool loop inside one turn (see ``_ToolLoopBound``) ──────────
+        # Borrowed from the Claude CLI's own vocabulary rather than invented,
+        # and it means the same thing here: a bound on how many times the model
+        # may go round before the turn is over. ``codex`` has no flag for it and
+        # no subtype for it, so this is the one reason in this set that agentkit
+        # raises on the CLI's behalf.
+        StopReason.ERROR_MAX_TURNS,
     }
 )
 
@@ -215,6 +243,37 @@ _CODEX_AUTH_FAILURE_STDERR: tuple[str, ...] = (
 def _classify_timeout(exc: CliTimedOut, stderr_bytes: bytes) -> str:
     """This CLI's spelling of :func:`_timeout_stop_reason`."""
     return _timeout_stop_reason(exc, stderr_bytes, _CODEX_AUTH_FAILURE_STDERR)
+
+
+class _ToolLoopBound(Exception):
+    """A bound on the tool calls INSIDE one ``codex exec`` turn was crossed.
+
+    Raised out of the stream fold, which puts it on the driver's ``fatal_exc``
+    path: the shared driver terminates the process group and ``_finalise``
+    turns it into the terminal event like any other failure. That is the whole
+    mechanism — there is nothing to tell the CLI, because ``codex exec`` has no
+    turn or tool-call ceiling of its own and takes no instruction mid-run.
+
+    ``calls`` is the count INCLUDING the call that crossed the line. A tool
+    call is observed from its event, which the CLI emits after running it, so
+    the bound can only ever stop the NEXT one — a cap of three means three ran.
+
+    An ``Exception`` and not a ``BaseException``: this is a run that failed,
+    the caller must still get its terminal event with the usage accrued so
+    far, and ``_reraise_if_not_an_exception`` must leave it alone.
+    """
+
+    def __init__(self, *, bound: str, limit: int, calls: int, repeated: str = "") -> None:
+        detail = f" The same call kept returning the same result: {repeated}." if repeated else ""
+        super().__init__(
+            f"codex made {calls} tool calls inside one turn, crossing {bound}={limit}."
+            f"{detail} The turn was ended and the CLI terminated; `codex exec` has no "
+            "in-turn ceiling of its own, so this bound is the only one there is."
+        )
+        self.bound = bound
+        self.limit = limit
+        self.calls = calls
+        self.repeated = repeated
 
 
 # Structured-output failures are ``invalid_output`` in the closed taxonomy —
@@ -523,6 +582,54 @@ class CodexCliCognition:
     terminate_grace_s: float = 5.0
     max_concurrent: int = 8  # class-level semaphore, shared per (bin, home, max)
 
+    # ── the tool loop inside one turn ───────────────────────────────────────
+    # The bound the timeouts above cannot express, and the one the money is
+    # actually denominated in.
+    #
+    # ``codex exec`` is ONE spawn for the whole agent loop: the model calls a
+    # tool, the CLI runs it, the model calls another, and no turn boundary
+    # crosses this process. So an agentkit-level ``max_turns`` — which counts
+    # adapter turns — counts 1 for all of it, and the only bound in force is
+    # ``timeouts.total``. Measured (codex-cli 0.162.1, ``gpt-4o-mini``, host
+    # tools served over MCP): 126 identical failing tool calls in a single turn
+    # with ``max_turns=8`` nominally in force, ended by the 180s wall clock.
+    # Seconds are the wrong unit for that: each repetition is a billed model
+    # turn, and a faster machine simply buys more of them.
+    #
+    # ``max_turns`` is the declared cap: at most this many tool calls in one
+    # turn, after which the turn ends with ``evals["stop_reason"] ==
+    # "error_max_turns"``. It is spelled like the Claude cognition's field
+    # because a caller wiring both behind one policy means the same thing by
+    # it, and Codex sends ``parallel_tool_calls: false`` (captured off the
+    # wire), so one tool call IS one model turn here. ``None`` — the default —
+    # declares no cap, because a numeric default would truncate the long
+    # autonomous runs this CLI exists for and the resulting ``error_max_turns``
+    # reads like the model gave up.
+    max_turns: int | None = None
+    # The guard that needs nobody to declare anything, and the reason the
+    # default above can stay ``None``. The same tool, the same arguments and
+    # the same RESULT, that many times in one turn: identical in every respect
+    # the model can observe, so nothing was learned between those calls and
+    # there is no reading of "progress" that includes them.
+    #
+    # All three parts are needed, and each was measured. Counting the name
+    # alone would kill an agent that runs ``shell`` forty times, which is this
+    # CLI's whole job. Counting only FAILURES was tried first and let the
+    # expensive half through: the measured loop alternated a failing
+    # ``read_mcp_resource`` with a SUCCEEDING ``list_mcp_resources`` that
+    # returned ``{"resources":[]}`` 127 times — a success that carried no
+    # information and cost a model turn each time. Including the result is also
+    # what keeps a real retry loop alive: a poll whose output changes, or one
+    # that eventually succeeds, never repeats a fingerprint.
+    #
+    # Twelve because that is past every retry convention there is — HTTP
+    # retries stop at three to five, a health-check poll at ten to thirty of
+    # which each returns something new — and far below the 126-to-199
+    # repetitions measured live. The bound names the looping call in
+    # ``evals["tool_call_repeated"]``, so an operator who really did want more
+    # knows exactly what to raise.
+    max_repeated_tool_calls: int | None = 12
+
     # ── environment and authentication ──────────────────────────────────────
     # The same knob as ``ClaudeCliCognition.env_policy``, and deliberately the
     # same three names — but the urgency is NOT the same, and saying so is the
@@ -617,6 +724,16 @@ class CodexCliCognition:
                 "CodexCliCognition: ephemeral=True means the CLI writes no session file, so "
                 "there is nothing for resume_session_id/continue_session to resume. Drop one."
             )
+        for bound, value in (
+            ("max_turns", self.max_turns),
+            ("max_repeated_tool_calls", self.max_repeated_tool_calls),
+        ):
+            if value is not None and value < 1:
+                raise ValueError(
+                    f"CodexCliCognition: {bound}={value!r} would end every turn on its first "
+                    "tool call, and a negative value reads as 'no bound' while behaving the "
+                    "same way. Pass a positive count, or None to declare no bound."
+                )
         missing_dirs = [str(d) for d in self.add_dirs if not Path(d).is_dir()]
         if missing_dirs:
             raise ValueError(f"CodexCliCognition: add_dirs entries are not directories: {missing_dirs}")
@@ -930,6 +1047,13 @@ class CodexCliCognition:
                 state.fold(delta)
                 if ev is not None:
                     yield ev
+            # After the payload's events, not instead of them: the call that
+            # crossed the bound is one the CLI has already made, and a consumer
+            # that is shown the bound but not the call it fired on cannot tell
+            # what happened. Raising from here puts it on the shared driver's
+            # ``fatal_exc`` path, which terminates the process GROUP — which is
+            # the half that stops the spending.
+            self._refuse_a_runaway_tool_loop(log)
 
         try:
             async for event in _run_cli_process(
@@ -1017,6 +1141,12 @@ class CodexCliCognition:
                     final_stop_reason = "working_dir_missing"
                 else:
                     final_stop_reason = "spawn_failed"
+            elif isinstance(fatal_exc, _ToolLoopBound):
+                # A bound WE enforced, so it is named rather than classified:
+                # ``parse_failed`` would send an operator hunting for a corrupt
+                # payload for a stream that was perfectly well-formed and
+                # simply too long to keep paying for.
+                final_stop_reason = StopReason.ERROR_MAX_TURNS
             elif isinstance(fatal_exc, CliLineTooLong):
                 # Its own reason, not ``parse_failed``. Nothing was malformed:
                 # the CLI emitted well-formed JSON that is simply bigger than
@@ -1165,6 +1295,16 @@ class CodexCliCognition:
             # token in it, and this string is checkpointed and fanned out to
             # observers exactly like the rest of ``tests.evals``.
             evals["error"] = _redact_secrets(f"{type(fatal_exc).__name__}: {fatal_exc}")
+        if isinstance(fatal_exc, _ToolLoopBound):
+            # WHICH bound, and what it was measured against. ``stop_reason``
+            # alone says a limit was crossed; an operator deciding whether to
+            # raise the cap or fix the loop needs to know which of the two it
+            # was, and only one of them is a number they chose.
+            evals["tool_calls"] = fatal_exc.calls
+            evals["tool_call_bound"] = fatal_exc.bound
+            evals["tool_call_limit"] = fatal_exc.limit
+            if fatal_exc.repeated:
+                evals["tool_call_repeated"] = fatal_exc.repeated
         if charge_error is not None:
             evals["meter_error"] = charge_error
         if final_partial and stderr_bytes:
@@ -1300,6 +1440,38 @@ class CodexCliCognition:
             cache_write_tokens=state.usage.cache_write_tokens,
             cost_source=CostSource(state.cost_source),
         )
+
+    def _refuse_a_runaway_tool_loop(self, log: _ItemLog) -> None:
+        """End the turn when one of the in-turn tool bounds has been crossed.
+
+        Called once per stdout payload, which is the only cadence available:
+        ``codex exec`` reports a tool call after running it, so a bound here can
+        stop the next one and never the one in front of it.
+
+        Two bounds, and the order matters for the diagnosis rather than for the
+        outcome — a declared cap is a thing the caller asked for and should be
+        reported as such even if the run was also looping.
+
+        ``max_turns`` fires on the call AFTER the cap, matching
+        ``claude --max-turns``: a run that fits inside its budget must not be
+        reported as having blown it, or the only sensible response is to raise
+        the cap, which takes the bound off.
+
+        The repetition guard fires ON the Nth identical call-and-result,
+        because by then the Nth has already been paid for and the N+1th is the
+        one worth preventing.
+        """
+        if self.max_turns is not None and log.tool_calls > self.max_turns:
+            raise _ToolLoopBound(bound="max_turns", limit=self.max_turns, calls=log.tool_calls)
+        cap = self.max_repeated_tool_calls
+        fingerprint, repeats = log.worst_repeat
+        if cap is not None and repeats >= cap:
+            raise _ToolLoopBound(
+                bound="max_repeated_tool_calls",
+                limit=cap,
+                calls=log.tool_calls,
+                repeated=fingerprint,
+            )
 
     def _refuse_if_budget_exhausted(self, ctx: Ctx | None) -> None:
         """Raise :class:`MeterExceeded` when the run has no headroom left.
@@ -1933,6 +2105,32 @@ class _ItemLog:
     called: set[str] = field(default_factory=set)
     refused_vocabulary: bool = False
     anonymous_calls: int = 0
+    # ── what the in-turn bounds are measured against ────────────────────────
+    # ``tool_calls`` counts the ``tool_call`` events that actually went out,
+    # which is the number a cap has to be about: the dedupe above means a
+    # ``started``/``completed`` pair is one call, and an id-less item is its
+    # own call rather than a collision.
+    tool_calls: int = 0
+    # Completed calls by fingerprint, and the worst repetition so far. Keyed on
+    # the call AND its result, and NOT on the item id: the CLI numbers every
+    # repetition of a looping call differently — ``item_1`` … ``item_126`` was
+    # the measured shape, so an id-keyed count sees 126 distinct calls.
+    # ``worst_repeat`` is carried along rather than re-derived so the check
+    # after every payload stays O(1), and it holds the READABLE half of the
+    # fingerprint because it ends up in ``evals`` for an operator to read.
+    repeats: dict[str, int] = field(default_factory=dict)
+    worst_repeat: tuple[str, int] = ("", 0)
+
+    def note_call(self) -> None:
+        """Count a ``tool_call`` event that is going out."""
+        self.tool_calls += 1
+
+    def note_outcome(self, call: str, outcome: str) -> None:
+        """Count one completed call, keyed by the call and what it returned."""
+        count = self.repeats.get(f"{call}::{outcome}", 0) + 1
+        self.repeats[f"{call}::{outcome}"] = count
+        if count > self.worst_repeat[1]:
+            self.worst_repeat = (call, count)
 
     def suffix(self, key: str, text: str) -> str:
         """The part of ``text`` not yet emitted for ``key``, marking it emitted.
@@ -2234,6 +2432,11 @@ def _item_events(item: dict[str, Any], *, phase: str, log: _ItemLog) -> list[tup
             name="shell",
             arguments={"command": item.get("command")},
             result=lambda: _command_result(item),
+            # The exit code, which ``_command_result`` already renders into the
+            # text. No second copy of it in the flag's message: a reader of the
+            # result sees ``[exit 1]`` there and the flag is the machine-readable
+            # half of the same fact.
+            failed=_item_failure(item) is not None,
         )
 
     if itype == "file_change":
@@ -2245,6 +2448,7 @@ def _item_events(item: dict[str, Any], *, phase: str, log: _ItemLog) -> list[tup
             name="apply_patch",
             arguments={"changes": changes},
             result=lambda: _render_changes(changes),
+            failed=_item_failure(item) is not None,
         )
 
     if itype == "mcp_tool_call":
@@ -2258,7 +2462,8 @@ def _item_events(item: dict[str, Any], *, phase: str, log: _ItemLog) -> list[tup
             # agentkit audit record matches the name in a Codex transcript.
             name=f"mcp__{server}__{tool}" if server or tool else "mcp",
             arguments=dict(_as_dict(item.get("arguments"))),
-            result=lambda: _flatten_content(item.get("result")),
+            result=lambda: _mcp_result(item),
+            failed=_item_failure(item) is not None,
         )
 
     if itype == "web_search":
@@ -2269,6 +2474,7 @@ def _item_events(item: dict[str, Any], *, phase: str, log: _ItemLog) -> list[tup
             name="web_search",
             arguments={"query": item.get("query")},
             result=lambda: "",
+            failed=_item_failure(item) is not None,
         )
 
     if itype == "todo_list":
@@ -2295,6 +2501,7 @@ def _paired(
     name: str,
     arguments: dict[str, Any],
     result: Callable[[], str],
+    failed: bool = False,
 ) -> list[tuple[StreamEvent | None, _EventDelta]]:
     """A tool item → at most one ``tool_call`` and, on completion, one ``tool_result``.
 
@@ -2306,6 +2513,14 @@ def _paired(
 
     ``result`` is a callable so the completion text is only rendered when there
     is a completion to render; several of them walk a list.
+
+    ``failed`` is the CLI's own verdict on the call, read off the item by each
+    caller because the field that carries it differs by item type (an ``error``
+    payload, a ``status``, an exit code). It reaches the host two ways: as
+    ``is_error`` on the ``tool_result`` payload, and as part of the fingerprint
+    the no-progress guard counts — which is the call, its arguments AND what it
+    returned, so "the same answer again" is told apart from "a different
+    answer".
     """
     out: list[tuple[StreamEvent | None, _EventDelta]] = []
     # An id-less item gets a positional one, and then must NOT go through the
@@ -2316,10 +2531,48 @@ def _paired(
     call_id = log.anonymous_id() if anonymous else item_id
     call = ToolCall(id=call_id, name=name, arguments={k: v for k, v in arguments.items() if v is not None})
     if anonymous or log.first_call(f"call:{item_id}"):
+        log.note_call()
         out.append((StreamEvent("tool_call", tool_call=call), _EventDelta()))
     if phase == "completed":
-        out.append((StreamEvent("tool_result", tool_call=call, tool_result=result()), _EventDelta()))
+        text = result()
+        log.note_outcome(_call_fingerprint(name, call.arguments), _outcome_fingerprint(text, failed))
+        out.append(
+            (
+                StreamEvent("tool_result", tool_call=call, tool_result=_CliToolText(text, is_error=failed)),
+                _EventDelta(),
+            )
+        )
     return out
+
+
+def _call_fingerprint(name: str, arguments: Mapping[str, Any]) -> str:
+    """What makes two tool calls "the same call" for the no-progress guard.
+
+    Name AND arguments, because fifty calls with fifty different arguments is a
+    search — bad at its job, perhaps, but each result is new information —
+    while fifty with the same arguments is a model that has stopped reading its
+    own results. Rendered rather than hashed because this string goes in
+    ``evals["tool_call_repeated"]``: an operator needs to see WHICH call looped,
+    and a digest tells them nothing. Truncated because a tool call can carry a
+    whole file as an argument and this is held per turn.
+    """
+    try:
+        rendered = json.dumps(arguments, sort_keys=True, default=str)
+    except (TypeError, ValueError):  # pragma: no cover — ``default=str`` covers the known shapes
+        rendered = repr(sorted(arguments))
+    return f"{name}({rendered[:400]})"
+
+
+def _outcome_fingerprint(text: str, failed: bool) -> str:
+    """The result half of the fingerprint, digested.
+
+    Hashed where the call half is rendered, because a result is unbounded —
+    a file, a build log — and the readable half is already enough for the
+    diagnostic. What it has to do is distinguish "the same answer again" from
+    "a different answer", which is the whole difference between a stuck model
+    and a working retry loop.
+    """
+    return f"{'err' if failed else 'ok'}:{hashlib.sha256(text.encode('utf-8', 'replace')).hexdigest()[:16]}"
 
 
 def _command_result(item: dict[str, Any]) -> str:
@@ -2337,6 +2590,61 @@ def _command_result(item: dict[str, Any]) -> str:
         suffix = f"[exit {code}]"
         return f"{output}\n{suffix}" if output else suffix
     return output
+
+
+# Item statuses that mean the call did not do what it was asked. ``cancelled``
+# and ``aborted`` are in here deliberately: from the host's side a call that
+# was stopped is a call that did not return a result, and the one thing the
+# flag must never do is report that as a success.
+_FAILED_ITEM_STATUSES = frozenset({"failed", "error", "cancelled", "aborted", "rejected", "denied"})
+
+
+def _item_failure(item: Mapping[str, Any]) -> str | None:
+    """The CLI's own account of why a tool item failed, or ``None`` when it did not.
+
+    Three fields carry it and which one depends on the item type, which is why
+    this reads all three: an ``error`` payload (MCP calls — ``{"message": …}``,
+    and the CLI's refusals arrive here), a ``status`` (every item type), and an
+    ``exit_code`` (shell). None of them was read before, so a failure reached a
+    host as an empty success — see :class:`_CliToolText` for what that cost.
+
+    Returns a MESSAGE rather than a bool because the MCP branch puts it in the
+    result text: a refused MCP call has ``result: null``, so the CLI's sentence
+    is the only content there is. ``"MCP tool call requires approval, but
+    approval policy is never"`` is the live example, and it is the only evidence
+    a host has that an approval-gated tool was stopped rather than run.
+    """
+    error = item.get("error")
+    message = ""
+    if isinstance(error, Mapping):
+        message = str(error.get("message") or "") or json.dumps(dict(error), default=str)
+    elif isinstance(error, str):
+        message = error
+    status = str(item.get("status") or "").lower()
+    code = item.get("exit_code")
+    bad_code = isinstance(code, int) and not isinstance(code, bool) and code != 0
+    if message:
+        return message
+    if status in _FAILED_ITEM_STATUSES:
+        return f"the CLI reported status={status!r} and no message"
+    if bad_code:
+        return f"exit {code}"
+    return None
+
+
+def _mcp_result(item: Mapping[str, Any]) -> str:
+    """An MCP item's text, including the CLI's failure message when there is one.
+
+    Both, not either: a tool can fail after producing partial content, and a
+    reader needs the content AND the reason. When the call was refused outright
+    the content is empty and the message is the whole result — which is the case
+    that used to render as ``""``.
+    """
+    text = _flatten_content(item.get("result"))
+    message = _item_failure(item)
+    if message is None:
+        return text
+    return f"{text}\n{message}" if text else message
 
 
 def _render_changes(changes: Any) -> str:

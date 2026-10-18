@@ -80,6 +80,7 @@ from agentkit.models.providers.cli._common import (
     _CliDeadline,
     _CliLaunch,
     _CliRunOutcome,
+    _CliToolText,
     _coerce_structured,
     _drain_stderr,
     _get_semaphore,
@@ -2751,7 +2752,20 @@ async def _events_from_payload(
             content = block.get("content")
             # ``content`` may be a string or a list of {type,text} blocks —
             # collapse to a plain string for the StreamEvent payload.
-            result_text = _flatten_tool_result_content(content)
+            #
+            # ``_CliToolText``, not a bare ``str``: the payload also carries
+            # ``is_error``, and flattening to a plain string threw it away. The
+            # adapter reads ``.is_error`` off this payload to build the
+            # TOOL_RESULT event, so every Claude tool result — including every
+            # call the CLI itself REFUSED — reached the host as a success. The
+            # same hole was measured on the Codex path: 126 failed calls in one
+            # live turn, all reported `is_error=False`.
+            #
+            # It is a ``str`` subclass, so `ev.tool_result == "ok"` and every
+            # other consumer keep working untouched.
+            result_text = _CliToolText(
+                _flatten_tool_result_content(content), is_error=bool(block.get("is_error"))
+            )
             tc = ToolCall(id=str(tool_use_id or ""), name="", arguments={})
             yield (
                 StreamEvent("tool_result", tool_call=tc, tool_result=result_text),
