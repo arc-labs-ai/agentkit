@@ -51,11 +51,29 @@ def stop_reason_for(reason: str | None) -> str:
 
 @dataclass(frozen=True)
 class CliResult:
-    """Provider transport result consumed by CliAdapter, never a harness result."""
+    """Provider transport result consumed by CliAdapter, never a harness result.
+
+    ``partial`` has NO DEFAULT, and that is the point of it being spelled out
+    here. It used to default to ``False``, which is the same defect class as the
+    ``ProviderUsage.cost_usd = 0.0`` default that was removed for exactly this
+    reason: a field whose unset state makes a positive claim on behalf of code
+    that said nothing.
+
+    The claim it makes is about ACCOUNTING, not about presentation. ``CliAdapter``
+    reads ``result.partial`` to decide both ``Turn.usage_complete`` and whether
+    to replace the token counts with ``{}`` — "a missing measurement is not a
+    measured zero" — so ``partial=False`` means "these token counts are final".
+    A result built without mentioning it therefore asserts that an un-populated
+    :class:`ProviderUsage` is a real measurement of zero, and the usage most
+    likely to be attached to such a result is precisely the un-populated one:
+    whatever path forgot to state ``partial`` is the path that never reached a
+    terminal payload. Both shipped drivers pass it explicitly; making it
+    mandatory is what keeps that from silently stopping.
+    """
 
     output: str
     usage: ProviderUsage
-    partial: bool = False
+    partial: bool
     evals: dict[str, Any] = field(default_factory=dict)
     parsed: Any = None
     stop_reason: str = "complete"
@@ -198,6 +216,47 @@ class _CliCall:
     request: Any = None
 
 
+def _usage_was_measured(usage: ProviderUsage) -> bool:
+    """Are these numbers a measurement, or an un-populated default?
+
+    One definition, because the question is currently answered three different
+    ways by three different files about the same object: ``codex``'s ``_priced``
+    asks whether ``raw_usage`` carries the two token keys, ``CliAdapter`` asks
+    whether ``result.partial`` is set, and ``core/runtime/calls.py`` asks
+    whether ``turn.raw_usage`` is truthy. None of those is reachable from the
+    others, and hand-copied judgement across these two cognitions is what this
+    module's own docstring opens by listing three shipped bugs about.
+
+    The test is: **zero total tokens AND an unknown cost**. That pair is the
+    un-populated default and nothing else.
+
+    * A real turn consumes input tokens — a model cannot be asked nothing — so
+      any non-zero ``total_tokens`` is a measurement, even with no cost. That is
+      every ``codex`` run: the CLI prices nothing, so an honest, fully observed
+      usage there is ``cost_usd=None`` with real tokens.
+    * A cost that is present at all came from a terminal payload or a rate card,
+      so it is a measurement even where a token field is zero. A ``REPORTED``
+      ``0.0`` means the provider was asked and said free, which is a different
+      statement from never having asked.
+
+    ``total_tokens`` is ``input + output``, so a usage whose only non-zero field
+    is a cache counter reads as un-populated. That is a deliberate false
+    negative in the safe direction — calling an unknown measurement "unknown"
+    costs a precision the caller never had, while calling a default a
+    measurement is the silent-ledger bug — and no real payload has the shape
+    anyway: in the Claude stream-json fixture under
+    ``tests/source/fixtures/cli/claude`` every per-message usage object carries
+    ``input_tokens`` alongside its cache counters.
+
+    What this CANNOT do is recover the numbers. Both CLIs report usage only on
+    their terminal payload (``result`` for claude, ``turn.completed`` for
+    codex), so a process killed by a liveness bound genuinely never told us the
+    counts. This is the honesty half: it names the uncertainty rather than
+    inventing a figure to replace it.
+    """
+    return usage.total_tokens > 0 or usage.cost_usd is not None
+
+
 async def _charge_meters(ctx: Ctx | None, usage: ProviderUsage, *, enabled: bool) -> str | None:
     """Put a CLI run's spend on the framework's books. Returns an error note.
 
@@ -223,6 +282,23 @@ async def _charge_meters(ctx: Ctx | None, usage: ProviderUsage, *, enabled: bool
 
     ``enabled`` is keyword-only and has no default, so a call site has to state
     its ``meter_spend`` rather than inherit a guess about it.
+
+    **An un-measured usage is still charged, and that is not an oversight.** A
+    run killed by a liveness bound arrives here as a bare ``ProviderUsage()``
+    (see :func:`_usage_was_measured`), and the tempting fix — skip the charge —
+    is wrong in both directions. The money is already handled honestly:
+    ``cost_usd=None`` reaches the meters as UNKNOWN, which is what "a meter must
+    not be told the run was free" means, and skipping the charge would downgrade
+    that explicit unknown to silence. The steps are worse: an actor looping on
+    timed-out runs that charged nothing would advance no ceiling at all, so no
+    later consultation of one could stop it — the ``ActorBudget`` hole this
+    helper exists to close, reopened from the other side.
+
+    What the charge cannot say is the TOKENS. ``usage.total_tokens`` is an
+    ``int``, so an un-measured usage is handed over as ``0`` and no meter can
+    tell that from a run that genuinely consumed nothing. Fixing that needs an
+    "unknown" on the :class:`ProviderUsage` token fields — the same change
+    ``cost_usd`` already got — and cannot be done from this side of the call.
     """
     if not enabled or ctx is None:
         return None
@@ -1601,6 +1677,40 @@ def _redact_secrets(text: str) -> str:
     return redacted
 
 
+class _CliToolText(str):
+    """A tool result's text, plus whether the CLI called the call a failure.
+
+    A ``str`` subclass on purpose. ``CliAdapter`` builds every TOOL_RESULT
+    event by reading ``.text`` / ``.is_error`` / ``.overflowed`` off this
+    payload — the shape the SDK path's ``ToolResult`` has — while every other
+    consumer, and the Claude driver, treats the payload as the text itself.
+    Carrying both means a refusal becomes visible on the host's event stream
+    without a single call site having to change: ``ev.tool_result == "ok"``
+    still holds, and ``bool(getattr(result, "is_error", False))`` stops being
+    unconditionally ``False``.
+
+    Measured before this existed: 126 failed tool calls in one live turn
+    reached the host as ``is_error=False`` with ``result_preview=""`` and
+    ``result_size=0``, because a ``str`` has no ``.text`` either — so the
+    preview a host logs was empty for every CLI tool call ever made, successful
+    or refused.
+    """
+
+    # No ``__slots__``: CPython refuses a non-empty one on a subtype of a
+    # variable-length built-in, so the instance dict is not a choice here.
+    is_error: bool
+
+    def __new__(cls, text: str, *, is_error: bool = False) -> _CliToolText:
+        self = super().__new__(cls, text)
+        self.is_error = is_error
+        return self
+
+    @property
+    def text(self) -> str:
+        """The text, under the name the adapter reads it by."""
+        return str(self)
+
+
 def _looks_secret(key: str, value: Any) -> bool:
     """Would ``key=value`` put a credential in an argument list?
 
@@ -1757,6 +1867,7 @@ __all__ = [
     "_drain_stderr",
     "_STDOUT_LINE_LIMIT",
     "_too_big_for_argv",
+    "_usage_was_measured",
     "_coerce_structured",
     "_CliDeadline",
     "_get_semaphore",

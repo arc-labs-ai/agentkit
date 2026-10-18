@@ -19,7 +19,7 @@ has to close it.
 
 The freeze had a constraint to clear before it could ship, and that is the
 second half of this file: a checkpoint is ``json.dumps``'d into a JSONB column,
-walked by ``dataclasses.asdict``, deep-copied by the checkpointer on every
+walked by ``dataclasses.asdict``, deep-copied by a checkpoint store on every
 snapshot and compared against plain-dict records. ``MappingProxyType`` — the
 obvious mechanism — breaks all four, which is why the payload is a ``dict``
 SUBCLASS instead. A test that only proved "mutation refused" would have been
@@ -195,8 +195,8 @@ def test_a_frozen_record_still_walks_through_dataclasses_asdict() -> None:
     assert json.dumps(walked["state"]) == json.dumps(_STATE)
 
 
-def test_the_checkpointer_can_still_deepcopy_and_pickle_a_frozen_record() -> None:
-    """``Checkpointer.snapshot`` deep-copies state on every save, so a payload
+def test_a_checkpoint_store_can_still_deepcopy_and_pickle_a_frozen_record() -> None:
+    """``CheckpointPort.snapshot`` deep-copies state on every save, so a payload
     that cannot be copied surfaces as a BROKEN SAVE, not a broken copy. Copy and
     pickle rebuild a dict subclass by creating an empty one and repopulating it
     through ``__setitem__`` — the method being blocked — which is what

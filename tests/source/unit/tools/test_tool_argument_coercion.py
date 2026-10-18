@@ -577,3 +577,66 @@ async def test_one_unresolvable_annotation_does_not_disable_its_neighbours() -> 
 
     await t.run({"unit": "metric"}, None)
     assert seen == [_Unit.METRIC], "the body must receive the enum, not the raw string"
+
+
+def test_a_quoted_forward_reference_to_the_context_is_still_the_context() -> None:
+    """`ctx: "Ctx"` is what an author writes whenever the type is imported under
+    `TYPE_CHECKING`, and under PEP 563 the annotation arrives as the text `'Ctx'`
+    — quotes included. The arm-matching check ended with `endswith("Ctx")`, which
+    sees `Ctx'` and says no.
+
+    So that spelling was demoted to an ordinary parameter: advertised to the
+    model, filled by it, and then every call failed schema validation while the
+    run still answered through the schema helper. Nothing raised, and the
+    answer looked fine — found only by a real CLI acceptance run.
+    """
+    @tool(side_effecting=False)
+    def quoted(record_id: str, ctx: "Ctx" = None) -> str:  # type: ignore[assignment] # noqa: UP037, F821
+        """A tool with enough description that the inference layer is satisfied."""
+        return "ok"
+
+    assert "ctx" not in _params(quoted)["properties"], (
+        "a quoted forward reference to the context was advertised to the model"
+    )
+    assert _params(quoted)["required"] == ["record_id"]
+
+
+def test_a_context_parameter_annotated_as_anything_is_refused_not_guessed() -> None:
+    """`Any` and `object` commit to nothing, so a parameter named `ctx` annotated
+    that way is genuinely unreadable — and BOTH guesses fail silently.
+
+    Treat it as data and `ctx` is advertised, the model fills it, and every call
+    fails schema validation while still answering (measured). Treat it as the
+    context and a legitimate free-form `context` parameter quietly stops
+    reaching the body. Neither is a guess worth making on the author's behalf,
+    so it is refused at decoration time with both remedies in the message —
+    the same call this module already makes for `*args`.
+
+    Detection stays by ANNOTATION rather than by name, which is what keeps a
+    real `context: str` data parameter working; this refusal is narrow to the
+    two annotations that say nothing at all.
+    """
+    from agentkit.tools.declarations.errors import ToolDefinitionError
+
+    for annotation in ("Any", "object"):
+        namespace: dict[str, object] = {"tool": tool, "Any": Any, "object": object}
+        source = (
+            "@tool(side_effecting=False)\n"
+            f"def ambiguous(record_id: str, ctx: {annotation} = None) -> str:\n"
+            '    """A tool with enough description that the inference layer is satisfied."""\n'
+            '    return "ok"\n'
+        )
+        with pytest.raises(ToolDefinitionError) as excinfo:
+            exec(compile(source, "<ambiguous>", "exec"), namespace)  # noqa: S102 — the annotation is the subject
+        message = str(excinfo.value)
+        assert "'ctx'" in message
+        assert "Ctx" in message, "the message must name the remedy, not just the problem"
+        assert "real data type" in message, "and the other remedy, for a genuine data parameter"
+
+    # The control: a real data parameter named `context` is untouched.
+    @tool(side_effecting=False)
+    def data(record_id: str, context: str = "") -> str:
+        """A tool with enough description that the inference layer is satisfied."""
+        return "ok"
+
+    assert "context" in _params(data)["properties"]

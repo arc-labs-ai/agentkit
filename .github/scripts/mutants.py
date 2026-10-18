@@ -263,6 +263,15 @@ KERNEL_TESTS = (
 USAGE_HONESTY_TESTS = (
     "tests/source/unit/models/providers/cli/claude/test_claude_cli_failure_paths.py",
 )
+CLI_FLOOR_TESTS = (
+    "tests/source/integration/execution/test_claude_execution_profile.py",
+)
+CTX_PARAM_TESTS = (
+    "tests/source/unit/tools/test_tool_argument_coercion.py",
+)
+LOOPBACK_EGRESS_TESTS = (
+    "tests/source/architecture/test_loopback_egress.py",
+)
 AGREEMENT_TESTS = (
     "tests/source/unit/models/adapters/test_transport_classifier_agreement.py",
 )
@@ -1086,8 +1095,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="execfailclosed",
         why="Codex stops being treated as unable to prove native-tool isolation and is downgraded to the same UNVERIFIED as Claude, erasing the one documented difference between the two backends — Codex keeps file/patch/plan capabilities that an empty tool list does not remove",
         path="agentkit/models/providers/cli/capabilities.py",
-        before="            if mode == Mode.CODEX:\n",
-        after="            if False:\n",
+        before='            if mode == Mode.CODEX:\n                explanation = "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"\n',
+        after='            if False:\n                explanation = "Codex cannot prove complete native-tool isolation; DENY policy refuses dispatch"\n',
         tests=EXECUTION_TESTS,
     ),
     # ── re-armed: registry invariants whose test file was rewritten ─────────
@@ -2437,6 +2446,77 @@ MUTANTS: tuple[Mutant, ...] = (
         tests=('tests/source/conformance/test_host_bridge_boundaries.py',),
     ),
 
+    Mutant(
+        tag="cliversionfloor",
+        why='the version floor compares release NUMBERS as text. `"2.1.302" < "2.1.9"` is True lexicographically and false in fact, so a binary above the floor would be refused and one below it admitted — and with same-length components in every test value the mistake is invisible.',
+        path='agentkit/models/providers/cli/calls.py',
+        before='    installed, minimum = _release_number(version), _release_number(floor)',
+        after='    installed, minimum = (version,), (floor,)  # type: ignore[assignment]',
+        tests=CLI_FLOOR_TESTS,
+    ),
+    Mutant(
+        tag="cliversionfloor",
+        why='an UNPARSEABLE version passes the floor. A vendor that changes its `--version` output produces exactly this case, and that is also when its protocol is most likely to have moved — so a floor that admits what it cannot read is weaker than the exact pin it replaced.',
+        path='agentkit/models/providers/cli/calls.py',
+        before='    if installed is None or minimum is None:\n        return False',
+        after='    if installed is None or minimum is None:\n        return True',
+        tests=CLI_FLOOR_TESTS,
+    ),
+    Mutant(
+        tag="cliversionfloor",
+        why="THE BUG, and it made the version gate inert for every real-process test. The gate read `type(backend) is SubprocessExecutionBackend`, and both real-process suites SUBCLASS that backend to route at a local provider — so they skipped version inspection AND `cli_binary_unverified`, giving a subclass a WEAKER refusal set than the base class. The Claude profile previously 'proven' on 2.1.302 was proven through this hole: with the gate live it refused until the version was actually characterized.",
+        path='agentkit/models/providers/cli/calls.py',
+        before='        if configuration.spawn is None and isinstance(configuration.execution_backend, SubprocessExecutionBackend',
+        after='        if configuration.spawn is None and type(configuration.execution_backend) is SubprocessExecutionBackend',
+        tests=CLI_FLOOR_TESTS,
+    ),
+    Mutant(
+        tag="ctxparam",
+        why='a QUOTED forward reference to the context is advertised to the model. Under PEP 563 `ctx: "Ctx"` arrives as the text `\'Ctx\'`, quotes included, so an `endswith("Ctx")` test sees `Ctx\'` and demotes it to an ordinary parameter. The model then fills it and every call fails schema validation while the run still answers through the schema helper — a green-looking wrong answer, and quoting is what an author writes whenever the type is imported under TYPE_CHECKING.',
+        path='agentkit/tools/declarations/schema.py',
+        before='    return any(part.strip().strip("\\"\'").endswith("Ctx") for part in text.split("|"))',
+        after='    return any(part.strip().endswith("Ctx") for part in text.split("|"))',
+        tests=CTX_PARAM_TESTS,
+    ),
+    Mutant(
+        tag="ctxparam",
+        why='a `ctx` parameter annotated `Any` or `object` is GUESSED at instead of refused. Both guesses fail silently: as data it is advertised and every call fails validation while still answering; as the context a legitimate free-form `context` parameter stops reaching the body. The refusal is the only honest answer and it carries both remedies.',
+        path='agentkit/tools/declarations/schema.py',
+        before='        if pname in ("ctx", "context") and _is_ambiguous_context_annotation(p.annotation):',
+        after='        if False:',
+        tests=CTX_PARAM_TESTS,
+    ),
+    Mutant(
+        tag="loopbackegress",
+        why="the loopback readiness probe trusts the ambient environment again. httpx honours HTTP_PROXY / ALL_PROXY by default and does NOT exempt localhost, so a request to the bridge is routed through whatever those name — carrying the server's bearer token and every tool argument and result off-box. Measured: proxied=True with two mounts for a 127.0.0.1 MCP URL. The server guards that same token with a 0600 O_NOFOLLOW write and 401 bodies that never echo it; an env var must not undo it.",
+        path='agentkit/integrations/mcp/serve.py',
+        before='httpx.AsyncClient(timeout=timeout_s, trust_env=False)',
+        after='httpx.AsyncClient(timeout=timeout_s)',
+        tests=LOOPBACK_EGRESS_TESTS,
+    ),
+)
+
+
+# ── invariants the rewrite left unenforced ───────────────────────────────────
+#
+# These entries' source anchors are LIVE — the code they mutate still exists
+# and `--verify` still checks it, so none of this rots. What they lost is their
+# verification: the reorganisation deleted the test files that caught them, and
+# nothing has replaced those yet. Probed against the test directories that did
+# survive, these are not caught.
+#
+# They are parked here rather than deleted because the analysis in each `why`
+# is the map of what the rewrite stopped guaranteeing, and each one becomes a
+# working catalogue entry again the moment a test covers it: move it back into
+# MUTANTS and point `tests` at the file.
+#
+# They are OUT of the gate because a catalogue entry that cannot be run proves
+# nothing, and leaving them in made the job fail without telling anyone which
+# invariants were actually unguarded. `MUTANTS` is now exactly the set that is
+# enforced, and the gate's green means that literally.
+#
+# Run `python .github/scripts/mutants.py --unenforced` to list them.
+UNENFORCED: tuple[Mutant, ...] = (
 )
 
 

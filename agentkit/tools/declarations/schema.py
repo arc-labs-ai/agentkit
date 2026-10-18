@@ -135,6 +135,20 @@ _HUMAN_TAIL_MARKER = "---"
 _DEV_NOTE_RE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?(TODO|FIXME|XXX|HACK)\b", re.MULTILINE)
 
 
+def _is_ambiguous_context_annotation(annotation: Any) -> bool:
+    """Whether an annotation is non-committal enough to make a ``ctx`` parameter unreadable.
+
+    Only ``Any`` and ``object``, in their evaluated and PEP 563 textual forms.
+    Deliberately not a broader test: every other annotation either names a
+    context type or names real data, and both of those are answerable.
+    """
+    if annotation is inspect.Parameter.empty:
+        return False
+    if annotation in (Any, object):
+        return True
+    return isinstance(annotation, str) and annotation.strip().strip("\"'") in ("Any", "object", "typing.Any")
+
+
 def _is_ctx_param(p: inspect.Parameter) -> bool:
     """A `ctx`/`context` param is the injected context ONLY when it's unannotated or annotated with a
     context type — so a real data param like `def f(context: str)` is NOT hijacked (it stays advertised
@@ -181,7 +195,15 @@ def _names_a_context(ann: Any) -> bool:
     if name in ("RunContext", "Ctx") or "RunContext" in text:
         return True
     # Each arm of a textual union, so the PEP 563 string form matches too.
-    return any(part.strip().endswith("Ctx") for part in text.split("|"))
+    #
+    # ``strip("\"'")`` because a QUOTED forward reference survives as its own
+    # quotes: under ``from __future__ import annotations``, ``ctx: "Ctx"`` is the
+    # text ``'Ctx'``, which ends in ``Ctx'`` and not ``Ctx``. Measured — that
+    # spelling was advertised to the model as a parameter, so the model filled
+    # it and every call failed schema validation while the run still answered
+    # through the schema helper. A green-looking wrong answer, and the quoting
+    # is a thing authors do whenever the type is imported under TYPE_CHECKING.
+    return any(part.strip().strip("\"'").endswith("Ctx") for part in text.split("|"))
 
 
 def _enum_fragment(ann: type[enum.Enum]) -> dict[str, Any]:
@@ -615,6 +637,30 @@ def _build_schema(func: Callable[..., Any], name: str, description: str) -> Tool
             )
         if p.kind is p.VAR_KEYWORD:
             continue
+        if pname in ("ctx", "context") and _is_ambiguous_context_annotation(p.annotation):
+            # Named like an injection site, annotated as nothing in particular.
+            #
+            # Detection is by ANNOTATION, not by name — deliberately, so a real
+            # data parameter called ``context`` is not hijacked. But ``Any`` and
+            # ``object`` commit to nothing, so the author's intent is genuinely
+            # unknowable here, and guessing either way fails silently:
+            #
+            # - treat it as data (what used to happen) and ``ctx`` is advertised
+            #   to the model, which fills it; every call then fails schema
+            #   validation while the run still answers through the schema
+            #   helper. Measured. A green-looking wrong answer.
+            # - treat it as the context and a legitimate free-form ``context``
+            #   parameter silently stops reaching the body.
+            #
+            # So neither is chosen. Refusing costs the author one word and the
+            # message carries both remedies, which is the same call this module
+            # already makes for ``*args`` and for an unresolvable annotation.
+            raise ToolDefinitionError(
+                f"tool {name!r} has a parameter {pname!r} annotated {p.annotation!r}, which says "
+                "nothing about whether it is the injected run context or ordinary data. Annotate it "
+                "as `Ctx` (or `Ctx | None`) to have the context injected and kept out of the "
+                "model-facing schema, or give it a real data type if the model is meant to fill it."
+            )
         if pname in hint_errors:
             # The author DID annotate this parameter and the annotation could not be
             # resolved — almost always a forward ref naming something that is not

@@ -649,7 +649,10 @@ class McpServerSpec:
         import httpx
         headers = {**dict(self.auth_headers), "Accept": "application/json, text/event-stream",
                    "MCP-Protocol-Version": "2025-11-25"}
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
+        # ``trust_env=False`` for the same reason as the client side: this
+        # probe carries the server's bearer token to a loopback address, and
+        # httpx would otherwise route it through an ambient HTTP_PROXY.
+        async with httpx.AsyncClient(timeout=timeout_s, trust_env=False) as client:
             response = await client.post(self.url, headers=headers, json={
                 "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {},
             })

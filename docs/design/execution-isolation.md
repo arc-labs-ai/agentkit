@@ -9,25 +9,128 @@ Claude's separate persistent session transport is not used by `CallRuntime`.
 `IsolatedHome` provides private temporary directories and credential cleanup.
 It is **not an execution sandbox**. A same-user native tool can read those files.
 
-No CLI version is pinned by this repository or its CI. The installed binaries
-are Claude Code **2.1.300** and Codex **0.162.1**. Older comments describe
-Claude 2.1.236 and Codex 0.152.1; these are observations, not version pins.
+No CLI version is pinned by this repository or its CI. The binaries inspected
+for this record were Claude Code **2.1.300** and Codex **0.162.1**; a later
+`--version` probe reports Claude Code **2.1.302** and Codex **0.163.0** — the
+installed `codex` upgraded ITSELF mid-session, which is the reason
+`MINIMUM_TESTED_CLI_VERSION` is a floor and not an exact match. Neither
+measured binary is still installed at the version it was measured at, so every
+version below is a record of what was observed and not a claim about what is
+present. Older comments describe Claude 2.1.236 and Codex 0.152.1; these are
+observations, not version pins.
 Argument acceptance tests do not establish authority boundaries.
 
-## Capability matrix before implementation
+## Capability matrix as implemented (2026-10-18)
 
-| Requirement | Claude Code adapter | Codex adapter | Ordinary subprocess |
+Every status below is a reading of `agentkit/models/providers/cli/capabilities.py`
+(the two CLI modes) and `agentkit/models/providers/frontiers/capabilities.py`
+(the two API modes), confirmed by calling `CallRuntime.evaluate_execution` once
+per mode under a `DENY` ceiling. The matrix is answered in full for every mode
+so a host can use it for discovery; the requirements that can refuse a call are
+the ones the request declares, plus `native_tools_unavailable` whenever the
+policy ceiling is `DENY`.
+
+| Requirement | `claude_code` | `codex` | `anthropic_api` / `openai_api` |
 | --- | --- | --- | --- |
-| Native tools unavailable (strict DENY) | Empty `--tools` list; needs behavioral verification per binary | Unsupported: file/patch/plan and other native capabilities remain | Cannot remove provider tools |
-| Host tools | Explicit MCP server, host ToolSet grants | Explicit MCP server, host ToolSet grants | Host callbacks remain host authority |
-| External MCP | `--strict-mcp-config` | Owned CODEX_HOME, ignore user config | No network boundary |
-| User/project configuration excluded | `--bare` excludes discovery but disables saved OAuth; empty setting sources alone is insufficient evidence | Ignore config/rules flags, feature switches; needs planted discovery tests | No filesystem/configuration boundary |
-| Files restricted to roots | No OS boundary | Read-only controls writes; does not deny reads | Unsupported |
-| Network destinations restricted | No OS boundary | CLI sandbox is not proof of whole invocation egress | Unsupported |
-| Job process visibility / complete descendant termination | Process group only | Process group only | Detached descendants can escape |
-| Credentials inaccessible to model tools | Empty tools removes native access; host tools must be separately governed | Unsupported with auth.json/API key and native execution in same security context | Unsupported |
-| Schema / usage | Native schema and usage; bounded schema fallback documented | Native schema and usage | Transport only |
-| Exact hard spending cap | CLI budget flag is not proof of exact hard cap | Unsupported | Unsupported |
+| `native_tools_unavailable` | unverified | unsupported | **supported** |
+| `host_tools` | supported | supported | supported |
+| `mcp_allowlist` | unverified | unverified | unverified |
+| `filesystem_read` | unsupported | unsupported | unsupported |
+| `filesystem_write` | unsupported | unsupported | unsupported |
+| `network` | unsupported | unsupported | unsupported |
+| `processes` | unsupported | unsupported | unsupported |
+| `credentials` | unsupported | unsupported | unsupported |
+| `configuration` | unsupported | unsupported | unsupported |
+| `schema` | supported | supported | supported |
+| `cancellation` | unsupported | unsupported | unverified |
+| `usage` | supported | supported | supported |
+| `observed_spending_threshold` | supported | supported | supported |
+| `hard_spending_cap` | unsupported | unsupported | unsupported |
+
+Identity travels with the matrix and never moves a status. The CLI modes report
+`backend="subprocess"` with the interpreter version and the installed binary's
+`--version` reading. The API modes report `backend="https-sse"` with the HTTP
+client version, and the binary-version slot carries a per-vendor wire contract —
+`anthropic-messages@2023-06-01` or `openai-responses@v1` — because an API
+invocation has no binary to version.
+
+The SDK column differs from the CLI one for a structural reason, not a weaker
+standard: a CLI invocation is a provider-owned process with provider-native
+tools inside it, while an API invocation has no process and no native tools, so
+every tool the model can reach is a host function the adapter declared and the
+runtime invokes.
+
+- `native_tools_unavailable` is supported because the adapter can enable no
+  provider-native or provider-hosted tool. It degrades to **unverified**
+  whenever a `request_hook` is installed, because a hook replaces the request
+  body after the adapter built it and could reintroduce a provider-hosted tool,
+  so the dispatched payload is no longer the payload that was assessed.
+- `cancellation` is unverified rather than unsupported: cancelling the awaiting
+  task closes the stream locally and reports partial usage, but the cooperative
+  token does not interrupt a response in flight and the provider is not proven
+  to stop, or to stop billing for, work already started.
+- `mcp_allowlist` is unverified because no MCP configuration reaches the
+  provider, yet host tools may themselves be served by MCP clients inside this
+  process, which agentkit does not verify.
+- Every containment boundary, `credentials` included, stays unsupported on the
+  API modes for a reason of its own: host tool callbacks run in this process,
+  with this process's filesystem, network, descendants, environment and the
+  provider credential in reach, and agentkit does not sandbox them. A host
+  callback is host authority, not a sandbox.
+
+`observed_spending_threshold` is supported on all four modes, and the evidence
+is the runtime's own accounting rather than anything a provider accepts. The runtime hands each attempt a decremented ceiling,
+accumulates what came back, and ends the invocation once `max_cost_usd` is
+reached, failing closed to `limit_reached` when the spend cannot be known. A
+CLI budget flag is not the justification and must not become one: argv
+acceptance proves argv threading, and this matrix's first rule is that flags are
+not proofs.
+
+Two things about its scope, because conflating them with `hard_spending_cap` —
+unsupported on all four modes — is the whole hazard:
+
+- The unit of enforcement differs by mode and in neither case is it mid-flight.
+  On the API modes it is a turn; on the CLI modes it is a whole autonomous run.
+  Either way the unit that crosses the threshold completes and is billed, and
+  only the next dispatch is withheld. No argument either binary accepts turns
+  that into a cap.
+- The ledger is fed unevenly. `claude_code` reports its own `total_cost_usd` per
+  run, while `codex` reports token counts only, so its threshold rides entirely
+  on the price table and closes the invocation as soon as a token kind is
+  unpriced. Honest, and weaker in practice. Note also that the runtime still
+  refuses `max_cost_usd` outright for `codex` (see below), so the supported
+  verdict is not reachable through that limit on that mode today.
+
+The CLI reasons behind the columns above, unchanged:
+
+- Claude's empty `--tools` list omits native tools, but no verified denial
+  profile exists for this binary and environment, so the verdict is unverified.
+  `--bare` excludes discovery and disables saved OAuth; empty setting sources
+  alone are not evidence. Argument acceptance does not establish an authority
+  boundary.
+- Codex keeps its file, patch, plan and other native capabilities, so strict
+  denial is unsupported outright. Its read-only sandbox denies writes but not
+  reads, which is why it satisfies neither DENY nor credential isolation.
+- `mcp_allowlist` is unverified on both, for the mechanism each supplies and
+  not for a missing one: Claude passes `--strict-mcp-config` so no other MCP
+  configuration is read, and Codex is given an owned `CODEX_HOME` so it ignores
+  the user's. Neither is evidence that discovery was actually excluded.
+- Process-group cancellation reaches in-group descendants only; a child that
+  detaches into another session escapes it, which is why complete descendant
+  termination is refused rather than advertised.
+
+Three structural facts hold across the whole matrix:
+
+- There is still **no contained execution backend**. The only shipped backend
+  reports `subprocess` and declares no guarantee at all, so every containment
+  boundary is unsupported on every mode.
+- A report's self-declared `guarantees` — `BackendReport` on the CLI side,
+  `TransportReport` on the API side — can only downgrade a verdict to
+  unverified. It can never raise one to supported, because that would let
+  whoever constructs the report decide which boundaries exist.
+- A required unverified requirement refuses, and the refusal is local: a
+  pre-dispatch incompatibility makes zero provider attempts, leaves usage
+  incomplete and cost unpriced.
 
 ## Contract and backend design
 
@@ -110,8 +213,8 @@ defaults to empty roots/destinations. Every security boundary is mandatory.
 Ordinary calls with no execution requirements preserve WARN/ALLOW semantics;
 they are not secure multi-tenant execution profiles.
 
-Both adapters expose schema, host tool protocol and usage metering support.
-Neither adapter/backend combination currently establishes filesystem roots,
+Both CLI adapters expose schema, host tool protocol and usage metering support.
+Neither CLI adapter/backend combination currently establishes filesystem roots,
 egress, job process separation, credential secrecy, complete descendant
 termination or a hard dollar cap. MCP discovery exclusion is unverified.
 Claude native denial is unverified for the complete adapter invocation surface;
@@ -135,7 +238,7 @@ outcomes and ordered event/attempt ownership remain in the single runtime.
 CLI diagnostics are no longer copied into public failure details.
 
 `ExecutionRequirement.HARD_SPENDING_CAP` is unsupported independently of usage
-metering. CLI budget flags and threshold cancellation are not exact hard dollar
+metering and of the supported `OBSERVED_SPENDING_THRESHOLD`. CLI budget flags and threshold cancellation are not exact hard dollar
 caps. The existing Codex `max_cost_usd` refusal remains; removing it does not
 remove the independent DENY incompatibility.
 

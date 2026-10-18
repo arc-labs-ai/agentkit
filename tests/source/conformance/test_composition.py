@@ -157,9 +157,10 @@ async def test_tool_policy_is_shared_for_error_overflow_images_and_deferred_load
     assert (await tools.execute("bad_result", {}, ctx)).is_error
     image = ToolResult(({"type": "image", "data": "eA==", "mimeType": "image/png"},))
     assert (await tools.handle("image", image)).content[0]["type"] == "image"
-    tools.images = False
+    # `ToolSet` is frozen, so an image-free policy is a separate value rather
+    # than the same object edited mid-run.
     with pytest.raises(ValueError):
-        await tools.handle("image", image)
+        await replace(tools, images=False).handle("image", image)
 
 
 @pytest.mark.asyncio

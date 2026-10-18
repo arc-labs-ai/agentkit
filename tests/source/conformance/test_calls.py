@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sys
 from dataclasses import replace
@@ -2472,6 +2473,242 @@ async def test_tool_result_events_include_digest_and_host_masked_bounded_preview
     assert answer.outcome == "answered"
     assert result_event.fields["result_preview"] == "private [redacted] evidence"
     assert len(result_event.fields["result_digest"]) == 64
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_tool_result_events_name_the_call_they_answer() -> None:
+    """A Claude tool-result payload carries only ``tool_use_id`` and no name, so
+    the driver honestly builds its ``ToolCall`` with ``name=""``. The id is then
+    the ONLY thing that can pair a result with the call it answers, and
+    ``cli/calls.py`` once attached it to ``TOOL_CALL`` alone: observed live
+    against claude 2.1.302, three real tool results reached the caller as
+    ``[('', None), ('', None), ('', None)]`` — identified by nothing. A host
+    watching that stream cannot say which tool returned what, nor whether a
+    call it saw dispatched ever came back. Nothing raises; the stream is simply
+    unreadable, and the SDK path has always emitted both fields.
+
+    Two parallel reads whose results arrive in the REVERSE order of the calls,
+    because arrival order is the fallback a reader reaches for once the id is
+    gone — and it is wrong exactly when parallel calls are in flight, which is
+    what a model does when asked to look up two things at once. Asserting the
+    pairing rather than non-emptiness: an id that is present but belongs to the
+    other call is just as broken and reads just as healthy.
+
+    A bare ``ask()`` is enough. Native CLI tool activity does NOT need a granted
+    ``ToolSet`` bridged over MCP to reach the caller's sink — the adapter's
+    ``cognition.drive(...)`` loop emits these for every CLI run. What a bare run
+    never sees is ``TRANSPORT``: the runtime's ``mode_event`` drops that kind
+    before the sink because it exists to feed the idle watchdog, not observers.
+    """
+    cli = FakeClaudeCli.script(
+        [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "m1",
+                    "content": [
+                        {"type": "tool_use", "id": "toolu_01ABC", "name": "Read", "input": {"file_path": "/a"}},
+                        {"type": "tool_use", "id": "toolu_02XYZ", "name": "Read", "input": {"file_path": "/b"}},
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "toolu_02XYZ", "content": "b body"},
+                        {"type": "tool_result", "tool_use_id": "toolu_01ABC", "content": "a body"},
+                    ]
+                },
+            },
+            {"type": "assistant", "message": {"id": "final", "content": [{"type": "text", "text": "read both"}]}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "read both",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+    )
+    events: list[CallEvent] = []
+    async with CallRuntime(adapters={"claude_code": CliAdapter(spawn=cli)}, pricing=PRICES) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "read both files",
+            events=events.append,
+            call_id="cli-tool-result-identity",
+        )
+    assert answer.outcome == "answered"
+    calls = [event for event in events if event.kind == EventKind.TOOL_CALL]
+    results = [event for event in events if event.kind == EventKind.TOOL_RESULT]
+    assert [event.fields.get("tool_call_id") for event in calls] == ["toolu_01ABC", "toolu_02XYZ"], (
+        f"the native tool calls themselves were not surfaced with their ids: "
+        f"{[(event.fields.get('name'), event.fields.get('tool_call_id')) for event in calls]}"
+    )
+    assert [event.fields.get("name") for event in results] == ["", ""], (
+        "a CLI tool_result payload has no name, so a blank one here is correct — "
+        "a name appearing means this layer started guessing, and the id below is "
+        f"no longer the thing under test: {[event.fields.get('name') for event in results]}"
+    )
+    assert [event.fields.get("tool_call_id") for event in results] == ["toolu_02XYZ", "toolu_01ABC"], (
+        "a tool RESULT event does not name the call it answers, so nothing can "
+        "pair the two: the payload's only identifier is `tool_use_id` and the "
+        "name is blank by design. "
+        f"Results seen: {[(event.fields.get('name'), event.fields.get('tool_call_id')) for event in results]}"
+    )
+    assert {event.fields.get("tool_call_id") for event in results} == {
+        event.fields.get("tool_call_id") for event in calls
+    }, "a result carries an id that answers no call in this run"
+
+
+@pytest.mark.asyncio
+async def test_a_cli_tool_results_digest_and_masker_see_what_the_tool_returned() -> None:
+    """The adapter read a tool result as ``str(getattr(result, "text", ""))``, but
+    both CLI drivers hand ``StreamEvent.tool_result`` a PLAIN ``str`` — which has
+    no ``.text``, so the default won every single time.
+
+    Measured before this: a tool returning "a body" (6 bytes) reported
+    ``result_size=0`` and digest ``e3b0c442...b855``, which is sha256 of the
+    EMPTY string. Every native CLI tool result on both the Claude and Codex
+    paths, forever, reporting the same constant digest and zero size — so two
+    different results looked identical, and an unchanged one looked unchanged.
+
+    The worse half is the ``result_masker``. It was handed ``""``, so a host
+    could never inspect or redact CLI tool output — and that masker is precisely
+    the mechanism a host uses to keep secrets out of its own event stream. This
+    asserts it receives the real text and that its redaction survives into the
+    event.
+
+    Only the SDK path was ever covered here (by the ``openai_api`` scripted
+    adapter above, which passes a real ``ToolResult``), which is why this held
+    for as long as it did.
+    """
+    secret = "token sk-PLANTED-123 in output"
+    cli = FakeClaudeCli.script(
+        [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "m1",
+                    "content": [{"type": "tool_use", "id": "toolu_01", "name": "Read", "input": {}}],
+                },
+            },
+            {
+                "type": "user",
+                "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": secret}]},
+            },
+            {"type": "assistant", "message": {"id": "f", "content": [{"type": "text", "text": "read"}]}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "read",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+    )
+    masked: list[str] = []
+
+    def masker(_name: str, text: str) -> str:
+        masked.append(text)
+        return text.replace("sk-PLANTED-123", "[redacted]")
+
+    events: list[CallEvent] = []
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=cli)}, pricing=PRICES, result_masker=masker
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "read it",
+            events=events.append,
+            call_id="cli-tool-result-body",
+        )
+    assert answer.outcome == "answered"
+
+    result_event = next(event for event in events if event.kind == EventKind.TOOL_RESULT)
+    assert result_event.fields["result_size"] == len(secret.encode("utf-8")), (
+        f"the digest and size describe the empty string, not the tool's output: {result_event.fields}"
+    )
+    assert result_event.fields["result_digest"] == hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    assert result_event.fields["result_digest"] != hashlib.sha256(b"").hexdigest(), (
+        "a constant empty-string digest makes every tool result look identical"
+    )
+    assert masked == [secret], (
+        f"the host's result_masker never saw the tool output, so it cannot redact it: {masked}"
+    )
+    assert "sk-PLANTED-123" not in result_event.fields["result_preview"]
+    assert "[redacted]" in result_event.fields["result_preview"]
+
+
+@pytest.mark.asyncio
+async def test_a_cli_tool_call_the_cli_itself_refused_is_reported_as_a_failure() -> None:
+    """A refused tool call reaching the host as a SUCCESS is the worst shape this
+    event can take, because a refusal is the one outcome a host most needs to see.
+
+    The Anthropic tool-result block carries ``is_error``, and the driver flattened
+    the payload to a bare ``str``, dropping it. The adapter then reads
+    ``.is_error`` off that payload — a shape only the SDK path's ``ToolResult``
+    has — so every Claude tool result ever emitted reported ``is_error=False``.
+    The same hole was measured on the Codex path in a live run: 126 failed tool
+    calls in a single turn, every one of them reported as a clean success with an
+    empty preview, which is why a runaway loop of failures looked like 126 fine
+    results.
+
+    The payload is now a ``str`` SUBCLASS carrying both, so ``ev.tool_result ==
+    "..."`` and every other consumer keep working untouched — the fix had to be
+    invisible to callers to be worth making.
+    """
+    cli = FakeClaudeCli.script(
+        [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "m1",
+                    "content": [{"type": "tool_use", "id": "toolu_01", "name": "Write", "input": {}}],
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_01",
+                            "content": "permission denied by hook",
+                            "is_error": True,
+                        }
+                    ]
+                },
+            },
+            {"type": "assistant", "message": {"id": "f", "content": [{"type": "text", "text": "blocked"}]}},
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "blocked",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ]
+    )
+    events: list[CallEvent] = []
+    async with CallRuntime(
+        adapters={"claude_code": CliAdapter(spawn=cli)}, pricing=PRICES, result_masker=lambda _n, text: text
+    ) as runtime:
+        answer = await runtime.ask(
+            Binding("claude_code", "test", CredentialRef(lambda: {"ANTHROPIC_API_KEY": "test"})),
+            "write it",
+            events=events.append,
+            call_id="cli-tool-result-refused",
+        )
+    assert answer.outcome == "answered"
+
+    result_event = next(event for event in events if event.kind == EventKind.TOOL_RESULT)
+    assert result_event.fields["is_error"] is True, (
+        f"a refused tool call was reported to the host as a success: {result_event.fields}"
+    )
+    assert result_event.fields["result_preview"] == "permission denied by hook", (
+        "the refusal's reason is the only thing that tells a host WHY, and it was being dropped"
+    )
+    # The str-subclass promise: nothing downstream had to learn a new shape.
+    assert result_event.fields["result_size"] == len(b"permission denied by hook")
 
 
 @pytest.mark.asyncio

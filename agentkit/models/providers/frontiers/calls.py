@@ -16,7 +16,7 @@ from agentkit.core.contracts.types import Mode
 from agentkit.models.adapters.messages import anthropic_history
 from agentkit.models.contracts.constants import EventKind, FailureClass, NativeToolPolicy
 from agentkit.models.contracts.execution import ExecutionCompatibility, ExecutionRequirements
-from agentkit.models.contracts.failures import classify
+from agentkit.models.contracts.failures import classify, execution_failure
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, resolve_credential
 from agentkit.models.providers._events import _emit
 from agentkit.models.providers.auth import ANTHROPIC_API_VERSION, anthropic_credential
@@ -54,8 +54,11 @@ class ApiAdapter:
             payload_rewriting=self.request_hook is not None,
         )
         identity = (binding.mode, binding.model, self.base_url, id(self.client), id(self.request_hook))
-        return replace(report, adapter="agentkit.models.providers.frontiers.calls.ApiAdapter",
-                       configuration_id=hashlib.sha256(repr(identity).encode()).hexdigest())
+        return replace(
+            report,
+            adapter="agentkit.models.providers.frontiers.calls.ApiAdapter",
+            configuration_id=hashlib.sha256(repr(identity).encode()).hexdigest(),
+        )
 
     async def turn(
         self,
@@ -88,8 +91,6 @@ class ApiAdapter:
             )
             compatibility = compatibility.require_configuration(assessment_id)
             if not compatibility.compatible:
-                from agentkit.models.providers.cli.calls import execution_failure
-
                 return Turn(failure=execution_failure(compatibility), usage_complete=False)
             await _emit(
                 emit, EventKind.TRANSPORT, mode_event="execution_policy",

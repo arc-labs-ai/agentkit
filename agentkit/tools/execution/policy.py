@@ -101,8 +101,21 @@ class _ObserverFailed(RuntimeError):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class ToolSet:
+    """Execution policy handed across the tool seam, as a value.
+
+    Frozen because `max_concurrency` is the one field here that is not advice:
+    the fan-out site turns it into an `asyncio.Semaphore`, and a bound below one
+    is a pool that admits nobody. `__post_init__` refuses such a bound, and
+    while this was a mutable dataclass that refusal was advisory —
+    `tools.max_concurrency = 0` after construction never reached it, so the
+    value a run fanned out on was not the value anything had checked. Vary a
+    policy with `dataclasses.replace` (`with_registry` already does, per
+    invocation); the deferred-discovery set is still mutated in place, since
+    freezing forbids rebinding a field and not mutating what one holds.
+    """
+
     registry: ToolRegistry
     overflow: OverflowPolicy = field(default_factory=OverflowPolicy)
     images: bool = True
@@ -123,8 +136,15 @@ class ToolSet:
             raise ValueError("tool concurrency must be positive")
         if self.max_input_bytes < 1:
             raise ValueError("tool input bound must be positive")
-        self.permissions = tuple(self.permissions)
-        self.observers = tuple(self.observers)
+        # ``object.__setattr__`` because this dataclass is frozen — the same
+        # spelling ``Answer``, ``ProviderUsage`` and ``AgentDefinition`` use to
+        # normalise their own fields. Frozen is load-bearing here rather than
+        # decorative: the checks above are the only validation this policy gets,
+        # and a plain dataclass let a caller write ``tools.max_concurrency = 0``
+        # straight past them, so the bound a run fanned out on was not the one
+        # anything had checked.
+        object.__setattr__(self, "permissions", tuple(self.permissions))
+        object.__setattr__(self, "observers", tuple(self.observers))
         if self.deferred and any(name in self.registry.names() for name in DeferredToolName):
             raise ValueError("deferred discovery names are reserved by ToolSet")
 

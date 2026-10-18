@@ -25,7 +25,8 @@ plain dicts — while refusing mutation.
 ``__reduce__`` is load-bearing rather than decorative. ``copy`` and ``pickle``
 rebuild a dict subclass by creating an empty one and repopulating it through
 ``__setitem__`` — the exact method being blocked — so without it a frozen
-payload raises on ``deepcopy``, which the checkpointer does on every snapshot.
+payload raises on ``deepcopy``, which a ``CheckpointPort`` implementation does on
+every snapshot.
 That is the same hazard that ``Prompt`` and ``ToolCall`` each had to solve.
 
 Freezing is DEEP. A shallow freeze leaves ``cp.state["a"]["b"] = 1`` working,

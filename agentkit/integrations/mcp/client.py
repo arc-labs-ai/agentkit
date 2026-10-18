@@ -195,6 +195,24 @@ class MCPClient:
                         httpx.AsyncClient(
                             headers=self.server.headers or {},
                             timeout=self.server.timeout_s,
+                            # ``trust_env=False``: this is a LOOPBACK channel to
+                            # a server agentkit started, and httpx's default
+                            # reads HTTP_PROXY / ALL_PROXY from the environment.
+                            # Measured: with ALL_PROXY set, a request to
+                            # ``http://127.0.0.1:<port>/mcp`` is routed through
+                            # it — which would send this channel's bearer token
+                            # and every tool argument and result to whatever
+                            # that proxy is. The server side guards the same
+                            # token with a 0600 O_NOFOLLOW write, credential-
+                            # first teardown and 401 bodies that never echo it;
+                            # an env var must not undo all of that.
+                            #
+                            # Provider egress is a DIFFERENT question — a
+                            # corporate proxy to reach api.anthropic.com is
+                            # legitimate — so the provider client in
+                            # ``frontiers/base.py`` deliberately still trusts
+                            # the environment.
+                            trust_env=False,
                         )
                     )
                     opened = _http_transport(self.server.url, http_client=http_client)

@@ -1,5 +1,6 @@
-"""L0 seams — the infra ports the core owns. The tracing seam is an injected `TracePort`
-(no-op by default; observability is never a required dependency).
+"""L0 seams — the infra ports the core owns. The tracing seam is a tracer object injected
+into `TraceEventSink` (`agentkit.core.events`); nothing is traced until one is wired in, and
+observability is never a required dependency.
 
 A seam is an *external system agentkit cannot implement itself* (a model, the world, a vector index,
 a durable store, web search, the network, the wall clock). Features (idempotency, audit, checkpoint,
@@ -342,32 +343,28 @@ class CheckpointStatus(StrEnum):
     """Coarse durability gate for a `Checkpoint`. Auto-resume keys off
     this — a `suspended` checkpoint says "waiting on a human";
     `running` says "engine is in motion"; `done` / `failed` are
-    terminal. Producers map their domain phases (e.g., the api's
-    `RunPhase`) onto this taxonomy at snapshot time.
+    terminal. Producers map their own domain phases onto this
+    taxonomy at snapshot time.
 
-    Emission map (grep-able index — keep aligned with call sites):
+    No producer and no store ships here — `agentkit.state.checkpoints`
+    is retired (see ``RETIRED_MODULES`` in
+    ``tests/source/architecture/test_single_runtime.py``) — so these
+    are obligations on whoever implements `CheckpointPort` and on
+    whatever drives it:
 
-    * ``RUNNING`` — the default snapshot status at every mid-run
-      durable transition (``Checkpointer.snapshot(...)`` with no
-      explicit status). Set by the ReAct cognition after each
-      tool-loop iteration and by coordinator policies at each turn.
-    * ``SUSPENDED`` — emitted by the ReAct cognition's human-approval
-      path when a gated tool call needs a human decision
-      (``agentkit/agents/cognition/react.py`` — the ``_save(...,
-      status="suspended", pending=...)`` call site). The suspended
-      snapshot carries the ``pending`` tool calls so ``resume()`` can
-      apply per-call decisions. ``StrEnum`` equivalence means the
-      string ``"suspended"`` at the emission site IS
-      ``CheckpointStatus.SUSPENDED`` when the adapter round-trips it
-      back (see ``tests/source/unit/state/adapters/test_postgres_checkpoint.py`` for
-      the wire-level round-trip). Coordinators + custom producers
-      MUST use this status (not ``RUNNING``) when persisting a
-      human-gate wait — auto-resume relies on it to distinguish
-      "engine is chugging" from "waiting on the world".
-    * ``DONE`` / ``FAILED`` — emitted by the producer at terminal
-      transitions; ``Checkpointer.resume`` filters these by default
-      so a "resume if any checkpoint exists" wiring cannot silently
-      re-run a finished job.
+    * ``RUNNING`` — a mid-run durable transition, and the status a
+      snapshot helper should default to when none is given.
+    * ``SUSPENDED`` — persisted when a gated tool call needs a human
+      decision, carrying the pending calls in ``state`` so a resume
+      can apply per-call decisions. A producer MUST use this status
+      and not ``RUNNING`` for a human-gate wait: auto-resume relies
+      on it to distinguish "engine is chugging" from "waiting on the
+      world". Being a ``StrEnum``, a store that writes the bare
+      string ``"suspended"`` round-trips back as
+      ``CheckpointStatus.SUSPENDED`` with no conversion step.
+    * ``DONE`` / ``FAILED`` — terminal. A resume path must filter
+      these by default, or a "resume if any checkpoint exists" wiring
+      silently re-runs a finished job.
     """
 
     RUNNING = "running"
@@ -385,8 +382,8 @@ class CheckpointStatus(StrEnum):
 class Checkpoint:
     """A serialized snapshot of run state at a meaningful transition.
 
-    `state` is opaque to the port — the application (a leaf `Agent`, a coordinator `Agent`,
-    an application-defined state snapshot) interprets it. `version` is monotonic: v1 is the
+    `state` is opaque to the port — the producer that wrote it is the only thing that
+    interprets it. `version` is monotonic: v1 is the
     first save for a run, v2 the next, and so on. `status` is a `CheckpointStatus` and
     lets the port surface "is this run resumable?" without re-parsing `state`.
     `created_at` is a unix timestamp stamped by the producer's `ClockPort` (or
@@ -403,35 +400,35 @@ class Checkpoint:
     def __post_init__(self) -> None:
         """Freeze the payloads. This is the type the whole exercise is about.
 
-        A Checkpoint is a DURABLE record — it has been written to a JSONB
-        column — and ``frozen=True`` stopped at the field reference, so
-        ``cp.state = {}`` raised while ``cp.state["turn"] = 99`` silently
-        rewrote the run's snapshot in memory after the row was committed. The
-        in-memory record and the durable row then disagree, and nothing says
-        so: the next ``latest()`` on a real backend returns the row, the next
-        ``latest()`` on ``InMemoryCheckpointStore`` returns the mutated object.
+        A Checkpoint is a DURABLE record — what a `CheckpointPort`
+        implementation commits to storage — and ``frozen=True`` stopped at the
+        field reference, so ``cp.state = {}`` raised while
+        ``cp.state["turn"] = 99`` silently rewrote the run's snapshot in memory
+        after the row was committed. The in-memory record and the durable row
+        then disagree, and nothing says so: the store's next ``latest()``
+        returns the row, while a caller still holding the object reads the
+        mutation.
 
         This runs on EVERY construction, which is the half that matters most:
-        ``PostgresCheckpointStore._row_to_checkpoint`` and
-        ``StoreBackedCheckpointStore._from_dict`` both rebuild through this
-        constructor, so a checkpoint comes back frozen on the way OUT of
-        storage as well as on the way in. A record that is frozen on save and
-        mutable on resume is only half fixed — the resume path is precisely
+        a decoder rebuilds the record by handing a plain ``json.loads`` dict to
+        this same constructor, so a checkpoint comes back frozen on the way OUT
+        of storage as well as on the way in. A record that is frozen on save
+        and mutable on resume is only half fixed — the resume path is precisely
         where a caller reaches for ``cp.state.pop("pending")``.
 
         The durable path is unaffected, and that was the constraint this had to
-        clear before it could ship. ``FrozenDict`` is a ``dict`` SUBCLASS
-        (see ``_frozen.py`` for why ``MappingProxyType`` was rejected), so
-        ``json.dumps(cp.state)`` produces BYTE-IDENTICAL output to the plain
-        dict, ``dataclasses.asdict`` still walks it, ``_to_dict`` still passes
-        it through verbatim, and equality against a plain-dict checkpoint still
-        holds. Verified end to end against ``StoreBackedCheckpointStore``,
-        ``InMemoryCheckpointStore`` and the Postgres row decoder in
+        clear before it could ship. ``FrozenDict`` is a ``dict`` SUBCLASS (see
+        ``agentkit/core/serialization/_immutable.py`` for why
+        ``MappingProxyType`` was rejected), so ``json.dumps(cp.state)``
+        produces BYTE-IDENTICAL output to the plain dict,
+        ``dataclasses.asdict`` still walks it, ``copy``/``pickle`` still clone
+        it, and equality against a plain-dict checkpoint still holds. Each of
+        those, and the decode-side freeze, is pinned by
         ``tests/source/unit/core/test_frozen_value_payloads.py``.
 
         Cost is O(state), paid once per snapshot and measured BELOW the
-        ``copy.deepcopy(state)`` that ``Checkpointer.snapshot`` already
-        performs on the very same dict one line earlier. For a realistic
+        ``copy.deepcopy(state)`` a snapshot helper performs on the very same
+        dict before handing it over. For a realistic
         20-turn transcript state (20 messages of 400 chars, each with a tool
         call, plus a 20-key scratchpad): construction goes 1.34 µs → 88.5 µs,
         against 146 µs for the deepcopy sitting directly above it. So the seam
@@ -465,8 +462,7 @@ class Checkpoint:
         what every persistence path already reads.
 
         ``(run_id, version)`` is not a convenient subset, it is the record's
-        actual primary key: it is the ``PRIMARY KEY (run_id, version)`` of the
-        `agentkit_checkpoints` table in `adapters/checkpoint/postgres.py`, and
+        actual primary key: it is the key a store addresses the row by, and
         the class docstring above already states the invariant that makes it
         one — ``version`` is monotonic per run, and a single producer is the
         authority over a ``run_id``. So two checkpoints hash equal exactly when
@@ -500,9 +496,9 @@ class Checkpoint:
         Read-mutability of ``state`` — the other half named above — is now
         closed by ``__post_init__``, and NOT the way this docstring originally
         anticipated. It is not a ``MappingProxyType``: a checkpoint is
-        serialised to durable storage (`json.dumps(cp.state)` into a JSONB
-        column in the Postgres adapter, passed through verbatim by
-        `StoreBackedCheckpointStore._to_dict`) and a mappingproxy is neither
+        serialised to durable storage (`json.dumps(cp.state)` into a JSON
+        column, or passed through verbatim by a store-backed encoder) and a
+        mappingproxy is neither
         JSON-serialisable nor picklable, so that mechanism really would have
         traded a mutability bug for a broken persistence path. ``FrozenDict``
         is a ``dict`` subclass instead, which is what let the two halves land

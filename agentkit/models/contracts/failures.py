@@ -6,12 +6,13 @@ import json
 import math
 import re
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 
 from agentkit.models.contracts.constants import FailureClass, Outcome
+from agentkit.models.contracts.execution import ExecutionCompatibility
 from agentkit.models.contracts.types import Failure
 
 
@@ -235,4 +236,26 @@ def classify(exc_or_event: Any) -> Failure | None:
         in (FailureClass.RATE_LIMITED, FailureClass.OVERLOADED, FailureClass.TIMEOUT, FailureClass.TRANSIENT_NETWORK),
         wait,
         {"status": status, "type": kind, "code": code},
+    )
+
+
+def execution_failure(compatibility: ExecutionCompatibility) -> Failure:
+    """Safe public refusal, without a raw command, prompt, credential or CLI output.
+
+    Lives beside :func:`classify` because it is the same kind of thing — the one
+    sanctioned way to turn structured facts into a public ``Failure`` — and in
+    ``contracts`` rather than either provider package because both families
+    refuse in this shape and neither should import the other to do it. It
+    consumes only contract types, so nothing here knows what a transport is.
+    """
+    return Failure(
+        FailureClass.EXECUTION_INCOMPATIBLE,
+        mode_detail={
+            "reason": compatibility.incompatibilities[0].explanation,
+            "dispatch_state": "not_started",
+            "backend": compatibility.backend,
+            "backend_version": compatibility.backend_version,
+            "binary_version": compatibility.binary_version,
+            "incompatibilities": tuple(asdict(item) for item in compatibility.incompatibilities),
+        },
     )

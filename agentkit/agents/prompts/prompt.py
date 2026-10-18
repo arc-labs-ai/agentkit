@@ -46,7 +46,7 @@ class Prompt:
         # ``FrozenDict``, not ``MappingProxyType``. Both refuse mutation; only
         # one of them is still a ``dict``. The proxy made a bound Prompt
         # unpicklable — and therefore un-deep-copyable, which mattered because
-        # the checkpointer deep-copies state — and cost a ``__reduce__`` on
+        # a checkpoint store deep-copies state — and cost a ``__reduce__`` on
         # this class, plus the module-level rebuild factory it had to name, to
         # work around; both are gone, because a ``FrozenDict`` carries its own
         # ``__reduce__`` and so pickles and deep-copies without help. Note that

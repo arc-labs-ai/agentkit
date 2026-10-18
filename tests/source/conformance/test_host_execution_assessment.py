@@ -70,11 +70,27 @@ async def test_cli_request_hook_cannot_claim_host_catalog(mode):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode,version", [("claude_code", "2.1.300"), ("codex", "0.162.1")])
-async def test_cli_version_changes_are_not_hidden_by_cache(monkeypatch, mode, version):
-    from agentkit.models.providers.cli import execution as backend_module
+@pytest.mark.parametrize("mode", ["claude_code", "codex"])
+async def test_a_cli_version_change_between_assessments_is_not_hidden_by_a_cache(monkeypatch, mode):
+    """A binary swapped under a running host must be re-read, not remembered.
 
-    versions = iter([version, "999.0.0"])
+    The version decides whether the protocol requirements are satisfiable at
+    all, so caching it means an upgrade — or a downgrade, which is the dangerous
+    one — keeps the verdict earned by the binary that is no longer there. This
+    asserts the mechanism that makes that impossible: two assessments, two
+    inspections, two different answers.
+
+    The second version is DELIBERATELY an old one. The gate is a floor
+    (``MINIMUM_TESTED_CLI_VERSION``), so a future-looking sentinel such as
+    ``999.0.0`` is admitted by construction and would make this test assert
+    nothing. Under a floor, "not characterized" means OLD.
+    """
+    from agentkit.core import Mode
+    from agentkit.models.providers.cli import execution as backend_module
+    from agentkit.models.providers.cli.calls import MINIMUM_TESTED_CLI_VERSION
+
+    floor = MINIMUM_TESTED_CLI_VERSION[Mode(mode)]
+    versions = iter([floor, "0.0.1"])
 
     async def inspect(executable):
         return next(versions)
@@ -85,9 +101,123 @@ async def test_cli_version_changes_are_not_hidden_by_cache(monkeypatch, mode, ve
     requirements = ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS}))
     clean = await adapter.evaluate_execution(binding, execution=requirements)
     planted = await adapter.evaluate_execution(binding, execution=requirements)
-    assert clean.compatible
-    assert planted.binary_version == "999.0.0" and not planted.compatible
+    assert clean.binary_version == floor and clean.compatible
+    assert planted.binary_version == "0.0.1" and not planted.compatible
     assert planted.incompatibilities[0].code == "cli_protocol_version_unverified"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["claude_code", "codex"])
+@pytest.mark.parametrize(
+    "offset,admitted",
+    [
+        # AT the floor: the version that was actually characterized.
+        ((0, 0, 0), True),
+        # ABOVE it: admitted by the floor's design. This is the case that
+        # flipped when the gate stopped being an exact match, and leaving it
+        # unpinned is how a later "tidy-up" back to equality goes unnoticed.
+        ((0, 0, 1), True),
+        ((0, 1, 0), True),
+        ((1, 0, 0), True),
+        # BELOW it, by one patch: the refusal direction has to stay sharp at the
+        # boundary, which is where an off-by-one in the comparison would land.
+        ((0, 0, -1), False),
+        ((0, -1, 0), False),
+        ((-1, 0, 0), False),
+    ],
+)
+async def test_the_version_floor_admits_at_and_above_itself_and_refuses_below(
+    monkeypatch, mode, offset, admitted
+):
+    """Pins all three directions of the floor, including the one that just changed.
+
+    A floor is an asymmetric claim — measured at X, credited above X, refused
+    below X — and each direction is independently losable. A test that only
+    checked "the characterized version works" would pass under an exact-match
+    comparison, under a floor, and under no check at all.
+    """
+    from agentkit.core import Mode
+    from agentkit.models.providers.cli import execution as backend_module
+    from agentkit.models.providers.cli.calls import MINIMUM_TESTED_CLI_VERSION
+
+    floor = tuple(int(part) for part in MINIMUM_TESTED_CLI_VERSION[Mode(mode)].split("."))
+    shifted = tuple(component + delta for component, delta in zip(floor, offset, strict=True))
+    if any(component < 0 for component in shifted):
+        pytest.skip("the floor has no room below it in this component")
+
+    async def inspect(executable):
+        return ".".join(str(component) for component in shifted)
+
+    monkeypatch.setattr(backend_module, "inspect_binary_version", inspect)
+    binding = Binding(mode, "test", CredentialRef(lambda: pytest.fail("credentials accessed")))
+    requirements = ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS}))
+    assessment = await CliAdapter().evaluate_execution(binding, execution=requirements)
+    assert assessment.compatible is admitted, (shifted, assessment.incompatibilities)
+    if not admitted:
+        assert assessment.incompatibilities[0].code == "cli_protocol_version_unverified"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "version",
+    [
+        # Claude's patch component is already three digits, so these two values
+        # order one way as TEXT and the other way as software: "2.1.9" sorts
+        # above "2.1.302" lexicographically while being hundreds of releases
+        # older. Same-length components cannot expose the mistake, which is why
+        # these are chosen to differ in length.
+        "2.1.9",
+        "2.1.99",
+        "2.1.7",
+    ],
+)
+async def test_a_version_below_the_claude_floor_is_refused_however_its_text_sorts(monkeypatch, version):
+    """Without this, a string comparison credits ancient binaries and refuses current ones.
+
+    This is the single most likely way a version floor goes wrong, and it fails
+    in the worst direction: it would admit a binary from before any
+    characterization while refusing the one actually installed.
+    """
+    from agentkit.core import Mode
+    from agentkit.models.providers.cli import execution as backend_module
+    from agentkit.models.providers.cli.calls import MINIMUM_TESTED_CLI_VERSION
+
+    assert version > MINIMUM_TESTED_CLI_VERSION[Mode.CLAUDE_CODE], "this value no longer tests text ordering"
+
+    async def inspect(executable):
+        return version
+
+    monkeypatch.setattr(backend_module, "inspect_binary_version", inspect)
+    binding = Binding("claude_code", "test", CredentialRef(lambda: pytest.fail("credentials accessed")))
+    requirements = ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS}))
+    assessment = await CliAdapter().evaluate_execution(binding, execution=requirements)
+    assert not assessment.compatible, version
+    assert assessment.incompatibilities[0].code == "cli_protocol_version_unverified"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["claude_code", "codex"])
+@pytest.mark.parametrize("version", ["2.1.302-rc1", "latest", "v2.1.302", "", "2.1.x", "nightly"])
+async def test_an_unreadable_cli_version_is_refused_and_never_silently_admitted(monkeypatch, mode, version):
+    """A floor that admits what it cannot parse is worse than the exact pin it replaced.
+
+    The one version shape guaranteed to appear when a vendor changes its
+    ``--version`` output is the shape no comparison here can read — and that is
+    also the moment the protocol is most likely to have moved. "Unreadable"
+    must fall on the refusing side rather than defaulting to "probably newer",
+    which is the failure mode that would make this gate decorative.
+    """
+    from agentkit.models.providers.cli import execution as backend_module
+
+    async def inspect(executable):
+        return version
+
+    monkeypatch.setattr(backend_module, "inspect_binary_version", inspect)
+    binding = Binding(mode, "test", CredentialRef(lambda: pytest.fail("credentials accessed")))
+    requirements = ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS}))
+    assessment = await CliAdapter().evaluate_execution(binding, execution=requirements)
+    assert not assessment.compatible, version
+    assert assessment.incompatibilities[0].code == "cli_protocol_version_unverified"
 
 
 @pytest.mark.asyncio

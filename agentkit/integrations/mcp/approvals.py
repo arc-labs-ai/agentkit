@@ -513,7 +513,7 @@ class ApprovalServer:
     # decision. Same access shape ``resolve_asker`` and ``HookSettings._emit``
     # use, for the same reason.
     ctx: Any | None = None
-    # The run's clock, the same ``ClockPort`` seam ``Checkpointer`` takes.
+    # The run's clock, the same ``ClockPort`` seam ``CheckpointPort`` takes.
     # ``Ctx`` does not carry one, so it is injected here rather than reached
     # off ``ctx``; see ``_now`` for why ``datetime.now()`` is not an option.
     clock: ClockPort | None = None
@@ -1010,7 +1010,7 @@ class ApprovalServer:
         """The decision's timestamp: ISO-8601 UTC, from the RUN's clock.
 
         ``clock`` is the package's ``ClockPort`` seam — the same field
-        ``Checkpointer`` takes, with ``time.time()`` as the same floor when
+        ``CheckpointPort`` takes, with ``time.time()`` as the same floor when
         nothing is injected. It is a field rather than something read off
         ``ctx`` because ``Ctx`` does not carry a clock; ``datetime.now()`` is
         not an option for the reason ``ClockPort`` exists at all, which is that

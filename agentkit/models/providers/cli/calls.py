@@ -18,6 +18,7 @@ from dataclasses import asdict, dataclass, replace
 from decimal import ROUND_FLOOR, Decimal
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, cast
 from uuid import uuid4
 
@@ -31,7 +32,13 @@ from agentkit.models.contracts.execution import (
     ExecutionRequirement,
     ExecutionRequirements,
 )
+
+# ``execution_failure`` is re-exported (the ``as`` is what makes that explicit under
+# ``mypy --strict``) ONLY because ``agentkit.core.runtime.calls`` still imports the refusal
+# builder from this module. Delete the alias the moment that import points at
+# ``agentkit.models.contracts.failures``, which is where the builder now lives.
 from agentkit.models.contracts.failures import classify
+from agentkit.models.contracts.failures import execution_failure as execution_failure
 from agentkit.models.contracts.types import Binding, Failure, SessionHandle, Turn, Workspace, resolve_credential
 from agentkit.models.providers._events import _emit
 from agentkit.models.providers.auth import AuthKind, anthropic_credential
@@ -40,6 +47,104 @@ from agentkit.models.providers.cli.execution import CliInvocation, ExecutionBack
 _MCP_TIMEOUT_MARGIN_S = 5.0
 _CLAUDE_SCHEMA_PROMPT_MAX_BYTES = 256 * 1024
 _CLI_ENV_ALLOWLIST = frozenset({"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR", "TMPDIR", "TMP", "TEMP"})
+
+# THE PROTOCOL FLOOR. A binary at or above its mode's entry keeps
+# ``HOST_TOOLS``/``SCHEMA``/``USAGE``; anything below — or any version string
+# that cannot be read as a release number — is downgraded to
+# ``cli_protocol_version_unverified`` and refuses when those are required.
+#
+# WHY A FLOOR, AND WHAT IT COSTS. The previous shape was one EXACT version per
+# mode, and it failed in the direction that is easy to miss: measured, claude
+# 2.1.302 installed against a 2.1.300 pin downgraded all three requirements
+# while the protocol itself was intact, so the refusal reported staleness and
+# read as evidence of a missing mechanism. A floor fixes that and buys it with a
+# real, named liability. ``>=`` CREDITS versions nobody has run. The three
+# shipped bugs in
+# ``tests/source/unit/models/providers/cli/test_cli_version_matrix.py`` — a
+# removed flag, a flag moved to the parent command, a retired stream vocabulary
+# — were all FORWARD breaks, and a floor admits every one of them.
+#
+# This asymmetry is deliberate and is the trade being taken: a vendor's wire
+# protocol is additive in practice, so credit is extended upward on that
+# expectation, and a future release can still break it. The extrapolation is not
+# hidden — a binary strictly ABOVE the floor has those three assessments
+# re-explained with ``cli_protocol_version_above_tested_floor``, so an operator
+# reading an assessment can see that the credit was inferred from a floor rather
+# than measured on their binary. Downward there is no extrapolation at all:
+# below the floor is a refusal.
+#
+# THE VALUES ARE WHAT WAS ACTUALLY RUN, NOT WHAT IS BELIEVED TO WORK. Claude
+# 2.1.302 is the lowest Claude binary characterized in this repository against a
+# real process — a granted host operation that executed plus nine planted
+# ambient surfaces and six planted native/undeclared-MCP calls that did not, on
+# fresh/resume/fork/correction/cancellation. 2.1.300 has an older record in
+# ``docs/design/host-tool-execution.md`` but is not installed and was not
+# re-run, so it is NOT the floor. Codex 0.162.1 is characterized by
+# ``test_codex_adapter_offline.py`` against the installed binary.
+#
+# Raising a floor is an evidence claim. The acceptance test that earns one is
+# ``tests/source/integration/execution/test_claude_execution_profile.py``
+# (claude) and ``test_codex_adapter_offline.py`` (codex).
+#
+# A read-only proxy, not a plain dict: ``evaluate_execution`` consults this on
+# every assessment, so a mutable mapping would let anything in the process —
+# a plugin, a request hook, a stray test helper — LOWER the floor and receive a
+# SUPPORTED verdict with no measurement behind it.
+MINIMUM_TESTED_CLI_VERSION: Mapping[Mode, str] = MappingProxyType(
+    {
+        Mode.CLAUDE_CODE: "2.1.302",
+        Mode.CODEX: "0.162.1",
+    }
+)
+
+
+def _release_number(version: str | None) -> tuple[int, ...] | None:
+    """Numeric release components, or ``None`` when the string is not a release.
+
+    ``None`` is the REFUSING answer everywhere it is used. A floor that admits
+    what it cannot read is strictly worse than the exact pin it replaced: the
+    one shape of version string guaranteed to appear when a vendor changes its
+    ``--version`` output is the shape this function cannot parse.
+
+    Lexicographic comparison is the trap this exists to avoid — ``"2.1.302" <
+    "2.1.9"`` is true as text and false as software, and the Claude CLI's patch
+    numbers are already three digits. ``packaging`` is deliberately not imported:
+    this package declares no runtime dependencies, so a comparison that works
+    only when some other installed library happens to provide it is a landmine.
+
+    Tolerates the decorated forms the binaries actually print — ``2.1.302
+    (Claude Code)`` and ``codex-cli 0.162.1`` — so that a caller passing raw
+    ``--version`` output gets the same answer as one passing the value
+    ``inspect_binary_version`` already normalised.
+    """
+    if version is None:
+        return None
+    text = version.strip()
+    if " " in text:
+        # Keep the one token that looks like a dotted release number, so a
+        # prefix ("codex-cli") or a suffix ("(Claude Code)") cannot shift which
+        # component is read as major.
+        candidates = [token for token in text.split() if token and token[0].isdigit()]
+        if len(candidates) != 1:
+            return None
+        text = candidates[0]
+    parts = text.split(".")
+    if not parts or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def _at_least(version: str | None, floor: str) -> bool:
+    """Is ``version`` a readable release number at or above ``floor``?
+
+    Components are zero-padded to a common length so ``2.2`` and ``2.2.0``
+    compare equal rather than ordering by tuple length.
+    """
+    installed, minimum = _release_number(version), _release_number(floor)
+    if installed is None or minimum is None:
+        return False
+    width = max(len(installed), len(minimum))
+    return installed + (0,) * (width - len(installed)) >= minimum + (0,) * (width - len(minimum))
 
 
 @dataclass(frozen=True)
@@ -167,7 +272,18 @@ class CliAdapter:
             )
             return ExecutionCompatibility(str(binding.mode), "unavailable", "unknown", None, (unmet,), (unmet,))
         version = None
-        if configuration.spawn is None and type(configuration.execution_backend) is SubprocessExecutionBackend:
+        # ``isinstance``, not ``type(...) is``. A SUBCLASS of the shipped
+        # subprocess backend still reaches ``super().start()`` and still spawns
+        # the real binary, so identity-matching handed every subclass a
+        # WEAKER refusal set than the base class: no version inspection, hence
+        # no ``cli_protocol_version_unverified``, and no ``cli_binary_unverified``
+        # below either. Both real-process acceptance suites in this repository
+        # subclass it (to route the approved invocation at a local scripted
+        # provider), so the version gate was inert in exactly the tests that
+        # exist to characterize a version. A backend that genuinely does not
+        # spawn a local binary implements the ``ExecutionBackend`` port instead
+        # of inheriting this one, and is left alone here as before.
+        if configuration.spawn is None and isinstance(configuration.execution_backend, SubprocessExecutionBackend):
             from agentkit.models.providers.cli.execution import inspect_binary_version
 
             executable = configuration.executable.get(
@@ -193,23 +309,65 @@ class CliAdapter:
                         requirement, CapabilityStatus.UNVERIFIED, "cli_request_hook_unverified",
                         "The CLI request hook can rewrite assessed arguments; remove it for protected execution.",
                     )
-        tested = {Mode.CLAUDE_CODE: "2.1.300", Mode.CODEX: "0.162.1"}
-        if version is not None and version != tested[binding.mode]:
-            for requirement in (
-                ExecutionRequirement.HOST_TOOLS, ExecutionRequirement.SCHEMA, ExecutionRequirement.USAGE,
-            ):
+        floor = MINIMUM_TESTED_CLI_VERSION[binding.mode]
+        protocol_requirements = (
+            ExecutionRequirement.HOST_TOOLS, ExecutionRequirement.SCHEMA, ExecutionRequirement.USAGE,
+        )
+        if version is not None and not _at_least(version, floor):
+            # Below the floor, or a version string that could not be read as a
+            # release number at all. Both refuse: an unreadable version is the
+            # exact case a vendor produces when it changes its ``--version``
+            # output, which is also when the protocol is most likely to have
+            # moved, so it must never be credited.
+            for requirement in protocol_requirements:
                 overrides[requirement] = ExecutionAssessment(
                     requirement, CapabilityStatus.UNVERIFIED, "cli_protocol_version_unverified",
-                    "This CLI version has no tested protocol profile; validate it before requiring this capability.",
+                    f"This CLI version is below the tested floor {floor} or unreadable; "
+                    "characterize it before requiring this capability.",
                 )
+        elif version is not None and not _at_least(floor, version):
+            # STRICTLY above, decided numerically rather than by string
+            # inequality, so a release written ``3.0`` against a ``3.0.0`` floor
+            # is recognised as the same software and keeps its measured reason.
+            # STRICTLY ABOVE the floor, and still SUPPORTED — but say why, or the
+            # asymmetry a floor introduces becomes invisible at exactly the point
+            # an operator would need to see it. This capability was not measured
+            # on this binary; it is credited on the expectation that the vendor's
+            # wire protocol stays additive, and a release can break that.
+            for requirement in protocol_requirements:
+                fact = next(x for x in compatibility.assessments if x.requirement == requirement)
+                if fact.status == CapabilityStatus.SUPPORTED and requirement not in overrides:
+                    overrides[requirement] = ExecutionAssessment(
+                        requirement, CapabilityStatus.SUPPORTED, "cli_protocol_version_above_tested_floor",
+                        f"Characterized on {floor} and credited at or above it; this binary ({version}) was not "
+                        "itself measured, so a protocol change in a newer release would not be caught here.",
+                    )
         if overrides:
             facts = tuple(overrides.get(fact.requirement, fact) for fact in compatibility.assessments)
-            compatibility = replace(compatibility, assessments=facts, incompatibilities=tuple(
+            derived = tuple(
                 fact for fact in facts if fact.requirement in required and fact.status != CapabilityStatus.SUPPORTED
-            ))
+            )
+            # Recomputing the unmet set from ``assessments`` loses every
+            # incompatibility that is NOT one of them. ``evaluate_cli_execution``
+            # synthesises exactly such an entry — ``native_policy_conflict``,
+            # which refuses contained native execution under a DENY policy and
+            # appears only here, never in the matrix. Dropping it made the
+            # refusal set WEAKER on an untested binary than on a tested one,
+            # because overrides only apply off the pinned version: measured with
+            # claude 2.1.302 against a 2.1.300 pin, the conflict vanished while
+            # codex kept it purely by matching its pin exactly.
+            #
+            # Synthetic entries stay in front, which is where the evaluator put
+            # them: the conflict is the reason for the refusal, not a detail of it.
+            synthetic = tuple(
+                fact for fact in compatibility.incompatibilities if fact not in compatibility.assessments
+            )
+            compatibility = replace(
+                compatibility, assessments=facts, incompatibilities=synthetic + derived
+            )
         if (
             compatibility.compatible and version is None and configuration.spawn is None
-            and type(configuration.execution_backend) is SubprocessExecutionBackend
+            and isinstance(configuration.execution_backend, SubprocessExecutionBackend)
         ):
             unmet = ExecutionAssessment(
                 ExecutionRequirement.PROCESSES, CapabilityStatus.UNVERIFIED, "cli_binary_unverified",
@@ -748,6 +906,25 @@ class CliAdapter:
                     ignore_rules=True,
                     sandbox=workspace.sandbox.value if workspace and workspace.sandbox else "read-only",
                     ask_for_approval="never",
+                    # ``limits.max_turns`` is deliberately NOT forwarded here,
+                    # and that is a decision rather than the oversight it looks
+                    # like. The runtime already counts ADAPTER turns against the
+                    # caller's number; passing the same number to the driver,
+                    # which counts MODEL turns inside one adapter turn, applies
+                    # it twice and the effective cap becomes the product.
+                    # Measured: a legitimate two-tool-call run under
+                    # ``max_turns=2`` came back ``limit_reached`` instead of
+                    # answered, because each layer had already spent the budget
+                    # the other was still counting.
+                    #
+                    # What actually made the runaway expensive was never the
+                    # missing cap: it was ~200 repetitions of the SAME failing
+                    # call. ``CodexCliCognition.max_repeated_tool_calls`` (12, on
+                    # by default) bounds that directly — live, 126 calls over
+                    # 180s killed by the wall clock became 25 calls in 28.8s —
+                    # and a caller who wants an explicit in-turn model-turn cap
+                    # sets ``max_turns`` on the cognition, where it means one
+                    # thing.
                     skip_git_repo_check=True,
                     native_tool_policy="allow",
                     config_overrides=overrides,
@@ -785,14 +962,50 @@ class CliAdapter:
                         if event.type == EventKind.TOOL_CALL and call is not None:
                             fields["arguments"] = getattr(call, "arguments", None)
                         if event.type == EventKind.TOOL_RESULT and event.tool_result is not None:
-                            result = event.tool_result
-                            result_text = str(getattr(result, "text", ""))
+                            # ``tool_payload``, NOT ``result``. The outer
+                            # ``result`` is the driver's terminal run result and
+                            # is what the code after this loop reads
+                            # (``result.evals``, ``result.usage``); binding the
+                            # tool payload to the same name clobbered it with a
+                            # plain ``str``. The cancellation handler below then
+                            # saw a non-``None`` ``result`` and STOPPED
+                            # re-raising, so a stream cancelled after a tool
+                            # result but before its ``final`` event fell through
+                            # to ``result.evals`` on a string — an
+                            # ``AttributeError`` in place of the cancellation the
+                            # caller asked for.
+                            tool_payload = event.tool_result
+                            # Both shapes, because the two producers disagree.
+                            # The SDK path hands over a ``ToolResult`` with
+                            # ``.text``; both CLI drivers hand over a PLAIN
+                            # ``str``, which has no ``.text``, so the ``getattr``
+                            # default won every time and every CLI tool result
+                            # reported ``result_size=0`` and the SHA-256 of the
+                            # EMPTY string, whatever the tool returned.
+                            #
+                            # The telemetry cost is that two different results
+                            # look identical and unchanged. The worse cost is
+                            # that a host ``result_masker`` was handed ``""``, so
+                            # it could never inspect or redact CLI tool output —
+                            # and that masker is precisely how a host keeps
+                            # secrets out of its own event stream.
+                            #
+                            # Measured before this: a tool returning "a body"
+                            # (6 bytes) reported size 0 and digest
+                            # e3b0c442...b855, which is sha256(b""). Only the SDK
+                            # path was ever covered, by an ``openai_api``
+                            # scripted adapter, which is why nothing caught it.
+                            result_text = (
+                                tool_payload
+                                if isinstance(tool_payload, str)
+                                else str(getattr(tool_payload, "text", ""))
+                            )
                             fields.update(
                                 result_size=len(result_text.encode("utf-8")),
                                 result_digest=hashlib.sha256(result_text.encode("utf-8")).hexdigest(),
                                 result_preview=result_text,
-                                overflowed=bool(getattr(result, "overflowed", False)),
-                                is_error=bool(getattr(result, "is_error", False)),
+                                overflowed=bool(getattr(tool_payload, "overflowed", False)),
+                                is_error=bool(getattr(tool_payload, "is_error", False)),
                             )
                         await _emit(emit, event.type, **fields)
                     elif event.type == "final":
@@ -1047,17 +1260,3 @@ def _classify_cli_failure(
         mode_detail={"mode": mode, "reason": stop or "cli_failure"},
     )
 
-
-def execution_failure(compatibility: ExecutionCompatibility) -> Failure:
-    """Safe public refusal, without a raw command, prompt, credential or CLI output."""
-    return Failure(
-        FailureClass.EXECUTION_INCOMPATIBLE,
-        mode_detail={
-            "reason": compatibility.incompatibilities[0].explanation,
-            "dispatch_state": "not_started",
-            "backend": compatibility.backend,
-            "backend_version": compatibility.backend_version,
-            "binary_version": compatibility.binary_version,
-            "incompatibilities": tuple(asdict(item) for item in compatibility.incompatibilities),
-        },
-    )

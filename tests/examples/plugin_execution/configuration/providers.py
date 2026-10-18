@@ -22,6 +22,27 @@ REQUIREMENTS = ExecutionRequirements(
         }
     )
 )
+# The profile above is what this example ASKS FOR, and one member of it —
+# `NATIVE_TOOLS_UNAVAILABLE` — is why both CLI modes refuse before dispatch;
+# `tests/test_cli_containment.py` pins that refusal, and a `CallRuntime` built
+# with `native_tool_policy="deny"` requires the same thing implicitly.
+#
+# Demonstrating the permission path ON a CLI mode therefore has to ask for
+# less, and this is the honest spelling of "less": host tools, structured
+# output and usage, with no containment claim. Nothing else about the call
+# changes — the same registry, hooks and observers — so the two names mark
+# exactly one difference, which is the claim this example does not make about
+# a CLI. A host that needs containment keeps `REQUIREMENTS` and keeps the
+# refusal.
+HOST_TOOL_PATH_REQUIREMENTS = ExecutionRequirements(
+    required=frozenset(
+        {
+            ExecutionRequirement.HOST_TOOLS,
+            ExecutionRequirement.SCHEMA,
+            ExecutionRequirement.USAGE,
+        }
+    )
+)
 
 
 def provider_binding(mode: str, *, model: str | None = None, auth_file: Path | None = None) -> Binding:

@@ -34,6 +34,7 @@ Three properties carry the weight here and each has its own section below:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import json
 import secrets
@@ -862,3 +863,47 @@ async def test_an_upgrade_request_does_not_get_a_socket_out_of_an_authenticated_
 
     assert not raw.startswith(b"HTTP/1.1 101"), "an unauthenticated caller got a socket"
     assert [s["type"] for s in inner.scopes] == ["lifespan"]
+
+
+def test_an_ambient_proxy_cannot_divert_the_loopback_host_tool_channel() -> None:
+    """The host-tool bridge is a loopback channel carrying a bearer token.
+
+    httpx trusts `HTTP_PROXY` / `ALL_PROXY` by default and does NOT exempt
+    localhost, so an ambient proxy variable routes a request for
+    `http://127.0.0.1:<port>/mcp` through that proxy — sending this channel's
+    `Authorization` header, every tool argument and every tool result to
+    whatever it is. Measured before the fix: `proxied=True` with two mounts for
+    exactly that URL.
+
+    The server side already protects this token properly — a 0600 `O_NOFOLLOW`
+    write, credential-first teardown, and 401 bodies that never echo it — so an
+    environment variable undoing all of it is the kind of hole that is invisible
+    until someone reads a proxy log. The boundary is deliberate and narrow:
+    provider egress is a different question, and a corporate proxy to reach
+    api.anthropic.com is legitimate, so the provider client in
+    `frontiers/base.py` still trusts the environment.
+
+    Asserted on the transport httpx would CHOOSE, not by making a request: the
+    proxy address here is TEST-NET-2, so a real connection would hang rather
+    than fail, and a test that hangs to prove a point is not a test.
+    """
+    httpx = pytest.importorskip("httpx")
+
+    loopback = httpx.URL("http://127.0.0.1:8931/mcp")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("HTTP_PROXY", "http://198.51.100.7:3128")
+        patch.setenv("ALL_PROXY", "http://198.51.100.7:3128")
+
+        trusting = httpx.AsyncClient()
+        guarded = httpx.AsyncClient(trust_env=False)
+        try:
+            assert trusting._mounts, (
+                "the premise of this test is gone: httpx no longer honours ambient proxy "
+                "variables, so `trust_env=False` may no longer be what guards this channel"
+            )
+            assert not guarded._mounts, "trust_env=False must mount no proxy for a loopback URL"
+            assert guarded._transport_for_url(loopback) is guarded._transport
+        finally:
+            for client in (trusting, guarded):
+                with contextlib.suppress(Exception):
+                    asyncio.run(client.aclose())
