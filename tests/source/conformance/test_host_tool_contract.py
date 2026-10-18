@@ -273,3 +273,20 @@ async def test_tool_failures_do_not_leak_raw_arguments_or_results(defect):
 
     result = await ToolSet(ToolRegistry.from_tools([read])).execute("read", {}, make_test_ctx())
     assert result.is_error and "PRIVATE" not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_explicit_safe_tool_failure_remains_actionable_without_exposing_its_cause():
+    from agentkit.tools import ToolExecutionError
+
+    @tool(side_effecting=False)
+    def recover() -> str:
+        """Report a safe recovery instruction supplied by the host."""
+        try:
+            raise RuntimeError("PRIVATE-CAUSE-CANARY")
+        except RuntimeError as exc:
+            raise ToolExecutionError("Retry with the same idempotency key", code="response_lost") from exc
+
+    result = await ToolSet(ToolRegistry.from_tools([recover])).execute("recover", {}, make_test_ctx())
+    assert result.is_error and "same idempotency key" in result.text
+    assert result.structured["code"] == "response_lost" and "PRIVATE" not in repr(result)

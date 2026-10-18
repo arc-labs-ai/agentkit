@@ -15,6 +15,7 @@ from typing import Any, cast
 from agentkit.core.contracts.types import ToolSchema
 from agentkit.core.execution.concurrency import Cancelled
 from agentkit.tools.declarations.base import Tool
+from agentkit.tools.declarations.errors import ToolExecutionError
 from agentkit.tools.execution.cancellation import run_cancellable
 from agentkit.tools.execution.context import bind_tool_invocation, current_tool_invocation
 from agentkit.tools.execution.permissions import (
@@ -356,6 +357,8 @@ class ToolSet:
             return await self.handle(name, value)
         except _PolicyRefusal as exc:
             return ToolResult(({"type": "text", "text": str(exc)},), {"code": exc.code}, is_error=True)
+        except ToolExecutionError as exc:
+            return ToolResult(({"type": "text", "text": str(exc)},), {"code": exc.code}, is_error=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -366,6 +369,8 @@ class ToolSet:
             explanation = (
                 "image results are disabled by the host"
                 if isinstance(exc, ValueError) and str(exc) == "image results are disabled by the host"
+                else "tool requires current host permission or approval"
+                if isinstance(exc, PermissionError)
                 else f"tool {name!r} failed"
             )
             return ToolResult(({"type": "text", "text": f"{type(exc).__name__}: {explanation}"},), is_error=True)

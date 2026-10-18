@@ -84,6 +84,13 @@ them indiscriminately in host callbacks. Lifecycle observers receive only the
 tool name, identity, requested/finished phase and a stable status code. Known
 permission/validation refusals provide safe structured codes in `ToolResult`.
 Generic tool/permission exceptions do not expose their private messages.
+Handlers that intentionally publish a recovery instruction must raise public
+`ToolExecutionError(safe_message, code=...)`. The message/code are explicitly
+host-reviewed output; exception causes are never copied. Existing deterministic
+workflow fixtures use this contract while retaining their effect/accounting
+assertions. Consumers relying on arbitrary exception text must migrate those
+intentional messages to this contract. Permission/observer callback exceptions
+remain fail-closed and cannot use it to bypass policy.
 
 Identities remain distinct:
 
