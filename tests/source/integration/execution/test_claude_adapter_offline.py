@@ -17,7 +17,7 @@ import pytest
 from pydantic import BaseModel, model_validator
 
 from agentkit.core.runtime.calls import CallRuntime
-from agentkit.models import Binding, CallLimits, Credential, CredentialRef, ExecutionRequirement, ExecutionRequirements
+from agentkit.models import Binding, CallLimits, Credential, CredentialRef, ExecutionProfile, ExecutionRequirements
 from agentkit.models.providers.cli import CliAdapter, SubprocessExecutionBackend
 from agentkit.tools import PermissionDecision, ToolRegistry, tool
 from agentkit.tools.execution.policy import ToolSet
@@ -234,6 +234,8 @@ async def test_actual_claude_adapter_host_tool_schema_identity_and_planted_nativ
 
     class LocalProvider(SubprocessExecutionBackend):
         async def start(self, invocation):
+            assert invocation.execution.profile == ExecutionProfile.CLI_COMPATIBLE
+            assert invocation.native_tool_policy == "warn"
             # Route the real approved invocation to a local protocol fixture.
             # This backend claims no security guarantees and changes no argv.
             env = {
@@ -287,7 +289,7 @@ async def test_actual_claude_adapter_host_tool_schema_identity_and_planted_nativ
                 output=Answer,
                 call_id="offline-adapter",
                 limits=CallLimits(max_turns=5, wall_clock_s=35),
-                execution=ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS})),
+                execution=ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE),
             )
             assert result.outcome == "answered", result.failure
             if continuation in ("resume", "fork"):
@@ -300,7 +302,7 @@ async def test_actual_claude_adapter_host_tool_schema_identity_and_planted_nativ
                     resume=result.session,
                     fork=continuation == "fork",
                     limits=CallLimits(max_turns=5, wall_clock_s=35),
-                    execution=ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS})),
+                    execution=ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE),
                 )
     finally:
         server.close()
@@ -313,6 +315,7 @@ async def test_actual_claude_adapter_host_tool_schema_identity_and_planted_nativ
     assert [event.code for event in finished].count("permission_unattended") == expected
     assert auth_checks and all(auth_checks)
     assert result.outcome == "answered", result.messages
+    assert result.session.execution.profile == ExecutionProfile.CLI_COMPATIBLE
     assert result.value == Answer(status="ok")
     assert len(effects) == (1 if continuation == "fresh" else 2)
     assert effects[0][0] == "offline-adapter"

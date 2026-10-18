@@ -251,6 +251,7 @@ def execution_failure(compatibility: ExecutionCompatibility) -> Failure:
     return Failure(
         FailureClass.EXECUTION_INCOMPATIBLE,
         mode_detail={
+            **({"execution_profile": compatibility.profile} if compatibility.profile is not None else {}),
             "reason": compatibility.incompatibilities[0].explanation,
             "dispatch_state": "not_started",
             "backend": compatibility.backend,

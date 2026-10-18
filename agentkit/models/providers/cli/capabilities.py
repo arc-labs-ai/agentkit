@@ -25,6 +25,7 @@ def evaluate_cli_execution(
     Declaring guarantees in BackendReport cannot enable one. New combinations
     require an evidence verifier and real planted-violation acceptance tests.
     """
+    policy = execution.constrain_native_policy(policy)
     required = set(execution.required)
     if policy == NativeToolPolicy.DENY:
         required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
@@ -109,4 +110,6 @@ def evaluate_cli_execution(
                 "Contained native execution cannot satisfy strict native-tool denial.",
             ),
         )
-    return ExecutionCompatibility(str(mode), report.backend, report.version, None, tuple(facts), tuple(unmet))
+    return ExecutionCompatibility(
+        str(mode), report.backend, report.version, None, tuple(facts), tuple(unmet), profile=execution.profile,
+    )

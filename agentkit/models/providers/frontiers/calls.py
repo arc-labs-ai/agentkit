@@ -53,7 +53,12 @@ class ApiAdapter:
             NativeToolPolicy(native_tool_policy or NativeToolPolicy.WARN),
             payload_rewriting=self.request_hook is not None,
         )
-        identity = (binding.mode, binding.model, self.base_url, id(self.client), id(self.request_hook))
+        identity = (
+            binding.mode, binding.model, self.base_url, id(self.client), id(self.request_hook),
+            execution, execution.constrain_native_policy(
+                NativeToolPolicy(native_tool_policy or NativeToolPolicy.WARN)
+            ) if execution is not None else None,
+        )
         return replace(
             report,
             adapter="agentkit.models.providers.frontiers.calls.ApiAdapter",
@@ -94,6 +99,7 @@ class ApiAdapter:
                 return Turn(failure=execution_failure(compatibility), usage_complete=False)
             await _emit(
                 emit, EventKind.TRANSPORT, mode_event="execution_policy",
+                execution_profile=compatibility.profile,
                 backend=compatibility.backend, backend_version=compatibility.backend_version,
                 binary_version=compatibility.binary_version,
                 execution_requirements=tuple(sorted((execution or ExecutionRequirements()).required)),

@@ -18,7 +18,7 @@ import pytest
 from pydantic import BaseModel
 
 from agentkit.core.runtime.calls import CallRuntime
-from agentkit.models import Binding, CallLimits, CredentialRef, ExecutionRequirement, ExecutionRequirements
+from agentkit.models import Binding, CallLimits, CredentialRef, ExecutionProfile, ExecutionRequirements
 from agentkit.models.providers.cli import CliAdapter, SubprocessExecutionBackend
 from agentkit.tools import PermissionDecision, ToolRegistry, tool
 from agentkit.tools.execution.policy import ToolSet
@@ -194,6 +194,8 @@ async def test_actual_codex_adapter_dispatches_granted_host_tool_with_typed_answ
 
     class LocalProvider(SubprocessExecutionBackend):
         async def start(self, invocation):
+            assert invocation.execution.profile == ExecutionProfile.CLI_COMPATIBLE
+            assert invocation.native_tool_policy == "warn"
             # Select a test-only local transport. This grants no additional
             # execution authority and uses no bypass/sandbox-disabling flags.
             config = {
@@ -226,7 +228,7 @@ async def test_actual_codex_adapter_dispatches_granted_host_tool_with_typed_answ
                 output=Answer,
                 call_id="offline-codex",
                 limits=CallLimits(max_turns=2, wall_clock_s=35),
-                execution=ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS})),
+                execution=ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE),
             )
     finally:
         server.close()
@@ -235,6 +237,7 @@ async def test_actual_codex_adapter_dispatches_granted_host_tool_with_typed_answ
         [(entry.get("type"), entry.get("name")) for entry in body.get("tools", [])] for body in requests
     ]
     assert result.outcome == "answered", (result.failure, len(requests))
+    assert result.session.execution.profile == ExecutionProfile.CLI_COMPATIBLE
     assert result.value == Answer(status="ok") and len(effects) == 1
     assert effects[0].host_invocation_id and effects[0].transport_request_id is not None
     # 0.162.1 forwards the Responses call_id in MCP _meta.callId. The host

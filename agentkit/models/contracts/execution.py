@@ -6,6 +6,8 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
+from agentkit.models.contracts.constants import NativeToolPolicy
+
 
 class NativeExecution(StrEnum):
     """Opt in to native execution with mandatory security boundaries."""
@@ -33,6 +35,28 @@ class ExecutionRequirement(StrEnum):
     HARD_SPENDING_CAP = "hard_spending_cap"
 
 
+class ExecutionProfile(StrEnum):
+    """Explicit minimum contracts; neither profile proves containment.
+
+    Host tools only requires native-tool absence. CLI-compatible retains WARN
+    and permits the native behavior the selected adapter supports.
+    """
+
+    HOST_TOOLS_ONLY = "host_tools_only"
+    CLI_COMPATIBLE = "cli_compatible"
+
+    @property
+    def required(self) -> frozenset[ExecutionRequirement]:
+        requirements = {ExecutionRequirement.HOST_TOOLS, ExecutionRequirement.SCHEMA, ExecutionRequirement.USAGE}
+        if self == ExecutionProfile.HOST_TOOLS_ONLY:
+            requirements.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
+        return frozenset(requirements)
+
+    @property
+    def native_tool_policy(self) -> NativeToolPolicy:
+        return NativeToolPolicy.DENY if self == ExecutionProfile.HOST_TOOLS_ONLY else NativeToolPolicy.WARN
+
+
 class CapabilityStatus(StrEnum):
     """Unverified is a refusal when the capability is required."""
 
@@ -54,10 +78,18 @@ class ExecutionRequirements:
     read_roots: tuple[Path | str, ...] | None = None
     write_roots: tuple[Path | str, ...] | None = None
     network_destinations: tuple[str, ...] | None = None
+    profile: ExecutionProfile | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "native_execution", NativeExecution(self.native_execution))
         required = {ExecutionRequirement(x) for x in self.required}
+        if self.profile is not None:
+            try:
+                profile = ExecutionProfile(self.profile)
+            except ValueError:
+                raise ValueError("unknown execution profile") from None
+            object.__setattr__(self, "profile", profile)
+            required.update(profile.required)
         for field, requirement in (
             ("read_roots", ExecutionRequirement.FILESYSTEM_READ),
             ("write_roots", ExecutionRequirement.FILESYSTEM_WRITE),
@@ -89,6 +121,13 @@ class ExecutionRequirements:
                 }
             )
         object.__setattr__(self, "required", frozenset(required))
+
+    def constrain_native_policy(self, policy: NativeToolPolicy) -> NativeToolPolicy:
+        """Apply the profile without ever expanding a host/session policy ceiling."""
+        if self.profile is None:
+            return NativeToolPolicy(policy)
+        rank = {NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}
+        return min((NativeToolPolicy(policy), self.profile.native_tool_policy), key=rank.__getitem__)
 
     def constrain(self, ceiling: ExecutionRequirements) -> ExecutionRequirements:
         """Retain a session's requirements and intersect explicit authorities.
@@ -128,6 +167,11 @@ class ExecutionRequirements:
                 if NativeExecution.CONTAINED in (self.native_execution, ceiling.native_execution)
                 else NativeExecution.UNCONSTRAINED
             ),
+            profile=(
+                ExecutionProfile.HOST_TOOLS_ONLY
+                if ExecutionProfile.HOST_TOOLS_ONLY in (self.profile, ceiling.profile)
+                else self.profile or ceiling.profile
+            ),
             required=self.required | ceiling.required,
             read_roots=roots(self.read_roots, ceiling.read_roots),
             write_roots=roots(self.write_roots, ceiling.write_roots),
@@ -157,6 +201,7 @@ class ExecutionCompatibility:
     incompatibilities: tuple[ExecutionAssessment, ...]
     adapter: str = ""
     configuration_id: str = ""
+    profile: ExecutionProfile | None = None
 
     def require_configuration(self, assessed_id: str | None) -> ExecutionCompatibility:
         """Reject a stale adapter receipt; this identity is not isolation evidence."""

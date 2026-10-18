@@ -57,6 +57,7 @@ from agentkit.models.contracts.execution import (
     CapabilityStatus,
     ExecutionAssessment,
     ExecutionCompatibility,
+    ExecutionProfile,
     ExecutionRequirement,
     ExecutionRequirements,
     NativeExecution,
@@ -81,7 +82,7 @@ from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
 __all__ = [
     "CallEvent",
     "CapabilityStatus", "ExecutionAssessment", "ExecutionCompatibility",
-    "ExecutionRequirement", "ExecutionRequirements", "NativeExecution",
+    "ExecutionRequirement", "ExecutionRequirements", "ExecutionProfile", "NativeExecution",
     "Answer",
     "PriceTable",
     "Mode",

@@ -40,13 +40,13 @@ from agentkit.core.testing.fakes import FakeClaudeCli, FakeCodexCli, codex_turn
 def scripted_client():
     clients = []
 
-    def build(mode, *, record_id="record-1", tool_name="lookup_record", status="ready"):
+    def build(mode, *, record_id="record-1", tool_name="lookup_record", status="ready", answer_record_id=None):
         requests = []
 
         def respond(request):
             payload = json.loads(request.content)
             requests.append(payload)
-            answer = json.dumps({"record_id": record_id, "status": status})
+            answer = json.dumps({"record_id": record_id if answer_record_id is None else answer_record_id, "status": status})
             arguments = json.dumps({"record_id": record_id})
             first = len(requests) == 1
             if mode == "anthropic_api":
@@ -174,8 +174,8 @@ async def _call_host_tool(url: str, headers: Mapping[str, str], name: str, argum
 def scripted_cli():
     sessions: list[ScriptedCli] = []
 
-    def build(mode, *, record_id="record-1", tool_name="lookup_record", status="ready"):
-        answer = json.dumps({"record_id": record_id, "status": status})
+    def build(mode, *, record_id="record-1", tool_name="lookup_record", status="ready", answer_record_id=None):
+        answer = json.dumps({"record_id": record_id if answer_record_id is None else answer_record_id, "status": status})
         if mode == "claude_code":
             replay = FakeClaudeCli.script(
                 [
@@ -199,9 +199,7 @@ def scripted_cli():
             try:
                 session.results.append(await _call_host_tool(url, headers, tool_name, {"record_id": record_id}))
             except asyncio.CancelledError:
-                # The host tore the invocation down mid-flight. A real CLI sees
-                # the same dead response; re-raising is what keeps this double
-                # from inventing a tool result nobody returned.
+                # The adapter cancelled startup while this request was pending.
                 session.cancellations.append(tool_name)
                 raise
             return await replay(*argv, **kwargs)

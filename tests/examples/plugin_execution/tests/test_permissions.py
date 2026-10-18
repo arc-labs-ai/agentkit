@@ -109,7 +109,7 @@ async def test_an_allowed_cli_invocation_reaches_the_handler_and_the_model(mode,
     cli = scripted_cli(mode)
     async with CallRuntime(
         adapters={mode: CliAdapter(spawn=cli.spawn)},
-        native_tool_policy="allow",
+        native_tool_policy="warn",
         unpriced_policy="proceed_unpriced",
     ) as runtime:
         result = await execute(runtime, synthetic(mode), call, execution=HOST_TOOL_PATH_REQUIREMENTS)
@@ -147,10 +147,10 @@ async def test_prohibited_cli_invocations_reach_no_handler_either(mode, defect, 
     cli = scripted_cli(mode, tool_name="undeclared" if defect == "unknown" else "lookup_record", status="unavailable")
     async with CallRuntime(
         adapters={mode: CliAdapter(spawn=cli.spawn)},
-        # Not `deny`: that policy requires the containment the CLI modes cannot
-        # verify, which refuses this call before dispatch. See
+        # DENY requires native-tool absence, which the CLI modes cannot verify
+        # or support, and therefore refuses before dispatch. See
         # `HOST_TOOL_PATH_REQUIREMENTS`.
-        native_tool_policy="allow",
+        native_tool_policy="warn",
         unpriced_policy="proceed_unpriced",
     ) as runtime:
         await execute(runtime, synthetic(mode), call, execution=HOST_TOOL_PATH_REQUIREMENTS)
@@ -219,9 +219,9 @@ async def test_cancellation_joins_blocked_cli_permission_and_settles_once(mode, 
     """Cancelling across the CLI bridge still joins the hook and settles exactly once.
 
     Here the pending authorization has a second party: the scripted binary is
-    blocked on an MCP response that will never come. Without this, a bridge
-    could answer that request on the host's behalf to unblock the caller — a
-    default-allow built out of cleanup — or leave the invocation dangling so
+    blocked on an MCP response. Cancellation may acknowledge the abort before
+    teardown, or teardown may interrupt the transport first. Neither may
+    produce success, authorize the effect or leave the invocation dangling so
     the run reports an outcome while a hook is still running, and the host's
     own ledger ends up with two terminal records for one call.
 
@@ -245,7 +245,7 @@ async def test_cancellation_joins_blocked_cli_permission_and_settles_once(mode, 
     cli = scripted_cli(mode)
     async with CallRuntime(
         adapters={mode: CliAdapter(spawn=cli.spawn)},
-        native_tool_policy="allow",
+        native_tool_policy="warn",
         unpriced_policy="proceed_unpriced",
     ) as runtime:
         pending = asyncio.create_task(
@@ -255,8 +255,15 @@ async def test_cancellation_joins_blocked_cli_permission_and_settles_once(mode, 
         token.cancel()
         result = await asyncio.wait_for(pending, 5)
     assert result.outcome == "cancelled" and cleaned.is_set() and not call.effects
-    # No tool result was ever produced for the caller — not an allow, not a
-    # denial. The invocation was torn down, and the double recorded that.
-    assert not cli.results and cli.cancellations == ["lookup_record"]
+    # Exactly one interrupted exchange: either a typed cancellation
+    # acknowledgement after joined cleanup or transport teardown. A success,
+    # generic error, permission refusal or duplicated response fails this check.
+    assert len(cli.results) + len(cli.cancellations) == 1
+    if cli.results:
+        assert not cli.cancellations
+        assert cli.results[0].isError
+        assert cli.results[0].structuredContent == {"code": "cancelled"}
+    else:
+        assert cli.cancellations == ["lookup_record"]
     assert [event["code"] for event in call.lifecycle.events if event["kind"] == "tool_finished"] == ["cancelled"]
     assert len([event for event in call.lifecycle.events if event["kind"] == "call_finished"]) == 1

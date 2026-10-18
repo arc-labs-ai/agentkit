@@ -1345,6 +1345,7 @@ async def test_claude_large_schema_uses_prompt_file_and_local_validation(tmp_pat
     # straddles the two — over on a Mac, under on the runner, so the schema
     # stayed inline there, no prompt-file flag was emitted, and this test
     # failed only in CI.
+    from agentkit.models import ExecutionProfile, ExecutionRequirements
     from agentkit.models.providers.cli._common import _ARGV_TEXT_LIMIT
 
     filler = "Allowed value. " * (_ARGV_TEXT_LIMIT // len("Allowed value. ") + 64)
@@ -1395,8 +1396,10 @@ async def test_claude_large_schema_uses_prompt_file_and_local_validation(tmp_pat
             "Return the value.",
             OutputSpec(schema),
             call_id="claude-large-schema",
+            execution=ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE),
             events=events.append,
         )
+    assert answer.session.execution.profile == ExecutionProfile.CLI_COMPATIBLE
     assert answer.outcome == "answered", answer.failure
     assert answer.value == {"value": "ok"}
     argv = cli.invocations[0].argv
@@ -1949,8 +1952,20 @@ async def test_unpriced_usage_category_is_refused_by_default_and_can_be_allowed_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["claude_code", "codex"])
-async def test_cli_rate_limit_retry_after_recovers_and_400_does_not(mode: str) -> None:
+@pytest.mark.parametrize("profile", [None, "cli_compatible"])
+async def test_cli_rate_limit_retry_after_recovers_and_400_does_not(mode: str, profile: str | None) -> None:
+    from agentkit.models import ExecutionProfile, ExecutionRequirements
+
+    execution = ExecutionRequirements(profile=ExecutionProfile(profile)) if profile else None
+
     async def run(first_payload: dict[str, Any], *, status: int) -> tuple[Any, Any]:
+        seen = []
+
+        class Recording(CliAdapter):
+            async def turn(self, binding, prompt, **kwargs):
+                seen.append((kwargs.get("execution"), kwargs.get("native_tool_policy")))
+                return await super().turn(binding, prompt, **kwargs)
+
         if mode == "claude_code":
             cli = FakeClaudeCli(
                 [
@@ -1980,7 +1995,7 @@ async def test_cli_rate_limit_retry_after_recovers_and_400_does_not(mode: str) -
             )
         events: list[Any] = []
         async with CallRuntime(
-            adapters={mode: CliAdapter(spawn=cli)},
+            adapters={mode: Recording(spawn=cli)},
             pricing=PRICES,
             retry=RetryPolicy(base_s=0, cap_s=1, max_elapsed_s=2),
         ) as runtime:
@@ -1993,9 +2008,14 @@ async def test_cli_rate_limit_retry_after_recovers_and_400_does_not(mode: str) -
                     ),
                 ),
                 "retry safely",
+                execution=execution,
                 events=events.append,
                 call_id=f"cli-retry-{mode}-{status}",
             )
+        if execution is not None:
+            assert len(seen) == (2 if status == 429 else 1)
+            assert all(item.profile == profile and policy == "warn" for item, policy in seen)
+            assert answer.session.execution.profile == profile
         return answer, events
 
     limited_payload = (

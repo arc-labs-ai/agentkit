@@ -19,6 +19,7 @@ from agentkit.models.contracts.execution import (
     CapabilityStatus,
     ExecutionAssessment,
     ExecutionCompatibility,
+    ExecutionProfile,
     ExecutionRequirement,
     ExecutionRequirements,
     NativeExecution,
@@ -40,7 +41,7 @@ from agentkit.models.contracts.types import (
 
 __all__ = [
     "CapabilityStatus", "ExecutionAssessment", "ExecutionCompatibility",
-    "ExecutionRequirement", "ExecutionRequirements", "NativeExecution",
+    "ExecutionRequirement", "ExecutionRequirements", "ExecutionProfile", "NativeExecution",
     "Allow", "Answer", "Binding", "CacheTtl", "CallLimits", "ClaudePermissionMode",
     "CodexSandboxMode", "Credential", "CredentialRef", "Deny", "Effort", "MindKind",
     "Mode", "ModelSelection", "ModelSettings", "NativeToolPolicy", "Outcome", "OutputSpec",

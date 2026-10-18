@@ -113,6 +113,7 @@ def evaluate_api_execution(
     """
     if not mode.is_api:
         raise ValueError("evaluate_api_execution assesses API modes; use evaluate_cli_execution for CLI modes")
+    policy = execution.constrain_native_policy(policy)
     required = set(execution.required)
     if policy == NativeToolPolicy.DENY:
         required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
@@ -186,7 +187,8 @@ def evaluate_api_execution(
         facts.append(ExecutionAssessment(requirement, status, code, explanation))
     unmet = [fact for fact in facts if fact.requirement in required and fact.status != CapabilityStatus.SUPPORTED]
     return ExecutionCompatibility(
-        str(mode), report.backend, report.version, _WIRE_CONTRACT[mode], tuple(facts), tuple(unmet)
+        str(mode), report.backend, report.version, _WIRE_CONTRACT[mode], tuple(facts), tuple(unmet),
+        profile=execution.profile,
     )
 
 
