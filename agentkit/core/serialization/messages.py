@@ -11,6 +11,7 @@ from typing import Any
 
 from agentkit.core.contracts.types import Message, ToolCall
 from agentkit.core.serialization._immutable import thaw
+from agentkit.core.serialization.content import decode_content, encode_content
 
 
 def tool_call_to_dict(call: ToolCall) -> dict[str, Any]:
@@ -28,7 +29,7 @@ def message_to_dict(message: Message) -> dict[str, Any]:
         "tool_call_id": message.tool_call_id,
         "name": message.name,
         "tool_calls": [tool_call_to_dict(call) for call in message.tool_calls],
-        "content_blocks": [thaw(block) for block in message.content_blocks],
+        "content_blocks": encode_content(message.content_blocks),
         "metadata": thaw(message.metadata),
     }
 
@@ -40,6 +41,6 @@ def message_from_dict(value: dict[str, Any]) -> Message:
         name=value.get("name"),
         tool_call_id=value.get("tool_call_id"),
         tool_calls=tuple(tool_call_from_dict(call) for call in (value.get("tool_calls") or [])),
-        content_blocks=tuple(value.get("content_blocks") or ()),
+        content_blocks=tuple(decode_content(value.get("content_blocks") or ())),
         metadata=value.get("metadata") or {},
     )

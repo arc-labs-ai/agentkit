@@ -48,9 +48,9 @@ REGRESSIONS = {
         "checkpoint",
         "agentkit/core/serialization/messages.py",
         (
-            ('        "content_blocks": [thaw(block) for block in message.content_blocks],\n', ""),
+            ('        "content_blocks": encode_content(message.content_blocks),\n', ""),
             ('        "metadata": thaw(message.metadata),\n', ""),
-            ('        content_blocks=tuple(value.get("content_blocks") or ()),\n', ""),
+            ('        content_blocks=tuple(decode_content(value.get("content_blocks") or ())),\n', ""),
             ('        metadata=value.get("metadata") or {},\n', ""),
         ),
         "A durable resume silently drops chart/image evidence and agent attribution from checkpoint messages. "

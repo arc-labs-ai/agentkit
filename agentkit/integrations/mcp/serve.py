@@ -61,7 +61,6 @@ bearer token rather than a Unix socket.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import os
 import re
@@ -179,28 +178,32 @@ def _tool_result(value: Any) -> mcp_types.CallToolResult:
     content = getattr(value, "content", None)
     if content is None:
         return _text_result(_render(value), is_error=False)
-    parts: list[Any] = []
-    for block in content:
-        kind = block.get("type")
-        if kind == "text":
-            parts.append(mcp_types.TextContent(type="text", text=str(block.get("text", ""))))
-        elif kind == "image":
-            data = block.get("data")
-            mime_type = block.get("mimeType") or block.get("mime_type")
-            if not isinstance(data, bytes) or not isinstance(mime_type, str):
-                return _text_result("tool returned an invalid image block", is_error=True)
-            if len(data) > 20 * 1024 * 1024:
-                return _text_result("tool image exceeds the 20 MiB MCP response limit", is_error=True)
-            parts.append(
-                mcp_types.ImageContent(
-                    type="image", data=base64.b64encode(data).decode("ascii"), mimeType=mime_type
-                )
-            )
-        else:
-            parts.append(mcp_types.TextContent(type="text", text=_render(block)))
-    if not parts:
-        parts.append(mcp_types.TextContent(type="text", text=""))
-    return mcp_types.CallToolResult(content=parts, isError=bool(getattr(value, "is_error", False)))
+    from agentkit.core.serialization.content import InvalidContent, encode_content
+
+    try:
+        blocks = encode_content(content)
+        parts: list[Any] = []
+        for block in blocks:
+            kind = block.get("type")
+            if kind == "text":
+                parts.append(mcp_types.TextContent(type="text", text=block.get("text", "")))
+            elif kind == "image":
+                parts.append(mcp_types.ImageContent(type="image", data=block["data"], mimeType=block["mimeType"]))
+            else:
+                # Legacy non-image JSON blocks remain visible as text.
+                parts.append(mcp_types.TextContent(type="text", text=_json_dumps(block)))
+        structured = getattr(value, "structured", None)
+        json.dumps(structured, allow_nan=False)
+        result = mcp_types.CallToolResult(
+            content=parts or [mcp_types.TextContent(type="text", text="")],
+            structuredContent=dict(structured) if structured is not None else None,
+            isError=bool(getattr(value, "is_error", False)),
+        )
+        result.model_dump_json()  # refuse non-JSON leaves before transport dispatch
+        return result
+    except (ValueError, TypeError) as exc:
+        explanation = str(exc) if isinstance(exc, InvalidContent) else "tool returned invalid content"
+        return _text_result(explanation, is_error=True)
 
 
 def _tools_of(registry: ToolRegistry | Sequence[Tool] | Iterable[Tool]) -> list[Tool]:

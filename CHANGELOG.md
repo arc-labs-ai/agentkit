@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Pre-release development record
 
+### Provider-neutral host-tool images
+
+- Standardize image blocks on raw bytes and `mimeType` for SDK and MCP tools;
+  encode once per wire boundary and preserve text, error status and MCP structured content.
+- Refuse malformed and oversized image output with safe tool errors instead of
+  stringifying bytes or replacing images with overflow-file paths. Count base64
+  expansion in output bounds; preserve images through JSON message persistence and replay.
+- Migration: SDK handlers returning base64 strings must return raw bytes. Execution
+  isolation and spending requirements remain unchanged.
+
+
 ### Shared host-tool permissions and lifecycle
 
 - Add public ToolSet permission/approval callbacks and correlated lifecycle

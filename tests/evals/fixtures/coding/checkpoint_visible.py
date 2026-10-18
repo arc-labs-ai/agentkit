@@ -10,7 +10,7 @@ def test_checkpoint_preserves_multimodal_tool_evidence_and_attribution() -> None
         "chart evidence",
         name="read_chart",
         tool_call_id="chart-1",
-        content_blocks=({"type": "image", "mimeType": "image/png", "data": "eA=="},),
+        content_blocks=({"type": "image", "mimeType": "image/png", "data": b"x"},),
         metadata={"agent_id": "analyst", "is_error": False, "source": {"document": "quarterly"}},
     )
     restored = message_from_dict(json.loads(json.dumps(message_to_dict(message))))

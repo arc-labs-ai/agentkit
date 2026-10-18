@@ -7,9 +7,11 @@ from collections.abc import Sequence
 from typing import Any
 
 from agentkit.core.contracts.types import Message, MessageRole, Mode, ToolCall
+from agentkit.core.serialization.content import encode_content
 
 
 def tool_content(blocks: Any, mode: Mode) -> Any:
+    blocks = encode_content(blocks)
     if mode == Mode.OPENAI_API and all(x.get("type") == "text" for x in blocks):
         return "\n".join(x.get("text", "") for x in blocks)
     out = []

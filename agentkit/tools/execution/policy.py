@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from agentkit.core.contracts.types import ToolSchema
 from agentkit.core.execution.concurrency import Cancelled
+from agentkit.core.serialization.content import encode_content
 from agentkit.tools.declarations.base import Tool
 from agentkit.tools.declarations.errors import ToolExecutionError
 from agentkit.tools.execution.cancellation import run_cancellable
@@ -45,6 +46,11 @@ class OverflowPolicy:
 
 @dataclass(frozen=True)
 class ToolResult:
+    """Provider-neutral result: images use nonempty raw bytes and ``mimeType``.
+
+    ToolSet and wire codecs validate content; base64 strings are wire-only.
+    """
+
     content: tuple[Mapping[str, Any], ...] = field(hash=False)
     structured: Mapping[str, Any] | None = field(default=None, hash=False)
     is_error: bool = False
@@ -410,10 +416,20 @@ class ToolSet:
             result = ToolResult(({"type": "text", "text": value if isinstance(value, str) else json.dumps(value)},))
         if not self.images and any(x.get("type") == "image" for x in result.content):
             raise ValueError("image results are disabled by the host")
-        blob = json.dumps(
-            {"content": result.content, "structuredContent": result.structured}, ensure_ascii=False
-        ).encode()
+        try:
+            blob = json.dumps(
+                {"content": encode_content(result.content), "structuredContent": result.structured},
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode()
+        except (TypeError, ValueError):
+            raise ToolExecutionError(
+                "tool returned invalid content; images require raw bytes and a supported MIME type",
+                code="invalid_tool_content",
+            ) from None
         if len(blob) > self.overflow.max_bytes:
+            if any(x.get("type") == "image" for x in result.content):
+                raise ToolExecutionError("image result exceeds the encoded tool output limit", code="tool_output_limit")
 
             def spill() -> str:
                 with tempfile.NamedTemporaryFile(
@@ -520,13 +536,6 @@ def serve(
 
 
 def _mcp_result(name: str, value: Any) -> Any:
-    from mcp import types
+    from agentkit.integrations.mcp.serve import _tool_result
 
-    if not isinstance(value, ToolResult):
-        return value
-    # MCP models validate each discriminated content type at the boundary.
-    return types.CallToolResult(
-        content=cast(Any, list(value.content)),
-        structuredContent=dict(value.structured) if value.structured else None,
-        isError=value.is_error,
-    )
+    return _tool_result(value) if isinstance(value, ToolResult) else value
