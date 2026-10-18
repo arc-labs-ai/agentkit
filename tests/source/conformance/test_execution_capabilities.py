@@ -516,13 +516,57 @@ async def test_codex_reports_the_spending_threshold_as_unsupported_because_dispa
 
     # And the refusal the row is reporting is really there: a Codex run carrying the limit is
     # rejected locally, with zero provider attempts.
-    runtime = CallRuntime()
-    answer = await runtime.ask(
-        Binding(Mode.CODEX, "test"),
-        "anything",
-        limits=CallLimits(max_cost_usd=Decimal("1.00")),
-        call_id="codex-threshold-refused",
-    )
+    #
+    # The adapter is given a ``spawn`` rather than left to find the real binary. With a bare
+    # ``CallRuntime()`` this assertion depended on whether ``codex`` happened to be INSTALLED on
+    # the machine running it: present, and the limit guard refuses as asserted; absent, and
+    # ``cli_binary_unverified`` refuses first with ``execution_incompatible``. It passed locally
+    # and failed in CI for exactly that reason. A spawn makes the limit guard the thing under
+    # test on every machine, and the order the two refusals take is pinned separately below.
+    async def unreachable(*args, **kwargs):
+        raise AssertionError("a threshold Codex cannot honour must be refused before any spawn")
+
+    async with CallRuntime(adapters={Mode.CODEX: CliAdapter(spawn=unreachable)}) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.CODEX, "test"),
+            "anything",
+            limits=CallLimits(max_cost_usd=Decimal("1.00")),
+            call_id="codex-threshold-refused",
+        )
     assert answer.outcome == "failed"
     assert answer.failure is not None
     assert answer.failure.classification == "invalid_request", answer.failure
+    assert answer.attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_an_unidentifiable_cli_is_refused_as_incompatible_before_any_limit_is_consulted():
+    """Which refusal wins when the binary is missing AND the limits are unhonourable.
+
+    Both refusals are correct and only one can be reported, so the order is a contract rather
+    than an accident — and it was an accident until it broke in CI. The binary is identified
+    first, which means a host whose executable is missing is told to install it before being
+    told anything about its limits. That is the useful order: the limits refusal is permanent
+    for Codex and will still be there afterwards, whereas an unidentified binary makes every
+    other assessment a guess about a program nobody has looked at.
+
+    Deterministic on any machine because the executable is pointed at a path that cannot
+    exist, rather than relying on ``codex`` being absent from PATH.
+    """
+    from decimal import Decimal
+
+    from agentkit.models.contracts.types import CallLimits
+
+    adapters = {Mode.CODEX: CliAdapter(executable={Mode.CODEX: "/nonexistent/codex-not-installed"})}
+    async with CallRuntime(adapters=adapters) as runtime:
+        answer = await runtime.ask(
+            Binding(Mode.CODEX, "test"),
+            "anything",
+            limits=CallLimits(max_cost_usd=Decimal("1.00")),
+            call_id="codex-binary-unverified",
+        )
+    assert answer.outcome == "failed"
+    assert answer.failure is not None
+    assert answer.failure.classification == "execution_incompatible", answer.failure
+    assert answer.attempts == 0
+    assert "cli_binary_unverified" in repr(answer.failure.mode_detail)
