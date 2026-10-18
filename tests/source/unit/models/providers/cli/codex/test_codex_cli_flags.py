@@ -29,6 +29,8 @@ other half: it asks the installed binary whether these layouts parse.
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 from agentkit.models.providers.cli.codex.driver import CodexCliCognition, _toml_scalar
@@ -173,3 +175,36 @@ def test_the_default_sandbox_flag_is_omitted_so_the_clis_own_config_still_applie
 
     assert "--sandbox" not in argv
     assert CodexCliCognition().effective_sandbox == "read-only"
+
+
+def test_a_credential_nested_in_a_stdio_servers_env_is_still_warned_about() -> None:
+    """`codex exec` has no config-file flag, so a secret in `-c key=value` is
+    readable by any local account with `ps` — which is why this cognition warns
+    and points at the `*_env_var` pattern instead.
+
+    The warning only ever inspected TOP-LEVEL table keys. A stdio MCP server
+    carries its own process environment at `mcp_servers.<name>.env`, which
+    reaches argv verbatim as
+    `-c mcp_servers.engine.env={"SERVER_SECRET"="s3cr3t"}` — so the single
+    placement the module docstring says a credential must never take was also
+    the one placement the warning could not see: `env` does not look like a
+    secret, and the name that does was one level down and never read.
+
+    The clean twins matter as much: a top-level secret must still warn (no
+    regression), and the documented-safe `bearer_token_env_var` spelling must
+    still produce no warning at all, or the heuristic starts crying wolf about
+    the very pattern it recommends.
+    """
+    nested = {"engine": {"command": "python", "args": ["-m", "srv"], "env": {"SERVER_SECRET": "s3cr3t"}}}
+    with pytest.warns(UserWarning, match="rendered into the process argument list") as caught:
+        CodexCliCognition(mcp_servers=nested)
+    assert "env.SERVER_SECRET" in str(caught[0].message), (
+        f"the warning must name the nested key by its dotted path: {caught[0].message}"
+    )
+
+    with pytest.warns(UserWarning, match="rendered into the process argument list"):
+        CodexCliCognition(mcp_servers={"engine": {"command": "python", "api_key": "sk-top-level"}})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        CodexCliCognition(mcp_servers={"engine": {"command": "python", "bearer_token_env_var": "MY_TOKEN"}})

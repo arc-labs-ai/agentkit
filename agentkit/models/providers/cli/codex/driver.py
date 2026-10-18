@@ -89,6 +89,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from agentkit.agents.prompts.prompt import Prompt
 from agentkit.core.contracts.protocols import Ctx
 from agentkit.core.contracts.types import CostSource, ProviderUsage, StreamEvent, ToolCall
+from agentkit.models.contracts.constants import StopReason
 from agentkit.models.providers.cli._common import (
     CliLineTooLong,
     CliResult,
@@ -150,49 +151,49 @@ ReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh"]
 # module knows how it spells its own failures.
 _CODEX_FAILURE_REASONS = frozenset(
     {
-        "spawn_failed",
-        "parse_failed",
+        StopReason.SPAWN_FAILED,
+        StopReason.PARSE_FAILED,
         # A single NDJSON payload outgrew the reader's buffer. ``failed``, and
         # deliberately NOT ``parse_failed``: the line was valid JSON, just too
         # big to assemble, so the fix is a size rather than a corruption hunt.
-        "output_line_too_long",
-        "working_dir_missing",
+        StopReason.OUTPUT_LINE_TOO_LONG,
+        StopReason.WORKING_DIR_MISSING,
         # The CLI wrote a top-level ``{"type":"error"}`` — a transport or
         # stream failure it could not attribute to the turn.
-        "cli_reported_error",
+        StopReason.CLI_REPORTED_ERROR,
         # The binary on PATH emits the superseded ``{"id", "msg"}`` event
         # stream. ``failed`` and not ``parse_failed``: the JSON was fine and we
         # understood it perfectly well — we decline to support it. Its own
         # reason because it is the one failure here with a one-line fix the
         # caller can act on without reading any code.
-        "cli_version_unsupported",
+        StopReason.CLI_VERSION_UNSUPPORTED,
         # ``{"type":"turn.failed"}`` — the turn itself failed. Kept distinct
         # from ``cli_reported_error`` because the message differs in kind: one
         # is "the model run went wrong", the other is "the pipe broke".
-        "turn_failed",
+        StopReason.TURN_FAILED,
         # A turn was asked of a session with no thread to resume. ``failed``
         # rather than ``terminated``: nobody chose to stop this.
-        "session_closed",
+        StopReason.SESSION_CLOSED,
         # ── liveness (see CliTimeouts) ──────────────────────────────────────
         # ``failed`` and not ``expired``: ``expired`` means a human-gate
         # deadline passed and the run degraded and CONTINUED. Nothing continues
         # here. And not ``terminated``: nobody chose this, a bound did.
-        "startup_timeout",
-        "first_event_timeout",
-        "idle_timeout",
-        "total_timeout",
-        "authentication_failed",
+        StopReason.STARTUP_TIMEOUT,
+        StopReason.FIRST_EVENT_TIMEOUT,
+        StopReason.IDLE_TIMEOUT,
+        StopReason.TOTAL_TIMEOUT,
+        StopReason.AUTHENTICATION_FAILED,
         # ── stream integrity ────────────────────────────────────────────────
         # The stream ended without the CLI's own end-of-turn payload: a process
         # killed from outside, a full disk, a broken pipe, a truncated final
         # line. Measured before this reason existed — the run reported
-        # ``stop_reason="complete"``, ``partial=False``, and handed back half an
+        # ``stop_reason=StopReason.COMPLETE``, ``partial=False``, and handed back half an
         # answer as a finished one, which is the worst shape a failure can take.
-        "malformed_output",
+        StopReason.MALFORMED_OUTPUT,
         # A death by signal rather than a chosen exit, and a schema the CLI
         # refused at startup. Both are refinements of ``cli_exit_<n>``.
-        "process_crashed",
-        "schema_rejected",
+        StopReason.PROCESS_CRASHED,
+        StopReason.SCHEMA_REJECTED,
     }
 )
 
@@ -221,8 +222,8 @@ def _classify_timeout(exc: CliTimedOut, stderr_bytes: bytes) -> str:
 # are NOT ``failed``: the run itself worked, the shape did not.
 _CODEX_INVALID_OUTPUT_REASONS = frozenset(
     {
-        "structured_output_missing",
-        "structured_output_mismatch",
+        StopReason.STRUCTURED_OUTPUT_MISSING,
+        StopReason.STRUCTURED_OUTPUT_MISMATCH,
     }
 )
 
@@ -626,9 +627,9 @@ class CodexCliCognition:
         # already-scoped short-lived token, or a key the caller genuinely
         # accepts on this host, and refusing would break a working
         # configuration over a name heuristic.
-        exposed = sorted(k for k in self.config_overrides if _looks_secret(k, None))
+        exposed = sorted(_exposed_secret_paths(self.config_overrides))
         for server, table in self.mcp_servers.items():
-            exposed += sorted(f"mcp_servers.{server}.{k}" for k in table if _looks_secret(k, None))
+            exposed += sorted(f"mcp_servers.{server}.{path}" for path in _exposed_secret_paths(table))
         if exposed:
             import warnings
 
@@ -1113,9 +1114,26 @@ class CodexCliCognition:
             evals["timeout_s"] = timed_out.limit_s
             evals["timeout_kind"] = timed_out.reason
         if state.model:
-            # Which model ACTUALLY ran. Codex resolves aliases and profiles on
-            # its side, so this can differ from ``self.model`` — and it is the
-            # value the cost above was computed against.
+            # Which model ACTUALLY ran, IF the CLI ever says so. It does not
+            # today: captured live from codex-cli 0.162.1, a complete turn is
+            # ``thread.started`` (``thread_id`` only), ``turn.started``,
+            # ``item.completed``, ``turn.completed`` (``usage`` only) — no model
+            # name anywhere, so no branch of the parser can set ``state.model``
+            # and this key never appears.
+            #
+            # The plumbing stays because the question it answers is real: Codex
+            # resolves aliases and profiles on its side, so the served model CAN
+            # differ from ``self.model``. What must not happen is defaulting
+            # this from the request to make the field non-empty — that would
+            # turn "we do not know what ran" into a confident wrong answer, and
+            # it is the one thing a reader of this key would rely on.
+            #
+            # Because the CLI supplies nothing, ``_priced`` falls back to
+            # ``self.model`` — the model we ASKED for. ``cost_source`` tells the
+            # truth about that (``PRICE_TABLE``/``HOST_PRICING`` = we computed
+            # it, never ``REPORTED``), but a silent server-side alias
+            # resolution would be priced against the alias and nothing would
+            # show it.
             evals["cli_model"] = state.model
         if state.thinking:
             # Reasoning summaries, separate from ``output`` (the final answer).
@@ -2349,13 +2367,56 @@ def _flatten_content(result: Any) -> str:
     return str(result)
 
 
+def _exposed_secret_paths(table: Mapping[str, Any]) -> list[str]:
+    """Dotted paths under ``table`` whose NAME says they hold a credential.
+
+    Nested, because the flattening that builds ``-c key=value`` is nested too.
+    A stdio MCP server carries its own process environment at
+    ``mcp_servers.<name>.env``, which reaches argv as
+    ``-c mcp_servers.engine.env={"SERVER_SECRET"="s3cr3t"}`` — observed verbatim.
+    Checking only the top level missed every one of those: ``env`` does not look
+    like a secret, and the name that does was one level down and never read. So
+    the single placement the module docstring says a credential must never take
+    was also the one placement the warning could not see.
+
+    One level of recursion, not arbitrary depth: that is where a TOML table's
+    credentials actually live, and an unbounded walk over caller-supplied config
+    is a different risk.
+    """
+    found: list[str] = []
+    for key, value in table.items():
+        if _looks_secret(key, None):
+            found.append(key)
+        elif isinstance(value, Mapping):
+            found.extend(f"{key}.{nested}" for nested in value if _looks_secret(nested, None))
+    return found
+
+
 def _usage_from(raw: Any) -> ProviderUsage:
     """Codex's token counts → agentkit's ``ProviderUsage``.
 
     The subtraction in :func:`_split_input_tokens` is the load-bearing line;
-    see its docstring. ``cache_write_tokens`` stays 0 because Codex reports no
-    cache-creation figure — inventing one from the difference would be a number
-    with no source.
+    see its docstring.
+
+    ``cache_write_tokens`` stays 0, and the reason is NOT that Codex reports no
+    cache-creation figure — it does. Captured live from codex-cli 0.162.1::
+
+        {"type":"turn.completed","usage":{"input_tokens":11708,
+         "cached_input_tokens":10240,"cache_write_input_tokens":0,
+         "output_tokens":5,"reasoning_output_tokens":0}}
+
+    The figure is not lost: ``turn.completed`` keeps the vendor payload verbatim
+    in ``raw_usage``, so a caller that wants it can read it.
+
+    It is not promoted to the typed field because what is unknown is its
+    RELATIONSHIP to ``input_tokens`` — whether a cache write is counted inside
+    that total or in addition to it. Cache writes bill at a premium, so getting
+    that backwards does not merely lose a number, it overcharges: priced as
+    separate when it is already included, every cached run is billed twice for
+    the same tokens. Settling it needs a live run that actually writes cache
+    (a prompt over the minimum cacheable size, repeated), which the sample above
+    is not — its value is 0. Until then the honest typed answer is 0 with the
+    vendor's own figure preserved beside it.
     """
     if not isinstance(raw, dict):
         return ProviderUsage()

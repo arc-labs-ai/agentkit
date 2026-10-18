@@ -35,6 +35,7 @@ from agentkit.models.contracts.execution import (
     CapabilityStatus,
     ExecutionAssessment,
     ExecutionCompatibility,
+    ExecutionRequirement,
     ExecutionRequirements,
 )
 from agentkit.models.contracts.failures import classify
@@ -186,23 +187,28 @@ class CallRuntime:
         if rank[requested] > rank[self.native_tool_policy]:
             raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
         adapter = self._adapter(binding)
+        # Every shipped adapter assesses its own mode — the CLI pair through
+        # `evaluate_cli_execution`, the SDK pair through `evaluate_api_execution`
+        # — so there is no per-mode special case here. An adapter injected by a
+        # host may implement none, and that is the only path below.
         evaluate = getattr(adapter, "evaluate_execution", None)
-        if evaluate is not None and not binding.mode.is_api:
+        if evaluate is not None:
             return cast(ExecutionCompatibility, await evaluate(
                 binding, execution=execution, native_tool_policy=requested,
             ))
-        if not binding.mode.is_api and binding.mode == Mode.CODEX and requested == NativeToolPolicy.DENY:
-            from agentkit.models.providers.cli.capabilities import evaluate_cli_execution
-            from agentkit.models.providers.cli.execution import BackendReport
-
-            return evaluate_cli_execution(binding.mode, BackendReport("unspecified", "unknown"),
-                                          execution or ExecutionRequirements(), requested)
-        required = (execution or ExecutionRequirements()).required
+        # An adapter that declares no assessment proves nothing, so it answers
+        # the FULL matrix as UNSUPPORTED rather than an empty report that reads
+        # as a pass. A DENY ceiling still contributes its own requirement, which
+        # is what keeps the strictest policy a constraint rather than a label.
+        required = set((execution or ExecutionRequirements()).required)
+        if requested == NativeToolPolicy.DENY:
+            required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
         facts = tuple(ExecutionAssessment(
             requirement, CapabilityStatus.UNSUPPORTED, "execution_mode_unsupported",
             "This adapter does not implement enforcement for the requested execution requirement.",
-        ) for requirement in sorted(required))
-        return ExecutionCompatibility(str(binding.mode), "unspecified", "unknown", None, facts, facts)
+        ) for requirement in ExecutionRequirement)
+        unmet = tuple(fact for fact in facts if fact.requirement in required)
+        return ExecutionCompatibility(str(binding.mode), "unspecified", "unknown", None, facts, unmet)
 
     async def run(
         self,
@@ -709,19 +715,35 @@ class CallRuntime:
                                 binding.mode, asyncio.Semaphore(self.max_concurrent_api)
                             )
                             async with semaphore:
-                                return await adapter.turn(
-                                    binding,
-                                    prompt_arg,
-                                    settings=settings_arg,
-                                    limits=limits_arg,
-                                    schema=schema,
-                                    tools=tools,
-                                    session=session_arg,
-                                    cancel=cancel,
-                                    emit=mode_event,
-                                    call_id=call_id,
-                                    native_agents=agents_arg,
-                                    workspace=workspace_arg,
+                                return cast(
+                                    Turn,
+                                    await cast(Any, adapter).turn(
+                                        binding,
+                                        prompt_arg,
+                                        settings=settings_arg,
+                                        limits=limits_arg,
+                                        schema=schema,
+                                        tools=tools,
+                                        session=session_arg,
+                                        cancel=cancel,
+                                        emit=mode_event,
+                                        call_id=call_id,
+                                        native_agents=agents_arg,
+                                        workspace=workspace_arg,
+                                        # Stated requirements travel with every
+                                        # turn so they bind through retries and
+                                        # corrections, not only the entry gate.
+                                        # Omitted when unstated, so an adapter
+                                        # predating the parameter still runs.
+                                        **(
+                                            {
+                                                "execution": execution,
+                                                "native_tool_policy": effective_native_policy,
+                                            }
+                                            if execution is not None
+                                            else {}
+                                        ),
+                                    ),
                                 )
                         semaphore = self._cli_semaphores.setdefault(
                             binding.mode, asyncio.Semaphore(self.max_concurrent_cli)

@@ -251,6 +251,18 @@ TOOLSCHEMA_TESTS = (
 TOOLCALLID_TESTS = (
     "tests/source/unit/models/test_tool_call_identity.py",
 )
+FENCE_TEARDOWN_TESTS = (
+    "tests/source/unit/models/providers/cli/claude/test_native_hooks.py",
+)
+CODEX_ARGV_SECRET_TESTS = (
+    "tests/source/unit/models/providers/cli/codex/test_codex_cli_flags.py",
+)
+KERNEL_TESTS = (
+    "tests/source/unit/core/test_kernel.py",
+)
+USAGE_HONESTY_TESTS = (
+    "tests/source/unit/models/providers/cli/claude/test_claude_cli_failure_paths.py",
+)
 AGREEMENT_TESTS = (
     "tests/source/unit/models/adapters/test_transport_classifier_agreement.py",
 )
@@ -2014,61 +2026,6 @@ MUTANTS: tuple[Mutant, ...] = (
         after='                raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK)',
         tests=RETRYABILITY_TESTS,
     ),
-)
-
-
-# ── invariants the rewrite left unenforced ───────────────────────────────────
-#
-# These entries' source anchors are LIVE — the code they mutate still exists
-# and `--verify` still checks it, so none of this rots. What they lost is their
-# verification: the reorganisation deleted the test files that caught them, and
-# nothing has replaced those yet. Probed against the test directories that did
-# survive, these are not caught.
-#
-# They are parked here rather than deleted because the analysis in each `why`
-# is the map of what the rewrite stopped guaranteeing, and each one becomes a
-# working catalogue entry again the moment a test covers it: move it back into
-# MUTANTS and point `tests` at the file.
-#
-# They are OUT of the gate because a catalogue entry that cannot be run proves
-# nothing, and leaving them in made the job fail without telling anyone which
-# invariants were actually unguarded. `MUTANTS` is now exactly the set that is
-# enforced, and the gate's green means that literally.
-#
-# Run `python .github/scripts/mutants.py --unenforced` to list them.
-UNENFORCED: tuple[Mutant, ...] = (
-    Mutant(
-        tag="frozen",
-        why="Checkpoint.state stops being frozen, so a persisted record is rewritable in memory",
-        path="agentkit/core/contracts/ports.py",
-        before='        object.__setattr__(self, "state", deep_freeze(self.state))',
-        after="        pass",
-        tests=FROZENVAL_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="Checkpoint hashes its mutable state, so a durable record is unhashable again",
-        path="agentkit/core/contracts/ports.py",
-        before="        return hash((self.run_id, self.version))",
-        after="        return hash((self.run_id, self.version, tuple(self.state)))",
-        tests=PORTS_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="SearchHit folds query-dependent score into identity, so one document lands in two buckets",
-        path="agentkit/core/contracts/ports.py",
-        before="        return hash((self.url, self.title))",
-        after="        return hash((self.url, self.title, self.score))",
-        tests=PORTS_TESTS,
-    ),
-    Mutant(
-        tag="hashable",
-        why="FetchResponse hashes the body, making hash O(page size) on every set insert",
-        path="agentkit/core/contracts/ports.py",
-        before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
-        after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
-        tests=PORTS_TESTS,
-    ),
     Mutant(
         tag="hashable",
         why="ToolSchema hashes the JSON Schema body, so every non-empty schema is unhashable",
@@ -2092,22 +2049,6 @@ UNENFORCED: tuple[Mutant, ...] = (
         before="        return hash((self.name, self.side_effecting, self.url_arg))",
         after="        return hash((self.name, self.side_effecting, self.url_arg, str(self.arguments)))",
         tests=KERNELTYPE_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="Prompt stops being hashable, breaking every dict/set/lru_cache holding one",
-        path="agentkit/agents/prompts/prompt.py",
-        before="        return hash((self.id, self.version, self.template, self.inputs))",
-        after="        return hash(self.bound)",
-        tests=PROMPT_TESTS,
-    ),
-    Mutant(
-        tag="regress",
-        why="Prompt.bound stops being frozen, so a caller edits a bound prompt after the fact",
-        path="agentkit/agents/prompts/prompt.py",
-        before="        frozen = deep_freeze(dict(self.bound))",
-        after="        frozen = dict(self.bound)",
-        tests=PROMPT_TESTS,
     ),
     Mutant(
         tag="regress",
@@ -2187,6 +2128,102 @@ UNENFORCED: tuple[Mutant, ...] = (
         before="min(attempt - 1, 1023)",
         after="attempt - 1",
         tests=BREAKER_TESTS,
+    ),
+    Mutant(
+        tag="fenceteardown",
+        why="THE BUG, and it leaked a CREDENTIAL. `client.json` holds the shared secret the hook authenticates with, and both awaits in `__aexit__` sat in front of the directory removal — so cancelling a teardown with a decision in flight abandoned the directory, the token file and the socket. Measured: one leaked directory and live token per cancelled attempt, removed only whenever the `TemporaryDirectory` finalizer happened to run. `integrations/mcp/serve.py` already guards the identical hazard and has its own 'a cancelled stop left the bearer token on disk' regression; the fence had none. NOTE the shielding and the `finally` are INDEPENDENTLY sufficient, so a one-line mutation of either survives — this entry replaces the whole pair, which is the only mutation the test can see.",
+        path='agentkit/models/providers/cli/claude/native_hooks.py',
+        before='    async def __aexit__(self, *exc: Any) -> None:\n        """Tear the fence down, and finish doing so even if cancelled.\n\n        ``client.json`` holds the shared secret the hook authenticates with, so\n        a teardown that stops halfway leaves a live credential on disk next to a\n        socket path that names it. Both awaits below used to sit in front of the\n        directory removal, so cancelling a teardown with a decision in flight\n        left the directory, the token file and the socket behind — measured, one\n        leaked directory per cancelled attempt, cleaned up only whenever the\n        ``TemporaryDirectory`` finalizer happened to run.\n\n        The shape is the one ``integrations/mcp/serve.py`` already uses for the\n        same hazard: the work runs as a task that cancellation cannot abandon,\n        the caller\'s ``CancelledError`` is re-raised after it finishes, and the\n        removal itself is in a ``finally`` so it happens even when the shutdown\n        raises.\n        """\n        cleanup = asyncio.ensure_future(self._teardown())\n        interrupted = False\n        while not cleanup.done():\n            try:\n                await asyncio.shield(cleanup)\n            except asyncio.CancelledError:\n                interrupted = True\n        cleanup.result()\n        if interrupted:\n            raise asyncio.CancelledError\n\n    async def _teardown(self) -> None:\n        """Stop serving, let any decision in flight finish, then remove the secret.\n\n        The ordering is deliberate and is NOT a missed cancellation\n        opportunity. Cancelling an in-flight handler would leave the hook with\n        no answer to print, and Claude reads a decision-less hook as a\n        nonblocking error — which means the tool RUNS. So an in-flight decision\n        is allowed to complete, and it always completes: the callback deadline\n        is shorter than the client\'s, which is shorter than the CLI\'s, and every\n        unusable answer becomes a deny. Waiting out that deadline is the price\n        of failing closed, and it is the right price.\n        """\n        try:\n            if self._server is not None:\n                self._server.close()\n                await self._server.wait_closed()\n                self._server = None\n            pending = tuple(self._tasks)\n            for task in pending:\n                task.cancel()\n            if pending:\n                await asyncio.gather(*pending, return_exceptions=True)\n        finally:\n            if self._directory is not None:\n                self._directory.cleanup()\n                self._directory = None\n',
+        after='    async def __aexit__(self, *exc: Any) -> None:\n        if self._server is not None:\n            self._server.close()\n            await self._server.wait_closed()\n            self._server = None\n        pending = tuple(self._tasks)\n        for task in pending:\n            task.cancel()\n        if pending:\n            await asyncio.gather(*pending, return_exceptions=True)\n        if self._directory is not None:\n            self._directory.cleanup()\n            self._directory = None\n',
+        tests=FENCE_TEARDOWN_TESTS,
+    ),
+    Mutant(
+        tag="codexargvsecret",
+        why='the `ps`-exposure warning goes back to reading only TOP-LEVEL table keys. `codex exec` has no config-file flag, so a secret in `-c key=value` is readable by any local account, and this warning is the only thing that tells the operator. A stdio MCP server carries its own process environment at `mcp_servers.<name>.env`, which reaches argv verbatim as `-c mcp_servers.engine.env={"SERVER_SECRET"="s3cr3t"}` — observed. Checking one level missed every one of those: `env` does not look like a secret and the name that does was one level down, so the single placement the docstring says a credential must never take was also the one the warning could not see.',
+        path='agentkit/models/providers/cli/codex/driver.py',
+        before='            exposed += sorted(f"mcp_servers.{server}.{path}" for path in _exposed_secret_paths(table))',
+        after='            exposed += sorted(f"mcp_servers.{server}.{k}" for k in table if _looks_secret(k, None))',
+        tests=CODEX_ARGV_SECRET_TESTS,
+    ),
+    Mutant(
+        tag="breakerprobe",
+        why='a refusal from a NESTED breaker stops handing back the outer breaker\'s probe slot. Breakers compose — one per dependency, and `recurrence.py` wraps this function — so a `CircuitOpen` raised by `fn` means the call never reached THIS dependency, while still having consumed the single half-open slot. Doing neither `record_failure` nor `release_probe` wedges the breaker in `half_open` holding a slot nothing will release: measured, `outer.state == "half_open"` after an inner refusal, so a fully recovered dependency stays refused for another whole cooldown. The same wedge was already fixed for the PERMANENT and `BaseException` paths; this branch was missed.',
+        path='agentkit/core/execution/resilience.py',
+        before='            # contract).\n            if breaker is not None:\n                breaker.release_probe()\n            raise\n',
+        after='            # contract).\n            raise\n',
+        tests=KERNEL_TESTS,
+    ),
+    Mutant(
+        tag="breakerprobe",
+        why='the permanent-verdict comparison goes back to `is`. `ErrorClass` is a `StrEnum`, so its members ARE their string values, and `classify_fn` is the documented escape hatch for callers who want better than substring matching. A hand-written classifier returning `"permanent"` — the obvious thing to write in untyped code, and what survives any JSON or config round trip — is not IDENTICAL to `ErrorClass.PERMANENT`, so identity read the caller\'s own permanent verdict as not-permanent and retried: measured, three attempts on a 401 the caller had explicitly classified permanent. Equality is identical for every real member, so nothing that worked before changes.',
+        path='agentkit/core/execution/resilience.py',
+        before='            if cls == ErrorClass.PERMANENT or attempt == max_attempts:',
+        after='            if cls is ErrorClass.PERMANENT or attempt == max_attempts:',
+        tests=KERNEL_TESTS,
+    ),
+    Mutant(
+        tag="usagehonesty",
+        why="THE BUG, and it was a default. ``ProviderUsage.__post_init__`` resolves a missing ``cost_source`` from ``cost_usd``, so a default of ``0.0`` made every UN-POPULATED usage claim ``CostSource.REPORTED`` — a positive assertion that the provider billed nothing. Measured in the Claude CLI driver: a run that never reaches the CLI's ``result`` payload (truncated stream, cancel, timeout, crash, spawn failure) left ``ProviderUsage()`` untouched and reported ``cost_usd=0.0`` / ``REPORTED``, then charged ``0.0`` to every meter — so a ten-minute Opus run that failed looked free and a budget kept headroom it had already spent. ``CostSource`` is the one field whose whole job is separating billing from estimates from UNAVAILABLE, and it reported the strongest of the three. ``CodexCliCognition._priced`` guards the same case by hand; nothing guarded it here. Fixing the default broke exactly ONE test out of 2278 — the strict xfail that had been written to document the defect.",
+        path='agentkit/core/contracts/types.py',
+        before='    cost_usd: float | None = None',
+        after='    cost_usd: float | None = 0.0',
+        tests=USAGE_HONESTY_TESTS,
+    ),
+    Mutant(
+        tag="breakerprobe",
+        why="a straggler failure pushes the cooldown out again. ``record_success`` already refuses to act on a call admitted before the trip and documents why — it is 'evidence about the past, not about whether the dependency has recovered' — and ``record_failure`` did the opposite: every straggler draining out of the pool still satisfied the threshold, so it reset ``_opened_at`` to the moment IT finished. Measured with ``cooldown=15`` and ten calls draining over 20s: a probe refused at +34s and first admitted at +36s, extendable without bound by a slow drain. The breaker then never probes, so a dependency that recovered during the cooldown stays shut out by the backlog of its own outage — the stampede guard starving the recovery it exists to find.",
+        path='agentkit/core/execution/resilience.py',
+        before='            self._fails += 1\n            if self.state == "open":',
+        after='            self._fails += 1\n            if False:',
+        tests=KERNEL_TESTS,
+    ),
+    Mutant(
+        tag="frozen",
+        why="Checkpoint.state stops being frozen, so a persisted record is rewritable in memory",
+        path="agentkit/core/contracts/ports.py",
+        before='        object.__setattr__(self, "state", deep_freeze(self.state))',
+        after="        pass",
+        tests=FROZENVAL_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="Checkpoint hashes its mutable state, so a durable record is unhashable again",
+        path="agentkit/core/contracts/ports.py",
+        before="        return hash((self.run_id, self.version))",
+        after="        return hash((self.run_id, self.version, tuple(self.state)))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="SearchHit folds query-dependent score into identity, so one document lands in two buckets",
+        path="agentkit/core/contracts/ports.py",
+        before="        return hash((self.url, self.title))",
+        after="        return hash((self.url, self.title, self.score))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="hashable",
+        why="FetchResponse hashes the body, making hash O(page size) on every set insert",
+        path="agentkit/core/contracts/ports.py",
+        before="        return hash((self.url, self.status, self.content_type, self.fetched_at))",
+        after="        return hash((self.url, self.status, self.content_type, self.fetched_at, self.body))",
+        tests=PORTS_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="Prompt stops being hashable, breaking every dict/set/lru_cache holding one",
+        path="agentkit/agents/prompts/prompt.py",
+        before="        return hash((self.id, self.version, self.template, self.inputs))",
+        after="        return hash(self.bound)",
+        tests=PROMPT_TESTS,
+    ),
+    Mutant(
+        tag="regress",
+        why="Prompt.bound stops being frozen, so a caller edits a bound prompt after the fact",
+        path="agentkit/agents/prompts/prompt.py",
+        before="        frozen = deep_freeze(dict(self.bound))",
+        after="        frozen = dict(self.bound)",
+        tests=PROMPT_TESTS,
     ),
     Mutant(
         tag="prompt",
@@ -2365,6 +2402,29 @@ UNENFORCED: tuple[Mutant, ...] = (
         after='        "metadata": {},',
         tests=("tests/source/conformance/test_persistence.py",),
     ),
+)
+
+
+# ── invariants the rewrite left unenforced ───────────────────────────────────
+#
+# These entries' source anchors are LIVE — the code they mutate still exists
+# and `--verify` still checks it, so none of this rots. What they lost is their
+# verification: the reorganisation deleted the test files that caught them, and
+# nothing has replaced those yet. Probed against the test directories that did
+# survive, these are not caught.
+#
+# They are parked here rather than deleted because the analysis in each `why`
+# is the map of what the rewrite stopped guaranteeing, and each one becomes a
+# working catalogue entry again the moment a test covers it: move it back into
+# MUTANTS and point `tests` at the file.
+#
+# They are OUT of the gate because a catalogue entry that cannot be run proves
+# nothing, and leaving them in made the job fail without telling anyone which
+# invariants were actually unguarded. `MUTANTS` is now exactly the set that is
+# enforced, and the gate's green means that literally.
+#
+# Run `python .github/scripts/mutants.py --unenforced` to list them.
+UNENFORCED: tuple[Mutant, ...] = (
 )
 
 

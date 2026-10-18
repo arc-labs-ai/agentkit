@@ -699,8 +699,25 @@ class CliAdapter:
                     elif event.type in (EventKind.TOOL_CALL, EventKind.TOOL_RESULT):
                         call = event.tool_call
                         fields = {"name": getattr(call, "name", "")}
-                        if event.type == EventKind.TOOL_CALL and call is not None:
+                        if call is not None:
+                            # BOTH event types, and the result is the one that
+                            # needs it most. A Claude tool-result payload carries
+                            # only ``tool_use_id`` — no name — so the driver
+                            # honestly builds its ``ToolCall`` with ``name=""``.
+                            # Attaching the id to calls alone therefore left a
+                            # result identified by NOTHING: observed live,
+                            # ``[('', None), ('', None), ('', None)]`` for three
+                            # real tool results, while the driver's own comment
+                            # said it emitted the event "so downstream observers
+                            # see the pairing".
+                            #
+                            # The id is what the pairing IS, and the SDK path has
+                            # always emitted it on both. The name stays blank
+                            # rather than being looked up from the earlier call:
+                            # the id already answers "which call", and inventing
+                            # a name here would be this layer guessing.
                             fields["tool_call_id"] = getattr(call, "id", None)
+                        if event.type == EventKind.TOOL_CALL and call is not None:
                             fields["arguments"] = getattr(call, "arguments", None)
                         if event.type == EventKind.TOOL_RESULT and event.tool_result is not None:
                             result = event.tool_result
