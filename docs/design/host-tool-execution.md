@@ -545,3 +545,89 @@ own virtual environment. No source mutation ran in the working repository or
 overlapped tests against its source. Five new mutants cover host DENY, unattended
 approval, input validation, stale receipts and transport body bounds. An existing
 backend-guarantee mutant was re-anchored to the stronger refusal condition.
+
+## Provider-neutral image results
+
+Host tools return one in-memory representation across SDK execution and CLI
+MCP serving: an image block is `{"type": "image", "mimeType": "image/png",
+"data": png_bytes}`, where `data` is nonempty immutable **raw `bytes`**.
+Supported MIME types are `image/png`, `image/jpeg`, `image/gif` and `image/webp`.
+The shared codec checks representation, MIME and a 20 MiB raw-image bound;
+it does not decode images or certify file integrity. Providers can impose
+additional image restrictions.
+
+```python
+from agentkit.tools import ToolResult, tool
+
+@tool(side_effecting=False)
+def render_chart() -> ToolResult:
+    """Return a small chart image and its caption for visual analysis."""
+    import base64
+
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+    )
+    return ToolResult((
+        {"type": "text", "text": "A one-pixel red chart fixture"},
+        {"type": "image", "mimeType": "image/png", "data": png},
+    ), structured={"caption": "red"}, is_error=False)
+```
+
+Grant this tool through the same `ToolRegistry`/`ToolSet` as other host tools.
+The SDK serializers encode raw bytes into an OpenAI Responses data URL or an
+Anthropic Messages base64 source; both MCP serving entry points encode into MCP
+image content. Each wire image is base64-encoded once. Text siblings and MIME
+survive. Anthropic and MCP carry the error flag; OpenAI function outputs have
+no error-flag field, so AgentKit retains it in canonical messages and lifecycle
+events. MCP also preserves `structuredContent`, including an empty object.
+SDK function outputs use the content blocks, as before.
+
+`OverflowPolicy.max_bytes` measures the UTF-8 JSON envelope
+`{"content": <encoded blocks>, "structuredContent": <structured or null>}`
+with Python's `json.dumps(..., ensure_ascii=False)` defaults, including base64
+expansion and text siblings. This is a provider-neutral output bound, not a
+claim about a provider's entire request size. Exact equality is allowed.
+An oversized result containing an image is refused with `tool_output_limit`;
+it is never replaced by an overflow-file path. Text-only overflow retains its
+existing file behavior. Malformed tool content produces `invalid_tool_content`
+through `ToolSet.execute`; direct SDK serialization raises a safe `ValueError`,
+and direct MCP serving returns `isError=true`. Private values are not copied
+into these diagnostics. Image result event sizes include encoded content bytes;
+text-only event size behavior is unchanged.
+
+Migration: SDK tool handlers that returned base64 strings must return the
+original bytes instead (or decode trusted base64 when implementing the handler).
+Use `mimeType`, not `mime_type`. Do not branch a tool result by provider.
+Canonical `Message.content_blocks` now also holds raw image bytes. JSON message
+persistence uses AgentKit's message codec, which encodes on write and decodes on
+read; older JSON transcripts containing valid base64 remain readable. Replay
+bounds and context/result digests use the encoded representation. Generic
+`json.dumps(dataclasses.asdict(message))` cannot serialize raw image bytes.
+
+The tests in `tests/source/conformance/test_tool_images.py` use a complete PNG
+with checked chunk CRCs and pixel data. OpenAI/Anthropic adapter calls use
+scripted HTTP, while MCP cases use the actual authenticated localhost listener
+with per-server synthetic bearer credentials, concurrent requests and planted
+cross-call tokens. These prove serialization and transport behavior. They do
+not certify CLI native-tool isolation, spending guarantees or provider acceptance;
+existing execution assessment/refusals still apply. No paid/provider-authenticated
+calls are part of these tests. Host, provider and transport invocation IDs remain
+separate correlation fields; provider/transport IDs never authorize an effect.
+
+For explicitly authorized paid validation, the focused test below uses real
+OpenAI and Anthropic API transports. Supply `OPENAI_API_KEY` and
+`ANTHROPIC_API_KEY` to the test process, then run:
+
+```bash
+AGENTKIT_LIVE=1 uv run pytest -q tests/source/live/test_live_tool_images.py
+```
+
+Each provider must call the host tool, receive byte-identical PNG data and
+identify a privately selected solid color through the typed answer contract.
+The test checks invocation correlation, complete usage and nonzero attributed
+cost. It keeps `NativeToolPolicy.DENY`, disables transport retries and bounds
+turns, output tokens and duration. These bounds are not an exact dollar cap.
+Only these two API modes are paid-tested by this command; it does not promote
+CLI containment capabilities. Without opt-in or the corresponding key, tests
+skip and do not count as live-provider evidence. Never paste credentials into
+commands, test output or source control.

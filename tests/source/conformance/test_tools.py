@@ -284,7 +284,7 @@ async def test_dispatcher_preserves_loaded_error_image_and_overflow_semantics(tm
     @tool(side_effecting=False)
     def loaded_image() -> dict:
         """Read a loaded image result for visual analysis."""
-        return {"content": [{"type": "image", "data": "eA==", "mimeType": "image/png"}]}
+        return {"content": [{"type": "image", "data": b"x", "mimeType": "image/png"}]}
 
     @tool(side_effecting=False)
     def loaded_large() -> str:
@@ -372,7 +372,7 @@ async def test_serve_observer_keeps_image_content_and_overflow_flags(tmp_path):
     @tool(side_effecting=False)
     def picture() -> dict:
         """Read an image result for visual model analysis."""
-        return {"content": [{"type": "image", "data": "eA==", "mimeType": "image/png"}]}
+        return {"content": [{"type": "image", "data": b"x", "mimeType": "image/png"}]}
 
     @tool(side_effecting=False)
     def large() -> str:

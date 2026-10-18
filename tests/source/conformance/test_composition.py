@@ -155,7 +155,7 @@ async def test_tool_policy_is_shared_for_error_overflow_images_and_deferred_load
     spilled = await tools.execute("long_result", {}, ctx)
     assert spilled.overflowed and len(set(tmp_path.glob("*.json")) - existing_spills) == 1
     assert (await tools.execute("bad_result", {}, ctx)).is_error
-    image = ToolResult(({"type": "image", "data": "eA==", "mimeType": "image/png"},))
+    image = ToolResult(({"type": "image", "data": b"x", "mimeType": "image/png"},))
     assert (await tools.handle("image", image)).content[0]["type"] == "image"
     # `ToolSet` is frozen, so an image-free policy is a separate value rather
     # than the same object edited mid-run.

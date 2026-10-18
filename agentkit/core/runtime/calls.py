@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
 import hmac
 import inspect
@@ -21,6 +20,8 @@ from typing import Any, cast
 from agentkit.agents.prompts.composition import ComposedPrompt, digest, inline_prompt
 from agentkit.core.contracts.types import Message, MessageRole, Mode, Scope, ToolCall
 from agentkit.core.execution.concurrency import CancellationToken, Cancelled
+from agentkit.core.serialization.content import encode_content
+from agentkit.core.serialization.messages import message_to_dict
 from agentkit.models.adapters.messages import canonical_turn, close_pending_tools, history_for, tool_content
 from agentkit.models.catalog.pricing import PriceTable, normalize_usage, price, usage_delta
 from agentkit.models.contracts.constants import (
@@ -295,7 +296,7 @@ class CallRuntime:
                 MessageRole.USER,
                 prompt.user,
                 content_blocks=tuple(
-                    {"type": "image", "mimeType": image.mime_type, "data": base64.b64encode(image.data).decode("ascii")}
+                    {"type": "image", "mimeType": image.mime_type, "data": image.data}
                     for image in prompt.images
                 ),
                 metadata={"call_id": call_id, "agent_id": working.get("agent_id")},
@@ -430,7 +431,7 @@ class CallRuntime:
             mode=binding.mode,
             model=binding.model,
             agent_id=working.get("agent_id"),
-            context_digest=digest([asdict(m) for m in working.messages]),
+            context_digest=digest([message_to_dict(m) for m in working.messages]),
             settings=asdict(effective.settings),
             inputs_digest=prompt.manifest.inputs_digest,
             prompt_manifest_digest=prompt.manifest.digest,
@@ -1192,8 +1193,12 @@ class CallRuntime:
                                 EventKind.TOOL_RESULT,
                                 name=call["name"],
                                 tool_call_id=call["id"],
-                                result_size=len(result.text),
-                                result_digest=digest(result.content),
+                                result_size=(
+                                    len(json.dumps(encode_content(result.content), ensure_ascii=False).encode())
+                                    if any(block.get("type") == "image" for block in result.content)
+                                    else len(result.text)
+                                ),
+                                result_digest=digest(encode_content(result.content)),
                                 overflowed=result.overflowed,
                                 is_error=result.is_error,
                                 **preview_fields,

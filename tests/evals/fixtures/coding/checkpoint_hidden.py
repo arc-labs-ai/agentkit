@@ -9,7 +9,7 @@ def test_message_content_metadata_and_blocks_survive_json_roundtrip() -> None:
         "assistant",
         "chart summary",
         metadata={"agent_id": "analyst", "nested": {"facts": ["a", "b"]}},
-        content_blocks=({"type": "image", "mimeType": "image/png", "data": "eA=="},),
+        content_blocks=({"type": "image", "mimeType": "image/png", "data": b"x"},),
     )
     restored = message_from_dict(json.loads(json.dumps(message_to_dict(original))))
     assert restored == original

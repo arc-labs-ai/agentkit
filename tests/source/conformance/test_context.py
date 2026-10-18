@@ -49,7 +49,7 @@ def test_tool_and_image_messages_translate_without_raw_reasoning():
         Message(
             MessageRole.TOOL,
             tool_call_id="c",
-            content_blocks=({"type": "image", "mimeType": "image/png", "data": "eA=="},),
+            content_blocks=({"type": "image", "mimeType": "image/png", "data": b"x"},),
         ),
     ]
     anth = history_for(messages, Mode.ANTHROPIC_API)
@@ -155,7 +155,7 @@ async def test_cli_host_tool_evidence_survives_api_switch(monkeypatch, target):
             ToolResult(
                 (
                     {"type": "text", "text": "tool evidence 937"},
-                    {"type": "image", "mimeType": "image/png", "data": "eA=="},
+                    {"type": "image", "mimeType": "image/png", "data": b"x"},
                 ),
                 is_error=True,
             ),

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import inspect
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
+from agentkit.core.serialization.messages import message_to_dict
 from agentkit.state.context.context import WorkingContext
 from agentkit.state.context.policy import ContextPolicy
 
@@ -38,7 +39,7 @@ async def prepare_bounded_replay(
             raise TypeError("context_policy must return WorkingContext")
         context = revised
     encoded = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"), allow_nan=False).iterencode(
-        [asdict(message) for message in (*context.prefix.as_messages(), *context.messages)]
+        [message_to_dict(message) for message in (*context.prefix.as_messages(), *context.messages)]
     )
     byte_size = sum(len(piece.encode("utf-8")) for piece in encoded)
     return BoundedReplay(
