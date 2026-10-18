@@ -23,7 +23,19 @@ from urllib.parse import urlsplit, urlunsplit
 from agentkit.agents.prompts.composition import digest
 from agentkit.core.contracts.types import ToolSchema
 from agentkit.tools import ToolRegistry
+from agentkit.tools.declarations.errors import ToolExecutionError
 from agentkit.tools.execution.policy import ToolResult, ToolSet
+
+
+class _GatewayPermissionError(ToolExecutionError, PermissionError):
+    """Curated gateway refusal, also catchable as the existing PermissionError."""
+
+    def __init__(self, safe_message: str) -> None:
+        super().__init__(safe_message, code="permission_denied")
+
+
+class _GatewayProtocolError(ToolExecutionError, NotImplementedError):
+    """Curated unsupported-protocol diagnosis without remote result contents."""
 
 
 class McpServerStatus(StrEnum):
@@ -543,21 +555,21 @@ class _ExternalTool:
     async def run(self, args: Mapping[str, Any], ctx: Any) -> Any:
         ctx.check_cancelled()
         if self.server.status != McpServerStatus.CONNECTED:
-            raise PermissionError("external MCP connection is closed or unavailable")
+            raise _GatewayPermissionError("external MCP connection is closed or unavailable")
         current = self.server.definitions.get(self.remote_name)
         if current is None or digest(current) != self.pin or self.server.approved.get(self.remote_name) != self.pin:
-            raise PermissionError("external tool definition changed; approval required")
+            raise _GatewayPermissionError("external tool definition changed; approval required")
         if not self.server.policy.permits(self.server.config.identity, self.remote_name):
-            raise PermissionError("external tool is denied")
+            raise _GatewayPermissionError("external tool is denied")
         if self.server.policy.approval:
             approved = self.server.policy.approval(self.server.config.identity, self.remote_name, args)
             if hasattr(approved, "__await__"):
                 approved = await approved
             if not approved:
-                raise PermissionError("external tool invocation was not approved")
+                raise _GatewayPermissionError("external tool invocation was not approved")
         async with asyncio.timeout(self.server.config.timeout_s):
             result = await self.server.client.call_tool(self.remote_name, dict(args))
         raw = result if isinstance(result, dict) else result.model_dump(by_alias=True, exclude_none=True)
         if raw.get("resultType", "complete") != "complete" or "inputRequests" in raw:
-            raise NotImplementedError("MCP multi-round-trip or task results require a host client")
+            raise _GatewayProtocolError("MCP multi-round-trip or task results require a host client")
         return ToolResult(tuple(raw.get("content") or []), raw.get("structuredContent"), bool(raw.get("isError")))

@@ -25,6 +25,7 @@ from agentkit.core.runtime.calls import CallRuntime
 from agentkit.core.serialization._immutable import thaw
 from agentkit.models.catalog.pricing import PriceTable
 from agentkit.models.contracts.constants import CostSource, EventKind, MindKind, Outcome
+from agentkit.models.contracts.execution import ExecutionRequirements
 from agentkit.models.contracts.schema import OutputSpec
 from agentkit.models.contracts.types import Answer, Binding, CallEvent, EventSink, SessionHandle, Workspace
 from agentkit.state.context import MemoryContext, MemoryProvider, WorkingContext
@@ -104,6 +105,7 @@ class AgentRunner:
         stable_prefix: bool = False,
         capture_text: bool | None = None,
         native_tool_policy: Any = None,
+        execution: ExecutionRequirements | None = None,
         fork: bool = False,
         native_agents: Mapping[str, Any] | None = None,
         triggering_events: tuple[CallEvent, ...] = (),
@@ -130,6 +132,7 @@ class AgentRunner:
             stable_prefix=stable_prefix,
             capture_text=capture_text,
             native_tool_policy=native_tool_policy,
+            execution=execution,
             fork=fork,
             native_agents=native_agents,
             triggering_events=triggering_events,
@@ -157,6 +160,7 @@ class AgentRunner:
         stable_prefix: bool = False,
         capture_text: bool | None = None,
         native_tool_policy: Any = None,
+        execution: ExecutionRequirements | None = None,
         fork: bool = False,
         native_agents: Mapping[str, Any] | None = None,
         triggering_events: tuple[CallEvent, ...] = (),
@@ -318,6 +322,7 @@ class AgentRunner:
                             stable_prefix=stable_prefix,
                             capture_text=capture_text,
                             native_tool_policy=native_tool_policy,
+                            execution=execution,
                             fork=fork,
                             native_agents=native_agents,
                         )
@@ -431,6 +436,7 @@ class AgentRunner:
                 stable_prefix=stable_prefix,
                 capture_text=capture_text,
                 native_tool_policy=native_tool_policy,
+                execution=execution,
                 fork=fork,
                 native_agents=native_agents,
                 context_policy=self.context_policy,

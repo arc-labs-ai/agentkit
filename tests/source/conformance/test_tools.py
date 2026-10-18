@@ -8,7 +8,7 @@ import pytest
 from agentkit.core.execution.concurrency import CancellationToken, Cancelled
 from agentkit.core.testing import make_test_ctx
 from agentkit.integrations.mcp import serve_registry
-from agentkit.tools import ToolRegistry, tool
+from agentkit.tools import ToolExecutionError, ToolRegistry, tool
 from agentkit.tools.execution.policy import OverflowPolicy, ToolResult, ToolSet, describe_limits, serve
 
 
@@ -279,7 +279,7 @@ async def test_dispatcher_preserves_loaded_error_image_and_overflow_semantics(tm
     @tool(side_effecting=False)
     def loaded_error() -> str:
         """Read a loaded tool that reports an execution failure."""
-        raise ValueError("recover with another input")
+        raise ToolExecutionError("recover with another input")
 
     @tool(side_effecting=False)
     def loaded_image() -> dict:

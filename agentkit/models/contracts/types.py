@@ -21,11 +21,13 @@ from agentkit.models.contracts.constants import (
     Effort,
     EventKind,
     FailureClass,
+    NativeToolPolicy,
     Outcome,
     ReasoningSummary,
     ServiceTier,
     Verbosity,
 )
+from agentkit.models.contracts.execution import ExecutionRequirements
 from agentkit.state.context import PrefixContext
 
 T = TypeVar("T")
@@ -285,9 +287,13 @@ class SessionHandle:
     home_bundle_ref: SessionBundleRef | None = None
     reported_cost: Decimal | None = None
     prefix: PrefixContext = field(default_factory=PrefixContext)
+    execution: ExecutionRequirements | None = None
+    native_tool_policy: NativeToolPolicy | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", Mode(self.mode))
+        if self.native_tool_policy is not None:
+            object.__setattr__(self, "native_tool_policy", NativeToolPolicy(self.native_tool_policy))
         object.__setattr__(self, "history", tuple(deep_freeze(dict(x)) for x in self.history))
         object.__setattr__(self, "raw_usage", deep_freeze(dict(self.raw_usage)))
 

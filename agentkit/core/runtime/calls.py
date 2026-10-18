@@ -85,6 +85,7 @@ class _ToolContext:
     cancel: Any
     correlation_id: str
     autonomy: str = "auto"
+    attempt_id: str | None = None
 
     def check_cancelled(self) -> None:
         if self.cancel is not None:
@@ -246,6 +247,13 @@ class CallRuntime:
             native_tool_policy
         )
         policy_rank = {NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}
+        if resume is not None:
+            if resume.execution is not None:
+                execution = (execution or ExecutionRequirements()).constrain(resume.execution)
+            if resume.native_tool_policy is not None:
+                requested_native_policy = min(
+                    (requested_native_policy, resume.native_tool_policy), key=policy_rank.__getitem__,
+                )
         if policy_rank[requested_native_policy] > policy_rank[self.native_tool_policy]:
             raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
         adapter_policy = getattr(self.adapters.get(binding.mode), "native_tool_policy", requested_native_policy)
@@ -519,6 +527,8 @@ class CallRuntime:
                 model=binding.model,
                 prefix=working.prefix,
                 home_bundle_ref=resume.home_bundle_ref if keep_native_cli_session and resume is not None else None,
+                execution=execution,
+                native_tool_policy=effective_native_policy,
             )
         elif resume and resume.history:
             current_session = replace(resume, history=(*resume.history, {"role": "user", "content": prompt.user}))
@@ -584,6 +594,7 @@ class CallRuntime:
             compatibility = None
             if schema_failure is None and (
                 execution is not None or hasattr(adapter, "evaluate_execution")
+                or effective_native_policy == NativeToolPolicy.DENY
             ):
                 compatibility = await self.evaluate_execution(
                     binding, execution=execution, native_tool_policy=effective_native_policy,
@@ -691,6 +702,11 @@ class CallRuntime:
                         if binding.mode.is_api:
                             turn_settings = replace(turn_settings, max_output_tokens=cap)
                     attempt_session = current_session
+                    assessment_kwargs = (
+                        {"assessment_id": compatibility.configuration_id,
+                         **({"attempt_id": f"{call_id}:{attempts}"} if not binding.mode.is_api else {})}
+                        if compatibility is not None and compatibility.configuration_id else {}
+                    )
                     model_in_flight = True
                     await emit(EventKind.ATTEMPT_STARTED, attempt=attempts, mode=binding.mode, model=binding.model)
 
@@ -704,6 +720,7 @@ class CallRuntime:
                         slice_arg: int | None = turns_per_slice,
                         stable_prefix_arg: bool = stable_prefix,
                         fork_arg: bool = fork,
+                        assessed_kwargs: dict[str, Any] = assessment_kwargs,
                     ) -> Turn:
                         if slice_arg is not None and binding.mode == Mode.CLAUDE_CODE:
                             limits_arg = replace(
@@ -730,6 +747,7 @@ class CallRuntime:
                                         call_id=call_id,
                                         native_agents=agents_arg,
                                         workspace=workspace_arg,
+                                        **assessed_kwargs,
                                         # Stated requirements travel with every
                                         # turn so they bind through retries and
                                         # corrections, not only the entry gate.
@@ -768,6 +786,7 @@ class CallRuntime:
                                         scope=scope,
                                         stable_prefix=stable_prefix_arg,
                                         fork=fork_arg,
+                                        **assessed_kwargs,
                                         **(
                                             {
                                                 "native_tool_policy": effective_native_policy,
@@ -804,6 +823,7 @@ class CallRuntime:
                                         scope=scope,
                                         stable_prefix=stable_prefix_arg,
                                         fork=fork_arg,
+                                        **assessed_kwargs,
                                         **(
                                             {
                                                 "native_tool_policy": effective_native_policy,
@@ -959,6 +979,8 @@ class CallRuntime:
                             if current_session
                             else None
                         ),
+                        execution=execution,
+                        native_tool_policy=effective_native_policy,
                     )
                     if turn.failure:
                         retry_streak += 1
@@ -1073,7 +1095,8 @@ class CallRuntime:
                         if tools is None:
                             failure = Failure(FailureClass.TOOL_ERROR, mode_detail={"reason": "tools are unavailable"})
                             break
-                        tool_ctx = _ToolContext(scope=scope, correlation_id=call_id, cancel=cancel)
+                        tool_ctx = _ToolContext(scope=scope, correlation_id=call_id, cancel=cancel,
+                                                attempt_id=f"{call_id}:{attempts}")
                         history = list(current_session.history)
                         anthropic_results = []
                         dispatchable = [call for call in turn.tool_calls if call["name"] != "__pause_turn__"]
@@ -1113,9 +1136,13 @@ class CallRuntime:
                                         mode_detail={"reason": "tool was not started before cancellation"},
                                     ))
                                 started_tools.add(call["id"])
-                                return await monitored(
-                                    _tool_turn(tools, call["name"], call["arguments"], run_ctx), transport=False
-                                )
+                                from agentkit.tools.execution.context import bind_tool_invocation
+
+                                with bind_tool_invocation(run_ctx, provider_id=call["id"]) as invocation_ctx:
+                                    return await monitored(
+                                        _tool_turn(tools, call["name"], call["arguments"], invocation_ctx),
+                                        transport=False,
+                                    )
 
                         if all(is_side_effect_free(call) for call in dispatchable):
                             tool_turns = await asyncio.gather(*(execute_tool(call) for call in dispatchable))

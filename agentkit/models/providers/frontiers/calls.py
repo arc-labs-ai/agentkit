@@ -7,8 +7,9 @@ vendor output blocks verbatim so reasoning signatures survive continuation.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from agentkit.core.contracts.types import Mode
@@ -45,13 +46,16 @@ class ApiAdapter:
         """
         from agentkit.models.providers.frontiers.capabilities import api_transport_report, evaluate_api_execution
 
-        return evaluate_api_execution(
+        report = evaluate_api_execution(
             binding.mode,
             api_transport_report(),
             execution or ExecutionRequirements(),
             NativeToolPolicy(native_tool_policy or NativeToolPolicy.WARN),
             payload_rewriting=self.request_hook is not None,
         )
+        identity = (binding.mode, binding.model, self.base_url, id(self.client), id(self.request_hook))
+        return replace(report, adapter="agentkit.models.providers.frontiers.calls.ApiAdapter",
+                       configuration_id=hashlib.sha256(repr(identity).encode()).hexdigest())
 
     async def turn(
         self,
@@ -70,16 +74,19 @@ class ApiAdapter:
         workspace: Any = None,
         execution: ExecutionRequirements | None = None,
         native_tool_policy: NativeToolPolicy | None = None,
+        assessment_id: str | None = None,
     ) -> Turn:
+        client, request_hook, base_url = self.client, self.request_hook, self.base_url
         # Stated requirements bind the whole invocation, not just the runtime's
         # door: this method is reachable directly, and the runtime calls it once
         # per continuation, retry and correction turn. Evaluated first and with
         # the same matrix `evaluate_execution` reports, so a refusal costs no
         # credential resolution and no round trip.
-        if execution is not None:
+        if execution is not None or assessment_id is not None or native_tool_policy == NativeToolPolicy.DENY:
             compatibility = await self.evaluate_execution(
                 binding, execution=execution, native_tool_policy=native_tool_policy,
             )
+            compatibility = compatibility.require_configuration(assessment_id)
             if not compatibility.compatible:
                 from agentkit.models.providers.cli.calls import execution_failure
 
@@ -88,7 +95,7 @@ class ApiAdapter:
                 emit, EventKind.TRANSPORT, mode_event="execution_policy",
                 backend=compatibility.backend, backend_version=compatibility.backend_version,
                 binary_version=compatibility.binary_version,
-                execution_requirements=tuple(sorted(execution.required)),
+                execution_requirements=tuple(sorted((execution or ExecutionRequirements()).required)),
             )
         if native_agents or workspace:
             return Turn(
@@ -100,6 +107,8 @@ class ApiAdapter:
         from agentkit.models.providers.frontiers.base import HttpLLM
 
         anthropic = binding.mode == Mode.ANTHROPIC_API
+        # Pin the assessed transport configuration across an asynchronous host
+        # resolver; later adapter mutations belong to a subsequent invocation.
         credential = await resolve_credential(binding.credential)
         if credential.home:
             raise ValueError("frontier API credentials must be supplied as environment values")
@@ -121,9 +130,9 @@ class ApiAdapter:
 
         transport = Transport(
             api_key=key,
-            client=self.client,
-            request_hook=self.request_hook,
-            base_url=self.base_url or (ApiEndpoint.ANTHROPIC if anthropic else ApiEndpoint.OPENAI),
+            client=client,
+            request_hook=request_hook,
+            base_url=base_url or (ApiEndpoint.ANTHROPIC if anthropic else ApiEndpoint.OPENAI),
             timeout=limits.wall_clock_s or 180,
         )
         history = [dict(x) for x in session.history] if session else []
@@ -228,7 +237,7 @@ class ApiAdapter:
         except Exception as exc:
             result = Turn(failure=classify(exc))
         finally:
-            if self.client is None:
+            if client is None:
                 await transport.aclose()
         result.history = tuple(history) + result.history
         return result

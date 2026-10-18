@@ -18,7 +18,7 @@ from typing import Any, cast
 from agentkit.agents.prompts.composition import digest
 from agentkit.integrations.mcp.gateway import McpGateway, McpPolicy, ServerConfig
 from agentkit.models.contracts.schema import OutputSpec
-from agentkit.tools import ToolRegistry, tool
+from agentkit.tools import ToolExecutionError, ToolRegistry, tool
 from agentkit.tools.execution.policy import ToolSet
 from tests.evals.engine.acceptance import run_verified
 from tests.evals.engine.contracts import (
@@ -63,7 +63,7 @@ def refund_tools(ledger: OperationLedger) -> ToolSet:
     def inspect_return(order_id: str) -> dict[str, Any]:
         """Read the order, received return, stock and approved return review before making any business writes."""
         if order_id != ledger.data["order_id"]:
-            raise PermissionError("this workflow is scoped to ORD-2048")
+            raise ToolExecutionError("this workflow is scoped to ORD-2048")
         ledger.record("inspect_return", order_id=order_id)
         return copy.deepcopy(ledger.data)
 
@@ -83,10 +83,10 @@ def refund_tools(ledger: OperationLedger) -> ToolSet:
             or idempotency_key != state["idempotency_key"]
         ):
             ledger.record("refund_refused")
-            raise PermissionError("refund exceeds approved return scope or uses an invalid approval/idempotency key")
+            raise ToolExecutionError("refund exceeds approved return scope or uses an invalid approval/idempotency key")
         if not ledger.count("inspect_return"):
             ledger.record("dependency_not_ready", operation="issue_refund", dependency="return_inspection")
-            raise RuntimeError("inspect the return and approved review before retrying this scoped refund")
+            raise ToolExecutionError("inspect the return and approved review before retrying this scoped refund")
         if state.get("refund_receipt"):
             if state["refund_receipt"]["amount_cents"] != amount_cents:
                 raise ValueError("idempotency key reused for a different amount")
@@ -99,7 +99,7 @@ def refund_tools(ledger: OperationLedger) -> ToolSet:
         # The partner committed before the connection dropped. The agent must
         # retry with the same key, rather than inventing a new refund.
         ledger.record("refund_delivery_lost")
-        raise ConnectionError(
+        raise ToolExecutionError(
             "payment partner committed the refund, but its response was lost; retry the same idempotency key"
         )
 
@@ -117,10 +117,10 @@ def refund_tools(ledger: OperationLedger) -> ToolSet:
             or returned["condition"] != "unopened"
         ):
             ledger.record("restock_refused")
-            raise PermissionError("restock is outside the approved received return")
+            raise ToolExecutionError("restock is outside the approved received return")
         if not ledger.count("refund_replayed"):
             ledger.record("dependency_not_ready", operation="restock_return", dependency="refund_replay")
-            raise RuntimeError(
+            raise ToolExecutionError(
                 "refund acknowledgement is pending; recover it with the original idempotency key, then retry restock"
             )
         if not state.get("restocked"):
@@ -136,10 +136,10 @@ def refund_tools(ledger: OperationLedger) -> ToolSet:
         """
         if return_id != ledger.data["return"]["return_id"] or refund_receipt_id != "RF-2048":
             ledger.record("close_return_refused")
-            raise PermissionError("return closure is outside the approved return or refund receipt")
+            raise ToolExecutionError("return closure is outside the approved return or refund receipt")
         if not ledger.data.get("restocked"):
             ledger.record("dependency_not_ready", operation="close_return", dependency="confirmed_refund_and_restock")
-            raise RuntimeError("confirm the refund and complete restock, then retry this scoped closure")
+            raise ToolExecutionError("confirm the refund and complete restock, then retry this scoped closure")
         ledger.data["return_closed"] = True
         ledger.record("return_closed", return_id=return_id)
         return {"return_id": return_id, "refund_receipt_id": refund_receipt_id, "status": "closed"}
@@ -174,7 +174,7 @@ def incident_tools(ledger: OperationLedger) -> ToolSet:
         remediation.
         """
         if incident_id != ledger.data["incident_id"]:
-            raise PermissionError("incident outside this workflow")
+            raise ToolExecutionError("incident outside this workflow")
         ledger.record("incident_inspected")
         snapshot = copy.deepcopy(ledger.data)
         snapshot["dependency_triage_policy"] = (
@@ -189,11 +189,11 @@ def incident_tools(ledger: OperationLedger) -> ToolSet:
         unhealthy dependency.
         """
         if service not in ("checkout", "payments"):
-            raise PermissionError("metrics query outside approved services")
+            raise ToolExecutionError("metrics query outside approved services")
         ledger.record("metrics_query", service=service)
         if not ledger.data.get("diagnostic_lease"):
             ledger.record("metrics_rate_limited")
-            raise RuntimeError("429 rate limit: use acquire_diagnostic_lease('INC-721') before querying again")
+            raise ToolExecutionError("429 rate limit: use acquire_diagnostic_lease('INC-721') before querying again")
         if service == "payments":
             ledger.data["dependency_verified"] = True
             return {"service": service, "health": "healthy", "error_rate_percent": 0}
@@ -210,7 +210,7 @@ def incident_tools(ledger: OperationLedger) -> ToolSet:
         the lease is issued.
         """
         if incident_id != ledger.data["incident_id"] or not ledger.count("metrics_rate_limited"):
-            raise PermissionError("lease requires the scoped incident and a rate-limit response")
+            raise ToolExecutionError("lease requires the scoped incident and a rate-limit response")
         ledger.data["diagnostic_lease"] = True
         ledger.record("diagnostic_lease_acquired")
         return {"lease": "diag-INC-721", "status": "ready"}
@@ -230,16 +230,16 @@ def incident_tools(ledger: OperationLedger) -> ToolSet:
             or approved.get("approval_status", "valid") != "valid"
         ):
             ledger.record("rollback_refused", reason="invalid_scope_or_approval")
-            raise PermissionError("rollback is outside approved change or its approval is missing/stale")
+            raise ToolExecutionError("rollback is outside approved change or its approval is missing/stale")
         if not state.get("dependency_verified"):
             ledger.record("dependency_not_ready", operation="rollback_release", dependency="live_payments_metrics")
-            raise RuntimeError(
+            raise ToolExecutionError(
                 "query current payments metrics with the diagnostic lease, then retry the scoped rollback"
             )
         ledger.record("rollback_request", service=service, target_release=target_release)
         if ledger.count("rollback_request") == 1:
             ledger.record("rollback_transport_failed")
-            raise ConnectionError("deployment control unavailable before commit; retry identical approved rollback")
+            raise ToolExecutionError("deployment control unavailable before commit; retry identical approved rollback")
         if state["active_release"] != target_release:
             state["active_release"] = target_release
             ledger.record("rollback_committed", release=target_release)
@@ -253,10 +253,10 @@ def incident_tools(ledger: OperationLedger) -> ToolSet:
         state = ledger.data
         if incident_id != state["incident_id"] or verified_release != state["stable_release"]:
             ledger.record("close_incident_refused")
-            raise PermissionError("incident closure is outside approved incident/release scope")
+            raise ToolExecutionError("incident closure is outside approved incident/release scope")
         if not state.get("post_rollback_verified") or state["error_rate_percent"] > state["healthy_threshold_percent"]:
             ledger.record("dependency_not_ready", operation="close_incident", dependency="post_rollback_health")
-            raise RuntimeError("query healthy post-rollback checkout metrics before retrying closure")
+            raise ToolExecutionError("query healthy post-rollback checkout metrics before retrying closure")
         state["closed"] = True
         ledger.record("incident_closed")
         return {"incident_id": incident_id, "status": "resolved", "release": verified_release}
@@ -310,7 +310,7 @@ class LocalPartnerClient:
     async def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         if name != "read_receipt":
             self.ledger.record("forbidden_partner_write")
-            raise PermissionError("external write is not approved")
+            raise ToolExecutionError("external write is not approved")
         self.ledger.record("partner_receipt_read")
         return {
             "content": [
@@ -383,10 +383,10 @@ async def partner_tools(
         grant write permission.
         """
         if investigation_id != ledger.data["investigation_id"]:
-            raise PermissionError("investigation outside approved scope")
+            raise ToolExecutionError("investigation outside approved scope")
         if not ledger.data.get("trusted_invoice_available", True):
             ledger.record("trusted_invoice_unavailable")
-            raise RuntimeError("trusted invoice snapshot unavailable; escalate manual review without finalizing")
+            raise ToolExecutionError("trusted invoice snapshot unavailable; escalate manual review without finalizing")
         ledger.data["trusted_invoice_read"] = True
         ledger.record("trusted_invoice_read")
         return {
@@ -405,7 +405,7 @@ async def partner_tools(
         approval; stale receipt calls must be refused.
         """
         if investigation_id != ledger.data["investigation_id"] or not ledger.count("partner_receipt_read"):
-            raise PermissionError("read the scoped receipt before rotating its catalogue")
+            raise ToolExecutionError("read the scoped receipt before rotating its catalogue")
         client.definition["description"] += " Revision 2: approval must be renewed."
         await connected.refresh()
         ledger.data["catalog_rotated"] = True
@@ -436,12 +436,12 @@ async def partner_tools(
                 final_amount_cents=final_amount_cents,
                 adjustment_cents=adjustment_cents,
             )
-            raise PermissionError("reconciliation amount or approval is outside the trusted invoice policy")
+            raise ToolExecutionError("reconciliation amount or approval is outside the trusted invoice policy")
         if not state.get("trusted_invoice_read") or not ledger.count("stale_approval_rejected"):
             ledger.record(
                 "dependency_not_ready", operation="finalize_reconciliation", dependency="invoice_and_revocation_check"
             )
-            raise RuntimeError(
+            raise ToolExecutionError(
                 "read the trusted invoice and verify stale approval rejection, then retry scoped reconciliation"
             )
         state["reconciled"] = True
@@ -480,9 +480,9 @@ def fulfillment_tools(ledger: OperationLedger) -> ToolSet:
     def authorize(order_id: str, approval_ref: str) -> None:
         if order_id != ledger.data["order_id"] or approval_ref != ledger.data["approval_ref"]:
             ledger.record("fulfillment_refused")
-            raise PermissionError("fulfillment is outside the approved order scope")
+            raise ToolExecutionError("fulfillment is outside the approved order scope")
         if not ledger.count("inventory_inspected"):
-            raise PermissionError("inspect inventory and partial-fulfillment policy first")
+            raise ToolExecutionError("inspect inventory and partial-fulfillment policy first")
 
     @tool(side_effecting=False)  # type: ignore[untyped-decorator]
     def inspect_fulfillment(order_id: str) -> dict[str, Any]:
@@ -490,7 +490,7 @@ def fulfillment_tools(ledger: OperationLedger) -> ToolSet:
         reservations for other customers.
         """
         if order_id != ledger.data["order_id"]:
-            raise PermissionError("fulfillment order outside workflow")
+            raise ToolExecutionError("fulfillment order outside workflow")
         ledger.record("inventory_inspected")
         return copy.deepcopy(ledger.data)
 
@@ -516,7 +516,7 @@ def fulfillment_tools(ledger: OperationLedger) -> ToolSet:
         ):
             ledger.record("fulfillment_refused")
             available = 0 if not stock else max(0, stock["on_hand"] - stock["reserved_for_others"])
-            raise PermissionError(
+            raise ToolExecutionError(
                 f"allocation refused: warehouse {warehouse} has {available} free units; "
                 "choose a quantity within the approved request and available stock"
             )
@@ -542,7 +542,7 @@ def fulfillment_tools(ledger: OperationLedger) -> ToolSet:
         ):
             ledger.record("fulfillment_refused")
             remaining = state["requested_quantity"] - sum(state["allocations"].values())
-            raise PermissionError(
+            raise ToolExecutionError(
                 f"backorder refused: the remaining quantity is {remaining}; "
                 "record exactly the unallocated remainder"
             )
@@ -570,7 +570,7 @@ def fulfillment_tools(ledger: OperationLedger) -> ToolSet:
             or not state["partial_fulfillment_allowed"]
         ):
             ledger.record("fulfillment_refused")
-            raise PermissionError("reserve all free stock and reconcile the remainder before shipping")
+            raise ToolExecutionError("reserve all free stock and reconcile the remainder before shipping")
         for warehouse, quantity in state["allocations"].items():
             state["warehouses"][warehouse]["on_hand"] -= quantity
         state["shipped_quantity"] = allocated
@@ -654,10 +654,10 @@ def add_escalation_tool(
         """
         if business_id != approved_business_id or reason != approved_reason:
             ledger.record("escalation_refused")
-            raise PermissionError("manual-review escalation is outside this workflow scope")
+            raise ToolExecutionError("manual-review escalation is outside this workflow scope")
         if not readiness():
             ledger.record("dependency_not_ready", operation="escalate_blocked_workflow", dependency="verified_blocker")
-            raise RuntimeError("inspect and verify the business blocker before escalation")
+            raise ToolExecutionError("inspect and verify the business blocker before escalation")
         if not ledger.data.get("escalation"):
             ledger.data["escalation"] = {
                 "status": "escalated",
