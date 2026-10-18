@@ -333,10 +333,26 @@ CODEX_NATIVE_TOOLS: tuple[str, ...] = ("shell", "apply_patch", "update_plan")
 # either, because nothing in a running Codex process exports handles to itself
 # the way ``CLAUDE_CODE_MESSAGING_TOKEN`` and friends do.
 #
-# Kept anyway: precedence is a config key (``preferred_auth_method``) rather
-# than a law, ``--ignore-user-config`` changes which config is consulted, and a
-# service that has declared a policy should get the same guarantee from both
-# cognitions rather than one that happens to be unnecessary today.
+# Kept anyway, and the reason has been RE-MEASURED rather than inherited. This
+# comment used to name ``preferred_auth_method`` as the precedence knob. That
+# key does not exist on the binary agentkit characterizes — measured verbatim,
+# codex-cli 0.162.1::
+#
+#     $ codex exec --strict-config -c preferred_auth_method=apikey …
+#     Error loading config.toml: unknown configuration field
+#     `preferred_auth_method` in -c/--config override
+#
+# The key 0.162.1 actually honours is ``forced_login_method``, and it takes
+# ``chatgpt`` or ``api`` rather than a free string ("unknown variant `apikey`,
+# expected `chatgpt` or `api`"). Citing a field the binary rejects is worse than
+# citing none: a reader wires it, ``--strict-config`` fails the run outright, and
+# without that flag it is silently ignored while appearing to state a policy.
+#
+# The conclusion is unchanged and does not rest on either key. Precedence is a
+# config VALUE rather than a law, ``--ignore-user-config`` changes which config
+# is consulted at all, and a service that declared an env policy should get the
+# same guarantee from both cognitions rather than the one that happens to be
+# unnecessary on today's binary.
 _CODEX_AMBIENT_AUTH_ENV: tuple[str, ...] = (
     "OPENAI_API_KEY",
     "CODEX_API_KEY",

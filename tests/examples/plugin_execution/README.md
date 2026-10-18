@@ -16,6 +16,7 @@ plugin_execution/
   plugins/skills/instructions.md
   plugins/hooks/{permissions,lifecycle}.py
   wiring/runtime.py
+  tests/conftest.py
   tests/{test_provider_matrix,test_permissions,test_scope_isolation,test_cli_containment}.py
   README.md
 ```
@@ -52,8 +53,41 @@ and the actual runtime/ToolSet. They prove the granted schema reaches dispatch,
 the model receives the host result, the permission hook runs before the handler,
 IDs survive, and terminal usage and call events settle. Negative twins cover
 denial, unattended approval, undeclared tools, concurrent record scopes and
-cancellation while awaiting authorization. CLI rows prove a zero-attempt refusal;
-they are **not passing CLI containment tests**.
+cancellation while awaiting authorization.
+
+The CLI rows reach the same host tool over the wire a CLI actually uses. The
+`scripted_cli` fixture stands in for the binary at the spawn seam: it is handed
+the argv and environment a real `claude`/`codex` process would have received,
+reads the host-tool MCP endpoint `CliAdapter` published there, and calls the
+tool over that authenticated loopback transport. `ToolSet.serve()` wraps each
+tool so its `run()` delegates to `ToolSet.execute`, so a CLI call lands on the
+same permission contributions, observers and invocation identities the API
+adapters use — not on a second copy of the decision. These rows therefore prove
+the **transport and the policy path**. They prove nothing about a real CLI
+process: there is no process, native tool, sandbox or credential in them.
+Real-process characterization lives in `tests/source/integration/execution`,
+and the refusal the example's strict profile produces for both CLI modes is
+pinned in `tests/test_cli_containment.py`.
+
+| Demonstrated case | OpenAI API | Anthropic API | Claude Code | Codex |
+| --- | --- | --- | --- | --- |
+| Granted call reaches the handler, model reads the host result | Scripted HTTP | Scripted HTTP | Scripted CLI | Scripted CLI |
+| Denied call: handler never runs, refusal recorded | Scripted HTTP | Scripted HTTP | Scripted CLI | Scripted CLI |
+| Undeclared tool refused before any handler | Scripted HTTP | Scripted HTTP | Scripted CLI | Scripted CLI |
+| Unattended ASK refuses instead of defaulting to allow | Scripted HTTP | Scripted HTTP | Scripted CLI | Scripted CLI |
+| Cancellation during a blocked permission: cleanup, one terminal outcome | Scripted HTTP | Scripted HTTP | Scripted CLI | Scripted CLI |
+| Concurrent tenant scopes cannot read each other's collection | Scripted HTTP | Scripted HTTP | Scripted CLI | Scripted CLI |
+| Strict profile refuses before credential or dispatch | n/a | n/a | Local refusal | Local refusal |
+| Contained native execution of a real binary | Unsupported | Unsupported | Unsupported | Unsupported |
+
+The CLI rows above request `HOST_TOOL_PATH_REQUIREMENTS` rather than the
+example's `REQUIREMENTS`, and build their runtime with
+`native_tool_policy="allow"`. That is not incidental: the strict profile's
+`NATIVE_TOOLS_UNAVAILABLE` requirement, which `native_tool_policy="deny"` also
+implies, is exactly what refuses both CLI modes before dispatch. A
+demonstration of the permission path on a CLI mode therefore has to drop the
+containment claim and say so, which is why the two profiles have two names in
+`configuration/providers.py`. Nothing else about those calls changes.
 
 ## Explicit provider execution (potentially paid)
 
@@ -96,7 +130,10 @@ fork and correction paths, including native auth-file parsing. Granted calls
 work, denied/unattended calls have no host effect, and planted native Read/Bash,
 hooks and discovered MCP commands cause no effects in those fixtures. Complete
 plugin/managed configuration/memory exclusion remains unverified, as does the
-classification of its native `StructuredOutput` schema helper. Codex 0.162.1
+classification of its native `StructuredOutput` schema helper. Both version
+numbers record what was measured, not what is installed: `claude` now reports
+2.1.302 and `codex` upgraded itself to 0.163.0 mid-session, which is why
+`MINIMUM_TESTED_CLI_VERSION` is a floor rather than an exact pin. Codex 0.162.1
 executes the planted native `view_image` read outside its job directory despite
 feature restrictions. That test demonstrates an unsupported boundary, not
 successful confinement. The probes fail if their observed protocol changes.
@@ -118,9 +155,13 @@ staged authentication file or environment; a private HOME is not containment.
 No real provider authentication or paid call was used to produce local evidence.
 
 The strict CLI sentinel test proves refusal before model dispatch and no effect
-on the sentinel. It does not demonstrate an allowed protected CLI call. There
-is no shipped protected CLI profile to demonstrate that clean twin. Required
-upstream/backend work is described in [the design report](../../../docs/design/host-tool-execution.md).
+on the sentinel. It does not demonstrate an allowed CLI call under the strict
+profile, and there is no shipped protected CLI profile to demonstrate that
+clean twin. The scripted CLI rows above are not that twin either: they
+demonstrate the permission path under the relaxed host-tool profile, with a
+scripted binary, which is a claim about the bridge and not about containment.
+Required upstream/backend work is described in
+[the design report](../../../docs/design/host-tool-execution.md).
 
 ## Consumer migration
 

@@ -11,8 +11,13 @@ It is **not an execution sandbox**. A same-user native tool can read those files
 
 No CLI version is pinned by this repository or its CI. The binaries inspected
 for this record were Claude Code **2.1.300** and Codex **0.162.1**; a later
-`--version` probe reports Claude Code **2.1.302**. Older comments describe
-Claude 2.1.236 and Codex 0.152.1; these are observations, not version pins.
+`--version` probe reports Claude Code **2.1.302** and Codex **0.163.0** — the
+installed `codex` upgraded ITSELF mid-session, which is the reason
+`MINIMUM_TESTED_CLI_VERSION` is a floor and not an exact match. Neither
+measured binary is still installed at the version it was measured at, so every
+version below is a record of what was observed and not a claim about what is
+present. Older comments describe Claude 2.1.236 and Codex 0.152.1; these are
+observations, not version pins.
 Argument acceptance tests do not establish authority boundaries.
 
 ## Capability matrix as implemented (2026-10-18)
