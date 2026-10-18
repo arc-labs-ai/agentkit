@@ -243,10 +243,61 @@ Consumers should:
 
 The consuming application retains plugin composition, tenancy, binding selection,
 workflow and ledger ownership. No changes to its model-call runtime are required.
-No release artifact is created by these working-tree changes.
+No package version bump or published release is included.
 
 ## Verification
 
-Exact final tallies are recorded after the repository gate, separate example
-tests, actual CLI probes and isolated mutation catalogue complete. Skipped or
-unrun checks are not enforcement evidence.
+The final implementation passes the repository gate. Skipped or unrun checks
+are not enforcement evidence; protected CLI acceptance remains unmet as described
+above. No native-tool policy, spending limit, test assertion or coverage
+threshold was relaxed to make a mode execute.
+
+| Check | Final result |
+| --- | --- |
+| `AGENTKIT_SKIP_REAL_CLI=1 AGENTKIT_LIVE=0 PYTEST_ADDOPTS=-rs make check` | Passed |
+| Coverage run, Python 3.13.14 | 2,669 passed, 55 skipped, 0 failed |
+| Python 3.12 matrix | 2,669 passed, 55 skipped, 0 failed |
+| Python 3.13 matrix | 2,669 passed, 55 skipped, 0 failed |
+| Coverage | 91%; existing 89% threshold unchanged |
+| Ruff lint and strict mypy | Passed; 149 source files typed |
+| Formatting of new/formatted modules, tests and examples | 49 files passed |
+| Documented imports | 14 checked, 0 unresolved |
+| Focused host-policy/assessment/bridge regressions | 53 passed, 0 skipped, 0 failed |
+| Separate real-process execution suite | 24 passed, 0 skipped, 0 failed |
+| Standalone plugin example and existing example entry points | 23 passed (19 plugin + 4 entry points), 0 skipped, 0 failed |
+| Mutation target baseline, isolated copy | 1,378 passed, 0 failed |
+| Full mutation catalogue, isolated source and dedicated virtual environment | 242/242 killed, 0 survivors/unrunnable |
+| Mutation restoration | SHA-256 hashes matched for all 149 source files; isolated copy removed |
+| Local wheel and source distribution | Built successfully as `arc-agentkit` 0.1.0; no publication |
+
+The main gate's 55 skips are 16 offline CLI cases run separately above, 24 opt-in
+CLI parser/version-matrix cases, 14 paid/provider-authenticated cases and one
+optional msgspec case. Real provider/subscription acceptance and vendor token
+refresh were not run. Installed versions independently inspected with empty
+temporary homes were Claude Code 2.1.300 and Codex 0.162.1. The separate CLI probes
+use only synthetic credentials and local scripted providers.
+
+Focused regressions were observed red before behavior changes: 14 host-policy
+cases, 14 real-adapter CLI identity/context cases, four adapter receipt cases,
+four asynchronous configuration-mutation cases, two missing-usage cases (their
+two measured-zero twins already passed), the protected backend-port case, and
+three implicit-DENY cases (Codex already refused). All four example-layout tests
+failed on the former flat layout before the moves. Tests also caught private
+exception leakage before adding the explicit safe-error contract. Fixture errors
+were corrected separately and are not enforcement evidence.
+
+Intermediate broad gates reported 20 failed/2,648 passed/55 skipped, then three
+failed/2,666 passed/55 skipped. They exposed recovery messages being hidden and
+a forwarding test relying on an unassessed adapter under DENY. Curated business
+and framework recovery messages now use explicit safe failures; their effect,
+approval, idempotency and accounting assertions remain. The forwarding fixture
+now identifies its no-process scripted transport explicitly, and a separate
+four-mode guard test requires zero dispatch from an unassessed adapter. An
+intermediate mutation baseline reported two gateway failures and correctly
+stopped without claiming mutation success; the final baseline and catalogue pass.
+
+The mutation runner used `--allow-dirty` only inside a disposable copy with its
+own virtual environment. No source mutation ran in the working repository or
+overlapped tests against its source. Five new mutants cover host DENY, unattended
+approval, input validation, stale receipts and transport body bounds. An existing
+backend-guarantee mutant was re-anchored to the stronger refusal condition.
