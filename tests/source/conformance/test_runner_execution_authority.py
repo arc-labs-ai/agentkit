@@ -20,9 +20,34 @@ from tests.source.conformance.test_calls import PRICES, ScriptedAdapter
 
 @pytest.mark.asyncio
 async def test_agent_runner_forwards_workspace_price_table_and_turn_slice(tmp_path):
+    from agentkit.models import (
+        CapabilityStatus,
+        ExecutionAssessment,
+        ExecutionCompatibility,
+        ExecutionRequirement,
+        ExecutionRequirements,
+    )
+
+    class NoProcessScript(ScriptedAdapter):
+        # This transport returns a script and never starts a CLI. Its explicit
+        # assessment permits forwarding tests; it is not CLI isolation evidence.
+        async def evaluate_execution(self, binding, *, execution=None, native_tool_policy=None):
+            supported = {ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE, ExecutionRequirement.HOST_TOOLS}
+            facts = tuple(ExecutionAssessment(
+                requirement, CapabilityStatus.SUPPORTED if requirement in supported else CapabilityStatus.UNSUPPORTED,
+                "scripted_transport", "Scripted no-process transport for forwarding tests only.",
+            ) for requirement in ExecutionRequirement)
+            required = set((execution or ExecutionRequirements()).required)
+            if native_tool_policy == "deny":
+                required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
+            return ExecutionCompatibility(str(binding.mode), "scripted", "1", None, facts, tuple(
+                fact for fact in facts if fact.requirement in required and fact.status != CapabilityStatus.SUPPORTED
+            ))
+
     scope = Scope(org_id=2, domain_id=9)
     native_agents = {"reviewer": {"description": "Review code"}}
-    adapter = ScriptedAdapter(Turn(("done",), raw_usage={"input_tokens": 10, "output_tokens": 2}))
+    adapter = NoProcessScript(Turn(("done",), raw_usage={"input_tokens": 10, "output_tokens": 2}))
+    execution = ExecutionRequirements(required=frozenset({ExecutionRequirement.HOST_TOOLS}))
     prices = PriceTable("runner-test", "2026-10-13", {"test": {
         "input_uncached": "2", "input_cache_read": "0", "output": "4",
     }})
@@ -46,7 +71,7 @@ async def test_agent_runner_forwards_workspace_price_table_and_turn_slice(tmp_pa
             call_id="authority", workspace=workspace, pricing=prices, turns_per_slice=1,
             resume=SessionHandle(Mode.CLAUDE_CODE, "authority", cli_session_id="existing-session"),
             stable_prefix=True, fork=True, native_agents=native_agents, scope=scope,
-            capture_text=True, native_tool_policy="deny",
+            capture_text=True, native_tool_policy="deny", execution=execution,
         )
     assert answer.outcome == "answered"
     assert answer.cost_usd == Decimal("0.000028")
@@ -58,6 +83,7 @@ async def test_agent_runner_forwards_workspace_price_table_and_turn_slice(tmp_pa
     assert runtime_kwargs["native_agents"] == native_agents and runtime_kwargs["scope"] == scope
     assert runtime_kwargs["capture_text"] is True
     assert runtime_kwargs["native_tool_policy"] == "deny"
+    assert runtime_kwargs["execution"] == kwargs["execution"] == execution
 
 
 @pytest.mark.asyncio

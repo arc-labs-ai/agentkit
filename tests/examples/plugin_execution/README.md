@@ -137,3 +137,6 @@ native-tool policy, when resuming/forking. Rebuilding a session from a CLI ID
 alone drops host restrictions. Reassess after adapter changes; configuration
 receipts reject stale assessments but are not isolation attestations. Retain the
 existing runtime for calls and accounting and close it with `async with`.
+For intentional model-visible recovery instructions, raise public
+`ToolExecutionError(safe_message, code=...)`; unexpected exception details are
+redacted. Host code is responsible for reviewing the explicit safe message.

@@ -1,4 +1,4 @@
-"""Tool-related error types raised at decoration/registration time and at result-validation time."""
+"""Tool definition/validation errors and explicit safe execution failures."""
 
 from __future__ import annotations
 

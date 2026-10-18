@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add public ToolSet permission/approval callbacks and correlated lifecycle
   observers, shared by SDK execution and CLI MCP transport. Validate custom-tool
   inputs before effects and keep private exception messages out of tool errors.
+- Publish intentional recovery instructions through `ToolExecutionError`; migrate
+  tools relying on arbitrary exception text to the explicit safe-message contract.
 - Preserve provider/MCP/host invocation identities, execution requirements through
   runner and resumed sessions, and assessed adapter configuration through turns.
 - Bound MCP request bodies before parsing and refuse unassessed DENY execution,
