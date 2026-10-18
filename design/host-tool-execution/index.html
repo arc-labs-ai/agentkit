@@ -555,6 +555,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#provider-neutral-image-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider-neutral image results
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1247,6 +1258,80 @@ own virtual environment. No source mutation ran in the working repository or
 overlapped tests against its source. Five new mutants cover host DENY, unattended
 approval, input validation, stale receipts and transport body bounds. An existing
 backend-guarantee mutant was re-anchored to the stronger refusal condition.</p>
+<h2 id="provider-neutral-image-results">Provider-neutral image results<a class="headerlink" href="#provider-neutral-image-results" title="Anchor link">&para;</a></h2>
+<p>Host tools return one in-memory representation across SDK execution and CLI
+MCP serving: an image block is <code>{"type": "image", "mimeType": "image/png",
+"data": png_bytes}</code>, where <code>data</code> is nonempty immutable <strong>raw <code>bytes</code></strong>.
+Supported MIME types are <code>image/png</code>, <code>image/jpeg</code>, <code>image/gif</code> and <code>image/webp</code>.
+The shared codec checks representation, MIME and a 20 MiB raw-image bound;
+it does not decode images or certify file integrity. Providers can impose
+additional image restrictions.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">agentkit.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">ToolResult</span><span class="p">,</span> <span class="n">tool</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nd">@tool</span><span class="p">(</span><span class="n">side_effecting</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">render_chart</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">ToolResult</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a small chart image and its caption for visual analysis.&quot;&quot;&quot;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">png</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="s2">&quot;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==&quot;</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="p">)</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">return</span> <span class="n">ToolResult</span><span class="p">((</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;A one-pixel red chart fixture&quot;</span><span class="p">},</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;image&quot;</span><span class="p">,</span> <span class="s2">&quot;mimeType&quot;</span><span class="p">:</span> <span class="s2">&quot;image/png&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">png</span><span class="p">},</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="p">),</span> <span class="n">structured</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;caption&quot;</span><span class="p">:</span> <span class="s2">&quot;red&quot;</span><span class="p">},</span> <span class="n">is_error</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Grant this tool through the same <code>ToolRegistry</code>/<code>ToolSet</code> as other host tools.
+The SDK serializers encode raw bytes into an OpenAI Responses data URL or an
+Anthropic Messages base64 source; both MCP serving entry points encode into MCP
+image content. Each wire image is base64-encoded once. Text siblings and MIME
+survive. Anthropic and MCP carry the error flag; OpenAI function outputs have
+no error-flag field, so AgentKit retains it in canonical messages and lifecycle
+events. MCP also preserves <code>structuredContent</code>, including an empty object.
+SDK function outputs use the content blocks, as before.</p>
+<p><code>OverflowPolicy.max_bytes</code> measures the UTF-8 JSON envelope
+<code>{"content": &lt;encoded blocks&gt;, "structuredContent": &lt;structured or null&gt;}</code>
+with Python's <code>json.dumps(..., ensure_ascii=False)</code> defaults, including base64
+expansion and text siblings. This is a provider-neutral output bound, not a
+claim about a provider's entire request size. Exact equality is allowed.
+An oversized result containing an image is refused with <code>tool_output_limit</code>;
+it is never replaced by an overflow-file path. Text-only overflow retains its
+existing file behavior. Malformed tool content produces <code>invalid_tool_content</code>
+through <code>ToolSet.execute</code>; direct SDK serialization raises a safe <code>ValueError</code>,
+and direct MCP serving returns <code>isError=true</code>. Private values are not copied
+into these diagnostics. Image result event sizes include encoded content bytes;
+text-only event size behavior is unchanged.</p>
+<p>Migration: SDK tool handlers that returned base64 strings must return the
+original bytes instead (or decode trusted base64 when implementing the handler).
+Use <code>mimeType</code>, not <code>mime_type</code>. Do not branch a tool result by provider.
+Canonical <code>Message.content_blocks</code> now also holds raw image bytes. JSON message
+persistence uses AgentKit's message codec, which encodes on write and decodes on
+read; older JSON transcripts containing valid base64 remain readable. Replay
+bounds and context/result digests use the encoded representation. Generic
+<code>json.dumps(dataclasses.asdict(message))</code> cannot serialize raw image bytes.</p>
+<p>The tests in <code>tests/source/conformance/test_tool_images.py</code> use a complete PNG
+with checked chunk CRCs and pixel data. OpenAI/Anthropic adapter calls use
+scripted HTTP, while MCP cases use the actual authenticated localhost listener
+with per-server synthetic bearer credentials, concurrent requests and planted
+cross-call tokens. These prove serialization and transport behavior. They do
+not certify CLI native-tool isolation, spending guarantees or provider acceptance;
+existing execution assessment/refusals still apply. No paid/provider-authenticated
+calls are part of these tests. Host, provider and transport invocation IDs remain
+separate correlation fields; provider/transport IDs never authorize an effect.</p>
+<p>For explicitly authorized paid validation, the focused test below uses real
+OpenAI and Anthropic API transports. Supply <code>OPENAI_API_KEY</code> and
+<code>ANTHROPIC_API_KEY</code> to the test process, then run:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">AGENTKIT_LIVE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>tests/source/live/test_live_tool_images.py
+</span></code></pre></div>
+<p>Each provider must call the host tool, receive byte-identical PNG data and
+identify a privately selected solid color through the typed answer contract.
+The test checks invocation correlation, complete usage and nonzero attributed
+cost. It keeps <code>NativeToolPolicy.DENY</code>, disables transport retries and bounds
+turns, output tokens and duration. These bounds are not an exact dollar cap.
+Only these two API modes are paid-tested by this command; it does not promote
+CLI containment capabilities. Without opt-in or the corresponding key, tests
+skip and do not count as live-provider evidence. Never paste credentials into
+commands, test output or source control.</p>
 
 
 
@@ -1267,7 +1352,7 @@ backend-guarantee mutant was re-anchored to the stronger refusal condition.</p>
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 18, 2026 05:16:00 UTC">October 18, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 18, 2026 05:54:20 UTC">October 18, 2026</span>
   </span>
 
     
