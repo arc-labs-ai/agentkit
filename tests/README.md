@@ -30,7 +30,12 @@ uv run mypy --strict agentkit
 uv run ruff check agentkit tests
 python -m tests.evals --list
 python -m tests.examples.support_harness --help
+python -m tests.examples.plugin_execution.main --provider openai_api
 ```
+
+Every runnable example owns a directory under `tests/examples`. See its
+[index](examples/README.md) for the renamed module entry points and the plugin
+example's separate scripted, real-CLI and paid-provider test instructions.
 
 Run live evaluations explicitly through `python -m tests.evals`; see [the eval guide](evals/README.md) for credentials, model selection, bounds and reports. Framework source tests should mirror the owning package and assert behavior rather than import compatibility. Evaluation-engine tests verify graders and failure handling; they are not substitutes for live application evidence.
 

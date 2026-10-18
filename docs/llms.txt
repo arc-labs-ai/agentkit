@@ -78,7 +78,7 @@ Organized around four themes: cognition (how the agent decides), control (what l
 - [testing](https://arc-labs-ai.github.io/agentkit/api-reference/testing/): `FakeLLM`, `Turn`, `make_test_ctx`, `FakeClaudeCli`, `FakeFetch`, `FakeSearch`, `FakeMemory`.
 
 ## Examples
-- [Examples index](https://arc-labs-ai.github.io/agentkit/examples/): six standalone scripts under `examples/` in the repo, each demonstrating one thing top to bottom.
+- [Examples source](https://github.com/arc-labs-ai/agentkit/tree/main/tests/examples): runnable examples in separate directories under `tests/examples/`, including independent tools, skills and hooks through the shared runtime.
 
 ## Project
 - [Contributing](https://arc-labs-ai.github.io/agentkit/contributing/): where to file an issue, what needs a design discussion before a PR, and how to preview these docs locally.

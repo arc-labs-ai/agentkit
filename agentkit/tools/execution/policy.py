@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import tempfile
 from collections.abc import Callable, Mapping
@@ -12,8 +13,17 @@ from pathlib import Path
 from typing import Any, cast
 
 from agentkit.core.contracts.types import ToolSchema
+from agentkit.core.execution.concurrency import Cancelled
 from agentkit.tools.declarations.base import Tool
 from agentkit.tools.execution.cancellation import run_cancellable
+from agentkit.tools.execution.context import bind_tool_invocation, current_tool_invocation
+from agentkit.tools.execution.permissions import (
+    PermissionCallback,
+    PermissionDecision,
+    ToolInvocationRequest,
+    ToolLifecycleEvent,
+    ToolObserver,
+)
 from agentkit.tools.registry.registry import ToolRegistry
 
 
@@ -80,6 +90,16 @@ def _invalid_json_constant(value: str) -> Any:
     raise ValueError("arguments_json contains an invalid JSON numeric constant")
 
 
+class _PolicyRefusal(PermissionError):
+    def __init__(self, code: str, explanation: str) -> None:
+        self.code = code
+        super().__init__(explanation)
+
+
+class _ObserverFailed(RuntimeError):
+    pass
+
+
 @dataclass
 class ToolSet:
     registry: ToolRegistry
@@ -91,11 +111,19 @@ class ToolSet:
     max_concurrency: int = 4
     # Empty means eager loading. Deferred names are exposed by search_tools.
     deferred: tuple[str, ...] = ()
+    permissions: tuple[PermissionCallback, ...] = ()
+    approval: PermissionCallback | None = None
+    observers: tuple[ToolObserver, ...] = ()
+    max_input_bytes: int = 1_048_576
     _loaded: set[str] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.max_concurrency < 1:
             raise ValueError("tool concurrency must be positive")
+        if self.max_input_bytes < 1:
+            raise ValueError("tool input bound must be positive")
+        self.permissions = tuple(self.permissions)
+        self.observers = tuple(self.observers)
         if self.deferred and any(name in self.registry.names() for name in DeferredToolName):
             raise ValueError("deferred discovery names are reserved by ToolSet")
 
@@ -163,13 +191,116 @@ class ToolSet:
         return schemas
 
     async def execute(self, name: str, args: Mapping[str, Any], ctx: Any) -> ToolResult:
-        """Execution errors are model-visible; cancellation still propagates."""
+        """One permission and lifecycle path for SDK and MCP dispatch.
+
+        A registry is the explicit grant set. Host callbacks add restrictions;
+        observers cannot approve effects. All awaits, including authorization,
+        are cancellation-aware. Synchronous host code must cooperate itself.
+        """
+        if getattr(ctx, "tool_invocation", None) is None or current_tool_invocation() is None:
+            with bind_tool_invocation(ctx) as invocation_ctx:
+                return await self.execute(name, args, invocation_ctx)
+        identity = ctx.tool_invocation
+        code = "tool_error"
+        try:
+            await self._observe(ToolLifecycleEvent(identity, name, "requested", "pending"), ctx)
+            result = await run_cancellable(self._execute(name, args, ctx), ctx)
+            ctx.check_cancelled()
+            code = "ok"
+            if result.is_error:
+                candidate = result.structured.get("code") if result.structured else None
+                safe_codes = {
+                    "permission_denied",
+                    "permission_unattended",
+                    "permission_invalid",
+                    "permission_failed",
+                    "tool_input_too_large",
+                    "tool_arguments_invalid",
+                    "tool_deferred",
+                    "tool_not_discovered",
+                }
+                code = candidate if isinstance(candidate, str) and candidate in safe_codes else "tool_error"
+            return result
+        except (asyncio.CancelledError, Cancelled):
+            code = "cancelled"
+            raise
+        except Exception as exc:
+            code = "observer_failed" if isinstance(exc, _ObserverFailed) else "tool_error"
+            return ToolResult(
+                ({"type": "text", "text": f"{type(exc).__name__}: tool invocation failed"},), is_error=True
+            )
+        finally:
+            # Terminal metadata contains no late result. Cancellation does not
+            # skip the observer, but its own deadline still bounds cleanup.
+            await self._observe(ToolLifecycleEvent(identity, name, "finished", code), None)
+
+    async def _observe(self, event: ToolLifecycleEvent, ctx: Any) -> None:
+        for observer in self.observers:
+            try:
+                async with asyncio.timeout(self.timeout_s):
+                    observed = observer(event)
+                    if inspect.isawaitable(observed):
+                        if ctx is None:
+                            await observed
+                        else:
+                            await run_cancellable(observed, ctx)
+            except (asyncio.CancelledError, Cancelled):
+                raise
+            except Exception:
+                if event.phase == "requested":
+                    raise _ObserverFailed("host lifecycle observer failed") from None
+                # An observer failure after an effect cannot undo or replay it.
+                # Warn safely rather than replacing a settled tool result.
+                import logging
+
+                logging.getLogger(__name__).warning("Host tool terminal observer failed")
+
+    async def _authorize(self, tool: Any, name: str, args: Mapping[str, Any], ctx: Any) -> None:
+        request = ToolInvocationRequest(ctx.tool_invocation, name, args, getattr(ctx, "scope", None))
+        needs_approval = bool(tool.requires_approval)
+        for callback in self.permissions:
+            try:
+                decision = callback(request)
+                if inspect.isawaitable(decision):
+                    decision = await run_cancellable(decision, ctx)
+            except (Cancelled, asyncio.CancelledError):
+                raise
+            except Exception:
+                raise _PolicyRefusal("permission_failed", "Host permission callback failed; tool was not run") from None
+            if not isinstance(decision, PermissionDecision):
+                raise _PolicyRefusal("permission_invalid", "Host permission callback returned an invalid decision")
+            if decision == PermissionDecision.DENY:
+                raise _PolicyRefusal("permission_denied", "Host permission denied this tool invocation")
+            needs_approval |= decision == PermissionDecision.ASK
+        if needs_approval:
+            if self.approval is None:
+                raise _PolicyRefusal("permission_unattended", "Tool requires host approval before execution")
+            try:
+                decision = self.approval(request)
+                if inspect.isawaitable(decision):
+                    decision = await run_cancellable(decision, ctx)
+            except (Cancelled, asyncio.CancelledError):
+                raise
+            except Exception:
+                raise _PolicyRefusal("permission_failed", "Host approval failed; tool was not run") from None
+            if decision is not PermissionDecision.ALLOW:
+                raise _PolicyRefusal("permission_denied", "Host approval did not allow this tool invocation")
+        ctx.check_cancelled()
+
+    async def _execute(self, name: str, args: Mapping[str, Any], ctx: Any) -> ToolResult:
         try:
             ctx.check_cancelled()
+            from agentkit.core.serialization._immutable import deep_freeze
+
+            if len(json.dumps(args, allow_nan=False).encode("utf-8")) > self.max_input_bytes:
+                raise _PolicyRefusal("tool_input_too_large", "Tool input exceeds the host transport bound")
+            args = deep_freeze(dict(args))
             if name == DeferredToolName.CALL and self.deferred:
                 target = args.get("name")
                 if not isinstance(target, str) or target not in self._loaded or target not in self.deferred:
-                    raise PermissionError("tool must be discovered with search_tools before call_loaded_tool")
+                    raise _PolicyRefusal(
+                        "tool_not_discovered", "tool must be discovered with search_tools before call_loaded_tool"
+                    )
                 encoded = args.get("arguments_json")
                 if not isinstance(encoded, str) or len(encoded) > 50_000:
                     raise ValueError("arguments_json must be a JSON object string within 50000 characters")
@@ -204,10 +335,15 @@ class ToolSet:
                     },
                 )
             if name in self.deferred and name not in self._loaded:
-                raise ValueError("tool is deferred; use search_tools first")
+                raise _PolicyRefusal("tool_deferred", "tool is deferred; use search_tools first")
             tool = self.registry.get(name)
-            if tool.requires_approval:
-                raise PermissionError("tool requires host approval before execution")
+            if tool.schema is not None:
+                from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+
+                if not Draft202012Validator(tool.schema.parameters).is_valid(json.loads(json.dumps(args))):
+                    raise _PolicyRefusal("tool_arguments_invalid", "Tool arguments do not match the granted schema")
+            async with asyncio.timeout(self.timeout_s):
+                await self._authorize(tool, name, args, ctx)
             timeout = getattr(tool, "timeout_s", None)
             if timeout is None:
                 timeout = self.timeout_s
@@ -218,6 +354,8 @@ class ToolSet:
 
                 value = adapt(tool.output_schema).serialize(adapt(tool.output_schema).validate(value))
             return await self.handle(name, value)
+        except _PolicyRefusal as exc:
+            return ToolResult(({"type": "text", "text": str(exc)},), {"code": exc.code}, is_error=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -225,7 +363,12 @@ class ToolSet:
 
             if isinstance(exc, Cancelled):
                 raise
-            return ToolResult(({"type": "text", "text": f"{type(exc).__name__}: {exc}"},), is_error=True)
+            explanation = (
+                "image results are disabled by the host"
+                if isinstance(exc, ValueError) and str(exc) == "image results are disabled by the host"
+                else f"tool {name!r} failed"
+            )
+            return ToolResult(({"type": "text", "text": f"{type(exc).__name__}: {explanation}"},), is_error=True)
 
     async def handle(self, name: str, value: Any) -> ToolResult:
         if self.result_hook is not None:
@@ -322,7 +465,7 @@ def serve(
             original,
             schema,
             side_effecting=schema.name == DeferredToolName.CALL or bool(getattr(original, "side_effecting", False)),
-            requires_approval=bool(getattr(original, "requires_approval", False)),
+            requires_approval=bool(getattr(original, "requires_approval", False)) and tools.approval is None,
             timeout_s=getattr(original, "timeout_s", None),
         )
 
@@ -335,8 +478,10 @@ def serve(
     registered.update({schema.name: schema for schema in tools.schemas()})
     # MCP's advertised client timeout must cover the longest permitted tool.
     # Each individual call is still bounded by ToolSet.execute's own deadline.
-    timeout_s = tools.effective_timeout_s if timeout_s is None else max(
-        (timeout_s, tools.effective_timeout_s) if tools.effective_timeout_s is not None else (timeout_s,)
+    timeout_s = (
+        tools.effective_timeout_s
+        if timeout_s is None
+        else max((timeout_s, tools.effective_timeout_s) if tools.effective_timeout_s is not None else (timeout_s,))
     )
     return serve_registry(
         cast(list[Tool], [wrap(schema) for schema in registered.values()]),

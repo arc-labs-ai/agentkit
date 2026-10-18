@@ -59,7 +59,11 @@ def evaluate_cli_execution(
         elif requirement == ExecutionRequirement.HARD_SPENDING_CAP:
             code = "hard_spending_cap_unavailable"
             explanation = "Usage metering and cancellation do not establish an exact hard dollar cap."
-        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:
+        if (
+            requirement in report.guarantees
+            and status != CapabilityStatus.SUPPORTED
+            and requirement != ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE
+        ):
             status = CapabilityStatus.UNVERIFIED
             explanation = "The trusted backend declares this guarantee, but agentkit has no verifier for its evidence."
         facts.append(ExecutionAssessment(requirement, status, code, explanation))
