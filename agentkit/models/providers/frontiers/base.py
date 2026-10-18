@@ -267,9 +267,18 @@ def _classify_4xx(status_code: int, body: str) -> Exception:
             status_code=status_code,
             body=body,
         )
-    if status_code == 429 or status_code >= 500:
+    if status_code in (408, 429) or status_code >= 500:
+        # 408 belongs here with 429, not in the generic 4xx branch below. A
+        # provider-side request timeout is the textbook retryable failure, and
+        # this module's own structured taxonomy already files it that way
+        # (`_TIMEOUT_STATUSES` is {408, 504}). While it fell through, the two
+        # readers disagreed: `resilience.classify` saw a message composed by
+        # `_permanent_message` — which WITHHOLDS the body and the error type
+        # precisely because they read transient — and failed the call fast,
+        # while `contracts.failures.classify` called the same response TIMEOUT
+        # and retryable. 504 was only ever handled by being >= 500.
         return ProviderError(
-            f"provider transient error (status {status_code}; rate limit/overloaded): {excerpt}",
+            f"provider transient error (status {status_code}; rate limit/timeout/overloaded): {excerpt}",
             status_code=status_code,
             body=body,
         )
