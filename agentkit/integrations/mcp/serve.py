@@ -168,6 +168,12 @@ def _text_result(text: str, *, is_error: bool) -> mcp_types.CallToolResult:
     )
 
 
+def _cancelled_result(text: str) -> mcp_types.CallToolResult:
+    """A cancellation acknowledgement, never a successful tool completion."""
+    result = _text_result(text, is_error=True)
+    return result.model_copy(update={"structuredContent": {"code": "cancelled"}})
+
+
 def _tool_result(value: Any) -> mcp_types.CallToolResult:
     """Preserve supported multimodal blocks returned by an agentkit tool.
 
@@ -492,7 +498,7 @@ class McpServerSpec:
         provider_id: str | None = None, request_id: str | int | None = None,
     ) -> mcp_types.CallToolResult:
         if self._stopping:
-            return _text_result("MCP server is stopping; tool was not run", is_error=True)
+            return _cancelled_result("MCP server is stopping; tool was not run")
         async def invoke() -> mcp_types.CallToolResult:
             from agentkit.tools.execution.context import bind_tool_invocation
 
@@ -505,7 +511,7 @@ class McpServerSpec:
             return await invocation
         except asyncio.CancelledError:
             if self._stopping:
-                return _text_result("MCP server stopped while tool was running", is_error=True)
+                return _cancelled_result("MCP server stopped while tool was running")
             raise
         finally:
             self._invocations.discard(invocation)
@@ -541,7 +547,7 @@ class McpServerSpec:
         try:
             ctx.check_cancelled()
         except Cancelled as exc:
-            return _text_result(f"the run was cancelled; {name!r} was not run ({exc})", is_error=True)
+            return _cancelled_result(f"the run was cancelled; {name!r} was not run ({exc})")
 
         # ``asyncio.timeout`` rather than ``asyncio.wait_for`` so that OUR
         # deadline expiring can be told apart from the tool raising a
@@ -580,7 +586,7 @@ class McpServerSpec:
             # by the generic clause below and reported to the model as an
             # ordinary failure — an invitation to retry work somebody
             # deliberately stopped.
-            return _text_result(f"the run was cancelled while {name!r} was running ({exc})", is_error=True)
+            return _cancelled_result(f"the run was cancelled while {name!r} was running ({exc})")
         except Exception as exc:  # noqa: BLE001 — see the docstring
             return _text_result(f"tool {name!r} failed: {type(exc).__name__}: {exc}", is_error=True)
 

@@ -182,12 +182,21 @@ class CallRuntime:
         *,
         execution: ExecutionRequirements | None = None,
         native_tool_policy: NativeToolPolicy | None = None,
+        limits: CallLimits | None = None,
     ) -> ExecutionCompatibility:
         """Assess execution without credentials, prompts or provider dispatch."""
         requested = NativeToolPolicy(native_tool_policy or self.native_tool_policy)
         rank = {NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}
         if rank[requested] > rank[self.native_tool_policy]:
             raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
+        if limits is not None and limits.max_cost_usd is not None:
+            execution = replace(
+                execution or ExecutionRequirements(),
+                required=(execution.required if execution else frozenset())
+                | {ExecutionRequirement.OBSERVED_SPENDING_THRESHOLD},
+            )
+        if execution is not None:
+            requested = execution.constrain_native_policy(requested)
         adapter = self._adapter(binding)
         # Every shipped adapter assesses its own mode — the CLI pair through
         # `evaluate_cli_execution`, the SDK pair through `evaluate_api_execution`
@@ -210,7 +219,10 @@ class CallRuntime:
             "This adapter does not implement enforcement for the requested execution requirement.",
         ) for requirement in ExecutionRequirement)
         unmet = tuple(fact for fact in facts if fact.requirement in required)
-        return ExecutionCompatibility(str(binding.mode), "unspecified", "unknown", None, facts, unmet)
+        return ExecutionCompatibility(
+            str(binding.mode), "unspecified", "unknown", None, facts, unmet,
+            profile=execution.profile if execution else None,
+        )
 
     async def run(
         self,
@@ -257,6 +269,12 @@ class CallRuntime:
                 )
         if policy_rank[requested_native_policy] > policy_rank[self.native_tool_policy]:
             raise ValueError("per-call native_tool_policy cannot exceed the CallRuntime policy ceiling")
+        if execution is not None:
+            if execution.profile is not None and limits.max_cost_usd is not None:
+                execution = replace(
+                    execution, required=execution.required | {ExecutionRequirement.OBSERVED_SPENDING_THRESHOLD},
+                )
+            requested_native_policy = execution.constrain_native_policy(requested_native_policy)
         adapter_policy = getattr(self.adapters.get(binding.mode), "native_tool_policy", requested_native_policy)
         effective_native_policy = min(
             (self.native_tool_policy, requested_native_policy, NativeToolPolicy(adapter_policy)),
@@ -431,6 +449,7 @@ class CallRuntime:
             mode=binding.mode,
             model=binding.model,
             agent_id=working.get("agent_id"),
+            execution_profile=execution.profile if execution else None,
             context_digest=digest([message_to_dict(m) for m in working.messages]),
             settings=asdict(effective.settings),
             inputs_digest=prompt.manifest.inputs_digest,

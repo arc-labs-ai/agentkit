@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Pre-release development record
 
+### Explicit execution profiles
+
+- Add public `ExecutionProfile.HOST_TOOLS_ONLY` and `CLI_COMPATIBLE` selections
+  through `ExecutionRequirements.profile`, shared by assessment and execution.
+- Keep strict native absence separate from CLI-compatible WARN behavior and
+  verified containment. Preserve stricter host/session ceilings through resume,
+  fork, correction and retries, and bind configuration receipts to requirements.
+- Expose the selected profile in assessments, safe refusals and call/transport
+  events. Assess supplied spending limits independently; named Codex profiles
+  return a structured incompatibility instead of dropping a requested limit.
+- Identify MCP cancellation acknowledgements with a stable `cancelled` code
+  after joining cleanup. Transport teardown and acknowledged cancellation share
+  one cancelled terminal outcome; neither reports successful tool completion.
+- Migrate the standalone plugin example to explicit profiles and retain one
+  host permission/tool/lifecycle path for both SDK and MCP execution.
+
 ### Provider-neutral host-tool images
 
 - Standardize image blocks on raw bytes and `mimeType` for SDK and MCP tools;

@@ -106,15 +106,15 @@ async def test_concurrent_cli_calls_cannot_read_the_other_collection(mode, scrip
     async with (
         CallRuntime(
             adapters={mode: CliAdapter(spawn=cli_left.spawn)},
-            # Not `deny`: that policy requires containment the CLI modes cannot
-            # verify, which refuses before dispatch. See the requirement's own
+            # DENY requires native-tool absence, which the CLI modes cannot
+            # verify or support; those requests refuse before dispatch. See the
             # comment in `configuration/providers.py`.
-            native_tool_policy="allow",
+            native_tool_policy="warn",
             unpriced_policy="proceed_unpriced",
         ) as runtime_left,
         CallRuntime(
             adapters={mode: CliAdapter(spawn=cli_right.spawn)},
-            native_tool_policy="allow",
+            native_tool_policy="warn",
             unpriced_policy="proceed_unpriced",
         ) as runtime_right,
     ):

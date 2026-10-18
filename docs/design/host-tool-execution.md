@@ -243,7 +243,7 @@ no unrestricted request hooks, and characterized CLI protocol versions.
 | Complete MCP allowlist boundary | V | V | V | V |
 | Structured answer protocol and canonical validation | S | S | S | S |
 | Usage reporting with incomplete measurement distinguished | S | S | S | S |
-| Observed spending threshold between turns | S | S | U | U |
+| Observed spending threshold between runs | S | S | S | U |
 | Exact hard dollar cap | U | U | U | U |
 | Filesystem/network/process/credential/configuration isolation | U | U | U | U |
 | Complete descendant/provider cancellation requirement | V | V | U | U |
@@ -359,10 +359,10 @@ beyond the cases measured here, and the three plants that would not fire show
 the surface enumeration is demonstrably incomplete. Absence cannot be
 established by enumeration.
 
-Per the owner's direction, absence is no longer the target for CLI modes.
-**Containment** — no authority beyond the admitted job — is, and it is a
-distinct capability: SDK modes may satisfy absence while CLI modes satisfy
-containment. The evidence above is containment evidence for the CONFIGURATION
+**Containment** — no authority beyond the admitted job — is a separate,
+unimplemented capability. CLI-compatible execution does not require it, while
+host-tools-only still requires native-tool absence. Neither profile promotes
+the evidence below into verified containment. The evidence above is containment evidence for the CONFIGURATION
 boundary specifically, and it is not yet sufficient for it. CONFIGURATION stays
 U pending: enterprise managed settings at an OS path that no agentkit flag
 overrides, a mechanism that makes the exclusion set enumerable rather than
@@ -423,9 +423,9 @@ The consuming application retains plugin composition, tenancy, binding selection
 workflow and ledger ownership. No changes to its model-call runtime are required.
 No package version bump or published release is included.
 
-## Verification
+## Earlier verification record
 
-The final implementation passes the repository gate. Skipped or unrun checks
+The earlier implementation passed the repository gate. Skipped or unrun checks
 are not enforcement evidence; protected CLI acceptance remains unmet as described
 above. No native-tool policy, spending limit, test assertion or coverage
 threshold was relaxed to make a mode execute.
@@ -631,3 +631,176 @@ Only these two API modes are paid-tested by this command; it does not promote
 CLI containment capabilities. Without opt-in or the corresponding key, tests
 skip and do not count as live-provider evidence. Never paste credentials into
 commands, test output or source control.
+
+## Explicit execution profiles
+
+Select a named minimum contract through `ExecutionRequirements.profile`:
+
+```python
+from agentkit.models import ExecutionProfile, ExecutionRequirements
+
+strict = ExecutionRequirements(profile=ExecutionProfile.HOST_TOOLS_ONLY)
+cli_compatible = ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE)
+```
+
+| Profile | Required capabilities | Native policy | Containment claim |
+| --- | --- | --- | --- |
+| `host_tools_only` | Host tools, schema, usage, verified native-tool absence | DENY | None for host callbacks |
+| `cli_compatible` | Host tools, schema, usage | WARN | None |
+
+| Mode | Host tools only | CLI-compatible on shipped subprocess backend |
+| --- | --- | --- |
+| OpenAI API | Supported with the assessed adapter configuration | Supported; declares host functions only |
+| Anthropic API | Supported with the assessed adapter configuration | Supported; declares host functions only |
+| Claude Code | Native-tool absence unverified; strict calls refused | Protocol supported on supported binaries |
+| Codex | Native-tool absence unsupported; strict calls refused | Protocol supported on supported binaries |
+
+Each assessment returns the complete supported/unsupported/unverified matrix,
+safe reason codes and adapter/backend/binary identity. The `profile` field says
+which contract was selected. Protocol compatibility does not verify filesystem,
+network, process, configuration, MCP discovery or credential containment. SDK
+callbacks remain trusted host code with their host process's authority.
+
+The CLI-compatible profile applies the existing WARN policy. It permits native
+behavior under the adapter's existing restrictions; it does not enable every
+native feature. Codex's existing native-tool degradation events remain visible.
+Native operations do not pass through host tool permissions, approvals, hooks or
+lifecycle observers. Granted host tools always use the existing `ToolSet` path,
+including MCP calls: schema validation, scope/permission decisions, unattended
+approval refusal, effects and correlated lifecycle events remain authoritative.
+Skills grant no additional authority.
+
+Pass the same request to assessment and dispatch through the existing runtime:
+
+```python
+from agentkit.core.runtime import CallRuntime
+from agentkit.models import Binding, CallLimits, ExecutionProfile, ExecutionRequirements
+from agentkit.tools import ToolSet
+
+async def run_job(binding: Binding, tools: ToolSet, answer_type: type):
+    request = ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE)
+    limits = CallLimits(max_turns=3, max_output_tokens=256, wall_clock_s=60)
+    async with CallRuntime(native_tool_policy="warn") as runtime:
+        assessment = await runtime.evaluate_execution(binding, execution=request, limits=limits)
+        if not assessment.compatible:
+            return assessment
+        return await runtime.run(
+            binding, "Use the granted host tools and return the typed answer.", tools,
+            output=answer_type, execution=request, limits=limits, call_id="host-job",
+        )
+```
+
+The host supplies `binding`, its credential resolver, the granted `ToolSet`,
+skill guidance and callbacks. Profile selection does not select a provider,
+resolve credentials early, create another dispatcher or supply application
+policy. Assessment and dispatch inspect the same configuration; receipts now
+include execution requirements and effective native policy.
+
+No profile is automatically chosen from the provider. Omitting `profile`
+retains the existing explicit-requirements/legacy-policy behavior. The example
+uses host-tools-only by default and requires `--profile cli_compatible` to
+request the other contract. A `CallRuntime(native_tool_policy="deny")` ceiling
+cannot be weakened by CLI-compatible selection. Existing session requirements
+are intersected on resume/fork; host-tools-only dominates CLI-compatible, and
+additional resource/capability restrictions remain binding. The saved
+`SessionHandle.execution.profile`, call-started events and transport policy
+events retain the effective selection through continuations and corrections.
+API native session forks remain unsupported.
+
+Spending is independent. Supply `limits` to `evaluate_execution` when assessing
+a call with a spending threshold. Named-profile dispatch includes that threshold
+in admission. Codex refuses it with
+`observed_spending_threshold_refused_for_mode` before credentials or attempts;
+it is never removed to make the call execute. API and Claude observed thresholds
+retain their existing behavior. An exact `HARD_SPENDING_CAP` is still unsupported
+for all four modes. Unsupported named-profile calls return the existing public
+`execution_incompatible` failure, with `execution_profile` and the safe
+`incompatibilities` list, zero provider attempts and incomplete/unpriced usage.
+
+Verified containment remains separately requested through
+`NativeExecution.CONTAINED` and its mandatory boundaries; no profile supplies
+those guarantees. A contained request still refuses on the ordinary subprocess
+backend, and containment never satisfies strict native-tool absence.
+
+Evidence is separated deliberately: `test_execution_profiles.py` uses scripted
+SDK HTTP and scripted CLI binaries with real localhost MCP to exercise the
+shared host policy path. The actual-binary adapter integration tests in
+`tests/source/integration/execution/test_claude_adapter_offline.py` and
+`test_codex_adapter_offline.py` request CLI-compatible explicitly and check
+profile/WARN preservation, host-tool execution and planted permission refusals.
+They use local scripted upstreams and synthetic credentials, not paid providers.
+The Codex test also documents a native image read outside the job: successful
+host-tool routing must not be mistaken for containment. Strict-profile refusals
+are tested separately before credentials or process startup.
+
+
+### Cancellation acknowledgement and transport teardown
+
+Run cancellation always joins the host tool's cleanup, prevents the pending
+host effect and records one cancelled tool outcome and one terminal call
+outcome. The wire may carry an MCP error acknowledgement before the adapter
+closes it, or transport teardown may interrupt the pending request first.
+An acknowledgement has `isError=true` and
+`structuredContent={"code": "cancelled"}`; it is neither successful tool output
+nor a new permission decision. Server shutdown uses the same marker. The
+runtime's cancelled outcome remains authoritative and does not automatically
+retry the cancelled invocation. Arbitrary host code still owns cancellation of
+its external effects; AgentKit cannot undo an effect that already completed.
+
+Both wire outcomes are tested along with joined cleanup and absence of handler
+effects. A successful response, a generic error, a permission refusal or a
+second terminal outcome fails the cancellation assertions. The standalone MCP
+HTTP contract retains its error response instead of turning cooperative run
+cancellation into HTTP 500.
+
+
+### Profile verification record — 2026-10-18
+
+| Check | Result |
+| --- | --- |
+| Initial profile contract/admission regressions before implementation | 21 failed as intended |
+| Public contracts re-export regressions before adding that export | 2 failed as intended |
+| Cancellation acknowledgement regression before adding the stable code | 1 failed as intended |
+| Final focused profile/example/MCP/tool regressions on macOS | 221 passed, 0 skipped, 0 failed |
+| Same focused regressions in Linux ARM64, Python 3.13 | 221 passed, 0 skipped, 0 failed |
+| Actual default native Claude 2.1.302 adapter cases | 12 passed |
+| Actual Codex 0.162.1 adapter cases | 2 passed |
+| `make check`: coverage run, Python 3.13.14 | 3,043 passed, 18 skipped, 0 failed |
+| `make check`: Python 3.12.13 matrix | 3,043 passed, 18 skipped, 0 failed |
+| `make check`: Python 3.13.14 matrix | 3,043 passed, 18 skipped, 0 failed |
+| Branch coverage | 91%; threshold unchanged |
+| Ruff, strict mypy, documented imports, strict docs build | Passed; 151 source files typed |
+| Full mutation catalogue | 274 killed, 0 survived |
+| Additional final profile mutation recheck | 10 killed, 0 survived |
+
+The 96 profile conformance cases use scripted SDK HTTP and scripted CLI binaries
+with actual authenticated MCP. Linux uses those same scripted transports, not
+real vendor binaries. The 14 actual-binary cases use local scripted provider
+responses and synthetic API-key/saved-session material. They prove host-tool
+routing, policy and continuation behavior for those binaries; they do not prove
+vendor authentication, model tool choice, refreshed vendor sessions or
+containment. The default local Claude binary was updated from 2.1.300 to
+2.1.302, and the 12 Claude cases were rerun against that installed native build;
+the configured minimum was not lowered. No paid calls were made for this work.
+
+An intermediate combined run exposed the cancellation race (1 failed,
+127 passed). Cancelling the MCP request directly then broke the standalone HTTP
+contract (2 failed, 3,041 passed, 18 skipped in the broad run). That approach was
+removed. The final contract preserves HTTP error acknowledgements and adds the
+stable cancellation code, while the tests retain no-effects, joined-cleanup and
+single-terminal assertions and reject non-cancellation replies.
+
+The first mutation run killed 273 of 274 entries. Its survivor removed a
+redundant second spending-admission input: the spending requirement had already
+been merged into the effective request. The redundant argument was removed,
+and the mutant now targets the actual requirement merge. All 274 final entries
+were killed. Mutations ran only in a disposable source snapshot with a separate
+virtual environment; source restoration and anchor resolution were checked.
+
+No release, version bump or publication accompanies this change.
+Consumers need the implementation containing `ExecutionProfile`, and should
+select it through the public model contracts, retain it with session state and
+pass the same spending limits to assessment and dispatch. A host that elects
+CLI-compatible must explicitly permit WARN in its runtime policy ceiling;
+profile selection cannot override a DENY ceiling. Application authorization,
+credentials, tenancy and deployment policy remain host responsibilities.

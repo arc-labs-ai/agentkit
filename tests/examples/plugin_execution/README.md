@@ -80,14 +80,26 @@ pinned in `tests/test_cli_containment.py`.
 | Strict profile refuses before credential or dispatch | n/a | n/a | Local refusal | Local refusal |
 | Contained native execution of a real binary | Unsupported | Unsupported | Unsupported | Unsupported |
 
-The CLI rows above request `HOST_TOOL_PATH_REQUIREMENTS` rather than the
-example's `REQUIREMENTS`, and build their runtime with
-`native_tool_policy="allow"`. That is not incidental: the strict profile's
-`NATIVE_TOOLS_UNAVAILABLE` requirement, which `native_tool_policy="deny"` also
-implies, is exactly what refuses both CLI modes before dispatch. A
-demonstration of the permission path on a CLI mode therefore has to drop the
-containment claim and say so, which is why the two profiles have two names in
-`configuration/providers.py`. Nothing else about those calls changes.
+The CLI rows explicitly request `HOST_TOOL_PATH_REQUIREMENTS`, now
+`ExecutionRequirements(profile=ExecutionProfile.CLI_COMPATIBLE)`, and use
+`native_tool_policy="warn"`. The default `REQUIREMENTS` selects
+`ExecutionProfile.HOST_TOOLS_ONLY` and still refuses both CLI modes. Native-tool
+absence and containment are distinct claims; CLI-compatible requires neither.
+Native operations do not run through the host permission or lifecycle hooks.
+All invocations of granted host tools still do, including over MCP.
+
+Select the profile explicitly for credential-free assessment:
+
+```sh
+uv run python -m tests.examples.plugin_execution.main --provider codex --profile cli_compatible
+uv run python -m tests.examples.plugin_execution.main --provider claude_code --profile host_tools_only
+```
+
+The same `--profile` option applies to `--execute`. Successful assessment still
+requires a supported CLI binary and does not establish containment. Runtime or
+resumed-session DENY ceilings remain binding. A strict session cannot silently
+become CLI-compatible. Requested spending limits remain independent; Codex still
+refuses `max_cost_usd`, and hard dollar caps remain unsupported for all modes.
 
 ## Explicit provider execution (potentially paid)
 
@@ -104,6 +116,13 @@ Use `--model` to select a model available to your account. The expected answer
 is `{"record_id":"record-1","status":"ready"}`. The runtime validates its
 type; no live provider response is guaranteed by scripted test success.
 
+For an explicitly authorized CLI-compatible call using a supplied saved session:
+
+```sh
+uv run python -m tests.examples.plugin_execution.main --provider claude_code --profile cli_compatible --auth-file /path/to/claude-credentials.json --execute
+uv run python -m tests.examples.plugin_execution.main --provider codex --profile cli_compatible --auth-file /path/to/codex-auth.json --execute
+```
+
 Native saved-session files can be supplied explicitly with `--auth-file PATH`
 for either CLI; the program never reads unrelated native authentication files
 implicitly. The credential resolver reads the file only after compatibility
@@ -111,8 +130,8 @@ passes. CLI strict execution currently refuses before that read. This example
 does not persist refreshed subscription credentials; production hosts must use
 the existing `Credential.on_changed` callback to persist rotations safely.
 
-The example requests strict native-tool absence, host-tool transport, structured
-output and usage reporting. It does not request an exact hard spending cap.
+The default host-tools-only profile requests strict native-tool absence,
+host-tool transport, structured output and usage reporting. It does not request an exact hard spending cap.
 Metering is separate from spending enforcement: unsupported hard caps must be
 requested with `ExecutionRequirement.HARD_SPENDING_CAP` and will refuse before
 credentials in all four modes. Unpriced usage stays unpriced. No caller limit is
@@ -152,7 +171,8 @@ hook that can rewrite the wire makes native absence, the granted catalog and
 schema support unverified. Ordinary subprocess backends do not establish file,
 network, process or credential isolation. Same-user native tools could read a
 staged authentication file or environment; a private HOME is not containment.
-No real provider authentication or paid call was used to produce local evidence.
+No real provider authentication or paid call is used by the scripted tests.
+Real CLI characterization uses synthetic credentials and a local scripted provider.
 
 The strict CLI sentinel test proves refusal before model dispatch and no effect
 on the sentinel. It does not demonstrate an allowed CLI call under the strict
@@ -181,3 +201,11 @@ existing runtime for calls and accounting and close it with `async with`.
 For intentional model-visible recovery instructions, raise public
 `ToolExecutionError(safe_message, code=...)`; unexpected exception details are
 redacted. Host code is responsible for reviewing the explicit safe message.
+
+
+Cancellation joins a blocked permission callback before settlement. Depending
+on transport timing, the CLI receives an MCP error acknowledgement with
+`structuredContent={"code": "cancelled"}` or its request is torn down first.
+Neither outcome permits the handler to run. Tests require exactly one
+interrupted exchange, one cancelled tool event and one terminal call event;
+successful or untyped error replies fail the assertions.

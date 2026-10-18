@@ -66,14 +66,10 @@ async def execute(
 ):
     """Run this call through `CallRuntime`, which owns every turn and attempt.
 
-    `execution` is the requested execution profile and defaults to the strict
-    one the example asks for everywhere else. It is a parameter because the
-    strict profile refuses both CLI modes before dispatch, so a CLI
-    demonstration of the permission path has to request
-    `HOST_TOOL_PATH_REQUIREMENTS` instead and say which claim it dropped —
-    see `configuration/providers.py`. Everything else about the call is
-    identical in all four modes, which is the point: one composition, one
-    policy path, one accounting of the outcome.
+    `execution` defaults to the named host-tools-only profile. A CLI-compatible
+    call explicitly selects HOST_TOOL_PATH_REQUIREMENTS, which uses WARN and
+    retains the same host permissions without claiming native-tool absence or
+    containment. The runtime owns profile inheritance and every model turn.
     """
     return await runtime.run(
         binding,

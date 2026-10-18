@@ -263,6 +263,8 @@ class CliAdapter:
              configuration.native_tool_policy),
             key={NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}.__getitem__,
         )
+        if execution is not None:
+            policy = execution.constrain_native_policy(policy)
         try:
             report = await configuration.execution_backend.inspect()
         except Exception:
@@ -270,7 +272,10 @@ class CliAdapter:
                 ExecutionRequirement.PROCESSES, CapabilityStatus.UNVERIFIED, "backend_inspection_failed",
                 "Execution backend inspection failed; restore the mechanism before attempting execution.",
             )
-            return ExecutionCompatibility(str(binding.mode), "unavailable", "unknown", None, (unmet,), (unmet,))
+            return ExecutionCompatibility(
+                str(binding.mode), "unavailable", "unknown", None, (unmet,), (unmet,),
+                profile=execution.profile if execution else None,
+            )
         version = None
         # ``isinstance``, not ``type(...) is``. A SUBCLASS of the shipped
         # subprocess backend still reaches ``super().start()`` and still spawns
@@ -377,6 +382,7 @@ class CliAdapter:
         identity = (
             binding.mode, binding.model, report.backend, report.version, version,
             id(configuration.execution_backend), id(configuration.spawn), id(configuration.request_hook),
+            execution, policy,
             configuration.working_dir, configuration.home_parent, sorted(configuration.executable.items()),
             sorted(configuration.env.items()), sorted(configuration.transport.items()),
         )
@@ -428,6 +434,8 @@ class CliAdapter:
              configuration.native_tool_policy),
             key={NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}.__getitem__,
         )
+        if execution is not None:
+            native_tool_policy = execution.constrain_native_policy(native_tool_policy)
         tool_timeout_s = getattr(tools, "effective_timeout_s", getattr(tools, "timeout_s", None)) if tools else None
         if session and session.history and not session.cli_session_id:
             prompt = replace(
@@ -448,6 +456,7 @@ class CliAdapter:
             return Turn(failure=execution_failure(compatibility), usage_complete=False)
         await _emit(
             emit, EventKind.TRANSPORT, mode_event="execution_policy",
+            execution_profile=execution.profile if execution else None,
             native_tool_policy=native_tool_policy, backend=compatibility.backend,
             backend_version=compatibility.backend_version, binary_version=compatibility.binary_version,
             execution_requirements=tuple(sorted((execution or ExecutionRequirements()).required)),

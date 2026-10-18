@@ -333,6 +333,31 @@ async def test_a_tool_cancelled_mid_run_is_not_reported_as_an_ordinary_failure()
 
 
 @pytest.mark.asyncio
+async def test_run_cancellation_acknowledges_abort_after_cleanup_without_success() -> None:
+    cancel = CancellationToken()
+    entered, cleaned = asyncio.Event(), asyncio.Event()
+
+    @tool(side_effecting=False)
+    async def blocked() -> str:
+        """Block the invocation until the owning run cancels it."""
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaned.set()
+        return "late result"
+
+    spec = _spec([blocked], ctx=make_test_ctx(cancel=cancel))
+    pending = asyncio.create_task(spec._dispatch("blocked", {}))
+    await asyncio.wait_for(entered.wait(), 1)
+    cancel.cancel()
+    result = await asyncio.wait_for(pending, 1)
+    assert result.isError and result.structuredContent == {"code": "cancelled"}
+    assert "late result" not in _text(result)
+    assert cleaned.is_set() and not spec._invocations
+
+
+@pytest.mark.asyncio
 async def test_this_servers_deadline_says_it_abandoned_the_tool() -> None:
     """With a deadline configured and expired, the model needs to be told the
     tool was abandoned while still running — the work may well have landed, so
