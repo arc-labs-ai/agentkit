@@ -6,6 +6,7 @@ import json
 import math
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -88,7 +89,13 @@ _QUOTA_CODES = frozenset({
     "usage_limit_reached",
     "spend_limit_reached",
 })
-_QUOTA_TYPES = frozenset({"billing_error"})
+# The same quota conditions arrive under `error.type` on some endpoints and
+# `error.code` on others, so one rule has to cover both fields. Reading them
+# only as codes is what let a 429 carrying `{"type": "insufficient_quota"}`
+# and no `code` fall through to RATE_LIMITED — retryable — which is exactly
+# the budget-burning retry that `_PERMANENT_429_TYPES` upstream exists to
+# prevent. Two modules, one rule, and they disagreed.
+_QUOTA_TYPES = frozenset({"billing_error", *_QUOTA_CODES})
 # 402 Payment Required is a billing condition, not a malformed request. It used
 # to sit in the INVALID_REQUEST set, which told an operator to go and debug a
 # request that was perfectly well formed.
@@ -198,6 +205,29 @@ def classify(exc_or_event: Any) -> Failure | None:
     if not isinstance(headers, Mapping):
         headers = {}
     wait = retry_after(headers.get("retry-after") or headers.get("Retry-After"))
+    if category is FailureClass.UNKNOWN and not isinstance(exc_or_event, Mapping):
+        # Nothing on the exception itself said anything, so follow the chain.
+        #
+        # The transport branches above key on ``type(exc).__name__``, which only
+        # works while the httpx error IS the exception. Every wrapper defeats
+        # them: ``HttpLLM._post`` re-raises a plain ``ProviderError`` with no
+        # status and no body, keeping the ``ConnectError`` on ``__cause__``
+        # alone. Measured, before this: a refused connection through the API
+        # runtime classified UNKNOWN / retryable=False, while the SAME error
+        # handed here directly gave TRANSIENT_NETWORK / retryable=True. A real
+        # connection failure was therefore never retried.
+        #
+        # Only ever consulted when this call produced UNKNOWN, so a wrapper that
+        # deliberately reinterprets its cause keeps the last word, and the walk
+        # is bounded because a long chain means the answer is not here.
+        cause: BaseException | None = getattr(exc_or_event, "__cause__", None)
+        for _ in range(4):
+            if cause is None:
+                break
+            inherited = classify(cause)
+            if inherited is not None and inherited.classification is not FailureClass.UNKNOWN:
+                return inherited if wait is None else replace(inherited, retry_after_s=wait)
+            cause = getattr(cause, "__cause__", None)
     # Never capture exception messages, response bodies or credentials by default.
     return Failure(
         category,

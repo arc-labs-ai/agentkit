@@ -203,7 +203,11 @@ class ApiAdapter:
                     if kind == "response.failed":
                         return Turn(raw_usage=final.get(EventKind.USAGE) or {}, failure=classify(final))
                 elif kind == "error":
-                    return Turn(failure=classify(event))
+                    # `classify` returns None for a frame whose `error` is not a
+                    # mapping, and `failure=None` is a SUCCESSFUL turn. An error
+                    # frame must never read as success, so an unclassifiable one
+                    # degrades to UNKNOWN rather than vanishing.
+                    return Turn(failure=classify(event) or Failure(FailureClass.UNKNOWN))
         except asyncio.CancelledError:
             return Turn(
                 raw_usage=(final or {}).get("usage") or {},
@@ -215,7 +219,14 @@ class ApiAdapter:
                 raw_usage=(final or {}).get("usage") or {}, usage_complete=final is not None, failure=classify(exc)
             )
         if final is None:
-            return Turn(failure=Failure(FailureClass.TRANSIENT_NETWORK))
+            # A truncated response body is the textbook retryable transport fault, and
+        # `retryable` is NOT derived from the class — it defaults to False, so
+        # naming the class alone produced a TRANSIENT_NETWORK that the runtime
+        # refused to retry (`retry_allowed = failure.retryable and ...`). Measured,
+        # before: a stream ending with no terminal frame made 1 request, while the
+        # SAME physical event one layer earlier — a socket error — made 3. It was
+        # the only transport failure on this path that was never retried.
+            return Turn(failure=Failure(FailureClass.TRANSIENT_NETWORK, True))
         messages = []
         calls = []
         refused = False
@@ -253,7 +264,9 @@ class ApiAdapter:
                 kind = event.get("type", FailureClass.UNKNOWN)
                 await _emit(emit, EventKind.TRANSPORT, mode_event=kind)
                 if kind == "error":
-                    return Turn(raw_usage=usage, failure=classify(event))
+                    # See the sibling parser: an unclassifiable error frame
+                    # degrades to UNKNOWN instead of reading as success.
+                    return Turn(raw_usage=usage, failure=classify(event) or Failure(FailureClass.UNKNOWN))
                 if kind == "message_start":
                     usage.update((event.get("message") or {}).get(EventKind.USAGE) or {})
                 elif kind == "content_block_start":
@@ -285,7 +298,16 @@ class ApiAdapter:
         except Exception as exc:
             return Turn(raw_usage=usage, usage_complete=terminal, failure=classify(exc))
         if not terminal:
-            return Turn(raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK))
+            # A truncated response body is the textbook retryable transport fault, and
+        # `retryable` is NOT derived from the class — it defaults to False, so
+        # naming the class alone produced a TRANSIENT_NETWORK that the runtime
+        # refused to retry (`retry_allowed = failure.retryable and ...`). Measured,
+        # before: a stream ending with no terminal frame made 1 request, while the
+        # SAME physical event one layer earlier — a socket error — made 3. It was
+        # the only transport failure on this path that was never retried.
+            return Turn(
+                raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK, True)
+            )
         content = [blocks[i] for i in sorted(blocks)]
         text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
         calls = tuple(

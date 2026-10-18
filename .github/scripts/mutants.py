@@ -251,6 +251,12 @@ TOOLSCHEMA_TESTS = (
 TOOLCALLID_TESTS = (
     "tests/source/unit/models/test_tool_call_identity.py",
 )
+AGREEMENT_TESTS = (
+    "tests/source/unit/models/adapters/test_transport_classifier_agreement.py",
+)
+RETRYABILITY_TESTS = (
+    "tests/source/architecture/test_failure_retryability.py",
+)
 CHANNEL_TESTS = ("tests/source/unit/agents/test_signal_protocol.py",)
 TERM_TESTS = (
     "tests/source/unit/agents/test_termination_isolation.py",
@@ -1967,6 +1973,46 @@ MUTANTS: tuple[Mutant, ...] = (
         before='if anonymous or log.first_call(f"call:{item_id}"):',
         after='if log.first_call(f"call:{item_id}"):',
         tests=TOOLCALLID_TESTS,
+    ),
+    Mutant(
+        tag="classifieragree",
+        why='Every provider failure is read TWICE: `resilience.classify` matches message SUBSTRINGS and decides whether the call is retried at all, and `contracts.failures.classify` reads STRUCTURED facts and becomes the `Turn.failure` the caller sees. A response one calls transient and the other calls permanent produces a run whose retry behaviour contradicts its reported failure, and the composed `_permanent_message` WITHHOLDS the body and error type precisely because they read transient — so a misfiled response hides the evidence that it disagreed. Here: quota conditions are matched against `error.code` only. Providers send the same condition under `error.type` on some endpoints, so a 429 carrying `{"type": "insufficient_quota"}` and no `code` becomes RATE_LIMITED and RETRYABLE — the exact budget-burning retry on a permanently broken account that `_PERMANENT_429_TYPES` upstream exists to prevent.',
+        path='agentkit/models/contracts/failures.py',
+        before='_QUOTA_TYPES = frozenset({"billing_error", *_QUOTA_CODES})',
+        after='_QUOTA_TYPES = frozenset({"billing_error"})',
+        tests=AGREEMENT_TESTS,
+    ),
+    Mutant(
+        tag="classifieragree",
+        why="Every provider failure is read TWICE: `resilience.classify` matches message SUBSTRINGS and decides whether the call is retried at all, and `contracts.failures.classify` reads STRUCTURED facts and becomes the `Turn.failure` the caller sees. A response one calls transient and the other calls permanent produces a run whose retry behaviour contradicts its reported failure, and the composed `_permanent_message` WITHHOLDS the body and error type precisely because they read transient — so a misfiled response hides the evidence that it disagreed. Here: HTTP 408 falls into the generic 4xx branch, so `resilience` fails the call fast on a provider-side request timeout while this module's own taxonomy (`_TIMEOUT_STATUSES` is {408, 504}) calls it TIMEOUT and retryable. 504 is handled only incidentally, by being >= 500.",
+        path='agentkit/models/providers/frontiers/base.py',
+        before='    if status_code in (408, 429) or status_code >= 500:',
+        after='    if status_code == 429 or status_code >= 500:',
+        tests=AGREEMENT_TESTS,
+    ),
+    Mutant(
+        tag="classifieragree",
+        why='Every provider failure is read TWICE: `resilience.classify` matches message SUBSTRINGS and decides whether the call is retried at all, and `contracts.failures.classify` reads STRUCTURED facts and becomes the `Turn.failure` the caller sees. A response one calls transient and the other calls permanent produces a run whose retry behaviour contradicts its reported failure, and the composed `_permanent_message` WITHHOLDS the body and error type precisely because they read transient — so a misfiled response hides the evidence that it disagreed. Here, and THIS ONE SHIPPED: the transport branches key on `type(exc).__name__`, which only works while the httpx error IS the exception. `HttpLLM._post` re-raises a plain `ProviderError` with no status and no body, keeping the `ConnectError` on `__cause__` alone, so that branch was dead for every API-mode call. Measured: a refused connection classified UNKNOWN / retryable=False, i.e. never retried, while the same error handed to the classifier directly gave TRANSIENT_NETWORK. `resilience` never noticed, because the wrapper\'s message still says "network/timeout" and it matches on substrings — one reader was right the whole time.',
+        path='agentkit/models/contracts/failures.py',
+        before='    if category is FailureClass.UNKNOWN and not isinstance(exc_or_event, Mapping):',
+        after='    if False and category is FailureClass.UNKNOWN and not isinstance(exc_or_event, Mapping):',
+        tests=AGREEMENT_TESTS,
+    ),
+    Mutant(
+        tag="retryability",
+        why="THE BUG, and it shipped at BOTH stream parsers. `Failure.retryable` is a separate argument that DEFAULTS TO FALSE, while the runtime gates every retry on exactly that flag (`retry_allowed = failure.retryable and ...`). So naming the most retryable class there is, and nothing else, produces a failure that is never retried — the classification in the logs says 'transient' and the behaviour says 'give up', three lines apart, and nothing raises. Measured: a stream ending with no terminal frame made 1 request, while the SAME physical event one layer earlier (a socket error) made 3. It was the only transport failure on this path never retried. (OpenAI parser: `final is None`.)",
+        path='agentkit/models/providers/frontiers/calls.py',
+        before='            return Turn(failure=Failure(FailureClass.TRANSIENT_NETWORK, True))',
+        after='            return Turn(failure=Failure(FailureClass.TRANSIENT_NETWORK))',
+        tests=RETRYABILITY_TESTS,
+    ),
+    Mutant(
+        tag="retryability",
+        why="THE BUG, and it shipped at BOTH stream parsers. `Failure.retryable` is a separate argument that DEFAULTS TO FALSE, while the runtime gates every retry on exactly that flag (`retry_allowed = failure.retryable and ...`). So naming the most retryable class there is, and nothing else, produces a failure that is never retried — the classification in the logs says 'transient' and the behaviour says 'give up', three lines apart, and nothing raises. Measured: a stream ending with no terminal frame made 1 request, while the SAME physical event one layer earlier (a socket error) made 3. It was the only transport failure on this path never retried. (Anthropic parser: `not terminal`.)",
+        path='agentkit/models/providers/frontiers/calls.py',
+        before='                raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK, True)',
+        after='                raw_usage=usage, usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK)',
+        tests=RETRYABILITY_TESTS,
     ),
 )
 
