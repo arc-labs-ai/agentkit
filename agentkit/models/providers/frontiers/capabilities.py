@@ -168,6 +168,16 @@ def evaluate_api_execution(
                 "Output token caps and post-hoc usage pricing do not establish an exact hard dollar cap; this "
                 "transport enforces no per-request spending limit."
             )
+        if payload_rewriting and requirement in {
+            ExecutionRequirement.HOST_TOOLS,
+            ExecutionRequirement.SCHEMA,
+            ExecutionRequirement.MCP_ALLOWLIST,
+        }:
+            status = CapabilityStatus.UNVERIFIED
+            code = "request_hook_authority_unverified"
+            explanation = (
+                "A host request hook can replace the assessed wire configuration; remove it for this requirement."
+            )
         if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:
             status = CapabilityStatus.UNVERIFIED
             explanation = (

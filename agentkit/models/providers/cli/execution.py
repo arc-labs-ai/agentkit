@@ -18,8 +18,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from agentkit.core.contracts.types import Mode
 from agentkit.core.serialization._immutable import deep_freeze
-from agentkit.models.contracts.execution import ExecutionRequirement
+from agentkit.models.contracts.constants import NativeToolPolicy
+from agentkit.models.contracts.execution import ExecutionRequirement, ExecutionRequirements
 
 
 class ExecutionOutcomeUnknown(RuntimeError):
@@ -44,8 +46,16 @@ class CliInvocation:
 
     argv: tuple[str, ...] = field(repr=False)
     options: Mapping[str, Any] = field(repr=False)
+    mode: Mode | None = None
+    call_id: str = ""
+    attempt_id: str | None = None
+    execution: ExecutionRequirements = field(default_factory=ExecutionRequirements)
+    native_tool_policy: NativeToolPolicy = NativeToolPolicy.WARN
 
     def __post_init__(self) -> None:
+        if self.mode is not None:
+            object.__setattr__(self, "mode", Mode(self.mode))
+        object.__setattr__(self, "native_tool_policy", NativeToolPolicy(self.native_tool_policy))
         if not self.argv or any(not isinstance(arg, str) or "\0" in arg for arg in self.argv):
             raise ValueError("CLI invocation requires valid arguments")
         if set(self.options) - {"env", "cwd", "stdin", "stdout", "stderr", "start_new_session", "limit"}:
@@ -128,6 +138,19 @@ class SubprocessExecutionBackend:
         return BackendReport("subprocess", f"1/python-{platform.python_version()}")
 
     async def start(self, invocation: CliInvocation) -> ExecutionProcess:
+        from agentkit.models.providers.cli.capabilities import evaluate_cli_execution
+
+        if invocation.mode is not None:
+            report = evaluate_cli_execution(
+                invocation.mode,
+                await self.inspect(),
+                invocation.execution,
+                invocation.native_tool_policy,
+            )
+            if not report.compatible:
+                raise ValueError("subprocess cannot establish the requested execution requirements")
+        elif invocation.execution.required or invocation.native_tool_policy == NativeToolPolicy.DENY:
+            raise ValueError("execution requirements require an identified provider mode")
         if invocation.options.get("start_new_session") is not True:
             raise ValueError("subprocess backend requires a private process group")
         process = await asyncio.create_subprocess_exec(*invocation.argv, **dict(invocation.options))

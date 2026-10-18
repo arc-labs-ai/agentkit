@@ -2,7 +2,7 @@
 
 Run with::
 
-    uv run python tests/examples/02_react_tools_and_events.py
+    uv run python -m tests.examples.react_tools_and_events
 """
 
 from __future__ import annotations
@@ -19,8 +19,15 @@ from agentkit.tools import FunctionTool, ToolRegistry
 PRICES = PriceTable(
     "example",
     "2026-10-13",
-    {"test-model": {"input_uncached": "1", "input_cache_read": "0.1", "input_cache_write_5m": "1.25",
-                    "input_cache_write_1h": "2", "output": "5"}},
+    {
+        "test-model": {
+            "input_uncached": "1",
+            "input_cache_read": "0.1",
+            "input_cache_write_5m": "1.25",
+            "input_cache_write_1h": "2",
+            "output": "5",
+        }
+    },
 )
 
 
@@ -63,10 +70,7 @@ async def main() -> None:
         if event.kind == EventKind.TOOL_CALL:
             print(f"[tool_call] {event.fields.get('name')} (arguments masked by default)")
         elif event.kind == EventKind.TOOL_RESULT:
-            print(
-                f"[tool_result] size={event.fields.get('result_size')} "
-                f"digest={event.fields.get('result_digest')}"
-            )
+            print(f"[tool_result] size={event.fields.get('result_size')} digest={event.fields.get('result_digest')}")
         elif event.kind == EventKind.MESSAGE_DELTA:
             print(f"[message_delta] {event.fields.get('length')} characters")
     print(f"[final] {answer.text}")

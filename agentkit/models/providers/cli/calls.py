@@ -7,6 +7,7 @@ vendor output blocks verbatim so reasoning signatures survive continuation.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import inspect
 import json
@@ -67,6 +68,7 @@ class _CliExecutionContext:
     invoker: Any = None
     meters: tuple[Any, ...] = ()
     all_meters: tuple[Any, ...] = ()
+    attempt_id: str | None = None
 
     def check_cancelled(self) -> None:
         if self.cancel is not None:
@@ -138,6 +140,14 @@ class CliAdapter:
         self._auth_fingerprints: dict[str, str] = {}
         self._pending_credentials: dict[str, Any] = {}
 
+    def _snapshot(self) -> CliAdapter:
+        """Pin adapter options across asynchronous callbacks, not OS authority."""
+        configuration = copy.copy(self)
+        configuration.env = dict(self.env)
+        configuration.transport = dict(self.transport)
+        configuration.executable = dict(self.executable)
+        return configuration
+
     async def evaluate_execution(
         self,
         binding: Binding,
@@ -148,12 +158,14 @@ class CliAdapter:
         """Credential-free inspection; an unverified requirement refuses dispatch."""
         from agentkit.models.providers.cli.capabilities import evaluate_cli_execution
 
+        configuration = self._snapshot()
         policy = min(
-            (NativeToolPolicy(native_tool_policy or self.native_tool_policy), self.native_tool_policy),
+            (NativeToolPolicy(native_tool_policy or configuration.native_tool_policy),
+             configuration.native_tool_policy),
             key={NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}.__getitem__,
         )
         try:
-            report = await self.execution_backend.inspect()
+            report = await configuration.execution_backend.inspect()
         except Exception:
             unmet = ExecutionAssessment(
                 ExecutionRequirement.PROCESSES, CapabilityStatus.UNVERIFIED, "backend_inspection_failed",
@@ -161,29 +173,80 @@ class CliAdapter:
             )
             return ExecutionCompatibility(str(binding.mode), "unavailable", "unknown", None, (unmet,), (unmet,))
         version = None
-        if self.spawn is None and type(self.execution_backend) is SubprocessExecutionBackend:
+        if configuration.spawn is None and type(configuration.execution_backend) is SubprocessExecutionBackend:
             from agentkit.models.providers.cli.execution import inspect_binary_version
 
-            if self._binary_versions.get(binding.mode) is None:
-                executable = self.executable.get(
-                    binding.mode, "claude" if binding.mode == Mode.CLAUDE_CODE else "codex",
-                )
-                self._binary_versions[binding.mode] = await inspect_binary_version(executable)
-            version = self._binary_versions[binding.mode]
+            executable = configuration.executable.get(
+                binding.mode, "claude" if binding.mode == Mode.CLAUDE_CODE else "codex",
+            )
+            version = await inspect_binary_version(executable)
         compatibility = replace(
             evaluate_cli_execution(binding.mode, report, execution or ExecutionRequirements(), policy),
             binary_version=version,
+            adapter="agentkit.models.providers.cli.calls.CliAdapter",
         )
+        required = set((execution or ExecutionRequirements()).required)
+        if policy == NativeToolPolicy.DENY:
+            required.add(ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE)
+        overrides: dict[ExecutionRequirement, ExecutionAssessment] = {}
+        if configuration.request_hook is not None:
+            for requirement in (ExecutionRequirement.HOST_TOOLS, ExecutionRequirement.SCHEMA,
+                                ExecutionRequirement.MCP_ALLOWLIST, ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE):
+                # Preserve an established unsupported mechanism as unsupported.
+                fact = next(x for x in compatibility.assessments if x.requirement == requirement)
+                if fact.status != CapabilityStatus.UNSUPPORTED:
+                    overrides[requirement] = ExecutionAssessment(
+                        requirement, CapabilityStatus.UNVERIFIED, "cli_request_hook_unverified",
+                        "The CLI request hook can rewrite assessed arguments; remove it for protected execution.",
+                    )
+        tested = {Mode.CLAUDE_CODE: "2.1.300", Mode.CODEX: "0.162.1"}
+        if version is not None and version != tested[binding.mode]:
+            for requirement in (
+                ExecutionRequirement.HOST_TOOLS, ExecutionRequirement.SCHEMA, ExecutionRequirement.USAGE,
+            ):
+                overrides[requirement] = ExecutionAssessment(
+                    requirement, CapabilityStatus.UNVERIFIED, "cli_protocol_version_unverified",
+                    "This CLI version has no tested protocol profile; validate it before requiring this capability.",
+                )
+        if overrides:
+            facts = tuple(overrides.get(fact.requirement, fact) for fact in compatibility.assessments)
+            derived = tuple(
+                fact for fact in facts if fact.requirement in required and fact.status != CapabilityStatus.SUPPORTED
+            )
+            # Recomputing the unmet set from ``assessments`` loses every
+            # incompatibility that is NOT one of them. ``evaluate_cli_execution``
+            # synthesises exactly such an entry — ``native_policy_conflict``,
+            # which refuses contained native execution under a DENY policy and
+            # appears only here, never in the matrix. Dropping it made the
+            # refusal set WEAKER on an untested binary than on a tested one,
+            # because overrides only apply off the pinned version: measured with
+            # claude 2.1.302 against a 2.1.300 pin, the conflict vanished while
+            # codex kept it purely by matching its pin exactly.
+            #
+            # Synthetic entries stay in front, which is where the evaluator put
+            # them: the conflict is the reason for the refusal, not a detail of it.
+            synthetic = tuple(
+                fact for fact in compatibility.incompatibilities if fact not in compatibility.assessments
+            )
+            compatibility = replace(
+                compatibility, assessments=facts, incompatibilities=synthetic + derived
+            )
         if (
-            compatibility.compatible and version is None and self.spawn is None
-            and type(self.execution_backend) is SubprocessExecutionBackend
+            compatibility.compatible and version is None and configuration.spawn is None
+            and type(configuration.execution_backend) is SubprocessExecutionBackend
         ):
             unmet = ExecutionAssessment(
                 ExecutionRequirement.PROCESSES, CapabilityStatus.UNVERIFIED, "cli_binary_unverified",
                 "The configured CLI could not be identified; install and verify the executable before execution.",
             )
             return replace(compatibility, assessments=(*compatibility.assessments, unmet), incompatibilities=(unmet,))
-        return compatibility
+        identity = (
+            binding.mode, binding.model, report.backend, report.version, version,
+            id(configuration.execution_backend), id(configuration.spawn), id(configuration.request_hook),
+            configuration.working_dir, configuration.home_parent, sorted(configuration.executable.items()),
+            sorted(configuration.env.items()), sorted(configuration.transport.items()),
+        )
+        return replace(compatibility, configuration_id=hashlib.sha256(repr(identity).encode()).hexdigest())
 
     async def aclose(self) -> None:
         if self._homes is not None:
@@ -213,6 +276,8 @@ class CliAdapter:
         native_tool_policy: NativeToolPolicy | None = None,
         context_policy: Any = None,
         execution: ExecutionRequirements | None = None,
+        assessment_id: str | None = None,
+        attempt_id: str | None = None,
     ) -> Turn:
         from types import SimpleNamespace
 
@@ -222,9 +287,11 @@ class CliAdapter:
         from agentkit.models.providers.cli.isolation import IsolatedHome
         from agentkit.tools.execution.policy import serve
 
+        configuration = self._snapshot()
         scope = scope or Scope()
         native_tool_policy = min(
-            (NativeToolPolicy(native_tool_policy or self.native_tool_policy), self.native_tool_policy),
+            (NativeToolPolicy(native_tool_policy or configuration.native_tool_policy),
+             configuration.native_tool_policy),
             key={NativeToolPolicy.DENY: 0, NativeToolPolicy.WARN: 1, NativeToolPolicy.ALLOW: 2}.__getitem__,
         )
         tool_timeout_s = getattr(tools, "effective_timeout_s", getattr(tools, "timeout_s", None)) if tools else None
@@ -239,9 +306,10 @@ class CliAdapter:
                 + "\nCurrent task:\n"
                 + prompt.user,
             )
-        compatibility = await self.evaluate_execution(
+        compatibility = await configuration.evaluate_execution(
             binding, execution=execution, native_tool_policy=native_tool_policy,
         )
+        compatibility = compatibility.require_configuration(assessment_id)
         if not compatibility.compatible:
             return Turn(failure=execution_failure(compatibility), usage_complete=False)
         await _emit(
@@ -302,7 +370,13 @@ class CliAdapter:
         canonical_messages: list[Message] = []
 
         def observe_execution(name: str, arguments: Any, result: Any) -> None:
-            invocation = f"host-tool-{uuid4().hex}"
+            from agentkit.tools.execution.context import current_tool_invocation
+
+            identity = current_tool_invocation()
+            invocation = (
+                identity.provider_tool_call_id or identity.host_invocation_id
+                if identity else f"host-tool-{uuid4().hex}"
+            )
             canonical_messages.extend(
                 (
                     Message(MessageRole.ASSISTANT, tool_calls=(ToolCall(invocation, name, arguments),)),
@@ -312,21 +386,26 @@ class CliAdapter:
                         name=name,
                         tool_call_id=invocation,
                         content_blocks=tuple(dict(block) for block in result.content),
-                        metadata={"is_error": result.is_error, "overflowed": result.overflowed},
+                        metadata={
+                            "is_error": result.is_error, "overflowed": result.overflowed,
+                            "host_invocation_id": identity.host_invocation_id if identity else None,
+                            "provider_tool_call_id": identity.provider_tool_call_id if identity else None,
+                            "transport_request_id": identity.transport_request_id if identity else None,
+                        },
                     ),
                 )
             )
 
         if self._homes is None:
-            self._homes = await asyncio.to_thread(IsolatedHome, self.home_parent)
+            self._homes = await asyncio.to_thread(IsolatedHome, configuration.home_parent)
         home = self._sessions.get(session.cli_session_id or "") if session else None
         restored = home is not None
         if home is None:
             home = await asyncio.to_thread(self._homes.create)
-            if session and session.home_bundle_ref is not None and self.bundle_store is not None:
+            if session and session.home_bundle_ref is not None and configuration.bundle_store is not None:
                 assert home is not None
                 try:
-                    await self.bundle_store.restore(session.home_bundle_ref, home)
+                    await configuration.bundle_store.restore(session.home_bundle_ref, home)
                     restored = any(
                         path.is_file()
                         for folder in ("sessions", "projects")
@@ -358,7 +437,7 @@ class CliAdapter:
             prepared = await prepare_bounded_replay(
                 WorkingContext(prefix=session.prefix, messages=list(session.messages)),
                 context_policy=context_policy,
-                max_bytes=self.max_replay_bytes,
+                max_bytes=configuration.max_replay_bytes,
             )
             if prepared.changed:
                 await _emit(
@@ -375,7 +454,7 @@ class CliAdapter:
                     EventKind.DEGRADED,
                     setting="portable_replay_bytes",
                     requested=prepared.byte_size,
-                    applied=self.max_replay_bytes,
+                    applied=configuration.max_replay_bytes,
                     reason="portable replay exceeds configured byte bound; CLI was not started",
                 )
                 return Turn(
@@ -409,9 +488,10 @@ class CliAdapter:
         )
         ctx = _CliExecutionContext(
             scope=scope,
-            correlation_id=session.run_id if session else call_id,
+            correlation_id=call_id,
             cancel=cancel or CancellationToken(),
             budget=_CliBudgetView(compact_ceiling),
+            attempt_id=attempt_id,
         )
         credential = self._pending_credentials.pop(call_id, None) or await resolve_credential(binding.credential)
         if native_agents and not credential.home:
@@ -449,9 +529,12 @@ class CliAdapter:
                 )
             )
         async def backend_spawn(*argv: str, **kwargs: Any) -> Any:
-            return await self.execution_backend.start(CliInvocation(tuple(argv), kwargs))
+            return await configuration.execution_backend.start(CliInvocation(
+                tuple(argv), kwargs, mode=binding.mode, call_id=call_id, attempt_id=attempt_id,
+                execution=execution or ExecutionRequirements(), native_tool_policy=native_tool_policy,
+            ))
 
-        base_execution_spawn = self.spawn or backend_spawn
+        base_execution_spawn = configuration.spawn or backend_spawn
 
         async def isolated_spawn(*argv: str, **kwargs: Any) -> Any:
             permitted = set(common["env"]) | _CLI_ENV_ALLOWLIST | {
@@ -461,12 +544,12 @@ class CliAdapter:
             return await base_execution_spawn(*argv, **kwargs)
 
         spawn = isolated_spawn
-        if self.request_hook is not None:
+        if configuration.request_hook is not None:
             base_spawn = spawn
 
             async def hooked_spawn(*argv: str, **kwargs: Any) -> Any:
                 request = {"mode": binding.mode, "argv": tuple(argv), "cwd": kwargs.get("cwd")}
-                updated = self.request_hook(request)
+                updated = configuration.request_hook(request)
                 if inspect.isawaitable(updated):
                     updated = await updated
                 if not isinstance(updated, Mapping) or set(updated) - {"argv"}:
@@ -486,15 +569,15 @@ class CliAdapter:
         common: dict[str, Any] = dict(
             model=binding.model,
             working_dir=(workspace.working_dir if workspace and workspace.working_dir else None)
-            or self.working_dir
+            or configuration.working_dir
             or home,
             spawn=spawn,
             json_schema=schema,
             effort=settings.effort,
             env_policy="isolated",
             env={
-                **self.env,
-                **self.transport,
+                **configuration.env,
+                **configuration.transport,
                 **credentials,
                 "HOME": str(home),
                 "XDG_CONFIG_HOME": str(home / "config"),
@@ -620,7 +703,7 @@ class CliAdapter:
                     wiring["tools"] = workspace.native_tools
                 cognition = ClaudeCliCognition(
                     **{**common, "json_schema": claude_schema},
-                    claude_bin=self.executable.get(binding.mode, "claude"),
+                    claude_bin=configuration.executable.get(binding.mode, "claude"),
                     config_dir=home,
                     bare=not bool(
                         credential.home
@@ -681,7 +764,7 @@ class CliAdapter:
                 common["env"] = {**common["env"], **dict(wiring.pop("env", {}) or {})}
                 cognition = CodexCliCognition(
                     **common,
-                    codex_bin=self.executable.get(binding.mode, "codex"),
+                    codex_bin=configuration.executable.get(binding.mode, "codex"),
                     config_home=home,
                     images=image_paths,
                     add_dirs=workspace.add_dirs if workspace else (),
@@ -689,20 +772,25 @@ class CliAdapter:
                     ignore_rules=True,
                     sandbox=workspace.sandbox.value if workspace and workspace.sandbox else "read-only",
                     ask_for_approval="never",
-                    # The caller's turn cap, which this branch never passed on —
-                    # so `limits.max_turns` bounded nothing on Codex. The claude
-                    # branch has always forwarded it. Measured without it: a
-                    # `max_turns=8` run executed ~200 tool calls inside ONE
-                    # adapter turn, because the runtime counts adapter turns and
-                    # Codex's in-turn tool loop is invisible to it; the only real
-                    # bound was the wall clock.
+                    # ``limits.max_turns`` is deliberately NOT forwarded here,
+                    # and that is a decision rather than the oversight it looks
+                    # like. The runtime already counts ADAPTER turns against the
+                    # caller's number; passing the same number to the driver,
+                    # which counts MODEL turns inside one adapter turn, applies
+                    # it twice and the effective cap becomes the product.
+                    # Measured: a legitimate two-tool-call run under
+                    # ``max_turns=2`` came back ``limit_reached`` instead of
+                    # answered, because each layer had already spent the budget
+                    # the other was still counting.
                     #
-                    # One tool call is one model turn here, because Codex sends
-                    # `parallel_tool_calls: false`. The runtime also counts
-                    # adapter turns against the same number, so the worst case is
-                    # the product of the two — in practice CLI modes take one
-                    # adapter turn, so the cap means what a caller expects.
-                    max_turns=limits.max_turns,
+                    # What actually made the runaway expensive was never the
+                    # missing cap: it was ~200 repetitions of the SAME failing
+                    # call. ``CodexCliCognition.max_repeated_tool_calls`` (12, on
+                    # by default) bounds that directly — live, 126 calls over
+                    # 180s killed by the wall clock became 25 calls in 28.8s —
+                    # and a caller who wants an explicit in-turn model-turn cap
+                    # sets ``max_turns`` on the cognition, where it means one
+                    # thing.
                     skip_git_repo_check=True,
                     native_tool_policy="allow",
                     config_overrides=overrides,
@@ -815,7 +903,7 @@ class CliAdapter:
             }
         if result.evals.get("raw_usage"):
             raw = dict(result.evals["raw_usage"])
-        elif result.partial:
+        else:
             raw = {}  # Missing measurement is not a measured zero.
         reason = result.evals.get("stop_reason")
         failure = None
@@ -857,9 +945,9 @@ class CliAdapter:
         if not messages or messages[-1] != result.output:
             messages += (result.output,)
         home_bundle_ref = None
-        if sid and self.bundle_store is not None:
+        if sid and configuration.bundle_store is not None:
             try:
-                home_bundle_ref = await self.bundle_store.save(
+                home_bundle_ref = await configuration.bundle_store.save(
                     home,
                     previous_ref=session.home_bundle_ref if session else None,
                 )
@@ -881,7 +969,7 @@ class CliAdapter:
             else None,
             reported_cost_cumulative=binding.mode == Mode.CLAUDE_CODE,
             usage_cumulative=binding.mode == Mode.CODEX,
-            usage_complete=not result.partial or reason in ("error_max_turns", "error_max_budget_usd"),
+            usage_complete=bool(raw) and (not result.partial or reason in ("error_max_turns", "error_max_budget_usd")),
             failure=failure,
             truncated=reason in ("error_max_turns", "error_max_budget_usd"),
             limit_reached=reason in ("error_max_turns", "error_max_budget_usd"),

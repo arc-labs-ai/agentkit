@@ -12,8 +12,15 @@ from agentkit.models.contracts.types import Turn
 PRICES = PriceTable(
     "example",
     "2026-10-13",
-    {"test-model": {"input_uncached": "1", "input_cache_read": "0.1", "input_cache_write_5m": "1.25",
-                    "input_cache_write_1h": "2", "output": "5"}},
+    {
+        "test-model": {
+            "input_uncached": "1",
+            "input_cache_read": "0.1",
+            "input_cache_write_5m": "1.25",
+            "input_cache_write_1h": "2",
+            "output": "5",
+        }
+    },
 )
 
 
@@ -30,7 +37,12 @@ async def main() -> None:
             call_id="single-agent-example",
         )
         print(f"output:         {answer.text!r}")
-        input_tokens = answer.usage.input_uncached + answer.usage.input_cache_read + answer.usage.input_cache_write_5m + answer.usage.input_cache_write_1h
+        input_tokens = (
+            answer.usage.input_uncached
+            + answer.usage.input_cache_read
+            + answer.usage.input_cache_write_5m
+            + answer.usage.input_cache_write_1h
+        )
         print(f"usage.tokens:   {input_tokens + answer.usage.output}")
         print(f"usage.cost_usd: {answer.cost_usd}")
 

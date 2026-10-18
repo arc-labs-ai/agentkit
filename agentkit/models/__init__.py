@@ -66,6 +66,7 @@ from agentkit.models.contracts.types import (
     Allow,
     Answer,
     Binding,
+    CallEvent,
     CallLimits,
     Credential,
     CredentialRef,
@@ -78,6 +79,7 @@ from agentkit.models.contracts.types import (
 from agentkit.models.providers.endpoints import ApiEndpoint, ApiPath
 
 __all__ = [
+    "CallEvent",
     "CapabilityStatus", "ExecutionAssessment", "ExecutionCompatibility",
     "ExecutionRequirement", "ExecutionRequirements", "NativeExecution",
     "Answer",

@@ -224,6 +224,51 @@ def require_bearer(app: Any, token: str) -> Any:
     return guarded
 
 
+def _bounded_request_body(app: Any) -> Any:
+    """Bound authenticated MCP input before the SDK allocates/parses JSON.
+
+    Count actual chunks, so missing or forged Content-Length cannot bypass the
+    limit. GET event streams pass through without consuming their receive pipe.
+    """
+    async def bounded(scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http" or scope.get("method") != "POST":
+            await app(scope, receive, send)
+            return
+        chunks: list[bytes] = []
+        size = 0
+        try:
+            async with asyncio.timeout(10):
+                while True:
+                    event = await receive()
+                    if event["type"] == "http.disconnect":
+                        return
+                    chunk = event.get("body", b"")
+                    size += len(chunk)
+                    if size > 1_048_576:
+                        await _refuse(
+                            send, status=413, error="request_too_large", detail="MCP request exceeds 1048576 bytes",
+                        )
+                        return
+                    chunks.append(chunk)
+                    if not event.get("more_body", False):
+                        break
+        except TimeoutError:
+            await _refuse(send, status=408, error="request_timeout", detail="MCP request body did not complete")
+            return
+        consumed = False
+
+        async def replay() -> Any:
+            nonlocal consumed
+            if not consumed:
+                consumed = True
+                return {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+            return await receive()
+
+        await app(scope, replay, send)
+
+    return bounded
+
+
 async def _refuse(send: Any, *, status: int, error: str, detail: str) -> None:
     """One refusal, rendered the same way every time.
 
@@ -429,7 +474,8 @@ class LoopbackMcpTransport:
         # server remember to authenticate" is not a question that can have two
         # answers. Both servers in this package reach the network through this
         # one line, and a third one will too.
-        served = require_bearer(app, self._token) if self._token else app
+        bounded = _bounded_request_body(app)
+        served = require_bearer(bounded, self._token) if self._token else bounded
         config = uvicorn.Config(
             served,
             host=self.host,

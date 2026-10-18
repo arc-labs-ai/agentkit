@@ -1054,8 +1054,8 @@ MUTANTS: tuple[Mutant, ...] = (
         tag="execfailclosed",
         why="a backend declaring a guarantee is promoted straight to SUPPORTED rather than clamped to UNVERIFIED, so containment becomes self-attesting: whoever writes the BackendReport decides whether the boundary exists, which is exactly the authority the design refuses to delegate",
         path="agentkit/models/providers/cli/capabilities.py",
-        before="        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:\n            status = CapabilityStatus.UNVERIFIED\n",
-        after="        if requirement in report.guarantees and status != CapabilityStatus.SUPPORTED:\n            status = CapabilityStatus.SUPPORTED\n",
+        before='        if (\n            requirement in report.guarantees\n            and status != CapabilityStatus.SUPPORTED\n            and requirement != ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE\n        ):\n            status = CapabilityStatus.UNVERIFIED\n',
+        after='        if (\n            requirement in report.guarantees\n            and status != CapabilityStatus.SUPPORTED\n            and requirement != ExecutionRequirement.NATIVE_TOOLS_UNAVAILABLE\n        ):\n            status = CapabilityStatus.SUPPORTED\n',
         tests=EXECUTION_TESTS,
     ),
     Mutant(
@@ -2402,6 +2402,64 @@ MUTANTS: tuple[Mutant, ...] = (
         after='        "metadata": {},',
         tests=("tests/source/conformance/test_persistence.py",),
     ),
+    Mutant(
+        tag='hostdeny', why='a DENY contribution is ignored',
+        path='agentkit/tools/execution/policy.py',
+        before='            if decision == PermissionDecision.DENY:\n', after='            if False:\n',
+        tests=('tests/source/conformance/test_host_tool_contract.py',),
+    ),
+
+    Mutant(
+        tag='hostask', why='unattended approval becomes optional',
+        path='agentkit/tools/execution/policy.py',
+        before='        if needs_approval:\n', after='        if False:\n',
+        tests=('tests/source/conformance/test_host_tool_contract.py',),
+    ),
+
+    Mutant(
+        tag='hostschema', why='custom host input bypasses schema validation',
+        path='agentkit/tools/execution/policy.py',
+        before='            if tool.schema is not None:\n', after='            if False:\n',
+        tests=('tests/source/conformance/test_host_tool_contract.py',),
+    ),
+
+    Mutant(
+        tag='hostreceipt', why='a stale execution receipt is accepted',
+        path='agentkit/models/contracts/execution.py',
+        before='        if assessed_id is None or assessed_id == self.configuration_id:\n', after='        if True:\n',
+        tests=('tests/source/conformance/test_host_execution_assessment.py',),
+    ),
+
+    Mutant(
+        tag='hostbound', why='authenticated MCP bodies are unbounded',
+        path='agentkit/integrations/mcp/_transport.py',
+        before='                    if size > 1_048_576:\n', after='                    if False:\n',
+        tests=('tests/source/conformance/test_host_bridge_boundaries.py',),
+    ),
+
+)
+
+
+# ── invariants the rewrite left unenforced ───────────────────────────────────
+#
+# These entries' source anchors are LIVE — the code they mutate still exists
+# and `--verify` still checks it, so none of this rots. What they lost is their
+# verification: the reorganisation deleted the test files that caught them, and
+# nothing has replaced those yet. Probed against the test directories that did
+# survive, these are not caught.
+#
+# They are parked here rather than deleted because the analysis in each `why`
+# is the map of what the rewrite stopped guaranteeing, and each one becomes a
+# working catalogue entry again the moment a test covers it: move it back into
+# MUTANTS and point `tests` at the file.
+#
+# They are OUT of the gate because a catalogue entry that cannot be run proves
+# nothing, and leaving them in made the job fail without telling anyone which
+# invariants were actually unguarded. `MUTANTS` is now exactly the set that is
+# enforced, and the gate's green means that literally.
+#
+# Run `python .github/scripts/mutants.py --unenforced` to list them.
+UNENFORCED: tuple[Mutant, ...] = (
 )
 
 

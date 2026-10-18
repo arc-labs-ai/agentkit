@@ -1,8 +1,26 @@
-"""Tool-related error types raised at decoration/registration time and at result-validation time."""
+"""Tool definition/validation errors and explicit safe execution failures."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+
+class ToolExecutionError(Exception):
+    """An intentional model-visible failure with a host-reviewed safe message.
+
+    Use this for business recovery instructions. Unexpected exceptions remain
+    redacted by ToolSet. Causes, traceback and private handler state are never
+    copied to the result. This cannot approve or override a permission denial.
+    """
+
+    def __init__(self, safe_message: str, *, code: str = "tool_error") -> None:
+        if not isinstance(safe_message, str) or not 0 < len(safe_message) <= 2000:
+            raise ValueError("safe tool error message must contain 1 to 2000 characters")
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code):
+            raise ValueError("safe tool error code must be a bounded identifier")
+        self.code = code
+        super().__init__(safe_message)
 
 
 class ToolDefinitionError(ValueError):
@@ -60,9 +78,7 @@ class ToolArgumentError(ValueError):
         if missing:
             parts.append(f"missing required argument(s) {list(missing)}")
         if invalid:
-            parts.append(
-                "invalid argument(s): " + "; ".join(f"{k}: {why}" for k, why in invalid)
-            )
+            parts.append("invalid argument(s): " + "; ".join(f"{k}: {why}" for k, why in invalid))
         super().__init__(
             f"tool {tool_name!r} call rejected: "
             + "; ".join(parts)

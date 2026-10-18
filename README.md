@@ -65,7 +65,7 @@ async def main():
 asyncio.run(main())
 ```
 
-See [`tests/examples/`](./tests/examples) for deterministic, runnable examples and [`tests/examples/support_harness/`](./tests/examples/support_harness) for a host-owned support harness with scoped memory, tools, continuation, and events.
+See the [`tests/examples/` index](./tests/examples/README.md) for examples in separate directories, including the [support harness](./tests/examples/support_harness) and [plugin execution](./tests/examples/plugin_execution/README.md) with independent tools, skills and hooks.
 
 ## Package boundaries
 
