@@ -1,0 +1,1553 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/design/credential-isolation/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Credential isolation for contained CLI jobs - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#credential-isolation-for-contained-cli-jobs" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="../../tutorial/">tutorial</a>
+      to build a real research-briefing agent step by step.
+    </span>
+  </span>
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../../assets/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Credential isolation for contained CLI jobs
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../../assets/favicon.svg" alt="logo">
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#two-different-credential-questions-deliberately-not-conflated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two different credential questions, deliberately not conflated
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-where-credentials-live-exactly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Where credentials live, exactly
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Where credentials live, exactly">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#host-side-verified-modes-on-this-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host side — verified modes on this machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-world-readable-claudejson-means-on-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What world-readable ~/.claude.json means on its own
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-when-the-credential-is-read-the-fact-that-decides-mount-then-drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. When the credential is read — the fact that decides mount-then-drop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-what-is-mounted-into-a-contained-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. What is mounted into a contained job
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-every-channel-a-credential-could-escape-through" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Every channel a credential could escape through
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-mechanisms-evaluated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Mechanisms evaluated
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Mechanisms evaluated">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-hide-the-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) Hide the file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-broker-the-credential-via-apikeyhelper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Broker the credential via apiKeyHelper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#make-what-is-inside-worthless-the-egress-broker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        &copy; Make what is inside worthless — the egress broker
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="© Make what is inside worthless — the egress broker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-minted-token-verified-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The minted token, verified end to end
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verdict-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verdict table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-could-not-be-established-offline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What could not be established offline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommendation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="credential-isolation-for-contained-cli-jobs">Credential isolation for contained CLI jobs<a class="headerlink" href="#credential-isolation-for-contained-cli-jobs" title="Anchor link">&para;</a></h1>
+<p>This is a feasibility study, not a change. It ships one new test module
+(<code>tests/source/conformance/test_credential_isolation.py</code>) and no source edits.
+It answers the single question verified containment was blocked on:</p>
+<blockquote>
+<p>Can saved-session authentication be isolated from the CLI's own native tools?</p>
+</blockquote>
+<p><strong>Yes — the job never has to hold a usable credential at all.</strong> The mechanism
+is an egress broker, not a filesystem trick. Verified end to end on both
+binaries: the job receives only a <strong>minted</strong> opaque token, the broker swaps in
+the real saved-session credential and forwards to the real vendor, the turn
+completes, and the real credential appears nowhere under the job home. The
+minted token forwarded unchanged is rejected by the vendor with <code>401</code> at zero
+cost, so it is worthless if a native tool reads it.</p>
+<p>Three supporting facts, none previously established: both CLIs send their
+credential to an operator-chosen loopback endpoint; both read it exactly once
+at startup; and neither validates what it was given. Together they make a
+job-scoped credential work <strong>without replacing saved-session auth with API
+keys</strong>, which is the outcome this study was required not to assume.</p>
+<p>Two findings bound the result. Claude's saved session is reachable two ways and
+only one of them survives containment. Codex redirects only through a <em>custom</em>
+provider — the built-in <code>openai</code> provider refuses override — and Codex also
+emits provider-independent egress that a base-URL broker does not capture.</p>
+<p>Almost all evidence below is local inspection, <code>--help</code>/config probes, and real
+CLI runs against loopback servers. <strong>Two paid turns were spent</strong>, one per CLI,
+on the cheapest model at one turn each, solely to settle whether the vendor
+accepts a relayed minted token: <code>$0.013018</code> of Anthropic usage as reported by
+the CLI, and one small Codex turn (8,481 input / 5 output tokens) billed
+against the ChatGPT subscription rather than per token. Everything else,
+including the <code>401</code> rejection test, cost nothing.</p>
+<p>No credential value was read, copied, logged or printed. Credential-bearing
+files were identified by mode, size, owner and key name; observed credentials
+were recorded only as scheme, length and a truncated SHA-256 fingerprint; the
+real credential was held in the broker's memory only and was never written into
+a job directory, which is asserted rather than assumed in the results below.</p>
+<h2 id="two-different-credential-questions-deliberately-not-conflated">Two different credential questions, deliberately not conflated<a class="headerlink" href="#two-different-credential-questions-deliberately-not-conflated" title="Anchor link">&para;</a></h2>
+<p>The brief's first question has two answers, and merging them is the mistake
+this section exists to prevent.</p>
+<pre class="mermaid"><code>flowchart TB
+  subgraph HOST["Host account (uid 501) — hygiene, NOT containment"]
+    CJ["~/.claude.json 0644&lt;br/&gt;identity + history, no token"]
+    KC["login keychain&lt;br/&gt;Claude Code-credentials"]
+    CA["~/.codex/auth.json 0600&lt;br/&gt;real OAuth bundle"]
+  end
+  subgraph JOB["Contained job — what containment is about"]
+    IH["IsolatedHome call dir 0700&lt;br/&gt;HOME / CLAUDE_CONFIG_DIR / CODEX_HOME"]
+    ONE["exactly ONE installed file 0600&lt;br/&gt;.credentials.json or auth.json"]
+    NT["CLI native tools: Read, Bash, view_image&lt;br/&gt;same uid, same process tree"]
+  end
+  HOST -. "not passed in on the adapter path" .-&gt; JOB
+  IH --&gt; ONE
+  ONE --&gt; NT
+  NT -- "reads it; mode 0600 is no defence here" --&gt; ONE</code></pre>
+<p><strong>Host side.</strong> Where the operator's own credentials live. Real, and worth
+fixing, but never passed into a job on the adapter path, so it is not a
+containment finding.</p>
+<p><strong>Job side.</strong> What agentkit installs into a job home. One known path agentkit
+chooses, not a search problem. This is the surface containment must answer for,
+and the native tools reach it because they are the same user in the same
+process tree as the process that must read it.</p>
+<h2 id="1-where-credentials-live-exactly">1. Where credentials live, exactly<a class="headerlink" href="#1-where-credentials-live-exactly" title="Anchor link">&para;</a></h2>
+<h3 id="host-side-verified-modes-on-this-machine">Host side — verified modes on this machine<a class="headerlink" href="#host-side-verified-modes-on-this-machine" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Mode</th>
+<th>Owner</th>
+<th>Size</th>
+<th>Credential-bearing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>~/.claude.json</code></td>
+<td><code>0644</code></td>
+<td><code>dodo:staff</code></td>
+<td>182,492</td>
+<td><strong>No</strong> — see below</td>
+</tr>
+<tr>
+<td><code>~/.claude</code></td>
+<td><code>0755</code></td>
+<td><code>dodo:staff</code></td>
+<td>dir</td>
+<td>mixed</td>
+</tr>
+<tr>
+<td><code>~/.claude/history.jsonl</code></td>
+<td><code>0644</code></td>
+<td><code>dodo:staff</code></td>
+<td>8,753,699</td>
+<td>No, but full prompt history</td>
+</tr>
+<tr>
+<td><code>~/.claude/projects/</code></td>
+<td><code>0755</code></td>
+<td><code>dodo:staff</code></td>
+<td>dir</td>
+<td>transcripts inside are <code>0600</code></td>
+</tr>
+<tr>
+<td><code>~/.claude/settings.json</code></td>
+<td><code>0600</code></td>
+<td><code>dodo:staff</code></td>
+<td>764</td>
+<td>could hold <code>apiKeyHelper</code></td>
+</tr>
+<tr>
+<td><code>~/Library/Keychains/login.keychain-db</code></td>
+<td><code>0644</code></td>
+<td><code>dodo:staff</code></td>
+<td>324,924</td>
+<td><strong>Yes</strong>, encrypted</td>
+</tr>
+<tr>
+<td><code>~/.codex</code></td>
+<td><code>0755</code></td>
+<td><code>dodo:staff</code></td>
+<td>dir</td>
+<td>mixed</td>
+</tr>
+<tr>
+<td><code>~/.codex/auth.json</code></td>
+<td><code>0600</code></td>
+<td><code>dodo:staff</code></td>
+<td>4,077</td>
+<td><strong>Yes</strong>, plaintext</td>
+</tr>
+<tr>
+<td><code>~/.codex/config.toml</code></td>
+<td><code>0600</code></td>
+<td><code>dodo:staff</code></td>
+<td>468</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>~/.codex/history.jsonl</code></td>
+<td><code>0600</code></td>
+<td><code>dodo:staff</code></td>
+<td>53,774</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>~/.codex/logs_2.sqlite</code></td>
+<td><code>0644</code></td>
+<td><code>dodo:staff</code></td>
+<td>28,327,936</td>
+<td>No, but session logs</td>
+</tr>
+<tr>
+<td><code>~/.codex/session_index.jsonl</code></td>
+<td><code>0644</code></td>
+<td><code>dodo:staff</code></td>
+<td>1,057</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>~/Library/Application Support/Claude</code></td>
+<td><code>0700</code></td>
+<td><code>dodo:staff</code></td>
+<td>dir</td>
+<td>desktop app, unrelated</td>
+</tr>
+</tbody>
+</table>
+<p>Claude Code 2.1.302 is logged in via saved session, and the credential is <strong>in
+the macOS login keychain, not in a file</strong>. <code>~/.claude/.credentials.json</code> does
+not exist on this machine. Keychain generic-password services present:
+<code>Claude Code-credentials</code>, <code>Claude Code-credentials-4664aa28</code>,
+<code>Claude Code-credentials-788217de</code>, and <code>Claude Safe Storage</code>. The
+credential's reachability is <code>$HOME</code>-relative, which matters in §3.</p>
+<p>Codex 0.162.1 is logged in via saved session, and the credential <strong>is a file</strong>.
+<code>~/.codex/auth.json</code> key names: <code>auth_mode</code>, <code>OPENAI_API_KEY</code> (null),
+<code>tokens.id_token</code> (1,812 chars), <code>tokens.access_token</code> (1,806),
+<code>tokens.refresh_token</code> (211), <code>tokens.account_id</code> (36), <code>last_refresh</code>.</p>
+<p>Environment variables each CLI consults, as the drivers already enumerate:</p>
+<ul>
+<li>Claude auth: <code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>,
+  <code>CLAUDE_CODE_OAUTH_TOKEN</code>, <code>CLAUDE_CODE_USE_BEDROCK</code> / <code>_VERTEX</code> / <code>_FOUNDRY</code>.</li>
+<li>Claude session linkage: <code>CLAUDE_CODE_SSE_PORT</code>, <code>CLAUDE_CODE_MESSAGING_SOCKET</code>,
+  <code>CLAUDE_CODE_MESSAGING_TOKEN</code>, <code>CLAUDE_CODE_BRIDGE_SESSION_ID</code>,
+  <code>CLAUDE_CODE_SESSION_ID</code>, <code>CLAUDE_CODE_CHILD_SESSION</code>, <code>CLAUDE_CODE_ENTRYPOINT</code>.
+  <code>CLAUDE_CODE_MESSAGING_TOKEN</code> is a live credential for the parent session's
+  IPC socket.</li>
+<li>Codex: <code>OPENAI_API_KEY</code>, <code>CODEX_API_KEY</code>, <code>OPENAI_BASE_URL</code>.</li>
+</ul>
+<h3 id="what-world-readable-claudejson-means-on-its-own">What world-readable <code>~/.claude.json</code> means on its own<a class="headerlink" href="#what-world-readable-claudejson-means-on-its-own" title="Anchor link">&para;</a></h3>
+<p>Independent of sandboxing, and stated separately because it is a host-hygiene
+defect that exists whether or not containment ever ships.</p>
+<p>The file is <code>0644</code> and 182 KB, so <strong>every local process of every local user can
+read it</strong>. It carries <strong>no provider credential</strong>: a scan found zero <code>sk-ant-</code>
+values and zero JWTs, <code>oauthAccount</code> holds only identity and billing metadata
+(<code>accountUuid</code>, <code>emailAddress</code>, <code>organizationUuid</code>, <code>organizationName</code>,
+<code>organizationRole</code>, <code>billingType</code>, <code>organizationRateLimitTier</code>, <code>displayName</code>,
+<code>fullName</code>), and the only two long opaque strings are <code>userID</code> and <code>machineID</code>,
+64 hex characters each. Nothing in it can be replayed to call the provider.</p>
+<p>What it does leak is a reconnaissance and privacy set: the operator's email
+address, their organization's name, UUID and rate-limit tier, their role, a
+stable machine fingerprint, the absolute path of <strong>every project they have
+worked in</strong>, per-project <code>lastSessionId</code>, cumulative token and cost history,
+and <code>lastSessionFirstPrompt</code> — the first 200 characters of recent prompts,
+which is operator-authored text that can contain anything they typed.</p>
+<p><code>~/.claude/history.jsonl</code> is the sharper version of the same defect: <code>0644</code> and
+8.7 MB of prompt history, world-readable. <code>~/.claude/projects/</code> is a <code>0755</code>
+directory, though the transcripts inside it are correctly <code>0600</code>.
+<code>~/.codex/logs_2.sqlite</code> and <code>session_index.jsonl</code> are <code>0644</code> session logs.</p>
+<p>This is not agentkit's bug and agentkit cannot fix it; it is the vendors' file
+modes on this machine. The operator-side remedy is
+<code>chmod 600 ~/.claude.json ~/.claude/history.jsonl</code> and
+<code>chmod 700 ~/.claude ~/.codex</code>, and it should be done regardless of this study's
+outcome. It is listed here because a reader comparing the two CLIs would
+otherwise conclude Claude is the leaky one, when the opposite is true for the
+credential itself: <strong>Claude's token is in an encrypted keychain and Codex's is
+plaintext at <code>0600</code>.</strong></p>
+<h2 id="2-when-the-credential-is-read-the-fact-that-decides-mount-then-drop">2. When the credential is read — the fact that decides mount-then-drop<a class="headerlink" href="#2-when-the-credential-is-read-the-fact-that-decides-mount-then-drop" title="Anchor link">&para;</a></h2>
+<p>Established by observation, not assumption. Both probes pointed the CLI at a
+loopback provider, served a multi-turn conversation, and <strong>destroyed the
+credential source the instant the first provider request arrived</strong>, then
+compared the credential fingerprint on later requests.</p>
+<table>
+<thead>
+<tr>
+<th>CLI</th>
+<th>Credential source removed after request 1</th>
+<th>Later requests</th>
+<th>Fingerprint</th>
+<th>Session outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude 2.1.302</td>
+<td>keychain made unreachable</td>
+<td>3 more arrived</td>
+<td>identical on all 4</td>
+<td><code>rc=0</code>, <code>result: success</code></td>
+</tr>
+<tr>
+<td>Codex 0.162.1</td>
+<td><code>auth.json</code> unlinked</td>
+<td>3 more arrived</td>
+<td>identical on all 4</td>
+<td><code>rc=0</code>, <code>turn.completed</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Both CLIs read the credential once at startup and serve the rest of the
+session from memory.</strong> Claude's requests 2–4 carried the same 108-byte <code>Bearer</code>
+fingerprint with the keychain already gone; Codex's requests 2–4 carried the
+same <code>Bearer</code> fingerprint with <code>auth.json</code> already unlinked, and the
+<code>auth_file_present_now</code> flag recorded <code>false</code> for each.</p>
+<p>So a two-phase <strong>mount-then-drop is conceivable for both</strong>, and the window is
+well-defined rather than a race: the credential read completes before the first
+provider request, and the earliest a native tool can run is after the first
+provider <em>response</em>. agentkit already observes that stream, so "drop after the
+first request is seen" is an implementable trigger.</p>
+<p>Two limits on this result, both material. The probe covered a short session of
+four requests, so <strong>token refresh on expiry was never exercised</strong> — a long job
+whose token expires mid-session would need to re-read a source that has been
+dropped, and would fail. And the fingerprint proves the token is cached, not
+that no other code path re-opens the file later.</p>
+<h2 id="3-what-is-mounted-into-a-contained-job">3. What is mounted into a contained job<a class="headerlink" href="#3-what-is-mounted-into-a-contained-job" title="Anchor link">&para;</a></h2>
+<p>The coordinator's correction is right about the adapter path and wrong as a
+general statement; both halves matter.</p>
+<p>On the <strong>adapter path</strong> (<code>calls.py</code>, the route that carries
+<code>ExecutionRequirements</code> and is the containment surface), the job gets
+<code>env_policy="isolated"</code> <strong>plus an explicit <code>HOME</code> override</strong> pointing at the
+<code>IsolatedHome</code> call directory, with <code>XDG_CONFIG_HOME</code> / <code>XDG_CACHE_HOME</code> /
+<code>XDG_DATA_HOME</code> / <code>XDG_STATE_HOME</code> beneath it, <code>config_dir=home</code> for Claude
+(so <code>CLAUDE_CONFIG_DIR</code>) and <code>config_home=home</code> for Codex (so <code>CODEX_HOME</code>).
+The host home, <code>~/.codex/auth.json</code> and the login keychain are therefore all
+unreachable.</p>
+<p>But <code>env_policy="isolated"</code> <strong>does not itself hide the host home</strong>: <code>HOME</code> is
+on <code>_ISOLATED_PASSTHROUGH</code> in <code>_common.py</code>, alongside <code>PATH</code>, <code>USER</code>,
+<code>TMPDIR</code>, the TLS variables and the proxy variables. The protection comes from
+the explicit override applied last, not from the policy's name. The source says
+so plainly — <em>"Not a security boundary — a child that runs shell commands can
+read the filesystem regardless"</em>. And the <strong>direct cognition path</strong> defaults to
+<code>effective_env_policy == "inherit"</code> (or <code>"profile"</code> when <code>config_dir</code> is set),
+so a caller using <code>ClaudeCliCognition</code>/<code>CodexCliCognition</code> standalone <strong>does</strong>
+inherit the real <code>HOME</code> and with it every host credential above. That path is
+not the containment surface, but the general claim "agentkit never mounts the
+user's <code>$HOME</code>" is false for it, and a verdict table that assumed otherwise
+would be wrong.</p>
+<p>Credential-bearing material that reaches a job:</p>
+<ul>
+<li><strong>One installed file, chosen by agentkit.</strong> <code>install_credentials(home, mode,
+  files)</code> accepts exactly <code>.credentials.json</code> for <code>claude_code</code> and <code>auth.json</code>
+  for <code>codex</code>, rejects every other name, rejects path separators, writes with
+  <code>O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW</code> then <code>chmod 0600</code>, and refuses to
+  overwrite an existing file or a symlink. Teardown is credential-first:
+  <code>_remove()</code> unlinks every <code>auth.json</code> / <code>.credentials.json</code> /
+  <code>credentials.json</code> under the root <strong>before</strong> <code>rmtree</code>, so a partially failed
+  teardown still removes the secret first.</li>
+<li><strong>The generated MCP configuration document</strong>, which carries the bridge's live
+  bearer token. <code>serve.py</code> is explicit: <em>"the CLI reads the token OUT of this
+  file, so anything that can read this file holds the credential."</em> It is
+  created <code>0600</code> on the descriptor before any byte is written, with
+  <code>O_NOFOLLOW</code>, and a symlink at the path is refused.</li>
+<li><strong>Key-auth environment variables</strong> when the binding uses them:
+  <code>OPENAI_API_KEY</code>, and <code>CODEX_API_KEY</code> mirrored from it for Codex.</li>
+<li><strong><code>--add-dir</code> roots</strong>, which are caller-supplied and validated only as
+  "is a directory" (<code>driver.py</code> raises only on non-directories). A caller who
+  passes <code>~</code> or <code>~/.codex</code> reopens the host credential by hand. agentkit's
+  lexical narrowing of roots is, as <code>host-tool-execution.md</code> already records,
+  "not a symlink/filesystem enforcer".</li>
+</ul>
+<p>Nothing else credential-bearing reaches a job on the adapter path. The host
+keychain in particular is closed by construction on macOS, for the reason §4
+gives.</p>
+<h2 id="4-every-channel-a-credential-could-escape-through">4. Every channel a credential could escape through<a class="headerlink" href="#4-every-channel-a-credential-could-escape-through" title="Anchor link">&para;</a></h2>
+<p>"Closed" means closed <strong>against the job's own native tools</strong>, which is the only
+threat model this study is about. Several channels are closed against other
+users and open against the job; that distinction is the point.</p>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Status</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host <code>~/.claude.json</code>, <code>~/.codex/auth.json</code> (adapter path)</td>
+<td><strong>Closed</strong></td>
+<td><code>HOME</code>/<code>CODEX_HOME</code>/<code>CLAUDE_CONFIG_DIR</code> overridden to the owned home</td>
+</tr>
+<tr>
+<td>macOS login keychain (adapter path)</td>
+<td><strong>Closed</strong></td>
+<td>keychain is <code>$HOME</code>-relative; redirected <code>HOME</code> ⇒ "Not logged in · Please run /login"</td>
+</tr>
+<tr>
+<td>Host credentials on the direct cognition path</td>
+<td><strong>Open</strong></td>
+<td>default <code>effective_env_policy == "inherit"</code> keeps the real <code>HOME</code></td>
+</tr>
+<tr>
+<td>Ambient auth env inherited into the job</td>
+<td><strong>Closed</strong></td>
+<td><code>_CLAUDE_AMBIENT_AUTH_ENV</code> / <code>_CODEX_AMBIENT_AUTH_ENV</code> stripped; <code>isolated</code> copies only the passthrough list</td>
+</tr>
+<tr>
+<td>Parent-session IPC token (<code>CLAUDE_CODE_MESSAGING_TOKEN</code>)</td>
+<td><strong>Closed</strong></td>
+<td>in <code>_CLAUDE_SESSION_ENV</code>, stripped by <code>profile</code> and absent under <code>isolated</code></td>
+</tr>
+<tr>
+<td>The one installed credential file, read by a native tool</td>
+<td><strong>Open — inherent</strong></td>
+<td>new test: a same-user child reads the <code>0600</code> file verbatim</td>
+</tr>
+<tr>
+<td>Key-auth credential in the child environment</td>
+<td><strong>Open — inherent</strong></td>
+<td>the job's own <code>env</code>/<code>Bash</code> reads its own environment</td>
+</tr>
+<tr>
+<td>Generated MCP config bearer token</td>
+<td><strong>Open to the job</strong></td>
+<td><code>serve.py</code>: "anything that can read this file holds the credential"; <code>0600</code> closes it only to other users</td>
+</tr>
+<tr>
+<td>argv</td>
+<td><strong>Closed (named keys)</strong></td>
+<td><code>_looks_secret</code> warns on <code>api_key</code>/<code>token</code>/<code>secret</code>/<code>password</code>/<code>credential</code> keys, exempting <code>*_env_var</code></td>
+</tr>
+<tr>
+<td>CLI stdout/stderr</td>
+<td><strong>Partly closed</strong></td>
+<td><code>_redact_secrets</code> exists; <code>test_claude_offline.py</code> asserts a planted credential never appears in output</td>
+</tr>
+<tr>
+<td>Process listing / <code>ps</code></td>
+<td><strong>Open — inherent</strong></td>
+<td>same uid</td>
+</tr>
+<tr>
+<td>Child-process inheritance</td>
+<td><strong>Open — inherent</strong></td>
+<td>descendants inherit env and fds</td>
+</tr>
+<tr>
+<td>Teardown residue</td>
+<td><strong>Closed, not erasure</strong></td>
+<td>credential-first <code>_remove()</code>; new test asserts no credential bytes remain under the home. <code>host-tool-execution.md</code>: "File removal is not secure erasure"</td>
+</tr>
+<tr>
+<td><code>--add-dir</code> roots</td>
+<td><strong>Open — caller's choice</strong></td>
+<td>validated only as directories; no credential-path exclusion</td>
+</tr>
+<tr>
+<td>Codex provider-independent egress</td>
+<td><strong>Open</strong></td>
+<td>observed <code>HTTP 451 {"message":"no_biscuit_no_service"}</code> from <code>rmcp::transport::worker</code> with the provider base URL pointed at loopback</td>
+</tr>
+</tbody>
+</table>
+<p>The four rows marked <em>inherent</em> are the study's core result restated: they
+cannot be closed by file modes, because the native tools and the process that
+must read the credential are the same user in the same process tree. They can
+only be closed by making what is inside worthless, which is mechanism &copy;.</p>
+<h2 id="5-mechanisms-evaluated">5. Mechanisms evaluated<a class="headerlink" href="#5-mechanisms-evaluated" title="Anchor link">&para;</a></h2>
+<h3 id="a-hide-the-file">(a) Hide the file<a class="headerlink" href="#a-hide-the-file" title="Anchor link">&para;</a></h3>
+<p>The enforcement primitive exists. <code>sandbox-exec</code> is present, and a profile of
+<code>(allow default)</code> plus <code>(deny file-read* (literal "&lt;path&gt;"))</code> denies that one
+path to the child <strong>and to a shell grandchild</strong>, while leaving the rest of the
+process working — verified, and pinned by a new test. <code>bwrap</code> is absent on this
+machine; <code>docker</code> is present.</p>
+<p>It does not solve the problem as a <em>static</em> policy, for a structural reason: the
+CLI reads the same path its tools would, in the same process, so a deny that
+stops <code>Read</code> also stops authentication. There is no per-thread or per-call
+granularity to exploit.</p>
+<p>What does work is the <strong>post-startup drop</strong>, which §2 establishes by
+observation: install the credential, start the CLI, and unlink it once the first
+provider request is seen. No sandbox is required. Its cost is the refresh case —
+a token that expires mid-session cannot be renewed from a source that is gone.</p>
+<p>For Claude on macOS there is a bonus already banked: because the keychain is
+<code>$HOME</code>-relative, the adapter path's <code>HOME</code> override <strong>already</strong> makes
+keychain-sourced saved-session auth unreachable inside a job. The only route in
+is the file agentkit installs, which is exactly the chokepoint mechanism &copy;
+wants.</p>
+<h3 id="b-broker-the-credential-via-apikeyhelper">(b) Broker the credential via <code>apiKeyHelper</code><a class="headerlink" href="#b-broker-the-credential-via-apikeyhelper" title="Anchor link">&para;</a></h3>
+<p><code>apiKeyHelper</code> is real and agentkit already references it, but it <strong>cannot
+carry saved-session auth</strong>, and the binary says so itself. <code>claude --help</code>,
+under <code>--bare</code>: <em>"Anthropic auth is strictly <code>ANTHROPIC_API_KEY</code> or
+<code>apiKeyHelper</code> via <code>--settings</code> (OAuth and keychain are never read)."</em>
+<code>apiKeyHelper</code> is an API-key path. Routing saved-session auth through it is not
+a brokering design, it is the substitution this study was told not to propose.</p>
+<p>It also fails on its own terms as an isolation mechanism. The helper is a
+<em>command the CLI runs inside the job</em>, so it runs as the same user in the same
+process tree as the native tools, and its stdout is the key. A native tool can
+run the same command and obtain the same key. Brokering changes where the
+secret comes from, not who can obtain it — unless the helper authenticates to
+an outside broker using something the job does not hold, which is impossible,
+because anything the job holds its tools can read. The only way the helper
+becomes useful is if what it returns is already worthless outside the job, and
+that is mechanism &copy; doing the work, not <code>apiKeyHelper</code>.</p>
+<p>Not verified by execution: no helper was run, because exercising it needs a key.</p>
+<h3 id="make-what-is-inside-worthless-the-egress-broker">&copy; Make what is inside worthless — the egress broker<a class="headerlink" href="#make-what-is-inside-worthless-the-egress-broker" title="Anchor link">&para;</a></h3>
+<p>The strongest and cheapest mechanism, and the only one that closes the four
+<em>inherent</em> channels. agentkit brokers the provider API itself: the job gets a
+loopback endpoint and a short-lived, job-scoped token, the genuine credential
+stays in the parent process, and a native tool that reads the token gains
+nothing usable beyond the job. <code>install_credentials</code> is the single chokepoint
+where the substitution happens — one function, one allowlisted filename per
+mode — which a new test pins by asserting the real secret's bytes appear
+nowhere under the job home.</p>
+<p>The question was whether either CLI accepts an alternate base URL <strong>with
+saved-session auth</strong>, since agentkit's existing offline tests establish only
+that it works with API keys (<code>test_claude_offline.py</code> passes
+<code>ANTHROPIC_API_KEY</code> with <code>--bare</code>; <code>test_codex_adapter_offline.py</code> uses a custom
+provider with <code>env_key="CODEX_API_KEY"</code>). Both were tested directly.</p>
+<p><strong>Claude Code 2.1.302 — feasible, verified.</strong> With <code>ANTHROPIC_BASE_URL</code> set to
+<code>http://127.0.0.1:&lt;port&gt;</code>, the CLI sent its saved-session OAuth credential to
+that endpoint: <code>POST /v1/messages?beta=true</code>, <code>Authorization: Bearer &lt;108
+bytes&gt;</code>, and <code>anthropic-beta</code> including <code>oauth-2025-04-20</code>. Plain HTTP was
+accepted, so a local broker needs no TLS. This held for both routes to a saved
+session — the keychain-sourced one, and a file-based
+<code>.credentials.json</code> carrying <code>claudeAiOauth.accessToken</code> <strong>with no keychain
+reachable at all</strong>, which completed <code>rc=0</code>. That second result is the important
+one: it is precisely what <code>install_credentials</code> installs, so the brokered token
+can be delivered through machinery that already exists.</p>
+<p><strong>Codex 0.162.1 — feasible, verified, but only through a custom provider.</strong>
+Overriding the built-in provider is refused outright:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Error loading config.toml: model_providers contains reserved built-in provider
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>IDs: `openai`. Built-in providers cannot be overridden. Rename your custom
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>provider (for example, `openai-custom`).
+</span></code></pre></div>
+<p>A <strong>custom</strong> provider with <code>requires_openai_auth = true</code> does carry the
+saved-session credential to a loopback base URL. Observed against a synthetic
+chatgpt-shaped <code>auth.json</code> in an owned temporary <code>CODEX_HOME</code>:
+<code>GET /v1/models?client_version=0.162.1</code> three times, then
+<code>POST /v1/responses</code>, each with <code>Authorization: Bearer &lt;the access_token from
+auth.json&gt;</code> and a <code>chatgpt-account-id</code> header; <code>turn.completed</code>, <code>rc=0</code>. A
+broker must therefore serve <code>GET /v1/models</code> as well as the Responses endpoint.</p>
+<h4 id="the-minted-token-verified-end-to-end">The minted token, verified end to end<a class="headerlink" href="#the-minted-token-verified-end-to-end" title="Anchor link">&para;</a></h4>
+<p>The remaining question was whether the job can hold a <strong>minted</strong> job-scoped
+token while the real credential stays outside — the fact the first pass could
+not settle offline. It is now settled in three steps, and the answer is yes for
+both CLIs.</p>
+<p><strong>Step 1, free: neither CLI validates the token it is given.</strong> With a loopback
+endpoint returning a canned response, Claude 2.1.302 sent a 29-character
+<code>mint_…</code> token verbatim as <code>Bearer</code>, <code>rc=0</code> — and did so even with <code>expiresAt</code>
+set a day in the <strong>past</strong>, without attempting a refresh. A real-shaped
+107-character <code>sk-ant-oat01-…</code> token behaved identically. So a minted Claude
+token may be any opaque string.</p>
+<p>Codex is almost as permissive but has one real constraint. The minted
+<code>tokens.access_token</code> may be any opaque string, <strong>but <code>tokens.id_token</code> must be
+a well-formed JWT</strong> carrying the <code>https://api.openai.com/auth</code> claims. With a
+non-JWT <code>id_token</code>, Codex issued the request with <strong>no <code>Authorization</code> header at
+all</strong> (observed: header absent, length 0) — it fails open into sending nothing
+rather than refusing, which is a trap worth knowing about. An <em>expired</em> JWT
+claim was still sent.</p>
+<p><strong>Step 3, free: the minted token is worthless to the vendor.</strong> Forwarding it
+unchanged to <code>api.anthropic.com</code> returned <code>HTTP/1.1 401 Unauthorized</code>, the CLI
+reported "Invalid bearer token", and <code>total_cost_usd</code> was <code>0</code>. The swap is
+therefore load-bearing rather than incidental.</p>
+<p><strong>Step 2, paid: the relay works.</strong> One turn per CLI, cheapest model, one turn
+maximum. The parent read the real credential into memory only; the job received
+only the minted token.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Claude 2.1.302</th>
+<th>Codex 0.163.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Minted token presented by the CLI</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Upstream after swap</td>
+<td><code>HTTP/1.1 200 OK</code></td>
+<td><code>HTTP/1.1 200 OK</code></td>
+</tr>
+<tr>
+<td>Upstream reached</td>
+<td><code>api.anthropic.com/v1/messages</code></td>
+<td><code>chatgpt.com/backend-api/codex/responses</code></td>
+</tr>
+<tr>
+<td>Turn outcome</td>
+<td><code>is_error: false</code>, <code>terminal_reason: completed</code></td>
+<td><code>rc=0</code>, <code>agent_message: "ok"</code></td>
+</tr>
+<tr>
+<td><strong>Real credential present in job home</strong></td>
+<td><strong>no</strong></td>
+<td><strong>no</strong></td>
+</tr>
+<tr>
+<td>Real account id present in job home</td>
+<td>n/a</td>
+<td><strong>no</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Codex needed one extra rewrite: it sends a <code>chatgpt-account-id</code> header, so the
+broker swaps that for the real account id too. The job was deliberately given a
+<em>different</em> random account id, and neither the real token nor the real account
+id appeared anywhere under the job home. The broker also answers
+<code>GET /v1/models</code> locally; step 1 showed a failure there is non-fatal, so
+relaying it buys nothing.</p>
+<p><strong>The refresh path is the one thing a minted credential cannot do.</strong> Codex
+attempted a refresh against <code>auth.openai.com</code> and got
+<code>401 token_expired</code> ("Could not validate your token"), non-fatally, because the
+job's refresh token is minted too. This is a design consequence rather than a
+defect: <strong>the broker must own refresh</strong>, because a job holding a real refresh
+token would defeat the whole arrangement. It also bounds job duration to the
+real token's validity unless the broker refreshes on the job's behalf.</p>
+<p>Two caveats specific to Codex. First, <strong>a base-URL broker does not confine
+Codex's egress.</strong> With the provider pointed at loopback, Codex still reached an
+unrelated endpoint and logged
+<code>rmcp::transport::worker ... HTTP 451 {"message":"no_biscuit_no_service"}</code>.
+Provider-egress restriction therefore needs a network boundary outside the CLI
+as well as a broker, which is consistent with the existing <code>U</code> verdict for
+network isolation. Second, <code>preferred_auth_method</code> is <strong>ignored</strong> by 0.162.1,
+which reported it as an unrecognized configuration setting; the comment in
+<code>codex/driver.py</code> citing it as the precedence knob is stale on this binary.</p>
+<h3 id="verdict-table">Verdict table<a class="headerlink" href="#verdict-table" title="Anchor link">&para;</a></h3>
+<p>F = feasible with evidence, I = infeasible with the missing capability named,
+U = unverified.</p>
+<table>
+<thead>
+<tr>
+<th>Mechanism</th>
+<th>Claude Code 2.1.302</th>
+<th>Codex 0.162.1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(a) static read-deny on the credential path</td>
+<td><strong>I</strong> — CLI reads the same path in the same process; no per-call granularity</td>
+<td><strong>I</strong> — same structural reason</td>
+</tr>
+<tr>
+<td>(a′) post-startup drop</td>
+<td><strong>F</strong> — read once; keychain removed after request 1, 3 later requests identical, <code>rc=0</code></td>
+<td><strong>F</strong> — read once; <code>auth.json</code> unlinked after request 1, 3 later requests identical, <code>rc=0</code></td>
+</tr>
+<tr>
+<td>(a″) host keychain unreachable in a job</td>
+<td><strong>F</strong> — already closed; keychain is <code>$HOME</code>-relative and <code>HOME</code> is overridden</td>
+<td>n/a — credential is a file, closed by <code>CODEX_HOME</code></td>
+</tr>
+<tr>
+<td>(b) <code>apiKeyHelper</code> brokering saved-session auth</td>
+<td><strong>I</strong> — <code>--bare</code>: "OAuth and keychain are never read"; key-only path, and the helper runs inside the job</td>
+<td><strong>I</strong> — no counterpart exists</td>
+</tr>
+<tr>
+<td>&copy; egress broker, saved-session auth preserved</td>
+<td><strong>F</strong> — <code>ANTHROPIC_BASE_URL</code> to loopback carries the OAuth Bearer; works from an installed <code>.credentials.json</code> with no keychain</td>
+<td><strong>F</strong> — custom provider + <code>requires_openai_auth</code>; built-in <code>openai</code> override refused</td>
+</tr>
+<tr>
+<td>(c″) minted job-scoped token accepted end to end</td>
+<td><strong>F</strong> — relay verified: minted in, vendor <code>200 OK</code>, real credential absent from the job</td>
+<td><strong>F</strong> — relay verified: minted in, vendor <code>200 OK</code>, real token and account id absent from the job</td>
+</tr>
+<tr>
+<td>Minted token is worthless if it leaks</td>
+<td><strong>F</strong> — forwarded unchanged, vendor <code>401</code>, <code>$0</code></td>
+<td><strong>F</strong> — same mechanism; <code>requires_openai_auth</code> binds to the swapped header</td>
+</tr>
+<tr>
+<td>(c′) broker also confines provider egress</td>
+<td><strong>U</strong> — no out-of-band endpoint observed, but not proxy-audited</td>
+<td><strong>I</strong> — observed non-provider egress (<code>HTTP 451</code>, plus <code>auth.openai.com</code>) that base URL does not capture</td>
+</tr>
+<tr>
+<td>Refresh from inside the job with a minted credential</td>
+<td><strong>I</strong> — by design; the job holds no real refresh token</td>
+<td><strong>I</strong> — observed: minted refresh rejected by <code>auth.openai.com</code> (<code>401 token_expired</code>), non-fatal</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-could-not-be-established-offline">What could not be established offline<a class="headerlink" href="#what-could-not-be-established-offline" title="Anchor link">&para;</a></h2>
+<p>Each row names the exact command that would settle it, and why it was not run.</p>
+<p>The vendor-acceptance question that gated mechanism &copy; has been settled and is
+no longer on this list; see "The minted token, verified end to end".</p>
+<table>
+<thead>
+<tr>
+<th>Unresolved</th>
+<th>Command that settles it</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Whether the <strong>broker</strong> can refresh on the job's behalf and hand the job a fresh minted token mid-session</td>
+<td>Hold a session open past the real token's <code>expiresAt</code> with the broker performing the refresh: <code>claude ... --max-turns 50</code> against the broker, real <code>expiresAt</code> minutes ahead</td>
+<td>Free, but needs a genuinely near-expiry saved session; the minted-side result is already known (the job cannot refresh)</td>
+</tr>
+<tr>
+<td>Whether a long job survives the real token expiring with no broker refresh</td>
+<td>Same setup, broker refresh disabled</td>
+<td>Free; needs the same near-expiry window</td>
+</tr>
+<tr>
+<td>Whether <code>apiKeyHelper</code> output is reachable by a native tool in practice</td>
+<td><code>claude --settings '{"apiKeyHelper":"/path/to/script"}'</code> with a sentinel-writing script plus a native <code>Bash</code> call</td>
+<td><strong>Paid</strong> — needs a working key and a model turn to invoke the tool; verdict (b) does not depend on it</td>
+</tr>
+<tr>
+<td>Whether Codex's out-of-band egress is suppressible</td>
+<td><code>codex exec --json</code> under <code>HTTPS_PROXY</code> to a logging proxy with each feature flag toggled; the targets are now known to be <code>chatgpt.com:443</code> and <code>auth.openai.com:443</code></td>
+<td>Free; not run for time</td>
+</tr>
+<tr>
+<td>Whether Claude has any out-of-band egress under a broker</td>
+<td>Re-run the relay with <code>HTTPS_PROXY</code> pointed at a logging proxy and <code>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</code> unset</td>
+<td>Free; not run for time</td>
+</tr>
+<tr>
+<td>Whether a native tool can read the <strong>keychain</strong> when it is mounted</td>
+<td><code>sandbox-exec</code> profile allowing <code>mach-lookup</code> of <code>com.apple.SecurityServer</code>, then <code>security find-generic-password -s "Claude Code-credentials"</code> inside it</td>
+<td>Free; not run because the adapter path already makes the keychain unreachable, so the answer does not change a verdict</td>
+</tr>
+<tr>
+<td>Whether <code>docker</code>-based containment preserves saved-session auth</td>
+<td>Run the Claude drop probe inside a container with only the installed <code>.credentials.json</code> bind-mounted</td>
+<td>Free; out of scope for a filesystem/credential study</td>
+</tr>
+<tr>
+<td>Complete exclusion of plugin, managed-configuration and memory surfaces</td>
+<td>Already recorded as <code>V</code> in <code>host-tool-execution.md</code>; unchanged by this study</td>
+<td>Free but large</td>
+</tr>
+</tbody>
+</table>
+<h2 id="recommendation">Recommendation<a class="headerlink" href="#recommendation" title="Anchor link">&para;</a></h2>
+<p><strong>Containment should proceed, with mechanism &copy; as the credential design and
+mechanism (a′) as defence in depth.</strong> The gating question is answered
+affirmatively, and answered without substituting API keys for saved sessions.
+The verdict is <strong>minting works</strong>: on both tested binaries the job holds only a
+minted token, the real saved-session credential never enters the job, and a
+turn completes against the real vendor.</p>
+<p>The reasoning is that &copy; is the only mechanism that closes the four <em>inherent</em>
+channels in §4. Those channels — the installed file, the job's own environment,
+<code>ps</code>, and child inheritance — are not closable by permissions, because the
+reader and the tools are the same user in the same process tree. Making the
+token worthless outside the job is the only move that survives that. The
+supporting facts are all now evidenced rather than assumed: both CLIs accept a
+loopback endpoint while authenticating from a saved session, both read the
+credential once, and <code>install_credentials</code> is a single chokepoint with one
+allowlisted filename per mode.</p>
+<p>Sequencing, cheapest first:</p>
+<ol>
+<li>Keep the credential outside the job. Substitute a job-scoped token at
+   <code>install_credentials</code>. No CLI change and no new mechanism is needed, and the
+   chokepoint property is already pinned by a test. The minted token may be any
+   opaque string for Claude; for Codex the sibling <code>tokens.id_token</code> <strong>must</strong> be
+   a well-formed JWT with the <code>https://api.openai.com/auth</code> claims, or Codex
+   silently sends no credential at all.</li>
+<li>Add the broker behind the existing <code>ExecutionBackend</code> seam. For Claude set
+   <code>ANTHROPIC_BASE_URL</code>; for Codex define a custom provider with
+   <code>requires_openai_auth = true</code> and serve <code>GET /v1/models</code> as well as
+   <code>POST /v1/responses</code>. Do not attempt to override the built-in <code>openai</code>
+   provider — it is refused. The broker swaps <code>Authorization</code>, and for Codex
+   also <code>chatgpt-account-id</code>; upstreams are <code>api.anthropic.com</code> and
+   <code>chatgpt.com/backend-api/codex</code>.</li>
+<li>Give the broker ownership of <strong>refresh</strong>. The job cannot refresh, by design
+   and by observation, so the broker must renew against the real credential and
+   re-mint. Without this, job duration is bounded by the real token's validity.</li>
+<li>Drop the installed minted credential after the first provider request is
+   observed, as defence in depth. With minting in place this is belt-and-braces
+   rather than the protection itself.</li>
+<li>Treat provider egress as a separate, still-unmet requirement. Codex reaches
+   <code>auth.openai.com</code> independently of its provider base URL, so a base-URL
+   broker is not an egress boundary; network isolation stays <code>U</code> and must be
+   enforced outside the CLI.</li>
+</ol>
+<p><strong>What the in-job blast radius actually is.</strong> The minted token is a bearer for
+the broker and nothing else: forwarded to the vendor unchanged it returns <code>401</code>
+at zero cost. So a native tool that reads it gains exactly the authority the
+broker grants it — which is the broker's design decision, not the provider's.
+That is the honest residual: minting moves the blast radius from "the
+operator's whole provider account" to "whatever this job was admitted to do",
+and the second is only as narrow as the broker's own scoping and lifetime
+rules. Scoping the minted token per job, per model and per deadline is
+therefore part of the mechanism, not a later hardening step. The job also still
+reaches the broker's endpoint, so a tool can spend the job's own quota within
+its admitted scope; that is the residual the owner should expect, and it is
+bounded rather than open-ended.</p>
+<p><strong>The honest cost if this stops holding.</strong> The result rests on current binary
+behaviour, not on a documented contract. Both CLIs accept an unvalidated opaque
+token today; a future version that verifies token shape or binds a signature to
+the session would break minting without warning, and the version matrix already
+moved under this study (Codex auto-updated 0.162.1 → 0.163.0 mid-run). The
+fallback is relay with the real credential held in the parent, which still
+confines egress but then requires the drop in step 4 to do the isolating, with
+refresh as its hard limit.</p>
+<p>If instead a future binding makes saved-session auth genuinely non-isolable,
+the cost to the consumer is explicit and should be stated rather than
+engineered around: contained jobs would require API-key auth, which means an
+operator on a subscription plan cannot run contained jobs on their existing
+login, must obtain separate key-billed credentials, and pays per-token for work
+their subscription already covers. That is a real and possibly unacceptable
+price. <strong>This study did not reach that outcome, and nothing here should be read
+as recommending it.</strong> Mechanism &copy; is feasible on both tested binaries.</p>
+<h2 id="verification">Verification<a class="headerlink" href="#verification" title="Anchor link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uv run ruff check agentkit tests</code></td>
+<td>Passed</td>
+</tr>
+<tr>
+<td><code>uv run pytest tests/source -q</code></td>
+<td>2,807 passed, 15 skipped, 2 failed — both pre-existing and unrelated, see below</td>
+</tr>
+<tr>
+<td><code>uv run python .github/scripts/mutants.py --verify</code></td>
+<td>Passed</td>
+</tr>
+<tr>
+<td><code>make docs-check</code></td>
+<td>Passed</td>
+</tr>
+<tr>
+<td>New module <code>tests/source/conformance/test_credential_isolation.py</code></td>
+<td>6 passed</td>
+</tr>
+<tr>
+<td>Paid relay turns (outside the suite)</td>
+<td>Claude <code>$0.013018</code>; Codex one subscription turn</td>
+</tr>
+</tbody>
+</table>
+<p>The new tests encode reachability, which is what this study adds;
+<code>tests/source/conformance/test_isolation.py</code> already covered installation mode,
+the filename allowlist and teardown. All five are synchronous, because
+<code>ASYNC230</code>/<code>ASYNC240</code> forbid <code>open()</code> and <code>pathlib</code>/<code>os.path</code> in an async body
+and every assertion is a filesystem assertion; the one that needs a coroutine
+drives it with <code>asyncio.run</code>. The <code>sandbox-exec</code> test is skipped off macOS.</p>
+<p>No source file was modified. No native-tool policy, spending limit or coverage
+threshold was changed. The CLI probes behind §2 and §5 are not in the suite:
+they drive real binaries against loopback servers, and the two relay turns
+reach the real vendors, so both belong with the existing opt-in real-CLI cases
+rather than the default gate. They are reported above rather than claimed as
+suite coverage.</p>
+<p>The two failures are
+<code>test_host_execution_assessment.py::test_cli_version_changes_are_not_hidden_by_cache</code>
+for both parameters. They are not caused by this study: the suite was green
+across the whole of <code>tests/source</code> earlier in the same session, and the
+failures appeared after <code>agentkit/models/providers/cli/calls.py</code> raised
+<code>MINIMUM_TESTED_CLI_VERSION[CLAUDE_CODE]</code> from <code>2.1.300</code> to <code>2.1.302</code> while
+that conformance test still parametrizes <code>2.1.300</code> and still expects a higher
+version to be refused. Both the source file and that test belong to another
+agent's in-flight work, so they are reported here rather than edited. This
+study's own module passes in isolation.</p>
+<p>Versions under test drifted during the study and the results are attributed
+accordingly: Claude Code 2.1.302 throughout; Codex 0.162.1 for the base-URL
+refusal and read-once results, and 0.163.0 for the relay, which auto-updated
+mid-study. The minting result held on both Codex versions.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 18, 2026 05:01:08 UTC">October 18, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

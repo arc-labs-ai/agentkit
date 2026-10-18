@@ -434,10 +434,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#capability-matrix-before-implementation" class="md-nav__link">
+  <a href="#capability-matrix-as-implemented-2026-10-18" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Capability matrix before implementation
+        Capability matrix as implemented (2026-10-18)
       
     </span>
   </a>
@@ -577,83 +577,203 @@ constructs the provider cognitions. Both one-shot drivers use <code>_run_cli_pro
 Claude's separate persistent session transport is not used by <code>CallRuntime</code>.
 <code>IsolatedHome</code> provides private temporary directories and credential cleanup.
 It is <strong>not an execution sandbox</strong>. A same-user native tool can read those files.</p>
-<p>No CLI version is pinned by this repository or its CI. The installed binaries
-are Claude Code <strong>2.1.300</strong> and Codex <strong>0.162.1</strong>. Older comments describe
-Claude 2.1.236 and Codex 0.152.1; these are observations, not version pins.
+<p>No CLI version is pinned by this repository or its CI. The binaries inspected
+for this record were Claude Code <strong>2.1.300</strong> and Codex <strong>0.162.1</strong>; a later
+<code>--version</code> probe reports Claude Code <strong>2.1.302</strong> and Codex <strong>0.163.0</strong> — the
+installed <code>codex</code> upgraded ITSELF mid-session, which is the reason
+<code>MINIMUM_TESTED_CLI_VERSION</code> is a floor and not an exact match. Neither
+measured binary is still installed at the version it was measured at, so every
+version below is a record of what was observed and not a claim about what is
+present. Older comments describe Claude 2.1.236 and Codex 0.152.1; these are
+observations, not version pins.
 Argument acceptance tests do not establish authority boundaries.</p>
-<h2 id="capability-matrix-before-implementation">Capability matrix before implementation<a class="headerlink" href="#capability-matrix-before-implementation" title="Anchor link">&para;</a></h2>
+<h2 id="capability-matrix-as-implemented-2026-10-18">Capability matrix as implemented (2026-10-18)<a class="headerlink" href="#capability-matrix-as-implemented-2026-10-18" title="Anchor link">&para;</a></h2>
+<p>Every status below is a reading of <code>agentkit/models/providers/cli/capabilities.py</code>
+(the two CLI modes) and <code>agentkit/models/providers/frontiers/capabilities.py</code>
+(the two API modes), confirmed by calling <code>CallRuntime.evaluate_execution</code> once
+per mode under a <code>DENY</code> ceiling. The matrix is answered in full for every mode
+so a host can use it for discovery; the requirements that can refuse a call are
+the ones the request declares, plus <code>native_tools_unavailable</code> whenever the
+policy ceiling is <code>DENY</code>.</p>
 <table>
 <thead>
 <tr>
 <th>Requirement</th>
-<th>Claude Code adapter</th>
-<th>Codex adapter</th>
-<th>Ordinary subprocess</th>
+<th><code>claude_code</code></th>
+<th><code>codex</code></th>
+<th><code>anthropic_api</code> / <code>openai_api</code></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Native tools unavailable (strict DENY)</td>
-<td>Empty <code>--tools</code> list; needs behavioral verification per binary</td>
-<td>Unsupported: file/patch/plan and other native capabilities remain</td>
-<td>Cannot remove provider tools</td>
+<td><code>native_tools_unavailable</code></td>
+<td>unverified</td>
+<td>unsupported</td>
+<td><strong>supported</strong></td>
 </tr>
 <tr>
-<td>Host tools</td>
-<td>Explicit MCP server, host ToolSet grants</td>
-<td>Explicit MCP server, host ToolSet grants</td>
-<td>Host callbacks remain host authority</td>
+<td><code>host_tools</code></td>
+<td>supported</td>
+<td>supported</td>
+<td>supported</td>
 </tr>
 <tr>
-<td>External MCP</td>
-<td><code>--strict-mcp-config</code></td>
-<td>Owned CODEX_HOME, ignore user config</td>
-<td>No network boundary</td>
+<td><code>mcp_allowlist</code></td>
+<td>unverified</td>
+<td>unverified</td>
+<td>unverified</td>
 </tr>
 <tr>
-<td>User/project configuration excluded</td>
-<td><code>--bare</code> excludes discovery but disables saved OAuth; empty setting sources alone is insufficient evidence</td>
-<td>Ignore config/rules flags, feature switches; needs planted discovery tests</td>
-<td>No filesystem/configuration boundary</td>
+<td><code>filesystem_read</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 <tr>
-<td>Files restricted to roots</td>
-<td>No OS boundary</td>
-<td>Read-only controls writes; does not deny reads</td>
-<td>Unsupported</td>
+<td><code>filesystem_write</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 <tr>
-<td>Network destinations restricted</td>
-<td>No OS boundary</td>
-<td>CLI sandbox is not proof of whole invocation egress</td>
-<td>Unsupported</td>
+<td><code>network</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 <tr>
-<td>Job process visibility / complete descendant termination</td>
-<td>Process group only</td>
-<td>Process group only</td>
-<td>Detached descendants can escape</td>
+<td><code>processes</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 <tr>
-<td>Credentials inaccessible to model tools</td>
-<td>Empty tools removes native access; host tools must be separately governed</td>
-<td>Unsupported with auth.json/API key and native execution in same security context</td>
-<td>Unsupported</td>
+<td><code>credentials</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 <tr>
-<td>Schema / usage</td>
-<td>Native schema and usage; bounded schema fallback documented</td>
-<td>Native schema and usage</td>
-<td>Transport only</td>
+<td><code>configuration</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 <tr>
-<td>Exact hard spending cap</td>
-<td>CLI budget flag is not proof of exact hard cap</td>
-<td>Unsupported</td>
-<td>Unsupported</td>
+<td><code>schema</code></td>
+<td>supported</td>
+<td>supported</td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>cancellation</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unverified</td>
+</tr>
+<tr>
+<td><code>usage</code></td>
+<td>supported</td>
+<td>supported</td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>observed_spending_threshold</code></td>
+<td>supported</td>
+<td>supported</td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>hard_spending_cap</code></td>
+<td>unsupported</td>
+<td>unsupported</td>
+<td>unsupported</td>
 </tr>
 </tbody>
 </table>
+<p>Identity travels with the matrix and never moves a status. The CLI modes report
+<code>backend="subprocess"</code> with the interpreter version and the installed binary's
+<code>--version</code> reading. The API modes report <code>backend="https-sse"</code> with the HTTP
+client version, and the binary-version slot carries a per-vendor wire contract —
+<code>anthropic-messages@2023-06-01</code> or <code>openai-responses@v1</code> — because an API
+invocation has no binary to version.</p>
+<p>The SDK column differs from the CLI one for a structural reason, not a weaker
+standard: a CLI invocation is a provider-owned process with provider-native
+tools inside it, while an API invocation has no process and no native tools, so
+every tool the model can reach is a host function the adapter declared and the
+runtime invokes.</p>
+<ul>
+<li><code>native_tools_unavailable</code> is supported because the adapter can enable no
+  provider-native or provider-hosted tool. It degrades to <strong>unverified</strong>
+  whenever a <code>request_hook</code> is installed, because a hook replaces the request
+  body after the adapter built it and could reintroduce a provider-hosted tool,
+  so the dispatched payload is no longer the payload that was assessed.</li>
+<li><code>cancellation</code> is unverified rather than unsupported: cancelling the awaiting
+  task closes the stream locally and reports partial usage, but the cooperative
+  token does not interrupt a response in flight and the provider is not proven
+  to stop, or to stop billing for, work already started.</li>
+<li><code>mcp_allowlist</code> is unverified because no MCP configuration reaches the
+  provider, yet host tools may themselves be served by MCP clients inside this
+  process, which agentkit does not verify.</li>
+<li>Every containment boundary, <code>credentials</code> included, stays unsupported on the
+  API modes for a reason of its own: host tool callbacks run in this process,
+  with this process's filesystem, network, descendants, environment and the
+  provider credential in reach, and agentkit does not sandbox them. A host
+  callback is host authority, not a sandbox.</li>
+</ul>
+<p><code>observed_spending_threshold</code> is supported on all four modes, and the evidence
+is the runtime's own accounting rather than anything a provider accepts. The runtime hands each attempt a decremented ceiling,
+accumulates what came back, and ends the invocation once <code>max_cost_usd</code> is
+reached, failing closed to <code>limit_reached</code> when the spend cannot be known. A
+CLI budget flag is not the justification and must not become one: argv
+acceptance proves argv threading, and this matrix's first rule is that flags are
+not proofs.</p>
+<p>Two things about its scope, because conflating them with <code>hard_spending_cap</code> —
+unsupported on all four modes — is the whole hazard:</p>
+<ul>
+<li>The unit of enforcement differs by mode and in neither case is it mid-flight.
+  On the API modes it is a turn; on the CLI modes it is a whole autonomous run.
+  Either way the unit that crosses the threshold completes and is billed, and
+  only the next dispatch is withheld. No argument either binary accepts turns
+  that into a cap.</li>
+<li>The ledger is fed unevenly. <code>claude_code</code> reports its own <code>total_cost_usd</code> per
+  run, while <code>codex</code> reports token counts only, so its threshold rides entirely
+  on the price table and closes the invocation as soon as a token kind is
+  unpriced. Honest, and weaker in practice. Note also that the runtime still
+  refuses <code>max_cost_usd</code> outright for <code>codex</code> (see below), so the supported
+  verdict is not reachable through that limit on that mode today.</li>
+</ul>
+<p>The CLI reasons behind the columns above, unchanged:</p>
+<ul>
+<li>Claude's empty <code>--tools</code> list omits native tools, but no verified denial
+  profile exists for this binary and environment, so the verdict is unverified.
+  <code>--bare</code> excludes discovery and disables saved OAuth; empty setting sources
+  alone are not evidence. Argument acceptance does not establish an authority
+  boundary.</li>
+<li>Codex keeps its file, patch, plan and other native capabilities, so strict
+  denial is unsupported outright. Its read-only sandbox denies writes but not
+  reads, which is why it satisfies neither DENY nor credential isolation.</li>
+<li><code>mcp_allowlist</code> is unverified on both, for the mechanism each supplies and
+  not for a missing one: Claude passes <code>--strict-mcp-config</code> so no other MCP
+  configuration is read, and Codex is given an owned <code>CODEX_HOME</code> so it ignores
+  the user's. Neither is evidence that discovery was actually excluded.</li>
+<li>Process-group cancellation reaches in-group descendants only; a child that
+  detaches into another session escapes it, which is why complete descendant
+  termination is refused rather than advertised.</li>
+</ul>
+<p>Three structural facts hold across the whole matrix:</p>
+<ul>
+<li>There is still <strong>no contained execution backend</strong>. The only shipped backend
+  reports <code>subprocess</code> and declares no guarantee at all, so every containment
+  boundary is unsupported on every mode.</li>
+<li>A report's self-declared <code>guarantees</code> — <code>BackendReport</code> on the CLI side,
+  <code>TransportReport</code> on the API side — can only downgrade a verdict to
+  unverified. It can never raise one to supported, because that would let
+  whoever constructs the report decide which boundaries exist.</li>
+<li>A required unverified requirement refuses, and the refusal is local: a
+  pre-dispatch incompatibility makes zero provider attempts, leaves usage
+  incomplete and cost unpriced.</li>
+</ul>
 <h2 id="contract-and-backend-design">Contract and backend design<a class="headerlink" href="#contract-and-backend-design" title="Anchor link">&para;</a></h2>
 <p>Extend the existing runtime, never replace it. Keep NativeToolPolicy.DENY
 strict: a containment request cannot override it. Add explicit execution
@@ -722,8 +842,8 @@ not an implementation of DENY. Unspecified authority in a contained request
 defaults to empty roots/destinations. Every security boundary is mandatory.
 Ordinary calls with no execution requirements preserve WARN/ALLOW semantics;
 they are not secure multi-tenant execution profiles.</p>
-<p>Both adapters expose schema, host tool protocol and usage metering support.
-Neither adapter/backend combination currently establishes filesystem roots,
+<p>Both CLI adapters expose schema, host tool protocol and usage metering support.
+Neither CLI adapter/backend combination currently establishes filesystem roots,
 egress, job process separation, credential secrecy, complete descendant
 termination or a hard dollar cap. MCP discovery exclusion is unverified.
 Claude native denial is unverified for the complete adapter invocation surface;
@@ -744,7 +864,7 @@ existing resolver to return a rotated credential. Existing limit/cancellation
 outcomes and ordered event/attempt ownership remain in the single runtime.
 CLI diagnostics are no longer copied into public failure details.</p>
 <p><code>ExecutionRequirement.HARD_SPENDING_CAP</code> is unsupported independently of usage
-metering. CLI budget flags and threshold cancellation are not exact hard dollar
+metering and of the supported <code>OBSERVED_SPENDING_THRESHOLD</code>. CLI budget flags and threshold cancellation are not exact hard dollar
 caps. The existing Codex <code>max_cost_usd</code> refusal remains; removing it does not
 remove the independent DENY incompatibility.</p>
 <h3 id="execution-backend-port">Execution backend port<a class="headerlink" href="#execution-backend-port" title="Anchor link">&para;</a></h3>
@@ -941,7 +1061,7 @@ These combinations remain visibly refused rather than receiving a weaker policy.
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 17, 2026 20:43:04 UTC">October 17, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 18, 2026 05:01:08 UTC">October 18, 2026</span>
   </span>
 
     

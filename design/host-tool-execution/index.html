@@ -1,0 +1,1352 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A low-level, composable framework for agentic-AI features in Python.">
+      
+      
+      
+        <link rel="canonical" href="https://arc-labs-ai.github.io/agentkit/design/host-tool-execution/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Policy-controlled host-tool execution - agentkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <script>
+    (function () {
+      var isDark = function () {
+        var scheme = document.body && document.body.getAttribute('data-md-color-scheme');
+        return scheme === 'slate';
+      };
+      window.mermaidConfig = {
+        startOnLoad: false,
+        theme: 'base',
+        securityLevel: 'strict',
+        flowchart: { curve: 'basis', useMaxWidth: true },
+        themeVariables: (function () {
+          var dark = isDark();
+          return {
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            primaryColor:      dark ? '#182028' : '#eef2f7',
+            primaryTextColor:  dark ? '#e8ecf1' : '#1e2a3a',
+            primaryBorderColor:dark ? '#2b3745' : '#c9d2df',
+            lineColor:         dark ? '#fbbf24' : '#d97706',
+            secondaryColor:    dark ? '#221a10' : '#fef3c7',
+            tertiaryColor:     dark ? '#0f1319' : '#fafaf9',
+            noteBkgColor:      dark ? '#221a10' : '#fef3c7',
+            noteTextColor:     dark ? '#fbbf24' : '#92400e',
+            noteBorderColor:   dark ? '#fbbf24' : '#f59e0b'
+          };
+        })()
+      };
+    })();
+  </script>
+  <script>
+    /* Hero install-command copy button */
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.rio-hero__copy');
+      if (!btn) return;
+      event.preventDefault();
+      var text = btn.getAttribute('data-clipboard-text') || '';
+      var label = btn.querySelector('.rio-hero__copy-label');
+      var done = function () {
+        if (!label) return;
+        var copied = label.getAttribute('data-copied') || 'Copied';
+        var idle   = label.getAttribute('data-idle')   || 'Copy';
+        label.textContent = copied;
+        btn.classList.add('is-copied');
+        window.setTimeout(function () {
+          label.textContent = idle;
+          btn.classList.remove('is-copied');
+        }, 1400);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  </script>
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#policy-controlled-host-tool-execution" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </button>
+            
+            
+  <span class="rio-announce">
+    <span class="rio-announce__tag">v0.1 shipped</span>
+    <span class="rio-announce__body">
+      read the <a href="../../tutorial/">tutorial</a>
+      to build a real research-briefing agent step by step.
+    </span>
+  </span>
+
+          </div>
+          
+            <script>var el=document.querySelector("[data-md-component=announce]");if(el){var content=el.querySelector(".md-typeset");__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0)}</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="agentkit" class="md-header__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../../assets/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            agentkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Policy-controlled host-tool execution
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="agentkit" class="md-nav__button md-logo" aria-label="agentkit" data-md-component="logo">
+      
+  <img src="../../assets/favicon.svg" alt="logo">
+
+    </a>
+    agentkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/arc-labs-ai/agentkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    arc-labs-ai/agentkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#source-based-diagnosis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source-based diagnosis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership-and-trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership and trust
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-contracts-and-correlation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public contracts and correlation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assessment-and-execution-correspondence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assessment and execution correspondence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capability-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#real-cli-evidence-and-remaining-blockers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Real CLI evidence and remaining blockers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Real CLI evidence and remaining blockers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#claude-code-21302-characterized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude Code 2.1.302, characterized
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structuredoutput-is-a-protocol-helper-not-an-authority" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StructuredOutput is a protocol helper, not an authority
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#standalone-integration-and-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standalone integration and migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#re-verification-against-claude-code-21302" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-verification against Claude Code 2.1.302
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="policy-controlled-host-tool-execution">Policy-controlled host-tool execution<a class="headerlink" href="#policy-controlled-host-tool-execution" title="Anchor link">&para;</a></h1>
+<p>This change starts from revision <code>a700dbfb1a90f39ca49e9f5ab26f9067ccf476ec</code>.
+It implements a common host policy contract. It does not establish protected
+execution for either CLI or introduce a second agent runtime.</p>
+<h2 id="source-based-diagnosis">Source-based diagnosis<a class="headerlink" href="#source-based-diagnosis" title="Anchor link">&para;</a></h2>
+<ul>
+<li><code>core/runtime/calls.py</code> owns attempts, retries, structured correction, context,
+  token accounting and call events. Injected adapters without an evaluator could
+  evade implicit DENY; they now refuse. Explicit requirements already reached
+  adapter turns but were absent from runner/delegation and persisted sessions.</li>
+<li><code>models/providers/cli/capabilities.py</code> refuses Claude native-tool absence as
+  unverified and Codex absence as unsupported. <code>codex/driver.py</code> independently
+  rejects DENY. Supplying MCP tools cannot change either native-tool boundary.</li>
+<li><code>tools/execution/policy.py</code> already routed both SDK calls and CLI MCP calls
+  through <code>ToolSet</code>, including static approval, output validation and deadlines.
+  Custom tools lacked uniform JSON Schema input validation; there were no public
+  composable permission callbacks or correlated lifecycle observers.</li>
+<li><code>integrations/mcp/serve.py</code> already supplies a per-server bearer fence and
+  owned listener/configuration cleanup. It discarded vendor tool-call metadata;
+  CLI portable messages subsequently invented a host pairing ID. Whole HTTP
+  request bodies also lacked a pre-parser byte bound.</li>
+<li>API request hooks could change the assessed host catalog or schema while those
+  requirements still reported supported. CLI binary versions were cached, and
+  adapter configuration had no receipt associating assessment with dispatch.</li>
+<li>CLI usage was synthesized from normalized zero defaults when no raw usage
+  arrived. Missing measurement now remains incomplete and unpriced; explicit
+  numeric zero remains a measurement.</li>
+</ul>
+<h2 id="ownership-and-trust">Ownership and trust<a class="headerlink" href="#ownership-and-trust" title="Anchor link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+  P[Independent plugin libraries] --&gt; H[Host composition and explicit grants]
+  H --&gt; R[CallRuntime: assessment, attempts, model loop, accounting]
+  R --&gt; A[API adapter]
+  R --&gt; C[CLI adapter and execution backend]
+  A --&gt; T[ToolSet: identity, validation, permission, effect, result, lifecycle]
+  C --&gt; M[Authenticated per-call MCP transport]
+  M --&gt; T
+  T --&gt; F[Trusted host implementation with call scope]</code></pre>
+<p><code>ToolRegistry</code> is the explicit callable grant set. <code>ToolSet</code> owns validation,
+permission composition, approval, effect execution, canonical output validation,
+bounded results, cancellation and host lifecycle events. The MCP bridge routes
+to it; it has no resource-policy implementation. Native CLI permissions are a
+different mechanism and cannot authorize a denied host effect.</p>
+<p>External packages supply ordinary tools, guidance and callbacks. AgentKit imports
+none of their modules. Skills do not register tools or widen grants. Permission
+contributions return <code>PermissionDecision.ALLOW</code>, <code>DENY</code> or <code>ASK</code>; DENY stops
+evaluation before prompting or effects, regardless of any ALLOW or ASK from
+other contributions. ASK and static <code>requires_approval</code> need an explicit host
+approval handler. Absence, rejection, invalid decisions, errors and cancellation
+all fail closed. Approval never overrides a DENY. If a host approval handler is
+configured, CLI transport approval metadata allows delivery to that handler;
+the host gate still runs before the effect. Without a handler the existing static
+CLI approval metadata remains restrictive.</p>
+<p>Observers cannot authorize by returning a value. A requested-observer error
+prevents effects. A terminal-observer error is logged with a fixed safe message;
+it cannot undo/replay an effect or replace its result. Hosts needing durable
+audit must supply durable observer implementations. Observer and permission
+awaits are bounded/cancellation-aware. Synchronous Python callbacks, threads
+and arbitrary subprocesses remain trusted host code; AgentKit cannot forcibly
+stop or sandbox them. All host callbacks can access their own process and its
+credentials. This contract does not protect against a malicious/compromised host
+callback, backend, provider adapter or installed binary.</p>
+<h2 id="public-contracts-and-correlation">Public contracts and correlation<a class="headerlink" href="#public-contracts-and-correlation" title="Anchor link">&para;</a></h2>
+<p>Import <code>ToolSet</code>, <code>OverflowPolicy</code>, <code>ToolResult</code>, <code>PermissionDecision</code>,
+<code>ToolInvocationRequest</code>, <code>ToolLifecycleEvent</code>, <code>ToolInvocation</code> and
+<code>current_tool_invocation</code> from <code>agentkit.tools</code>. Import <code>CallRuntime</code> from
+<code>agentkit.core.runtime</code> and call/requirement types from <code>agentkit.models</code>.
+<code>CallEvent</code> is now exported there; <code>ApiAdapter</code> is exported from
+<code>agentkit.models.providers.frontiers</code> for host-owned transport injection.</p>
+<p>The permission request contains frozen, schema-validated arguments, the host
+scope and invocation identity. Its repr excludes arguments/scope. Do not log
+them indiscriminately in host callbacks. Lifecycle observers receive only the
+tool name, identity, requested/finished phase and a stable status code. Known
+permission/validation refusals provide safe structured codes in <code>ToolResult</code>.
+Generic tool/permission exceptions do not expose their private messages.
+Handlers that intentionally publish a recovery instruction must raise public
+<code>ToolExecutionError(safe_message, code=...)</code>. The message/code are explicitly
+host-reviewed output; exception causes are never copied. Existing deterministic
+workflow fixtures use this contract while retaining their effect/accounting
+assertions. Consumers relying on arbitrary exception text must migrate those
+intentional messages to this contract. Permission/observer callback exceptions
+remain fail-closed and cannot use it to bypass policy.</p>
+<p>Identities remain distinct:</p>
+<ul>
+<li>Host invocation ID: freshly generated per invocation, retained through policy,
+  implementation and observation.</li>
+<li>Provider tool-call ID: actual SDK ID or vendor MCP metadata; unknown/conflicting
+  metadata remains <code>None</code>. Claude uses <code>_meta["claudecode/toolUseId"]</code>, Codex uses
+  <code>_meta["callId"]</code> on the tested binaries.</li>
+<li>Transport request ID: actual MCP JSON-RPC ID when present.</li>
+<li>Call ID and attempt ID: trusted runtime context, never supplied by model/MCP
+  scope metadata. Resume/fork uses the current call ID, not the old session ID.</li>
+</ul>
+<p>Provider IDs are correlation, not grant evidence. Task-local bindings reset
+after completion/cancellation and do not leak across concurrent calls. CLI
+portable tool messages retain all three tool IDs, with provider/host pairing
+chosen honestly. The CLI streaming item ID can differ from the provider ID.</p>
+<p>The bridge defaults to a fresh bearer token, localhost listener and owned private
+configuration for each server. Other jobs' tokens fail before effects. Closed
+servers refuse stale calls. Authenticated POST bodies are bounded to 1,048,576
+actual bytes before JSON parsing, including chunked/misdeclared lengths; body
+completion is bounded to ten seconds. <code>ToolSet.max_input_bytes</code> independently
+bounds encoded tool arguments before policy/effects. Existing result bounds and
+SDK validation remain. These are transport boundaries, not same-user OS or
+cross-tenant process isolation; another same-user process that can steal a token
+is outside the shipped backend's protection.</p>
+<h2 id="assessment-and-execution-correspondence">Assessment and execution correspondence<a class="headerlink" href="#assessment-and-execution-correspondence" title="Anchor link">&para;</a></h2>
+<p>Every requested requirement is evaluated with supported/unsupported/unverified
+status, a stable reason code and a safe explanation. Required unverified facts
+refuse. Initial local incompatibilities precede credential resolution and
+provider attempts, retaining unknown/unpriced cost and incomplete usage.
+Hard dollar caps are independently refused in all four modes.</p>
+<p>Adapter configuration receipts reject a configuration changed between assessment
+and adapter entry. API transport configuration is also captured before awaiting
+the credential resolver. The runtime forwards its receipt on every turn. CLI
+versions are re-inspected instead of cached; untested versions cannot satisfy
+required protocol capabilities. <code>MINIMUM_TESTED_CLI_VERSION</code> is a FLOOR per mode
+— Claude <strong>2.1.302</strong>, Codex <strong>0.162.1</strong> — replacing the previous exact-match
+pin. A binary at or above its floor keeps <code>HOST_TOOLS</code>, <code>SCHEMA</code> and <code>USAGE</code>;
+anything below refuses.</p>
+<p>The shape is an owner decision with a liability attached, and the liability is
+stated rather than buried. The exact pin failed in the direction that is easy to
+miss: measured, Claude 2.1.302 against a 2.1.300 pin downgraded all three
+requirements to <code>cli_protocol_version_unverified</code> while the protocol itself was
+intact, so the refusal reported staleness and read as evidence of a missing
+mechanism. A floor removes that. What it buys it with is that <code>&gt;=</code> CREDITS
+versions nobody has run — and the three shipped bugs recorded in
+<code>tests/source/unit/models/providers/cli/test_cli_version_matrix.py</code> (a removed
+flag, a flag moved to the parent command, a retired stream vocabulary) were all
+FORWARD breaks that a floor admits. The trade taken is that a vendor's wire
+protocol is additive in practice, so credit is extended upward on that
+expectation.</p>
+<p>The extrapolation is visible in the assessment, not only in a comment. A binary
+strictly above the floor reports those three requirements as SUPPORTED with the
+code <code>cli_protocol_version_above_tested_floor</code> and an explanation naming both
+the floor and the installed version, so an operator can tell an inferred credit
+from a measured one. A binary exactly at the floor keeps <code>adapter_supported</code>,
+because it was measured. Downward there is no extrapolation at all.</p>
+<p>Three details decide whether a floor is honest, and each has its own test.
+Comparison is on parsed numeric components, never on text: <code>"2.1.9" &lt; "2.1.302"</code>
+is false as text and true as software, and Claude's patch numbers are already
+three digits, so a string comparison would credit a binary from before any
+characterization and refuse the installed one. <code>packaging</code> is not imported —
+this package declares no runtime dependencies — so the comparison is a
+zero-padded tuple compare, which also makes <code>3.0</code> and <code>3.0.0</code> equal rather than
+ordering them by component count. And a version string that cannot be read as a
+release number never passes: an unreadable <code>--version</code> is exactly what a vendor
+produces when it changes that output, which is also when the protocol is most
+likely to have moved. The parser tolerates the decorated forms the binaries
+print, <code>2.1.302 (Claude Code)</code> and <code>codex-cli 0.162.1</code>, and refuses an ambiguous
+line rather than guessing which number is the release.</p>
+<p>The floor values are what was actually run, and a floor is the LOWEST credited
+version rather than the newest — setting it higher refuses binaries that were
+characterized. Claude 2.1.302 is the lowest Claude binary characterized against
+a real process here; 2.1.300 has the older record below but is not installed and
+was not re-run, so it is NOT the floor. Codex 0.162.1 is the lowest codex
+version characterized in the session that set these values. The table is a
+<code>MappingProxyType</code>, so nothing in the process can lower it and collect a
+SUPPORTED verdict it did not earn.</p>
+<p>The case for the floor stopped being hypothetical during that session: the
+installed <code>codex</code> upgraded itself from 0.162.1 to 0.163.0 mid-run. Under the
+previous exact pin every codex strict profile would have begun refusing on the
+spot, with a reason naming a missing mechanism, on a binary whose real-process
+acceptance test still passed. Under the floor it is credited and labelled
+<code>cli_protocol_version_above_tested_floor</code>, and <code>test_codex_adapter_offline.py</code>
+independently passed against 0.163.0 — granted host operation dispatched,
+denied host call refused — so in this instance the extrapolation happens to be
+backed by a measurement. It will not always be, which is the whole content of
+the trade.</p>
+<p>Raising a floor is an evidence claim. <code>tests/source/integration/execution/test_claude_execution_profile.py</code>
+is what earns a Claude floor, and it refuses to agree with the table in either
+direction: at or above must assess SUPPORTED, below must refuse.</p>
+<p>Version inspection now uses <code>isinstance</code> rather than <code>type(...) is</code> against the
+shipped subprocess backend. The identity test handed every SUBCLASS a weaker
+refusal set than the base class — no version inspection, therefore no
+<code>cli_protocol_version_unverified</code>, and no <code>cli_binary_unverified</code> either —
+although a subclass still reaches <code>super().start()</code> and still spawns the real
+binary. Both real-process suites in this repository subclass it in order to
+route the approved invocation at a local scripted provider, so the version gate
+was inert in precisely the tests that exist to characterize a version. With the
+gate live, those twelve Claude profiles refused on 2.1.302 until the version was
+characterized. A backend that does not spawn a local binary implements the
+<code>ExecutionBackend</code> port instead of inheriting this one and is unaffected.</p>
+<p>Version matches and receipt hashes never promote an
+isolation boundary. Receipts identify local adapter configuration, not binary
+integrity, a remote worker lease or an attestation. They are not portable
+authorization tokens. All strict CLI profiles remain refused.</p>
+<p>The CLI backend invocation carries mode, call/attempt IDs, requirements and
+effective native policy alongside its frozen launch options. The ordinary
+backend uses the same evaluator and rejects incompatible metadata before process
+creation. An unidentified provider cannot carry protected requirements. A host
+backend declaration cannot promote containment, or turn Codex's unsupported
+native absence into a merely unverified mechanism.</p>
+<p><code>SessionHandle</code> now retains execution requirements and native-tool policy.
+Resume/fork inherits them; additional requirements union with them and explicit
+roots/destinations intersect. This lexical narrowing is not a symlink/filesystem
+enforcer. Runner verification/delegation forwards the same requirements.</p>
+<p>The runtime still owns attempts/retries/corrections and settlement. A runtime
+attempt counts an adapter invocation, not each internal CLI provider request.
+Initial known incompatibility yields zero attempts. Changes detected after an
+attempt starts retain their confirmed <code>not_started</code> provider-dispatch detail;
+the started runtime attempt is not erased. CLI process/worker uncertainty and
+cleanup behavior retain their existing typed failures. This change does not
+claim control of vendor billing or CLI-internal retries.</p>
+<h2 id="capability-matrix">Capability matrix<a class="headerlink" href="#capability-matrix" title="Anchor link">&para;</a></h2>
+<p>S = supported within stated scope; V = unverified, U = unsupported. Required V/U
+refuses. Entries describe shipped adapters with the ordinary subprocess backend,
+no unrestricted request hooks, and characterized CLI protocol versions.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>OpenAI API</th>
+<th>Anthropic API</th>
+<th>Claude Code</th>
+<th>Codex</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Granted host-tool protocol and shared policy</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Native tools unavailable</td>
+<td>S</td>
+<td>S</td>
+<td>V</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Complete MCP allowlist boundary</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+</tr>
+<tr>
+<td>Structured answer protocol and canonical validation</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Usage reporting with incomplete measurement distinguished</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Observed spending threshold between turns</td>
+<td>S</td>
+<td>S</td>
+<td>U</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Exact hard dollar cap</td>
+<td>U</td>
+<td>U</td>
+<td>U</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Filesystem/network/process/credential/configuration isolation</td>
+<td>U</td>
+<td>U</td>
+<td>U</td>
+<td>U</td>
+</tr>
+<tr>
+<td>Complete descendant/provider cancellation requirement</td>
+<td>V</td>
+<td>V</td>
+<td>U</td>
+<td>U</td>
+</tr>
+</tbody>
+</table>
+<p>The three Claude Code protocol rows — granted host-tool protocol, structured
+answer protocol, usage reporting — read S only on a binary at or above
+<code>MINIMUM_TESTED_CLI_VERSION</code>. Below it they are V and the mode refuses; strictly
+above it they are S with <code>cli_protocol_version_above_tested_floor</code>, which says
+the credit was inferred from a floor rather than measured on that binary. Measured on 2.1.302 under a DENY ceiling, the surviving refusals
+are <code>native_tools_unavailable</code> (V) and <code>mcp_allowlist</code> (V); the protocol rows no
+longer contribute to that refusal, which is the whole point of re-measuring
+them.</p>
+<p>The API wire declares granted functions only, not provider-side MCP servers or
+native tools. The broader <code>MCP_ALLOWLIST</code> requirement also covers host MCP
+implementations; arbitrary host callbacks remain trusted and unverified under
+that broader boundary. Unrestricted request hooks make native absence and
+catalog/schema support unverified. The tested CLI host protocol can execute
+under deliberately selected non-strict policies; that does not satisfy DENY.
+This work never translates DENY into another policy.</p>
+<h2 id="real-cli-evidence-and-remaining-blockers">Real CLI evidence and remaining blockers<a class="headerlink" href="#real-cli-evidence-and-remaining-blockers" title="Anchor link">&para;</a></h2>
+<p>The real-process tests use empty temporary homes, synthetic credentials and
+local scripted provider endpoints. They are independent of paid/authenticated
+provider tests. Both providers run granted host effects, refuse denied and
+unattended host calls, retain actual IDs and return typed answers.</p>
+<p>Claude Code 2.1.300 passes twelve adapter profiles: fresh/resume/fork/correction
+with API-key, staged-home API-key and fake OAuth-shaped saved-session credentials.
+The local server verifies expected authentication selection without logging the
+header. Planted native Read/Bash, user/project hooks and discovered MCP commands
+cause no effects. Skill/project-instruction canaries do not reach the provider.</p>
+<h3 id="claude-code-21302-characterized">Claude Code 2.1.302, characterized<a class="headerlink" href="#claude-code-21302-characterized" title="Anchor link">&para;</a></h3>
+<p>2.1.302 passes fifteen adapter profiles — fresh/resume/fork/correction/<strong>cancellation</strong>
+across the same three credential profiles — plus a schema-presence pair and a
+credential-separation case. The authentication profiles are load-bearing rather
+than decorative: the adapter drops <code>--bare</code> whenever a credential is staged into
+the home or a bearer token is used, so <code>staged_api_key</code> and <code>saved_session</code>
+exercise the profile that must hold WITHOUT the one flag that disables discovery
+wholesale. Measured directly: <code>--bare</code> is not load-bearing for any surface below.
+<code>--setting-sources ""</code>, <code>--tools ""</code>, <code>--strict-mcp-config</code> with an empty
+<code>--mcp-config</code>, and <code>--disable-slash-commands</code> produce an identical empty wire
+catalogue with and without it.</p>
+<p>Every plant is proved CAPABLE before its exclusion is allowed to mean anything.
+A control run of the same binary over the same planted tree, in the same
+<code>HOME</code>/<code>CLAUDE_CONFIG_DIR</code> layout the adapter produces, with the restriction
+flags removed, must fire every sentinel and put every canary on the wire. Eight
+sentinel files and five instruction canaries, from nine distinct surfaces:</p>
+<table>
+<thead>
+<tr>
+<th>planted surface</th>
+<th>live without restrictions</th>
+<th>executed under the adapter profile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>project <code>.claude/settings.json</code> hook</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>project <code>.claude/settings.local.json</code> hook</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>project <code>.mcp.json</code> undeclared MCP server</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>user <code>settings.json</code> hook (config dir)</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>plugin auto-loaded from the skills directory (hook + MCP + skill)</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>plugin installed by <code>claude plugin marketplace add</code> / <code>install</code> (hook + MCP + skill)</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>project <code>CLAUDE.md</code></td>
+<td>reaches wire</td>
+<td>no</td>
+</tr>
+<tr>
+<td>user <code>CLAUDE.md</code> memory (config dir)</td>
+<td>reaches wire</td>
+<td>no</td>
+</tr>
+<tr>
+<td>project <code>.claude/skills/*/SKILL.md</code></td>
+<td>reaches wire</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>Provider-side planted <code>tool_use</code> for <code>Read</code>, <code>MemoryRead</code>, <code>Bash</code>, <code>Write</code>,
+<code>Skill</code> and an undeclared <code>mcp__planted-project__*</code> name are refused by the
+binary itself with <code>No such tool available</code>, and their sentinel files — a <code>Bash</code>
+<code>touch</code> and a <code>Write</code> outside the job directory — do not appear. The granted
+host operation executes in the same assistant message, so the run cannot pass by
+never getting far enough to attempt the violations.</p>
+<p>Three surfaces were planted and could NOT be made to fire even with every
+restriction lifted, so they are recorded here and asserted on nowhere: the
+top-level <code>mcpServers</code> table in <code>~/.claude.json</code>, <code>AGENTS.md</code>, and a <code>CLAUDE.md</code>
+inside an <code>--add-dir</code> directory. An unproven plant is not evidence; asserting on
+one manufactures a pass. Enterprise managed settings at an OS path were NOT
+planted — writing one needs root, and no flag agentkit passes overrides it.</p>
+<p>Credential separation is measured as a twin rather than an absence. The local
+provider refuses to answer unless it receives the exact staged bearer token, so
+a green authentication check is positive evidence the CLI child held the
+credential; the same secret, the API key and the refresh token are then absent
+from <code>/usr/bin/env</code> run inside a granted host tool, and <code>ANTHROPIC_API_KEY</code> /
+<code>ANTHROPIC_AUTH_TOKEN</code> are absent from that subprocess entirely. No credential
+value appears in any <code>argv</code> the adapter builds. This is environment and argv
+separation only; the staged home is a same-user directory and a same-user
+process that can read it is outside this boundary.</p>
+<h3 id="structuredoutput-is-a-protocol-helper-not-an-authority"><code>StructuredOutput</code> is a protocol helper, not an authority<a class="headerlink" href="#structuredoutput-is-a-protocol-helper-not-an-authority" title="Anchor link">&para;</a></h3>
+<p>Decided explicitly, with the measurement behind it. Under the strictest profile
+agentkit ships, the wire catalogue is <code>{mcp__agentkit__allowed, StructuredOutput}</code>
+when a schema is requested and <code>{mcp__agentkit__allowed}</code> when none is — so the
+helper is a consequence of asking for a schema, not a resident. It carries no
+path, command or destination; its arguments ARE the answer and still pass the
+host's canonical validation and correction loop; and it produces no host
+invocation, hence no permission decision and no lifecycle event (the only
+lifecycle name observed in a schema run is the granted tool). It therefore
+expands no authority and needs no grant.</p>
+<p>It is nevertheless a NATIVE tool, injected by the binary and never granted by
+the host, present on the wire under that same strictest profile. That is a
+measured counterexample to "no native tool is available", and it is now the
+stated reason <code>native_tools_unavailable</code> stays V for Claude rather than a
+footnote. The two facts are not in tension: the helper is safe AND native-tool
+absence is unproven.</p>
+<p>Native-tool absence stays V for a second, independent reason. <code>--tools ""</code> and
+<code>--setting-sources ""</code> are CLI configuration, not an OS boundary: the process
+retains full user authority, agentkit cannot verify the binary honours a flag
+beyond the cases measured here, and the three plants that would not fire show
+the surface enumeration is demonstrably incomplete. Absence cannot be
+established by enumeration.</p>
+<p>Per the owner's direction, absence is no longer the target for CLI modes.
+<strong>Containment</strong> — no authority beyond the admitted job — is, and it is a
+distinct capability: SDK modes may satisfy absence while CLI modes satisfy
+containment. The evidence above is containment evidence for the CONFIGURATION
+boundary specifically, and it is not yet sufficient for it. CONFIGURATION stays
+U pending: enterprise managed settings at an OS path that no agentkit flag
+overrides, a mechanism that makes the exclusion set enumerable rather than
+sampled, and environment-variable configuration surfaces. The remaining
+boundaries — filesystem roots including symlinks, egress filtering, process and
+peer separation, complete descendant reaping — are unchanged.</p>
+<p>Tests still do not prove vendor acceptance of saved credentials or real token
+refresh. No paid provider turn was run for this characterization: the provider
+is a local socket and every credential is a synthetic string.</p>
+<p>Codex 0.162.1 clean/planted twins use the real adapter. <code>view_image</code> executes and
+sends an outside synthetic image to the local provider under current feature
+restrictions and read-only sandboxing. Existing probes independently show write
+denial alongside allowed outside reads. This proves why DENY remains U. A complete
+immutable native-tools-off mechanism, including resumed sessions, is required
+upstream. Approval settings and read-only sandboxes cannot replace it.</p>
+<p>Both CLIs need independently verified control-plane/tool-executor credential
+separation before contained native execution can be supported. The backend must
+then establish file roots including symlinks, egress/private-endpoint filtering,
+configuration discovery exclusion, process/peer separation and complete
+descendant reaping. A same-user temporary HOME or container sharing native tools
+and its auth file is insufficient. The subprocess backend establishes a private
+environment and process group only. Detached descendants can escape that group;
+cleanup cannot claim complete termination. File removal is not secure erasure.
+Existing credential rotation callbacks and staged credential cleanup remain.</p>
+<p>Official mechanism references (not attestations of these binaries):
+<a href="https://code.claude.com/docs/en/cli-reference">Claude CLI reference</a>,
+<a href="https://developers.openai.com/codex/config-reference/">Codex configuration reference</a>.
+Their current content cannot certify older binaries. Actual local tests determine
+the claims above.</p>
+<h2 id="standalone-integration-and-migration">Standalone integration and migration<a class="headerlink" href="#standalone-integration-and-migration" title="Anchor link">&para;</a></h2>
+<p>See <code>tests/examples/plugin_execution/README.md</code> and <code>tests/examples/README.md</code>
+in the repository for exact setup/run commands, the independent plugin
+contributions and test classifications. Cited as repository paths rather than
+links because those files live outside the documentation tree, and <code>mkdocs
+--strict</code> fails a link it cannot resolve to a documentation page. Only the binding
+changes across modes; no application-specific dispatcher or MCP service exists.</p>
+<p>Consumers should:</p>
+<ol>
+<li>Build an explicitly granted <code>ToolRegistry</code> and attach resource permissions and
+   observers through <code>ToolSet</code>. Scope must come from host context, not model args.</li>
+<li>Treat ASK as refused unless an explicit bounded host approval handler exists.
+   Use observer return values for nothing; use permissions for policy decisions.</li>
+<li>Pass the phase's <code>ExecutionRequirements</code> through the existing runtime/runner.
+   Assess before selecting a connection, then handle typed local incompatibility.</li>
+<li>Persist complete session restrictions. Older sessions reconstructed from IDs
+   require the host to re-supply and reassess their policy ceiling.</li>
+<li>Distinguish runtime attempts, CLI internal requests, usage completeness,
+   unpriced cost, observed thresholds and unsupported hard caps.</li>
+</ol>
+<p>The consuming application retains plugin composition, tenancy, binding selection,
+workflow and ledger ownership. No changes to its model-call runtime are required.
+No package version bump or published release is included.</p>
+<h2 id="verification">Verification<a class="headerlink" href="#verification" title="Anchor link">&para;</a></h2>
+<p>The final implementation passes the repository gate. Skipped or unrun checks
+are not enforcement evidence; protected CLI acceptance remains unmet as described
+above. No native-tool policy, spending limit, test assertion or coverage
+threshold was relaxed to make a mode execute.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Final result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AGENTKIT_SKIP_REAL_CLI=1 AGENTKIT_LIVE=0 PYTEST_ADDOPTS=-rs make check</code></td>
+<td>Passed</td>
+</tr>
+<tr>
+<td>Coverage run, Python 3.13.14</td>
+<td>2,669 passed, 55 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Python 3.12 matrix</td>
+<td>2,669 passed, 55 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Python 3.13 matrix</td>
+<td>2,669 passed, 55 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Coverage</td>
+<td>91%; existing 89% threshold unchanged</td>
+</tr>
+<tr>
+<td>Ruff lint and strict mypy</td>
+<td>Passed; 149 source files typed</td>
+</tr>
+<tr>
+<td>Formatting of new/formatted modules, tests and examples</td>
+<td>49 files passed</td>
+</tr>
+<tr>
+<td>Documented imports</td>
+<td>14 checked, 0 unresolved</td>
+</tr>
+<tr>
+<td>Focused host-policy/assessment/bridge regressions</td>
+<td>53 passed, 0 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Separate real-process execution suite</td>
+<td>24 passed, 0 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Standalone plugin example and existing example entry points</td>
+<td>23 passed (19 plugin + 4 entry points), 0 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Mutation target baseline, isolated copy</td>
+<td>1,378 passed, 0 failed</td>
+</tr>
+<tr>
+<td>Full mutation catalogue, isolated source and dedicated virtual environment</td>
+<td>242/242 killed, 0 survivors/unrunnable</td>
+</tr>
+<tr>
+<td>Mutation restoration</td>
+<td>SHA-256 hashes matched for all 149 source files; isolated copy removed</td>
+</tr>
+<tr>
+<td>Local wheel and source distribution</td>
+<td>Built successfully as <code>arc-agentkit</code> 0.1.0; no publication</td>
+</tr>
+</tbody>
+</table>
+<p>The main gate's 55 skips are 16 offline CLI cases run separately above, 24 opt-in
+CLI parser/version-matrix cases, 14 paid/provider-authenticated cases and one
+optional msgspec case. Real provider/subscription acceptance and vendor token
+refresh were not run. Installed versions independently inspected with empty
+temporary homes were Claude Code 2.1.300 and Codex 0.162.1. The separate CLI probes
+use only synthetic credentials and local scripted providers.</p>
+<h3 id="re-verification-against-claude-code-21302">Re-verification against Claude Code 2.1.302<a class="headerlink" href="#re-verification-against-claude-code-21302" title="Anchor link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude --version</code> / <code>codex --version</code>, empty temporary home</td>
+<td>2.1.302 (Claude Code); codex-cli 0.162.1, which self-upgraded to 0.163.0 during the session</td>
+</tr>
+<tr>
+<td><code>test_claude_execution_profile.py</code> (new)</td>
+<td>54 passed, 0 skipped, 0 failed</td>
+</tr>
+<tr>
+<td>Full suite, real CLIs enabled, three consecutive randomized runs</td>
+<td>2,837 passed, 16 skipped, 0 failed</td>
+</tr>
+<tr>
+<td><code>uv run ruff check agentkit tests</code></td>
+<td>Passed</td>
+</tr>
+<tr>
+<td><code>uv run mypy --strict agentkit</code></td>
+<td>Passed; 149 source files</td>
+</tr>
+<tr>
+<td><code>uv run python .github/scripts/mutants.py --verify</code></td>
+<td>All anchors resolve; nothing left mutated</td>
+</tr>
+<tr>
+<td>Paid provider turns</td>
+<td>none; $0 spent</td>
+</tr>
+</tbody>
+</table>
+<p>Moving to a floor invalidated one existing conformance test by design rather
+than by regression. <code>test_cli_version_changes_are_not_hidden_by_cache</code>
+represented "an untested version" with <code>999.0.0</code>, which a floor credits by
+construction, and asserted <code>2.1.300</code> compatible, which a 2.1.302 floor refuses.
+Its real invariant — a version change is not hidden by a cache — survives in
+<code>planted.binary_version</code>, so the test was re-aimed rather than deleted: the
+sentinel for "not characterized" is now an OLD version (<code>0.0.1</code>), because under
+a floor every future-looking sentinel is a credited one. Three further
+conformance tests were added alongside it so that each direction of the floor is
+independently pinned: at/above/below the floor per mode, below-the-floor values
+whose TEXT sorts above it (<code>2.1.9</code>, <code>2.1.99</code>), and six unreadable version
+strings that must refuse.</p>
+<p>Observed red before the code changed, in order: the new file's import of the
+version table (symbol absent); then, once the gate was made
+<code>isinstance</code>-based, all twelve existing real-adapter Claude profiles refused with
+<code>cli_protocol_version_unverified</code> on 2.1.302 — the finding that the gate had
+been inert for subclassed backends; then the new characterization's fifteen
+profiles refused the same way with zero processes started, which is the failure
+the pin entry had to earn. The entry was added as a hypothesis and the
+characterization confirmed it; had it failed, the entry comes back out.</p>
+<p>Two fixture bugs were found and are worth recording because each produced a
+green-looking wrong answer. Annotating a host tool's <code>ctx</code> parameter pulled it
+into the generated JSON Schema, so every granted call came back <code>Tool arguments
+do not match the granted schema</code> while the run still answered through the schema
+helper — an "effect never happened" that looks like a passing test unless the
+effect itself is asserted. And a <code>content_block_start</code> carrying the final <code>text</code>
+with no following <code>text_delta</code> is accepted by a lenient parser and ignored by
+the real client: 2.1.302 accumulated an empty assistant message, kept looping
+and returned <code>result: ""</code>, which surfaces as <code>transport produced no answer</code>.</p>
+<p>Not run, and therefore not claimed: no paid model turn was made against either
+CLI or either API for this work, so nothing here attests vendor acceptance of
+the saved-session credential shape, vendor token refresh, or the behaviour of a
+real model choosing to call a granted tool on 2.1.302. The opt-in command for
+that step is
+<code>set -a &amp;&amp; source .env.eval &amp;&amp; set +a &amp;&amp; AGENTKIT_LIVE=1 uv run pytest tests/source/live -q -p no:randomly</code>,
+on <code>claude-haiku-4-5</code> / <code>gpt-4o-mini</code>; it is a handful of short turns, on the
+order of a few cents, and it remains unfunded and unrun.</p>
+<p>Mutation entries for the new gate are warranted and were NOT added, because
+<code>.github/scripts/mutants.py</code> is out of scope for this change. Four mutants would
+each be killed by a named new test:</p>
+<ul>
+<li>comparing version strings instead of parsed release numbers →
+  <code>test_the_floor_compares_release_numbers_and_never_version_text</code></li>
+<li>treating an unparseable version as passing the floor →
+  <code>test_a_version_string_that_cannot_be_read_never_passes_the_floor</code></li>
+<li>turning <code>not _at_least(...)</code> into a strict <code>&gt;</code> (off-by-one at the floor) →
+  <code>test_a_binary_below_the_tested_floor_refuses_the_protocol_profile</code></li>
+<li>restoring <code>type(...) is SubprocessExecutionBackend</code> →
+  <code>test_a_backend_subclass_cannot_dodge_the_version_gate</code></li>
+</ul>
+<p>Focused regressions were observed red before behavior changes: 14 host-policy
+cases, 14 real-adapter CLI identity/context cases, four adapter receipt cases,
+four asynchronous configuration-mutation cases, two missing-usage cases (their
+two measured-zero twins already passed), the protected backend-port case, and
+three implicit-DENY cases (Codex already refused). All four example-layout tests
+failed on the former flat layout before the moves. Tests also caught private
+exception leakage before adding the explicit safe-error contract. Fixture errors
+were corrected separately and are not enforcement evidence.</p>
+<p>Intermediate broad gates reported 20 failed/2,648 passed/55 skipped, then three
+failed/2,666 passed/55 skipped. They exposed recovery messages being hidden and
+a forwarding test relying on an unassessed adapter under DENY. Curated business
+and framework recovery messages now use explicit safe failures; their effect,
+approval, idempotency and accounting assertions remain. The forwarding fixture
+now identifies its no-process scripted transport explicitly, and a separate
+four-mode guard test requires zero dispatch from an unassessed adapter. An
+intermediate mutation baseline reported two gateway failures and correctly
+stopped without claiming mutation success; the final baseline and catalogue pass.</p>
+<p>The mutation runner used <code>--allow-dirty</code> only inside a disposable copy with its
+own virtual environment. No source mutation ran in the working repository or
+overlapped tests against its source. Five new mutants cover host DENY, unattended
+approval, input validation, stale receipts and transport body bounds. An existing
+backend-guarantee mutant was re-anchored to the stronger refusal condition.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 18, 2026 05:16:00 UTC">October 18, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Arc Labs
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/arc-labs-ai/agentkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["announce.dismiss", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.select", "content.code.annotate", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
