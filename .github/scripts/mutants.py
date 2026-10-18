@@ -272,6 +272,12 @@ CTX_PARAM_TESTS = (
 LOOPBACK_EGRESS_TESTS = (
     "tests/source/architecture/test_loopback_egress.py",
 )
+MINTING_TESTS = (
+    "tests/source/unit/models/providers/cli/test_credential_minting.py",
+)
+BINARY_ORDER_TESTS = (
+    "tests/source/conformance/test_execution_capabilities.py",
+)
 AGREEMENT_TESTS = (
     "tests/source/unit/models/adapters/test_transport_classifier_agreement.py",
 )
@@ -2493,6 +2499,62 @@ MUTANTS: tuple[Mutant, ...] = (
         before='httpx.AsyncClient(timeout=timeout_s, trust_env=False)',
         after='httpx.AsyncClient(timeout=timeout_s)',
         tests=LOOPBACK_EGRESS_TESTS,
+    ),
+    Mutant(
+        tag="mintleak",
+        why="the minter FORMATS a real saved-session credential instead of refusing it. This is the mistake that looks exactly like success: a credential is installed, at 0600, under the mode allowlist, and the run works — because it is the operator's own login, which is precisely what minting exists to keep out of the job. Every happy-path assertion still passes, so without this guard the whole mechanism can be defeated by one caller wiring the wrong value and nothing anywhere says so.",
+        path='agentkit/models/providers/cli/minting.py',
+        before='    if any(marker in token for marker in _REAL_CREDENTIAL_MARKERS) or token.lstrip().startswith("{"):',
+        after="    if False:",
+        tests=MINTING_TESTS,
+    ),
+    Mutant(
+        tag="mintjwt",
+        why="a minted Codex login is accepted with a malformed id_token. Measured on codex 0.162.1/0.163.0: a non-JWT tokens.id_token makes the CLI issue its request with NO Authorization header at all rather than refusing, while access_token may be any opaque value. So a sloppy mint produces a job that silently authenticates as nobody and surfaces as a confusing vendor error rather than a credential problem. Codex fails OPEN here, which is why the minter has to fail closed.",
+        path='agentkit/models/providers/cli/minting.py',
+        before='    if len(segments) != 3 or not all(segments):',
+        after="    if len(segments) < 2:",
+        tests=MINTING_TESTS,
+    ),
+    Mutant(
+        tag="mintclaim",
+        why="a structurally valid minted id_token is accepted while naming no account. Three segments is necessary and not sufficient: Codex reads the account out of the https://api.openai.com/auth claim, so a JWT carrying a blank or null chatgpt_account_id passes a shape check and still leaves the CLI with nobody to authenticate as — the same silent fail-open as a malformed token, reached by a different route.",
+        path='agentkit/models/providers/cli/minting.py',
+        before='    if not isinstance(auth, dict) or not auth.get("chatgpt_account_id"):',
+        after="    if not isinstance(auth, dict):",
+        tests=MINTING_TESTS,
+    ),
+    Mutant(
+        tag="mintceiling",
+        why="a minted credential is issued with an unbounded deadline. A minted token's worth is bounded by its scope and its lifetime, and nothing else: a native tool in the job can read it, which is accepted by design precisely because what it reads expires. Lift the ceiling and the token a tool reads has the same window the operator's own login does, which is the situation minting exists to end.",
+        path='agentkit/models/providers/cli/minting.py',
+        before='    if remaining > MAX_SCOPE_SECONDS:',
+        after="    if remaining > MAX_SCOPE_SECONDS * 1000:",
+        tests=MINTING_TESTS,
+    ),
+    Mutant(
+        tag="mintexpired",
+        why="an already-expired credential is minted and installed. It fails at the provider rather than at the mint, so the host sees an authentication error from a vendor instead of a deadline it set itself — and retries it, because provider auth errors look transient. Tolerating staleness here is the plausible version of the bug: an hour of slack reads like clock-skew defence and silently reintroduces the unbounded window.",
+        path='agentkit/models/providers/cli/minting.py',
+        before='    if remaining <= 0:',
+        after="    if remaining <= -3600:",
+        tests=MINTING_TESTS,
+    ),
+    Mutant(
+        tag="mintcodexaccount",
+        why="Codex is minted for with no account in scope, producing an id_token whose chatgpt_account_id is null. The blob looks right, installs cleanly and carries a three-segment JWT, so every structural check passes while the CLI has nobody to authenticate as. Refusing at the mint is the only point where the missing account is still attributable to the host that omitted it.",
+        path='agentkit/models/providers/cli/minting.py',
+        before='        if scope.account_id is None:',
+        after="        if False:",
+        tests=MINTING_TESTS,
+    ),
+    Mutant(
+        tag="binaryorder",
+        why="an unidentifiable CLI stops being refused, so every other assessment becomes a guess about a program nobody has looked at. The refusal is dropped rather than reported: the host is told its limits are the problem, installs nothing, and the next run spawns whatever is on PATH under capabilities that were credited without a version. Measured as a CI failure when the guard widened from type(...) is to isinstance: the two refusals compete, and which one wins has to be a contract rather than an accident of what happens to be installed.",
+        path='agentkit/models/providers/cli/calls.py',
+        before='            return replace(compatibility, assessments=(*compatibility.assessments, unmet), incompatibilities=(unmet,))',
+        after="            compatibility = replace(compatibility, assessments=compatibility.assessments)",
+        tests=BINARY_ORDER_TESTS,
     ),
 )
 
