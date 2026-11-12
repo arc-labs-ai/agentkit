@@ -287,7 +287,7 @@ class ApiAdapter:
         # before: a stream ending with no terminal frame made 1 request, while the
         # SAME physical event one layer earlier — a socket error — made 3. It was
         # the only transport failure on this path that was never retried.
-            return Turn(failure=Failure(FailureClass.TRANSIENT_NETWORK, True))
+            return Turn(usage_complete=False, failure=Failure(FailureClass.TRANSIENT_NETWORK, True))
         messages = []
         calls = []
         refused = False

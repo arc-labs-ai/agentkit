@@ -65,6 +65,24 @@ from agentkit.models.contracts.types import (
 )
 from agentkit.state.context import PrefixContext, WorkingContext
 
+_PROGRESS_EVENT_KINDS = frozenset({
+    EventKind.MESSAGE_DELTA, EventKind.MESSAGE_DONE, EventKind.REASONING,
+    EventKind.TOOL_CALL, EventKind.TOOL_RESULT, EventKind.USAGE,
+})
+_TRANSPORT_PROGRESS_KINDS = frozenset({
+    # CLI adapters use normalized event names on transport events.
+    *_PROGRESS_EVENT_KINDS, "final",
+    # Responses API content, reasoning, tool arguments and finals.
+    "response.output_text.delta", "response.refusal.delta",
+    "response.reasoning_text.delta", "response.reasoning_summary_text.delta",
+    "response.function_call_arguments.delta", "response.function_call_arguments.done",
+    "response.completed", "response.incomplete", "response.failed",
+    # Messages API content (including thinking/tool JSON), usage
+    # updates and the terminal frame.
+    "content_block_start", "content_block_delta", "content_block_stop",
+    "message_start", "message_delta", "message_stop",
+})
+
 
 @dataclass(frozen=True)
 class RetryPolicy:
@@ -402,7 +420,14 @@ class CallRuntime:
 
         async def mode_event(event: CallEvent) -> None:
             nonlocal last_event, saw_event, effective
-            last_event, saw_event = time.monotonic(), True
+            # Any provider event ends the first-event wait, but only model
+            # progress renews the idle allowance. Status/keep-alive frames can
+            # otherwise keep a non-producing stream alive indefinitely.
+            saw_event = True
+            if event.kind in _PROGRESS_EVENT_KINDS or (
+                event.kind == EventKind.TRANSPORT and event.fields.get("mode_event") in _TRANSPORT_PROGRESS_KINDS
+            ):
+                last_event = time.monotonic()
             if event.kind == EventKind.TRANSPORT:
                 return
             fields = dict(event.fields)

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Pre-release development record
 
+### Streaming usage and idle detection
+
+- Mark OpenAI streams that close without a terminal frame as incomplete usage
+  with unknown cost, matching Anthropic and preserving any measured counts.
+- Renew the runtime idle allowance only for content, reasoning, tool activity,
+  and final/usage frames; status-only streams now reach the existing idle bound.
+
 ### Explicit execution profiles
 
 - Add public `ExecutionProfile.HOST_TOOLS_ONLY` and `CLI_COMPATIBLE` selections
